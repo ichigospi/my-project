@@ -526,5 +526,5 @@ def _get_stats(config):
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
     print("X自動運用ツール - Web Dashboard")
-    print("http://localhost:5000 でブラウザから操作できます")
-    app.run(debug=True, port=5000)
+    print("http://localhost:8080 でブラウザから操作できます")
+    app.run(debug=True, host="0.0.0.0", port=8080)
