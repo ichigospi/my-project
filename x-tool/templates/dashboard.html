@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X自動運用ツール</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --primary: #1d9bf0;
+      --primary-dark: #1a8cd8;
+      --bg: #f7f9fa;
+      --card: #ffffff;
+      --text: #0f1419;
+      --text-light: #536471;
+      --border: #eff3f4;
+      --success: #00ba7c;
+      --warning: #ffad1f;
+      --danger: #f4212e;
+      --purple: #7856ff;
+      --sidebar-bg: #1a1a2e;
+      --sidebar-text: #e0e0e0;
+      --sidebar-active: #1d9bf0;
+    }
+
+    body {
+      font-family: -apple-system, 'Hiragino Sans', 'Meiryo', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ===== Sidebar ===== */
+    .sidebar {
+      width: 240px;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-text);
+      padding: 20px 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      overflow-y: auto;
+    }
+
+    .sidebar-logo {
+      padding: 0 20px 24px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 12px;
+    }
+
+    .sidebar-logo small {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 400;
+      color: var(--sidebar-text);
+      margin-top: 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      color: var(--sidebar-text);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-item:hover {
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+    }
+
+    .nav-item.active {
+      background: rgba(29, 155, 240, 0.15);
+      color: var(--sidebar-active);
+      border-left-color: var(--sidebar-active);
+      font-weight: 600;
+    }
+
+    .nav-icon { font-size: 1.1rem; width: 24px; text-align: center; }
+
+    .nav-divider {
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+      margin: 12px 20px;
+    }
+
+    /* ===== Main ===== */
+    .main {
+      margin-left: 240px;
+      flex: 1;
+      padding: 24px 32px;
+      max-width: 1100px;
+    }
+
+    .page-header {
+      margin-bottom: 24px;
+    }
+
+    .page-header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .page-header p {
+      color: var(--text-light);
+      font-size: 0.9rem;
+    }
+
+    /* ===== Cards ===== */
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .card h2 {
+      font-size: 1.05rem;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ===== Stats Grid ===== */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 20px 24px;
+      border: 1px solid var(--border);
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-light);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 700;
+    }
+
+    .stat-number.blue { color: var(--primary); }
+    .stat-number.green { color: var(--success); }
+    .stat-number.orange { color: var(--warning); }
+    .stat-number.purple { color: var(--purple); }
+
+    /* ===== Buttons ===== */
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-purple { background: var(--purple); color: #fff; }
+    .btn-outline {
+      background: transparent;
+      color: var(--primary);
+      border: 2px solid var(--primary);
+    }
+    .btn-outline:hover { background: rgba(29,155,240,0.05); }
+
+    .btn-sm { padding: 6px 14px; font-size: 0.8rem; }
+
+    .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* ===== Forms ===== */
+    .form-group { margin-bottom: 16px; }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--text-light);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"], input[type="number"], input[type="password"],
+    input[type="datetime-local"], select, textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+      background: #fff;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+    }
+
+    textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* ===== Table ===== */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .data-table th, .data-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    .data-table th {
+      font-weight: 600;
+      color: var(--text-light);
+      font-size: 0.8rem;
+    }
+
+    .data-table tr:hover { background: rgba(0,0,0,0.02); }
+
+    /* ===== Status Badge ===== */
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-queued { background: #e8f5fd; color: var(--primary); }
+    .badge-posted { background: #e6f9f0; color: var(--success); }
+    .badge-failed { background: #fde8e8; color: var(--danger); }
+    .badge-on { background: #e6f9f0; color: var(--success); }
+    .badge-off { background: #f0f0f0; color: var(--text-light); }
+
+    /* ===== Post Card ===== */
+    .post-card {
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .post-text {
+      font-size: 0.95rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      margin-bottom: 10px;
+    }
+
+    .post-meta {
+      display: flex;
+      gap: 16px;
+      font-size: 0.8rem;
+      color: var(--text-light);
+    }
+
+    /* ===== Loading ===== */
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 40px;
+      color: var(--text-light);
+    }
+
+    .loading.show { display: block; }
+
+    .spinner {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== Toast ===== */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--text);
+      color: #fff;
+      padding: 14px 24px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      z-index: 1000;
+    }
+
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ===== Empty ===== */
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-light);
+    }
+
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+    /* ===== Result area ===== */
+    #result-area { margin-top: 20px; }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 16px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    .threshold-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .suggestion-text {
+      white-space: pre-wrap;
+      line-height: 1.8;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-logo">
+    X自動運用ツール
+    <small>{{ config.account.display_name | default('未設定') }}</small>
+  </div>
+
+  <a href="/" class="nav-item {{ 'active' if page == 'dashboard' }}">
+    <span class="nav-icon">📊</span> ダッシュボード
+  </a>
+  <a href="/competitor" class="nav-item {{ 'active' if page == 'competitor' }}">
+    <span class="nav-icon">🔍</span> 競合分析
+  </a>
+  <a href="/generate" class="nav-item {{ 'active' if page == 'generate' }}">
+    <span class="nav-icon">✏️</span> ポスト生成
+  </a>
+  <a href="/schedule" class="nav-item {{ 'active' if page == 'schedule' }}">
+    <span class="nav-icon">📅</span> 予約投稿
+  </a>
+
+  <div class="nav-divider"></div>
+
+  <a href="/buzz" class="nav-item {{ 'active' if page == 'buzz' }}">
+    <span class="nav-icon">🔔</span> バズ監視
+  </a>
+  <a href="/recycle" class="nav-item {{ 'active' if page == 'recycle' }}">
+    <span class="nav-icon">♻️</span> リサイクル
+  </a>
+  <a href="/insights" class="nav-item {{ 'active' if page == 'insights' }}">
+    <span class="nav-icon">💡</span> 改善提案
+  </a>
+
+  <div class="nav-divider"></div>
+
+  <a href="/settings" class="nav-item {{ 'active' if page == 'settings' }}">
+    <span class="nav-icon">⚙️</span> 設定
+  </a>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+  <!-- ==================== ダッシュボード ==================== -->
+  {% if page == 'dashboard' %}
+  <div class="page-header">
+    <h1>ダッシュボード</h1>
+    <p>X自動運用ツールの全体ステータス</p>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">生成済みポスト</div>
+      <div class="stat-number blue">{{ stats.generated_posts }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">予約待ち</div>
+      <div class="stat-number orange">{{ stats.queued }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">投稿済み</div>
+      <div class="stat-number green">{{ stats.posted }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">バズ検知</div>
+      <div class="stat-number purple">{{ stats.buzz_detected }}</div>
+    </div>
+  </div>
+
+  <!-- API状態 -->
+  <div class="card">
+    <h2>接続ステータス</h2>
+    <table class="data-table">
+      <tr>
+        <td>X API</td>
+        <td>
+          {% if stats.api_configured %}
+            <span class="badge badge-on">接続済み</span>
+          {% else %}
+            <span class="badge badge-off">未設定</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>OpenAI API</td>
+        <td>
+          {% if stats.openai_configured %}
+            <span class="badge badge-on">接続済み</span>
+          {% else %}
+            <span class="badge badge-off">未設定</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>LINE通知</td>
+        <td>
+          {% if config.notifications.line.enabled %}
+            <span class="badge badge-on">有効</span>
+          {% else %}
+            <span class="badge badge-off">無効</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>Chatwork通知</td>
+        <td>
+          {% if config.notifications.chatwork.enabled %}
+            <span class="badge badge-on">有効</span>
+          {% else %}
+            <span class="badge badge-off">無効</span>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- 全自動フロー -->
+  <div class="card">
+    <h2>全自動フロー</h2>
+    <p style="color: var(--text-light); margin-bottom: 16px; font-size: 0.9rem;">
+      競合収集 → 分析 → ポスト生成 → 予約登録を一括実行します
+    </p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>テーマ（任意）</label>
+        <input type="text" id="auto-topic" placeholder="例: 今日の星座占い">
+      </div>
+      <div class="form-group">
+        <label>生成数</label>
+        <select id="auto-count">
+          <option value="3">3案</option>
+          <option value="5">5案</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="runAutoFlow()">全自動実行</button>
+    <div id="auto-result"></div>
+  </div>
+
+  <!-- デーモン管理 -->
+  <div class="card">
+    <h2>常駐プロセス</h2>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="startDaemon('buzz')">バズ監視 開始</button>
+      <button class="btn btn-outline" onclick="startDaemon('scheduler')">予約投稿 開始</button>
+    </div>
+    <div id="daemon-status" style="margin-top: 12px; font-size: 0.85rem; color: var(--text-light);"></div>
+  </div>
+
+  <!-- ==================== 競合分析 ==================== -->
+  {% elif page == 'competitor' %}
+  <div class="page-header">
+    <h1>競合分析</h1>
+    <p>競合アカウントのポストを収集・分析</p>
+  </div>
+
+  <div class="card">
+    <h2>監視対象アカウント</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>アカウント</th><th>メモ</th></tr>
+      </thead>
+      <tbody>
+        {% for comp in config.competitors %}
+        <tr>
+          <td>@{{ comp.username }}</td>
+          <td>{{ comp.note | default('-') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="btn-group" style="margin-top: 16px;">
+      <button class="btn btn-primary" onclick="collectCompetitors()">ポスト収集</button>
+      <button class="btn btn-outline" onclick="analyzeCompetitors()">分析実行</button>
+    </div>
+  </div>
+
+  <div class="loading" id="comp-loading">
+    <div class="spinner"></div>
+    <p style="margin-top: 12px;">収集中...</p>
+  </div>
+
+  <div id="comp-result">
+    {% if comp_data and comp_data is mapping %}
+    {% for username, info in comp_data.items() %}
+    {% if info is mapping and info.posts is defined %}
+    <div class="card">
+      <h2>@{{ username }} ({{ info.followers | default(0) }}フォロワー)</h2>
+      <p style="color: var(--text-light); margin-bottom: 12px; font-size: 0.85rem;">
+        {{ info.posts | length }}件取得 ({{ info.collected_at | default('') | truncate(16, True, '') }})
+      </p>
+      {% for post in info.posts[:5] %}
+      <div class="post-card">
+        <div class="post-text">{{ post.text | truncate(200) }}</div>
+        <div class="post-meta">
+          <span>♡ {{ post.likes }}</span>
+          <span>🔁 {{ post.retweets }}</span>
+          <span>💬 {{ post.replies }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">🔍</div>
+      <p>まだ競合データがありません<br>「ポスト収集」ボタンで収集してください</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ==================== ポスト生成 ==================== -->
+  {% elif page == 'generate' %}
+  <div class="page-header">
+    <h1>ポスト生成</h1>
+    <p>競合分析をもとにポストを自動生成</p>
+  </div>
+
+  <div class="card">
+    <h2>生成設定</h2>
+    <div class="form-group">
+      <label>テーマ・トピック</label>
+      <input type="text" id="gen-topic" placeholder="例: 今日の星座占い、恋愛運アップのコツ">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>生成数</label>
+        <select id="gen-count">
+          <option value="3">3案</option>
+          <option value="5">5案</option>
+          <option value="1">1案</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>競合データを参考にする</label>
+        <select id="gen-use-comp">
+          <option value="true">はい（推奨）</option>
+          <option value="false">いいえ</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>追加の指示（任意）</label>
+      <textarea id="gen-instruction" rows="3" placeholder="例: もっと親しみやすい口調で、絵文字多めにして"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="generatePosts()">生成する</button>
+  </div>
+
+  <div class="loading" id="gen-loading">
+    <div class="spinner"></div>
+    <p style="margin-top: 12px;">AIが生成中...</p>
+  </div>
+
+  <div id="gen-result"></div>
+
+  {% if posts %}
+  <div class="card">
+    <h2>生成履歴 (直近{{ posts | length }}件)</h2>
+    {% for post in posts[-10:] | reverse %}
+    <div class="post-card">
+      <div class="post-text">{{ post.text }}</div>
+      <div class="post-meta">
+        <span>{{ post.char_count }}文字</span>
+        <span>{{ post.status | default('draft') }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ==================== 予約投稿 ==================== -->
+  {% elif page == 'schedule' %}
+  <div class="page-header">
+    <h1>予約投稿</h1>
+    <p>ポストの予約・キュー管理</p>
+  </div>
+
+  <div class="card">
+    <h2>新規予約</h2>
+    <div class="form-group">
+      <label>ポスト内容</label>
+      <textarea id="sched-text" rows="4" placeholder="投稿するテキストを入力"></textarea>
+    </div>
+    <div class="form-group">
+      <label>投稿日時（空欄で次の空きスロット）</label>
+      <input type="datetime-local" id="sched-time">
+    </div>
+    <button class="btn btn-primary" onclick="addToQueue()">予約に追加</button>
+  </div>
+
+  <div class="card">
+    <h2>予約キュー</h2>
+    {% if queue %}
+    <table class="data-table">
+      <thead>
+        <tr><th>ID</th><th>予定日時</th><th>内容</th><th>状態</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in queue | sort(attribute='scheduled_time') %}
+        <tr>
+          <td>{{ entry.id }}</td>
+          <td>{{ entry.scheduled_time }}</td>
+          <td>{{ entry.text | truncate(40) }}</td>
+          <td>
+            <span class="badge badge-{{ entry.status }}">{{ entry.status }}</span>
+          </td>
+          <td>
+            {% if entry.status == 'queued' %}
+            <button class="btn btn-success btn-sm" onclick="postNow({{ entry.id }})">今すぐ投稿</button>
+            <button class="btn btn-danger btn-sm" onclick="removeFromQueue({{ entry.id }})">削除</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">📅</div>
+      <p>予約はまだありません</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>投稿時間帯設定</h2>
+    <p style="color: var(--text-light); font-size: 0.9rem;">
+      現在の設定: {{ config.scheduler.post_times | join(', ') }}
+    </p>
+  </div>
+
+  <!-- ==================== バズ監視 ==================== -->
+  {% elif page == 'buzz' %}
+  <div class="page-header">
+    <h1>バズ監視</h1>
+    <p>ポストのエンゲージメントを監視して通知</p>
+  </div>
+
+  <div class="card">
+    <h2>閾値設定</h2>
+    <p style="color: var(--text-light); margin-bottom: 16px; font-size: 0.85rem;">
+      いずれかの数値を超えたらバズとして通知します
+    </p>
+    <div class="threshold-grid">
+      <div class="form-group">
+        <label>いいね</label>
+        <input type="number" id="th-likes" value="{{ config.buzz_monitor.thresholds.likes }}">
+      </div>
+      <div class="form-group">
+        <label>RT</label>
+        <input type="number" id="th-retweets" value="{{ config.buzz_monitor.thresholds.retweets }}">
+      </div>
+      <div class="form-group">
+        <label>リプライ</label>
+        <input type="number" id="th-replies" value="{{ config.buzz_monitor.thresholds.replies }}">
+      </div>
+      <div class="form-group">
+        <label>インプレッション</label>
+        <input type="number" id="th-impressions" value="{{ config.buzz_monitor.thresholds.impressions }}">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="updateThresholds()">閾値を保存</button>
+      <button class="btn btn-purple" onclick="buzzCheck()">今すぐチェック</button>
+      <button class="btn btn-outline" onclick="startDaemon('buzz')">自動監視 開始</button>
+    </div>
+  </div>
+
+  <div class="loading" id="buzz-loading">
+    <div class="spinner"></div>
+    <p style="margin-top: 12px;">チェック中...</p>
+  </div>
+
+  <div id="buzz-result"></div>
+
+  <div class="card">
+    <h2>検知履歴</h2>
+    {% if buzz_history %}
+    <table class="data-table">
+      <thead>
+        <tr><th>検知日時</th><th>内容</th><th>いいね</th><th>RT</th><th>インプ</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in buzz_history | reverse %}
+        <tr>
+          <td>{{ entry.detected_at[:16] | default('-') }}</td>
+          <td>{{ entry.text | default('') | truncate(40) }}</td>
+          <td>{{ entry.metrics.like_count | default(0) }}</td>
+          <td>{{ entry.metrics.retweet_count | default(0) }}</td>
+          <td>{{ entry.metrics.impression_count | default(0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">🔔</div>
+      <p>バズ検知履歴はありません</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ==================== リサイクル ==================== -->
+  {% elif page == 'recycle' %}
+  <div class="page-header">
+    <h1>コンテンツリサイクル</h1>
+    <p>過去のバズ投稿を再活用</p>
+  </div>
+
+  <div class="card">
+    <h2>操作</h2>
+    <p style="color: var(--text-light); margin-bottom: 16px; font-size: 0.85rem;">
+      まず過去の投稿を収集し、その中からリサイクル候補を抽出します
+    </p>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="recycleCollect()">過去ポスト収集</button>
+      <button class="btn btn-purple" onclick="recycleSuggest()">リサイクル候補を表示</button>
+    </div>
+  </div>
+
+  <div class="loading" id="recycle-loading">
+    <div class="spinner"></div>
+    <p style="margin-top: 12px;">処理中...</p>
+  </div>
+
+  <div id="recycle-result">
+    {% if analytics and analytics.my_posts is defined %}
+    <div class="card">
+      <h2>収集済みデータ</h2>
+      <p style="color: var(--text-light); font-size: 0.9rem;">
+        {{ analytics.my_posts | length }}件の投稿を保存中
+        (収集日: {{ analytics.collected_at | default('') | truncate(16, True, '') }})
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ==================== 改善提案 ==================== -->
+  {% elif page == 'insights' %}
+  <div class="page-header">
+    <h1>改善提案</h1>
+    <p>パフォーマンス分析とAIによる改善提案</p>
+  </div>
+
+  <div class="card">
+    <h2>分析 & 提案</h2>
+    <p style="color: var(--text-light); margin-bottom: 16px; font-size: 0.85rem;">
+      過去の投稿データをもとに、AIがエンゲージメントを上げるための提案をします。<br>
+      トレンド情報も加味して「今何を投稿すべきか」を教えてくれます。
+    </p>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="runAnalysis()">パフォーマンス分析</button>
+      <button class="btn btn-purple" onclick="runSuggestions()">AI改善提案を取得</button>
+    </div>
+  </div>
+
+  <div class="loading" id="insights-loading">
+    <div class="spinner"></div>
+    <p style="margin-top: 12px;">分析中...</p>
+  </div>
+
+  <div id="insights-result"></div>
+
+  <!-- ==================== 設定 ==================== -->
+  {% elif page == 'settings' %}
+  <div class="page-header">
+    <h1>設定</h1>
+    <p>APIキー・アカウント情報・通知設定</p>
+  </div>
+
+  <!-- X API -->
+  <div class="card">
+    <h2>X (Twitter) API</h2>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="password" id="set-x-api-key" value="{{ config.x_api.api_key }}" placeholder="API Key">
+    </div>
+    <div class="form-group">
+      <label>API Secret</label>
+      <input type="password" id="set-x-api-secret" value="{{ config.x_api.api_secret }}" placeholder="API Secret">
+    </div>
+    <div class="form-group">
+      <label>Access Token</label>
+      <input type="password" id="set-x-access-token" value="{{ config.x_api.access_token }}" placeholder="Access Token">
+    </div>
+    <div class="form-group">
+      <label>Access Token Secret</label>
+      <input type="password" id="set-x-access-secret" value="{{ config.x_api.access_token_secret }}" placeholder="Access Token Secret">
+    </div>
+    <div class="form-group">
+      <label>Bearer Token</label>
+      <input type="password" id="set-x-bearer" value="{{ config.x_api.bearer_token }}" placeholder="Bearer Token">
+    </div>
+  </div>
+
+  <!-- OpenAI -->
+  <div class="card">
+    <h2>OpenAI API</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="password" id="set-openai-key" value="{{ config.openai.api_key }}" placeholder="sk-...">
+      </div>
+      <div class="form-group">
+        <label>モデル</label>
+        <select id="set-openai-model">
+          <option value="gpt-4o-mini" {{ 'selected' if config.openai.model == 'gpt-4o-mini' }}>gpt-4o-mini</option>
+          <option value="gpt-4o" {{ 'selected' if config.openai.model == 'gpt-4o' }}>gpt-4o</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- アカウント -->
+  <div class="card">
+    <h2>アカウント設定</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>ユーザー名</label>
+        <input type="text" id="set-username" value="{{ config.account.username }}">
+      </div>
+      <div class="form-group">
+        <label>表示名</label>
+        <input type="text" id="set-display-name" value="{{ config.account.display_name }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>口調・トーン</label>
+      <textarea id="set-tone" rows="2">{{ config.account.tone }}</textarea>
+    </div>
+    <div class="form-group">
+      <label>ジャンル</label>
+      <input type="text" id="set-niche" value="{{ config.account.niche }}">
+    </div>
+  </div>
+
+  <!-- 通知 -->
+  <div class="card">
+    <h2>通知設定</h2>
+    <div class="form-row">
+      <div>
+        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">LINE Notify</h3>
+        <div class="form-group">
+          <label>有効化</label>
+          <select id="set-line-enabled">
+            <option value="true" {{ 'selected' if config.notifications.line.enabled }}>有効</option>
+            <option value="false" {{ 'selected' if not config.notifications.line.enabled }}>無効</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>アクセストークン</label>
+          <input type="password" id="set-line-token" value="{{ config.notifications.line.access_token }}">
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">Chatwork</h3>
+        <div class="form-group">
+          <label>有効化</label>
+          <select id="set-cw-enabled">
+            <option value="true" {{ 'selected' if config.notifications.chatwork.enabled }}>有効</option>
+            <option value="false" {{ 'selected' if not config.notifications.chatwork.enabled }}>無効</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>APIトークン</label>
+          <input type="password" id="set-cw-token" value="{{ config.notifications.chatwork.api_token }}">
+        </div>
+        <div class="form-group">
+          <label>ルームID</label>
+          <input type="text" id="set-cw-room" value="{{ config.notifications.chatwork.room_id }}">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="saveSettings()" style="margin-bottom: 40px;">設定を保存</button>
+
+  {% endif %}
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== Toast =====
+function showToast(msg, duration = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+function showLoading(id) { document.getElementById(id)?.classList.add('show'); }
+function hideLoading(id) { document.getElementById(id)?.classList.remove('show'); }
+
+async function apiCall(url, data = {}) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return resp.json();
+}
+
+// ===== Dashboard: Auto Flow =====
+async function runAutoFlow() {
+  const topic = document.getElementById('auto-topic').value;
+  const count = parseInt(document.getElementById('auto-count').value);
+  const area = document.getElementById('auto-result');
+  area.innerHTML = '<div class="loading show"><div class="spinner"></div><p style="margin-top:12px;">全自動実行中...（競合収集→分析→生成→予約）</p></div>';
+
+  const result = await apiCall('/api/auto', { topic, count });
+  if (result.error) {
+    area.innerHTML = `<p style="color:var(--danger);margin-top:12px;">${result.error}</p>`;
+    return;
+  }
+
+  let html = '<div style="margin-top:16px;">';
+  for (const step of (result.steps || [])) {
+    html += `<p style="margin-bottom:8px;">✅ <strong>${step.name}</strong>`;
+    if (step.posts) {
+      html += '</p>';
+      for (const post of step.posts) {
+        html += `<div class="post-card"><div class="post-text">${escapeHtml(post.text)}</div><div class="post-meta"><span>${post.char_count}文字</span></div></div>`;
+      }
+    } else {
+      html += '</p>';
+    }
+  }
+  html += '</div>';
+  area.innerHTML = html;
+  showToast('全自動フロー完了！');
+}
+
+// ===== Competitor =====
+async function collectCompetitors() {
+  showLoading('comp-loading');
+  const result = await apiCall('/api/competitor/collect', { days: 7 });
+  hideLoading('comp-loading');
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+  showToast('収集完了！ページを更新します');
+  setTimeout(() => location.reload(), 1000);
+}
+
+async function analyzeCompetitors() {
+  showLoading('comp-loading');
+  const result = await apiCall('/api/competitor/analyze');
+  hideLoading('comp-loading');
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+
+  const data = result.data;
+  let html = '<div class="card"><h2>分析結果</h2>';
+
+  if (data.top_posts && data.top_posts.length) {
+    html += '<h3 style="font-size:0.9rem;margin-bottom:12px;">バズ投稿TOP10</h3>';
+    for (const post of data.top_posts.slice(0, 10)) {
+      html += `<div class="post-card"><div class="post-text">${escapeHtml(post.text).substring(0, 200)}</div><div class="post-meta"><span>@${post.username || '?'}</span><span>♡ ${post.likes}</span><span>🔁 ${post.retweets}</span></div></div>`;
+    }
+  }
+
+  if (data.common_hashtags && data.common_hashtags.length) {
+    html += '<h3 style="font-size:0.9rem;margin:16px 0 8px;">よく使われるハッシュタグ</h3><p>';
+    for (const [tag, count] of data.common_hashtags.slice(0, 10)) {
+      html += `<span class="badge badge-queued" style="margin:2px;">#${tag} (${count})</span> `;
+    }
+    html += '</p>';
+  }
+
+  html += '</div>';
+  document.getElementById('comp-result').innerHTML = html;
+}
+
+// ===== Generate =====
+async function generatePosts() {
+  const topic = document.getElementById('gen-topic').value;
+  const count = parseInt(document.getElementById('gen-count').value);
+  const useComp = document.getElementById('gen-use-comp').value === 'true';
+  const instruction = document.getElementById('gen-instruction').value;
+
+  showLoading('gen-loading');
+  const result = await apiCall('/api/generate', { topic, count, use_competitor: useComp, instruction });
+  hideLoading('gen-loading');
+
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+
+  const area = document.getElementById('gen-result');
+  let html = '';
+  for (let i = 0; i < result.posts.length; i++) {
+    const post = result.posts[i];
+    html += `
+      <div class="card">
+        <h2>案${i + 1} (${post.char_count}文字)</h2>
+        <div class="post-text">${escapeHtml(post.text)}</div>
+        <div class="btn-group" style="margin-top:12px;">
+          <button class="btn btn-success btn-sm" onclick="copyText('${escapeJs(post.text)}')">コピー</button>
+          <button class="btn btn-primary btn-sm" onclick="schedulePost('${escapeJs(post.text)}')">予約に追加</button>
+        </div>
+      </div>`;
+  }
+  area.innerHTML = html;
+  showToast(`${result.posts.length}案 生成完了！`);
+}
+
+// ===== Schedule =====
+async function addToQueue() {
+  const text = document.getElementById('sched-text').value;
+  const time = document.getElementById('sched-time').value;
+  if (!text) { showToast('テキストを入力してください'); return; }
+
+  const scheduledTime = time ? time.replace('T', ' ') : '';
+  const result = await apiCall('/api/schedule/add', { text, scheduled_time: scheduledTime });
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+  showToast(`予約追加！ (${result.entry.scheduled_time})`);
+  setTimeout(() => location.reload(), 1000);
+}
+
+async function postNow(id) {
+  if (!confirm('今すぐ投稿しますか？')) return;
+  const result = await apiCall('/api/schedule/post-now', { id });
+  if (result.success) { showToast('投稿完了！'); setTimeout(() => location.reload(), 1000); }
+  else { showToast('エラー: ' + (result.error || '不明')); }
+}
+
+async function removeFromQueue(id) {
+  if (!confirm('削除しますか？')) return;
+  await apiCall('/api/schedule/remove', { id });
+  showToast('削除しました');
+  setTimeout(() => location.reload(), 500);
+}
+
+async function schedulePost(text) {
+  const result = await apiCall('/api/schedule/add', { text, scheduled_time: '' });
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+  showToast(`予約追加！ (${result.entry.scheduled_time})`);
+}
+
+// ===== Buzz =====
+async function buzzCheck() {
+  showLoading('buzz-loading');
+  const result = await apiCall('/api/buzz/check');
+  hideLoading('buzz-loading');
+
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+
+  const area = document.getElementById('buzz-result');
+  if (result.buzzing && result.buzzing.length) {
+    let html = `<div class="card"><h2>バズ検知！ (${result.buzzing.length}件)</h2>`;
+    for (const b of result.buzzing) {
+      html += `<div class="post-card"><div class="post-text">${escapeHtml(b.text).substring(0, 150)}</div><div class="post-meta"><span>♡ ${b.metrics.like_count}</span><span>🔁 ${b.metrics.retweet_count}</span><span>💬 ${b.metrics.reply_count}</span><span>👁 ${b.metrics.impression_count}</span></div></div>`;
+    }
+    html += '</div>';
+    area.innerHTML = html;
+    showToast(`${result.buzzing.length}件のバズを検知！`);
+  } else {
+    area.innerHTML = '<p style="color:var(--text-light);margin-top:12px;">バズは検知されませんでした</p>';
+    showToast('バズなし');
+  }
+}
+
+async function updateThresholds() {
+  const data = {
+    likes: parseInt(document.getElementById('th-likes').value),
+    retweets: parseInt(document.getElementById('th-retweets').value),
+    replies: parseInt(document.getElementById('th-replies').value),
+    impressions: parseInt(document.getElementById('th-impressions').value),
+  };
+  const result = await apiCall('/api/buzz/threshold', data);
+  if (result.success) showToast('閾値を保存しました');
+  else showToast('エラー: ' + (result.error || '不明'));
+}
+
+// ===== Recycle =====
+async function recycleCollect() {
+  showLoading('recycle-loading');
+  const result = await apiCall('/api/recycle/collect');
+  hideLoading('recycle-loading');
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+  showToast(`${result.count}件の投稿を収集しました`);
+  setTimeout(() => location.reload(), 1000);
+}
+
+async function recycleSuggest() {
+  showLoading('recycle-loading');
+  const result = await apiCall('/api/recycle/suggest');
+  hideLoading('recycle-loading');
+
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+
+  const area = document.getElementById('recycle-result');
+  if (!result.candidates || !result.candidates.length) {
+    area.innerHTML = '<p style="color:var(--text-light);margin-top:12px;">リサイクル候補がありません（90日以上前の投稿が必要です）</p>';
+    return;
+  }
+
+  let html = '<div class="card"><h2>リサイクル候補</h2>';
+  for (let i = 0; i < result.candidates.length; i++) {
+    const c = result.candidates[i];
+    html += `
+      <div class="post-card">
+        <div class="post-text">${escapeHtml(c.text).substring(0, 200)}</div>
+        <div class="post-meta">
+          <span>スコア: ${c.recycle_score}</span>
+          <span>${c.days_ago}日前</span>
+          <span>♡ ${c.likes}</span>
+          <span>🔁 ${c.retweets}</span>
+        </div>
+        <button class="btn btn-purple btn-sm" style="margin-top:8px;" onclick="recycleGenerate(${i})" data-post='${JSON.stringify(c).replace(/'/g, "&#39;")}'>この投稿をリサイクル</button>
+      </div>`;
+  }
+  html += '</div>';
+  area.innerHTML = html;
+
+  window._recycleCandidates = result.candidates;
+}
+
+async function recycleGenerate(index) {
+  const original = window._recycleCandidates[index];
+  showLoading('recycle-loading');
+  const result = await apiCall('/api/generate/recycle', { original_post: original });
+  hideLoading('recycle-loading');
+
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+
+  let html = '<div class="card"><h2>リサイクル案</h2>';
+  for (const post of result.posts) {
+    html += `
+      <div class="post-card">
+        <div class="post-text">${escapeHtml(post.text)}</div>
+        <div class="post-meta"><span>${post.char_count}文字</span></div>
+        <div class="btn-group" style="margin-top:8px;">
+          <button class="btn btn-success btn-sm" onclick="copyText('${escapeJs(post.text)}')">コピー</button>
+          <button class="btn btn-primary btn-sm" onclick="schedulePost('${escapeJs(post.text)}')">予約に追加</button>
+        </div>
+      </div>`;
+  }
+  html += '</div>';
+
+  const area = document.getElementById('recycle-result');
+  area.innerHTML += html;
+  showToast(`${result.posts.length}案 生成完了！`);
+}
+
+// ===== Insights =====
+async function runAnalysis() {
+  showLoading('insights-loading');
+  const result = await apiCall('/api/insights/analyze');
+  hideLoading('insights-loading');
+
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+
+  const data = result.data;
+  if (data.error) { showToast(data.error); return; }
+
+  let html = '<div class="card"><h2>パフォーマンス分析結果</h2>';
+  html += `<div class="stats-grid" style="margin-bottom:16px;">
+    <div class="stat-card"><div class="stat-label">投稿数</div><div class="stat-number blue">${data.total_posts}</div></div>
+    <div class="stat-card"><div class="stat-label">平均いいね</div><div class="stat-number green">${data.averages.likes}</div></div>
+    <div class="stat-card"><div class="stat-label">平均RT</div><div class="stat-number orange">${data.averages.retweets}</div></div>
+    <div class="stat-card"><div class="stat-label">平均エンゲージメント</div><div class="stat-number purple">${data.averages.engagement}</div></div>
+  </div>`;
+
+  if (data.best_hours && data.best_hours.length) {
+    html += '<h3 style="font-size:0.9rem;margin-bottom:8px;">反応が良い時間帯</h3><ul style="margin-bottom:16px;padding-left:20px;">';
+    for (const h of data.best_hours.slice(0, 3)) {
+      html += `<li>${h.hour}時台 (平均エンゲージメント: ${h.avg_engagement.toFixed(1)})</li>`;
+    }
+    html += '</ul>';
+  }
+
+  if (data.effective_hashtags && data.effective_hashtags.length) {
+    html += '<h3 style="font-size:0.9rem;margin-bottom:8px;">効果的なハッシュタグ</h3><p>';
+    for (const t of data.effective_hashtags.slice(0, 5)) {
+      html += `<span class="badge badge-queued" style="margin:2px;">#${t.tag} (平均: ${t.avg_engagement.toFixed(1)})</span> `;
+    }
+    html += '</p>';
+  }
+
+  html += '</div>';
+  document.getElementById('insights-result').innerHTML = html;
+}
+
+async function runSuggestions() {
+  showLoading('insights-loading');
+  const result = await apiCall('/api/insights/suggest');
+  hideLoading('insights-loading');
+
+  if (result.error) { showToast('エラー: ' + result.error); return; }
+
+  const area = document.getElementById('insights-result');
+  area.innerHTML += `
+    <div class="card">
+      <h2>💡 AI改善提案</h2>
+      <div class="suggestion-text">${escapeHtml(result.suggestions)}</div>
+    </div>`;
+  showToast('改善提案を取得しました');
+}
+
+// ===== Settings =====
+async function saveSettings() {
+  const data = {
+    x_api: {
+      api_key: document.getElementById('set-x-api-key').value,
+      api_secret: document.getElementById('set-x-api-secret').value,
+      access_token: document.getElementById('set-x-access-token').value,
+      access_token_secret: document.getElementById('set-x-access-secret').value,
+      bearer_token: document.getElementById('set-x-bearer').value,
+    },
+    openai: {
+      api_key: document.getElementById('set-openai-key').value,
+      model: document.getElementById('set-openai-model').value,
+    },
+    account: {
+      username: document.getElementById('set-username').value,
+      display_name: document.getElementById('set-display-name').value,
+      tone: document.getElementById('set-tone').value,
+      niche: document.getElementById('set-niche').value,
+    },
+    notifications: {
+      line: {
+        enabled: document.getElementById('set-line-enabled').value === 'true',
+        access_token: document.getElementById('set-line-token').value,
+      },
+      chatwork: {
+        enabled: document.getElementById('set-cw-enabled').value === 'true',
+        api_token: document.getElementById('set-cw-token').value,
+        room_id: document.getElementById('set-cw-room').value,
+      },
+    },
+  };
+
+  const result = await apiCall('/api/settings/save', data);
+  if (result.success) showToast('設定を保存しました');
+  else showToast('エラー: ' + (result.error || '不明'));
+}
+
+// ===== Daemon =====
+async function startDaemon(type) {
+  const result = await apiCall('/api/daemon/start', { type });
+  if (result.success) showToast(result.message);
+  else showToast('エラー: ' + (result.error || '不明'));
+  checkDaemonStatus();
+}
+
+async function checkDaemonStatus() {
+  try {
+    const resp = await fetch('/api/daemon/status');
+    const data = await resp.json();
+    const el = document.getElementById('daemon-status');
+    if (el) {
+      el.innerHTML = `
+        バズ監視: ${data.buzz ? '<span class="badge badge-on">稼働中</span>' : '<span class="badge badge-off">停止</span>'}
+        &nbsp;&nbsp;
+        予約投稿: ${data.scheduler ? '<span class="badge badge-on">稼働中</span>' : '<span class="badge badge-off">停止</span>'}
+      `;
+    }
+  } catch(e) {}
+}
+
+// ===== Utils =====
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML.replace(/\n/g, '<br>');
+}
+
+function escapeJs(text) {
+  return (text || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text.replace(/\\n/g, '\n')).then(() => showToast('コピーしました'));
+}
+
+// Init
+if (document.getElementById('daemon-status')) checkDaemonStatus();
+</script>
+
+</body>
+</html>
