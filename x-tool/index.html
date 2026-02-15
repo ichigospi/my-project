@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X運用ツール - 占いビジネス</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #6c5ce7;
+      --primary-light: #a29bfe;
+      --primary-dark: #5541d6;
+      --accent: #fd79a8;
+      --bg: #f8f9ff;
+      --card: #ffffff;
+      --text: #2d3436;
+      --text-light: #636e72;
+      --border: #e0e0e0;
+      --success: #00b894;
+      --warning: #fdcb6e;
+      --danger: #e17055;
+    }
+
+    body {
+      font-family: -apple-system, 'Hiragino Sans', 'Meiryo', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ===== Header ===== */
+    header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 10px rgba(108, 92, 231, 0.3);
+    }
+
+    header h1 {
+      font-size: 1.3rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: normal;
+    }
+
+    /* ===== Navigation ===== */
+    nav {
+      display: flex;
+      gap: 4px;
+      background: var(--card);
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav button {
+      padding: 10px 20px;
+      border: none;
+      background: transparent;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border-radius: 8px;
+      color: var(--text-light);
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    nav button:hover { background: var(--bg); }
+    nav button.active {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    /* ===== Main ===== */
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ===== Cards ===== */
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ===== Generate Page ===== */
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    .form-group { margin-bottom: 16px; }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--text-light);
+      margin-bottom: 6px;
+    }
+
+    select, input[type="text"], textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.3s;
+      font-family: inherit;
+    }
+
+    select:focus, input[type="text"]:focus, textarea:focus {
+      border-color: var(--primary);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+      line-height: 1.6;
+    }
+
+    .char-count {
+      text-align: right;
+      font-size: 0.85rem;
+      margin-top: 6px;
+      color: var(--text-light);
+    }
+
+    .char-count.over { color: var(--danger); font-weight: bold; }
+
+    /* ===== Buttons ===== */
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(108,92,231,0.3); }
+
+    .btn-secondary {
+      background: var(--bg);
+      color: var(--text);
+      border: 2px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--primary-light); }
+
+    .btn-success {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .btn-accent {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    /* ===== Post Preview ===== */
+    .post-preview {
+      background: #f8f9ff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .post-preview.show { display: block; animation: fadeIn 0.4s ease; }
+
+    .post-preview-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .post-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 1.2rem;
+    }
+
+    .post-user strong { font-size: 0.9rem; }
+    .post-user span { color: var(--text-light); font-size: 0.85rem; }
+
+    .post-body {
+      font-size: 1rem;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      margin-bottom: 12px;
+    }
+
+    /* ===== Drafts ===== */
+    .draft-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .draft-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 16px;
+      background: var(--bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .draft-content {
+      flex: 1;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .draft-meta {
+      font-size: 0.8rem;
+      color: var(--text-light);
+      margin-top: 6px;
+    }
+
+    .draft-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      border-radius: 8px;
+    }
+
+    /* ===== Stats ===== */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+    }
+
+    .stat-card {
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--text-light);
+      margin-top: 4px;
+    }
+
+    /* ===== Empty State ===== */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-light);
+    }
+
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+    /* ===== Toast ===== */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--text);
+      color: #fff;
+      padding: 14px 24px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      z-index: 1000;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== Keyword input ===== */
+    .keyword-input {
+      display: flex;
+      gap: 8px;
+    }
+
+    .keyword-input input { flex: 1; }
+    .keyword-input .btn { flex-shrink: 0; }
+
+    .keyword-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .keyword-tag {
+      background: var(--primary-light);
+      color: #fff;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .keyword-tag button {
+      background: none;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>X運用ツール <span class="header-badge">占いビジネス</span></h1>
+  <span style="font-size:0.85rem; opacity:0.8;">Step 1 - ポスト生成</span>
+</header>
+
+<nav>
+  <button class="active" onclick="showPage('generate')">ポスト作成</button>
+  <button onclick="showPage('drafts')">下書き一覧</button>
+  <button onclick="showPage('dashboard')">ダッシュボード</button>
+</nav>
+
+<main>
+  <!-- ===== ポスト作成ページ ===== -->
+  <div class="page active" id="page-generate">
+    <div class="card">
+      <h2>ポストを作成</h2>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>投稿タイプ</label>
+          <select id="post-type">
+            <option value="daily">今日の星座占い</option>
+            <option value="weekly">週間占い</option>
+            <option value="love">恋愛運アドバイス</option>
+            <option value="work">仕事運アドバイス</option>
+            <option value="money">金運アドバイス</option>
+            <option value="tips">占い豆知識</option>
+            <option value="engagement">フォロワー参加型</option>
+            <option value="promo">サービス告知</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>星座（任意）</label>
+          <select id="zodiac">
+            <option value="">指定なし（ランダム）</option>
+            <option value="aries">牡羊座</option>
+            <option value="taurus">牡牛座</option>
+            <option value="gemini">双子座</option>
+            <option value="cancer">蟹座</option>
+            <option value="leo">獅子座</option>
+            <option value="virgo">乙女座</option>
+            <option value="libra">天秤座</option>
+            <option value="scorpio">蠍座</option>
+            <option value="sagittarius">射手座</option>
+            <option value="capricorn">山羊座</option>
+            <option value="aquarius">水瓶座</option>
+            <option value="pisces">魚座</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>トーン</label>
+        <select id="tone">
+          <option value="friendly">親しみやすい</option>
+          <option value="mystical">神秘的</option>
+          <option value="cheerful">明るく元気</option>
+          <option value="calm">落ち着き・癒し</option>
+          <option value="professional">プロフェッショナル</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>キーワード（任意）</label>
+        <div class="keyword-input">
+          <input type="text" id="keyword-input" placeholder="キーワードを入力してEnter">
+          <button class="btn btn-secondary btn-sm" onclick="addKeyword()">追加</button>
+        </div>
+        <div class="keyword-tags" id="keyword-tags"></div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="generatePost()">ポストを生成</button>
+        <button class="btn btn-secondary" onclick="generatePost(); generatePost(); generatePost();">3案まとめて生成</button>
+      </div>
+    </div>
+
+    <!-- プレビュー -->
+    <div class="post-preview" id="post-preview">
+      <div class="post-preview-header">
+        <div class="post-avatar">占</div>
+        <div class="post-user">
+          <strong>占いアカウント</strong><br>
+          <span>@uranai_account</span>
+        </div>
+      </div>
+      <textarea id="post-text" class="post-body" oninput="updateCharCount()" rows="5"></textarea>
+      <div class="char-count" id="char-count">0 / 280</div>
+
+      <div class="btn-group">
+        <button class="btn btn-success" onclick="copyPost()">コピー</button>
+        <button class="btn btn-primary" onclick="saveDraft()">下書き保存</button>
+        <button class="btn btn-secondary" onclick="generatePost()">再生成</button>
+      </div>
+    </div>
+
+    <!-- 複数案 -->
+    <div id="multi-results"></div>
+  </div>
+
+  <!-- ===== 下書き一覧ページ ===== -->
+  <div class="page" id="page-drafts">
+    <div class="card">
+      <h2>下書き一覧</h2>
+      <div class="draft-list" id="draft-list">
+        <div class="empty-state">
+          <div class="icon">📝</div>
+          <p>下書きはまだありません<br>ポストを作成して保存しましょう</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ダッシュボードページ ===== -->
+  <div class="page" id="page-dashboard">
+    <div class="card">
+      <h2>運用サマリー</h2>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="stat-generated">0</div>
+          <div class="stat-label">生成したポスト</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-drafts">0</div>
+          <div class="stat-label">下書き数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-copied">0</div>
+          <div class="stat-label">コピー済み</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Step 2 以降の予定</h2>
+      <div style="color: var(--text-light); line-height: 1.8; font-size: 0.9rem;">
+        <p><strong>Step 2 - API連携</strong></p>
+        <ul style="margin: 8px 0 16px 20px;">
+          <li>X APIと連携して競合ポストを自動収集</li>
+          <li>競合の分析レポート表示</li>
+          <li>ワンクリック投稿機能</li>
+        </ul>
+        <p><strong>Step 3 - 全自動化</strong></p>
+        <ul style="margin: 8px 0 0 20px;">
+          <li>スケジュール予約投稿</li>
+          <li>定期的な自動投稿</li>
+          <li>投稿パフォーマンス分析</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ===== State =====
+  let keywords = [];
+  let stats = JSON.parse(localStorage.getItem('x-tool-stats') || '{"generated":0,"copied":0}');
+  let drafts = JSON.parse(localStorage.getItem('x-tool-drafts') || '[]');
+
+  // ===== Templates =====
+  const zodiacNames = {
+    aries:'牡羊座', taurus:'牡牛座', gemini:'双子座', cancer:'蟹座',
+    leo:'獅子座', virgo:'乙女座', libra:'天秤座', scorpio:'蠍座',
+    sagittarius:'射手座', capricorn:'山羊座', aquarius:'水瓶座', pisces:'魚座'
+  };
+
+  const zodiacEmoji = {
+    aries:'♈', taurus:'♉', gemini:'♊', cancer:'♋',
+    leo:'♌', virgo:'♍', libra:'♎', scorpio:'♏',
+    sagittarius:'♐', capricorn:'♑', aquarius:'♒', pisces:'♓'
+  };
+
+  const luckyItems = [
+    'ラベンダー色の小物','お気に入りのカフェ','白いハンカチ','ゴールドのアクセサリー',
+    'ミントティー','古い写真','手書きのメモ','青い花','木のぬくもり','月の光',
+    'シナモンの香り','レモン水','紫のキャンドル','朝の散歩','星空の壁紙',
+    'パワーストーン','手鏡','お香','グリーンのインテリア','夕焼けの写真'
+  ];
+
+  const ratings = ['★★★★★','★★★★☆','★★★☆☆','★★☆☆☆'];
+  const highRatings = ['★★★★★','★★★★☆'];
+
+  const templates = {
+    daily: (z, tone) => {
+      const zodiac = z || randomZodiac();
+      const name = zodiacNames[zodiac];
+      const emoji = zodiacEmoji[zodiac];
+      const lucky = pick(luckyItems);
+      const overall = pick(highRatings);
+      const love = pick(ratings);
+      const work = pick(ratings);
+      const messages = {
+        friendly: [
+          `${emoji}${name}の今日の運勢${emoji}\n\n総合: ${overall}\n恋愛: ${love}\n仕事: ${work}\n\n今日のあなたは直感が冴えてます✨\n大事な決断は午前中がおすすめ！\n\nラッキーアイテム: ${lucky}\n\n#占い #${name} #今日の運勢`,
+          `【${name}の今日の運勢】${emoji}\n\n${overall}\n\n小さな変化に幸運のサインが隠れてそう！\n普段と違う道を歩いてみるといいことあるかも🌟\n\nラッキーアイテム: ${lucky}\n\n#占い #星座占い #${name}`,
+        ],
+        mystical: [
+          `${emoji} ${name} - 本日の星読み ${emoji}\n\n${overall}\n\n星々があなたに告げています\n「内なる声に耳を澄ませて」\n\n宇宙のエネルギーが高まる今日、\n${lucky}があなたを導くでしょう\n\n#占い #星読み #${name}`,
+        ],
+        cheerful: [
+          `おはよう！${emoji}${name}さん！\n\n今日の運勢は...\n${overall}\n\nやったー！いい感じ！🎉\n今日は何をやっても上手くいきそう！\nまずは笑顔でスタートしよう😊\n\nラッキーアイテム: ${lucky}\n\n#占い #${name} #今日の運勢`,
+        ],
+        calm: [
+          `${emoji} ${name}の今日のメッセージ\n\n${overall}\n\n深呼吸をして\n自分のペースを大切にしましょう\n\n焦らなくて大丈夫\nあなたは十分頑張っています🍀\n\nラッキーアイテム: ${lucky}\n\n#占い #${name} #癒し`,
+        ],
+        professional: [
+          `【${name}】本日の運勢 ${emoji}\n\n総合運: ${overall}\n恋愛運: ${love}\n仕事運: ${work}\n\n▼本日のアドバイス\n客観的な視点を持つことで新しい可能性が開けます。周囲との協調が鍵。\n\nラッキーアイテム: ${lucky}\n\n#占い #${name}`,
+        ],
+      };
+      return pick(messages[tone] || messages.friendly);
+    },
+
+    weekly: (z, tone) => {
+      const zodiac = z || randomZodiac();
+      const name = zodiacNames[zodiac];
+      const emoji = zodiacEmoji[zodiac];
+      const lucky = pick(luckyItems);
+      return `${emoji}${name}の週間占い${emoji}\n\n今週のテーマ「新しい風」\n\n月〜水: 準備期間。情報収集が吉\n木〜金: 行動のチャンス到来✨\n土日: ゆっくり充電して来週に備えて\n\n今週のラッキーアイテム: ${lucky}\n\n#週間占い #${name} #占い`;
+    },
+
+    love: (z, tone) => {
+      const zodiac = z || randomZodiac();
+      const name = zodiacNames[zodiac];
+      const emoji = zodiacEmoji[zodiac];
+      const msgs = [
+        `${emoji}${name}の恋愛運💕\n\n今日のあなたの魅力は最高潮！\n\n片思い中の人:\n→ 思い切って声をかけてみて\n\nパートナーがいる人:\n→ 小さな「ありがとう」を伝えよう\n\n恋愛は勇気から始まります✨\n\n#恋愛運 #占い #${name}`,
+        `${emoji}${name}の恋のメッセージ💫\n\nあなたの優しさが誰かの心を\n静かに動かしています\n\n自分らしくいることが\n最高の恋愛テクニック✨\n\n#恋愛占い #${name} #占い`,
+      ];
+      return pick(msgs);
+    },
+
+    work: (z, tone) => {
+      const zodiac = z || randomZodiac();
+      const name = zodiacNames[zodiac];
+      const emoji = zodiacEmoji[zodiac];
+      return `${emoji}${name}の仕事運💼\n\n今日は「整理」がキーワード\n\nデスクの上・頭の中・やることリスト\nスッキリさせると運気UP⤴️\n\n午後から良いアイデアが浮かびそう💡\nメモの準備を忘れずに！\n\n#仕事運 #占い #${name}`;
+    },
+
+    money: (z, tone) => {
+      const zodiac = z || randomZodiac();
+      const name = zodiacNames[zodiac];
+      const emoji = zodiacEmoji[zodiac];
+      return `${emoji}${name}の金運💰\n\n今日の金運: ${pick(highRatings)}\n\n衝動買いは控えめに！\nでも「自分への投資」は◎\n\n本や学びに使うお金は\n何倍にもなって返ってきます📚✨\n\n#金運 #占い #${name}`;
+    },
+
+    tips: (z, tone) => {
+      const tips = [
+        `【占い豆知識】\n\n満月の日は「手放す」エネルギーが強い日🌕\n\n不要な物を断捨離したり\n悩みを紙に書いて捨てるのが◎\n\n次の満月はカレンダーをチェックしてみてね✨\n\n#占い豆知識 #満月 #スピリチュアル`,
+        `【知ってた？】\n\nあなたの星座は「太陽星座」\n\n実は月星座・水星星座など\n10個の天体それぞれに星座があります🌙\n\n月星座は「本当の自分」を表すので\n知ると自己理解が深まりますよ✨\n\n#占い #星座 #月星座`,
+        `【パワーストーン入門】\n\n迷ったらまず「水晶」がおすすめ！\n\n浄化・開運・お守りに万能です✨\n\n選ぶコツは「見た時にピンときた石」\n直感を信じてみてください🔮\n\n#占い #パワーストーン #開運`,
+      ];
+      return pick(tips);
+    },
+
+    engagement: (z, tone) => {
+      const posts = [
+        `【あなたの星座は？】\n\n火の星座（牡羊・獅子・射手）→ ❤️\n地の星座（牡牛・乙女・山羊）→ 🔁\n風の星座（双子・天秤・水瓶）→ 💬\n水の星座（蟹・蠍・魚）→ 🔖\n\nあなたはどれですか？\nリアクションで教えてください✨\n\n#占い #星座`,
+        `今月の運勢が一番いい星座 TOP3 🏆\n\n🥇 ${pick(Object.values(zodiacNames))}\n🥈 ${pick(Object.values(zodiacNames))}\n🥉 ${pick(Object.values(zodiacNames))}\n\nランクインした人おめでとう🎉\n入ってなくても大丈夫！\n開運アドバイスはリプで教えます✨\n\n#占い #運勢ランキング`,
+        `Q. 最近気になる数字はありますか？\n\n実はよく見る数字には\nメッセージが隠れています👀\n\n111 → 新しい始まり\n222 → 信じて待って\n333 → 才能が開花\n444 → 天使の守護\n555 → 大きな変化の前兆\n\nコメントで教えてください✨\n\n#占い #エンジェルナンバー`,
+      ];
+      return pick(posts);
+    },
+
+    promo: (z, tone) => {
+      const promos = [
+        `【お知らせ】\n\n個人鑑定の受付を開始しました✨\n\nあなただけの星の配置から\n恋愛・仕事・人生の流れを\n詳しくお伝えします🔮\n\n「当たりすぎて怖い」と\nご好評いただいています\n\n詳細はプロフィールのリンクから！\n\n#占い #個人鑑定`,
+        `📢 フォロワー限定キャンペーン\n\nこの投稿をRTしてくれた方の中から\n抽選で3名様に無料ミニ鑑定🎁\n\n応募方法:\n1. このアカウントをフォロー\n2. この投稿をRT\n\n締切: 今週日曜日\n結果はDMでお知らせします✨\n\n#占い #プレゼント企画`,
+      ];
+      return pick(promos);
+    },
+  };
+
+  // ===== Utilities =====
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function randomZodiac() {
+    const keys = Object.keys(zodiacNames);
+    return keys[Math.floor(Math.random() * keys.length)];
+  }
+
+  // ===== Page Navigation =====
+  function showPage(page) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-' + page).classList.add('active');
+    event.target.classList.add('active');
+
+    if (page === 'drafts') renderDrafts();
+    if (page === 'dashboard') updateDashboard();
+  }
+
+  // ===== Keywords =====
+  function addKeyword() {
+    const input = document.getElementById('keyword-input');
+    const val = input.value.trim();
+    if (val && !keywords.includes(val)) {
+      keywords.push(val);
+      renderKeywords();
+    }
+    input.value = '';
+  }
+
+  document.getElementById('keyword-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addKeyword(); }
+  });
+
+  function removeKeyword(idx) {
+    keywords.splice(idx, 1);
+    renderKeywords();
+  }
+
+  function renderKeywords() {
+    const container = document.getElementById('keyword-tags');
+    container.innerHTML = keywords.map((kw, i) =>
+      `<span class="keyword-tag">${kw}<button onclick="removeKeyword(${i})">×</button></span>`
+    ).join('');
+  }
+
+  // ===== Post Generation =====
+  function generatePost() {
+    const type = document.getElementById('post-type').value;
+    const zodiac = document.getElementById('zodiac').value;
+    const tone = document.getElementById('tone').value;
+
+    let post = templates[type](zodiac, tone);
+
+    // Add keywords as hashtags
+    keywords.forEach(kw => {
+      if (!post.includes(kw)) {
+        post += ` #${kw}`;
+      }
+    });
+
+    const preview = document.getElementById('post-preview');
+    const textarea = document.getElementById('post-text');
+    textarea.value = post;
+    preview.classList.add('show');
+    updateCharCount();
+
+    stats.generated++;
+    saveStats();
+  }
+
+  // ===== Character Count =====
+  function updateCharCount() {
+    const text = document.getElementById('post-text').value;
+    const count = text.length;
+    const el = document.getElementById('char-count');
+    el.textContent = `${count} / 280`;
+    el.classList.toggle('over', count > 280);
+  }
+
+  // ===== Copy =====
+  function copyPost() {
+    const text = document.getElementById('post-text').value;
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('クリップボードにコピーしました！');
+      stats.copied++;
+      saveStats();
+    });
+  }
+
+  // ===== Drafts =====
+  function saveDraft() {
+    const text = document.getElementById('post-text').value;
+    if (!text.trim()) return;
+
+    drafts.unshift({
+      text,
+      type: document.getElementById('post-type').value,
+      createdAt: new Date().toISOString(),
+    });
+
+    localStorage.setItem('x-tool-drafts', JSON.stringify(drafts));
+    showToast('下書きを保存しました！');
+  }
+
+  function renderDrafts() {
+    const container = document.getElementById('draft-list');
+    if (drafts.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📝</div>
+          <p>下書きはまだありません<br>ポストを作成して保存しましょう</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = drafts.map((d, i) => {
+      const date = new Date(d.createdAt);
+      const dateStr = `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2,'0')}`;
+      const escaped = d.text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `
+        <div class="draft-item">
+          <div>
+            <div class="draft-content">${escaped}</div>
+            <div class="draft-meta">${dateStr} ・ ${d.text.length}文字</div>
+          </div>
+          <div class="draft-actions">
+            <button class="btn btn-success btn-sm" onclick="copyDraft(${i})">コピー</button>
+            <button class="btn btn-secondary btn-sm" onclick="deleteDraft(${i})">削除</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function copyDraft(idx) {
+    navigator.clipboard.writeText(drafts[idx].text).then(() => {
+      showToast('コピーしました！');
+      stats.copied++;
+      saveStats();
+    });
+  }
+
+  function deleteDraft(idx) {
+    drafts.splice(idx, 1);
+    localStorage.setItem('x-tool-drafts', JSON.stringify(drafts));
+    renderDrafts();
+    showToast('下書きを削除しました');
+  }
+
+  // ===== Dashboard =====
+  function updateDashboard() {
+    document.getElementById('stat-generated').textContent = stats.generated;
+    document.getElementById('stat-drafts').textContent = drafts.length;
+    document.getElementById('stat-copied').textContent = stats.copied;
+  }
+
+  // ===== Stats =====
+  function saveStats() {
+    localStorage.setItem('x-tool-stats', JSON.stringify(stats));
+  }
+
+  // ===== Toast =====
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+</script>
+</body>
+</html>
