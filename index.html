@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>動物占い</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: #fff;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .subtitle {
+      color: #888;
+      margin-bottom: 30px;
+      font-size: 0.95rem;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+      color: #555;
+      font-size: 0.9rem;
+    }
+
+    input[type="date"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      font-size: 1rem;
+      transition: border-color 0.3s;
+      outline: none;
+    }
+
+    input[type="date"]:focus {
+      border-color: #764ba2;
+    }
+
+    button {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      border: none;
+      padding: 14px 40px;
+      font-size: 1.1rem;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(118, 75, 162, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .result {
+      display: none;
+      margin-top: 30px;
+      animation: fadeIn 0.5s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .animal-emoji {
+      font-size: 5rem;
+      margin-bottom: 10px;
+      line-height: 1.2;
+    }
+
+    .animal-name {
+      font-size: 1.6rem;
+      font-weight: bold;
+      color: #764ba2;
+      margin-bottom: 12px;
+    }
+
+    .animal-desc {
+      color: #555;
+      line-height: 1.7;
+      font-size: 0.95rem;
+      text-align: left;
+      background: #f8f5ff;
+      padding: 16px 20px;
+      border-radius: 12px;
+    }
+
+    .retry-btn {
+      margin-top: 20px;
+      background: #eee;
+      color: #666;
+      font-size: 0.9rem;
+      padding: 10px 30px;
+    }
+
+    .retry-btn:hover {
+      background: #ddd;
+      box-shadow: none;
+      transform: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>動物占い</h1>
+    <p class="subtitle">生年月日からあなたの動物タイプを診断!</p>
+
+    <div id="form-section">
+      <div class="form-group">
+        <label for="birthday">生年月日</label>
+        <input type="date" id="birthday" max="2026-12-31" min="1920-01-01">
+      </div>
+      <button onclick="diagnose()">占う</button>
+    </div>
+
+    <div class="result" id="result">
+      <div class="animal-emoji" id="emoji"></div>
+      <div class="animal-name" id="animal-name"></div>
+      <div class="animal-desc" id="animal-desc"></div>
+      <button class="retry-btn" onclick="retry()">もう一度占う</button>
+    </div>
+  </div>
+
+  <script>
+    const animals = [
+      {
+        name: 'ペガサス',
+        emoji: '🦄',
+        desc: '自由奔放で感性豊か。束縛を嫌い、直感で行動するタイプ。気分屋な面もありますが、才能にあふれたカリスマ性の持ち主です。'
+      },
+      {
+        name: 'ゾウ',
+        emoji: '🐘',
+        desc: '努力家で面倒見が良い。何事もコツコツと積み上げる堅実タイプ。信頼感があり、周囲の人から頼りにされる存在です。'
+      },
+      {
+        name: 'ライオン',
+        emoji: '🦁',
+        desc: 'リーダーシップがあり堂々としている。プライドが高く、負けず嫌いですが、情に厚く仲間を大切にします。'
+      },
+      {
+        name: 'チーター',
+        emoji: '🐆',
+        desc: '行動力抜群でスピード重視。即断即決で結果を出すタイプ。せっかちな面もありますが、目標達成力は抜群です。'
+      },
+      {
+        name: 'コアラ',
+        emoji: '🐨',
+        desc: 'マイペースで癒し系。穏やかで人当たりが良く、周囲を和ませます。ロマンチストで、理想を大切にするタイプです。'
+      },
+      {
+        name: 'オオカミ',
+        emoji: '🐺',
+        desc: '一匹狼タイプでこだわりが強い。独自の世界観を持ち、自分のペースを大切にします。少数の仲間との絆は深いです。'
+      },
+      {
+        name: 'サル',
+        emoji: '🐵',
+        desc: '社交的で機転が利く。頭の回転が速く、どんな場面でも器用にこなします。好奇心旺盛で新しいことが大好きです。'
+      },
+      {
+        name: 'クロヒョウ',
+        emoji: '🐈‍⬛',
+        desc: 'ミステリアスで感受性が豊か。繊細な心の持ち主で、芸術的なセンスに優れています。信頼した相手には心を開きます。'
+      },
+      {
+        name: 'タヌキ',
+        emoji: '🦝',
+        desc: '世渡り上手で愛嬌がある。場の空気を読むのが得意で、誰とでも仲良くなれます。実はしっかりとした芯を持っています。'
+      },
+      {
+        name: 'ヒツジ',
+        emoji: '🐑',
+        desc: '協調性があり優しい性格。グループの和を大切にし、困っている人を放っておけません。寂しがりやな一面もあります。'
+      },
+      {
+        name: 'コジカ',
+        emoji: '🦌',
+        desc: '純粋で警戒心が強い。初対面では人見知りしますが、慣れると甘え上手。正直で誠実な性格が周囲に好かれます。'
+      },
+      {
+        name: 'トラ',
+        emoji: '🐯',
+        desc: '正義感が強く面倒見が良い。親分肌で周囲から慕われます。白黒はっきりつけたい性格で、曲がったことが嫌いです。'
+      }
+    ];
+
+    function diagnose() {
+      const input = document.getElementById('birthday');
+      if (!input.value) {
+        alert('生年月日を入力してください');
+        return;
+      }
+
+      const parts = input.value.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const day = parseInt(parts[2], 10);
+
+      const index = (year + month + day) % 12;
+      const animal = animals[index];
+
+      document.getElementById('emoji').textContent = animal.emoji;
+      document.getElementById('animal-name').textContent = `あなたは「${animal.name}」タイプ!`;
+      document.getElementById('animal-desc').textContent = animal.desc;
+
+      document.getElementById('form-section').style.display = 'none';
+      document.getElementById('result').style.display = 'block';
+    }
+
+    function retry() {
+      document.getElementById('form-section').style.display = 'block';
+      document.getElementById('result').style.display = 'none';
+      document.getElementById('birthday').value = '';
+    }
+  </script>
+</body>
+</html>
