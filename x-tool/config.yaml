@@ -1,0 +1,91 @@
+# ============================================================
+# X自動運用ツール 設定ファイル
+# ============================================================
+
+# --- X (Twitter) API ---
+x_api:
+  api_key: ""
+  api_secret: ""
+  access_token: ""
+  access_token_secret: ""
+  bearer_token: ""
+
+# --- OpenAI API (ポスト生成用) ---
+openai:
+  api_key: ""
+  model: "gpt-4o-mini"
+
+# --- 自分のアカウント情報 ---
+account:
+  username: "uranai_account"
+  display_name: "占いアカウント"
+  # ポスト生成時の口調設定
+  tone: "親しみやすくて少しスピリチュアルな雰囲気。絵文字を適度に使う。"
+  # アカウントのジャンル/テーマ
+  niche: "占い・スピリチュアル"
+  # 投稿に含めたい定型ハッシュタグ
+  default_hashtags:
+    - "占い"
+    - "スピリチュアル"
+    - "開運"
+
+# --- 競合アカウント ---
+competitors:
+  - username: "competitor1"
+    note: "同ジャンルの大手占いアカウント"
+  - username: "competitor2"
+    note: "タロット系で伸びてるアカウント"
+  - username: "competitor3"
+    note: "星座占い系アカウント"
+
+# --- 予約投稿 ---
+scheduler:
+  # 投稿する時間帯 (24h形式)
+  post_times:
+    - "07:30"
+    - "12:00"
+    - "19:30"
+    - "22:00"
+  # タイムゾーン
+  timezone: "Asia/Tokyo"
+
+# --- バズ監視 ---
+buzz_monitor:
+  # チェック間隔（分）
+  check_interval_minutes: 15
+  # 閾値設定
+  thresholds:
+    likes: 100
+    retweets: 30
+    replies: 20
+    impressions: 10000
+  # 監視対象期間（時間）
+  monitor_window_hours: 24
+
+# --- 通知設定 ---
+notifications:
+  # LINE Notify
+  line:
+    enabled: false
+    access_token: ""
+  # Chatwork
+  chatwork:
+    enabled: false
+    api_token: ""
+    room_id: ""
+
+# --- コンテンツリサイクル ---
+recycler:
+  # 何日前以降の投稿をリサイクル候補にするか
+  min_days_ago: 90
+  # エンゲージメント上位何件を候補にするか
+  top_n: 20
+  # 同じ投稿の再利用間隔（日）
+  reuse_cooldown_days: 60
+
+# --- 改善提案 ---
+insights:
+  # 分析対象期間（日）
+  analysis_period_days: 30
+  # レポート自動生成（週次）
+  weekly_report: true
