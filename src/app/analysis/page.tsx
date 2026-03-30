@@ -408,12 +408,8 @@ function AnalyzeTab() {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
-    // サンプリング（100枚上限）
-    let sampled = imagesToProcess;
-    if (sampled.length > 100) {
-      const step = Math.ceil(sampled.length / 100);
-      sampled = sampled.filter((_, i) => i % step === 0);
-    }
+    // 全フレームを処理（サンプリングしない）
+    const sampled = imagesToProcess;
 
     setExtracting(true);
     setError("");
@@ -426,9 +422,9 @@ function AnalyzeTab() {
       const batchNum = Math.floor(i / batchSize) + 1;
       setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}バッチ（${allTexts.length > 0 ? allTexts.join("").length + "文字取得済" : ""}）`);
 
-      // 2バッチ目以降は10秒待機
+      // 2バッチ目以降は8秒待機
       if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 10000));
+        await new Promise((resolve) => setTimeout(resolve, 8000));
       }
 
       try {
