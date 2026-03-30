@@ -1,27 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
 
 export default function SettingsPage() {
   const [youtubeApiKey, setYoutubeApiKey] = useState("");
-  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiApiKey, setAiApiKeyState] = useState("");
   const [saved, setSaved] = useState(false);
+  const [channelCount, setChannelCount] = useState(0);
+  const [testingYt, setTestingYt] = useState(false);
+  const [ytTestResult, setYtTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    setYoutubeApiKey(getApiKey("yt_api_key"));
+    setAiApiKeyState(getApiKey("ai_api_key"));
+    setChannelCount(getChannels().length);
+  }, []);
 
   const handleSave = () => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("yt_api_key", youtubeApiKey);
-      localStorage.setItem("ai_api_key", aiApiKey);
-    }
+    setApiKey("yt_api_key", youtubeApiKey);
+    setApiKey("ai_api_key", aiApiKey);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
 
-  useState(() => {
-    if (typeof window !== "undefined") {
-      setYoutubeApiKey(localStorage.getItem("yt_api_key") || "");
-      setAiApiKey(localStorage.getItem("ai_api_key") || "");
+  const testYoutubeApi = async () => {
+    if (!youtubeApiKey) {
+      setYtTestResult({ ok: false, message: "APIキーを入力してください" });
+      return;
     }
-  });
+    setTestingYt(true);
+    setYtTestResult(null);
+    try {
+      const res = await fetch(
+        `/api/youtube/channel-info?handle=enmusubiuranaishie&apiKey=${encodeURIComponent(youtubeApiKey)}`
+      );
+      const data = await res.json();
+      if (data.error) {
+        setYtTestResult({ ok: false, message: data.error });
+      } else {
+        setYtTestResult({ ok: true, message: `接続成功！テストチャンネル: ${data.name}（${data.subscribers?.toLocaleString()}人）` });
+      }
+    } catch {
+      setYtTestResult({ ok: false, message: "接続テストに失敗しました" });
+    } finally {
+      setTestingYt(false);
+    }
+  };
 
   return (
     <div className="p-8 max-w-2xl">
@@ -35,8 +60,7 @@ export default function SettingsPage() {
         <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
           <h2 className="font-semibold mb-1">YouTube Data APIキー</h2>
           <p className="text-sm text-gray-500 mb-4">
-            リアルタイムのチャンネル・動画データ取得に必要です。
-            <span className="text-accent">Google Cloud Console &gt; API &gt; YouTube Data API v3</span> から取得できます。
+            チャンネル情報・動画データの取得に必要です。
           </p>
           <input
             type="password"
@@ -45,6 +69,20 @@ export default function SettingsPage() {
             placeholder="AIza..."
             className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
           />
+          <div className="flex items-center gap-3 mt-3">
+            <button
+              onClick={testYoutubeApi}
+              disabled={testingYt}
+              className="px-4 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              {testingYt ? "テスト中..." : "接続テスト"}
+            </button>
+            {ytTestResult && (
+              <span className={`text-sm ${ytTestResult.ok ? "text-green-600" : "text-red-500"}`}>
+                {ytTestResult.message}
+              </span>
+            )}
+          </div>
           <div className="mt-3 p-3 bg-amber-50 rounded-lg">
             <p className="text-xs text-amber-800">
               <strong>取得手順:</strong>
@@ -63,26 +101,44 @@ export default function SettingsPage() {
         <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
           <h2 className="font-semibold mb-1">AI APIキー（Claude / OpenAI）</h2>
           <p className="text-sm text-gray-500 mb-4">
-            AI台本自動生成に使用します。Claude APIまたはOpenAI APIに対応。
+            台本の自動生成に使用。<code className="bg-gray-100 px-1 rounded text-xs">sk-ant-</code> で始まるならClaude API、
+            <code className="bg-gray-100 px-1 rounded text-xs">sk-</code> で始まるならOpenAI APIとして自動判別します。
           </p>
           <input
             type="password"
             value={aiApiKey}
-            onChange={(e) => setAiApiKey(e.target.value)}
+            onChange={(e) => setAiApiKeyState(e.target.value)}
             placeholder="sk-ant-... または sk-..."
             className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
           />
         </div>
 
-        {/* データソース情報 */}
+        {/* ステータスサマリ */}
         <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-          <h2 className="font-semibold mb-1">データソース</h2>
-          <p className="text-sm text-gray-500 mb-4">現在のデータモード</p>
-          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${
-            youtubeApiKey ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${youtubeApiKey ? "bg-green-500" : "bg-amber-500"}`} />
-            {youtubeApiKey ? "ライブAPIデータ" : "デモモード（サンプルデータ）"}
+          <h2 className="font-semibold mb-4">現在のステータス</h2>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">YouTube API</span>
+              <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-medium ${
+                youtubeApiKey ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${youtubeApiKey ? "bg-green-500" : "bg-amber-500"}`} />
+                {youtubeApiKey ? "設定済み" : "未設定"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">AI API</span>
+              <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-medium ${
+                aiApiKey ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${aiApiKey ? "bg-green-500" : "bg-amber-500"}`} />
+                {aiApiKey ? (aiApiKey.startsWith("sk-ant-") ? "Claude API" : "OpenAI API") : "未設定"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">登録チャンネル数</span>
+              <span className="text-sm font-medium">{channelCount}チャンネル</span>
+            </div>
           </div>
         </div>
 

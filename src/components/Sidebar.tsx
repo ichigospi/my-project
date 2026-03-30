@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import { getApiKey } from "@/lib/channel-store";
 
 const navItems = [
   { href: "/", label: "\u30c0\u30c3\u30b7\u30e5\u30dc\u30fc\u30c9", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" },
@@ -14,12 +16,26 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [ytStatus, setYtStatus] = useState(false);
+  const [aiStatus, setAiStatus] = useState(false);
+
+  useEffect(() => {
+    setYtStatus(!!getApiKey("yt_api_key"));
+    setAiStatus(!!getApiKey("ai_api_key"));
+
+    // localStorageの変更を監視
+    const interval = setInterval(() => {
+      setYtStatus(!!getApiKey("yt_api_key"));
+      setAiStatus(!!getApiKey("ai_api_key"));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <aside className="w-64 min-h-screen bg-sidebar-bg text-sidebar-text flex flex-col shrink-0">
       <div className="p-6 border-b border-white/10">
-        <h1 className="text-xl font-bold text-white">\u5360\u3044\u30b9\u30d4YT\u30c4\u30fc\u30eb</h1>
-        <p className="text-xs text-sidebar-text/60 mt-1">\u7af6\u5408\u30ea\u30b5\u30fc\u30c1 & \u53f0\u672c\u4f5c\u6210</p>
+        <h1 className="text-xl font-bold text-white">占いスピYTツール</h1>
+        <p className="text-xs text-sidebar-text/60 mt-1">競合リサーチ & 台本作成</p>
       </div>
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
@@ -43,8 +59,15 @@ export default function Sidebar() {
         })}
       </nav>
       <div className="p-4 border-t border-white/10">
-        <div className="bg-white/5 rounded-lg p-3 text-xs text-sidebar-text/60">
-          <p>API\u30b9\u30c6\u30fc\u30bf\u30b9: <span className="text-warning">\u672a\u8a2d\u5b9a</span></p>
+        <div className="bg-white/5 rounded-lg p-3 text-xs space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${ytStatus ? "bg-green-400" : "bg-amber-400"}`} />
+            <span className="text-sidebar-text/60">YouTube API: {ytStatus ? "接続済み" : "未設定"}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${aiStatus ? "bg-green-400" : "bg-amber-400"}`} />
+            <span className="text-sidebar-text/60">AI API: {aiStatus ? "接続済み" : "未設定"}</span>
+          </div>
         </div>
       </div>
     </aside>

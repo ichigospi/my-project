@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { mockScriptTemplates } from "@/lib/mock-data";
+import { getApiKey } from "@/lib/channel-store";
 import type { ScriptTemplate, ScriptSection } from "@/lib/mock-data";
 
 function TemplateSelector({ templates, onSelect }: { templates: ScriptTemplate[]; onSelect: (t: ScriptTemplate) => void }) {
@@ -31,52 +32,83 @@ function ScriptEditor({ template, onBack }: { template: ScriptTemplate; onBack: 
   );
   const [topic, setTopic] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedSections, setGeneratedSections] = useState<Set<number>>(new Set());
+  const [generatingIndex, setGeneratingIndex] = useState<number | null>(null);
+  const [hasAiKey, setHasAiKey] = useState(false);
+
+  useEffect(() => {
+    setHasAiKey(!!getApiKey("ai_api_key"));
+  }, []);
 
   const handleContentChange = (index: number, content: string) => {
     setSections((prev) => prev.map((s, i) => (i === index ? { ...s, content } : s)));
   };
 
+  const generateSection = async (index: number): Promise<string> => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) {
+      return sections[index].placeholder;
+    }
+
+    const section = sections[index];
+    const res = await fetch("/api/script/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topic: topic || "占い・スピリチュアル全般",
+        sectionName: section.name,
+        sectionDescription: section.description,
+        templateName: template.name,
+        allSections: template.structure.map((s) => ({ name: s.name, description: s.description })),
+        aiApiKey,
+      }),
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    return data.text;
+  };
+
   const handleAIAssist = async (index: number) => {
     setIsGenerating(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const section = sections[index];
-    let generated = section.placeholder;
-    if (topic) {
-      generated = generated.replace(/\[.*?\]/g, topic);
-      generated = generated.replace(/【.*?】/g, topic);
+    setGeneratingIndex(index);
+    try {
+      const text = await generateSection(index);
+      handleContentChange(index, text);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "生成に失敗しました");
+    } finally {
+      setIsGenerating(false);
+      setGeneratingIndex(null);
     }
-    handleContentChange(index, generated);
-    setGeneratedSections((prev) => new Set(prev).add(index));
-    setIsGenerating(false);
   };
 
   const handleGenerateAll = async () => {
     setIsGenerating(true);
     for (let i = 0; i < sections.length; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      const section = sections[i];
-      let generated = section.placeholder;
-      if (topic) {
-        generated = generated.replace(/\[.*?\]/g, topic);
-        generated = generated.replace(/【.*?】/g, topic);
+      setGeneratingIndex(i);
+      try {
+        const text = await generateSection(i);
+        handleContentChange(i, text);
+      } catch {
+        // 失敗したセクションはスキップ
       }
-      handleContentChange(i, generated);
-      setGeneratedSections((prev) => new Set(prev).add(i));
     }
     setIsGenerating(false);
+    setGeneratingIndex(null);
   };
 
   const handleExport = () => {
     const scriptText = sections
       .map((s) => `## ${s.name}（${s.duration}）\n\n${s.content || s.placeholder}\n`)
       .join("\n---\n\n");
-    const header = `# ${template.name}\nテーマ: ${topic || "（未指定）"}\nテンプレート: ${template.category}\n\n---\n\n`;
+    const header = `# ${template.name}\nテーマ: ${topic || "（未指定）"}\nテンプレート: ${template.category}\n作成日: ${new Date().toLocaleDateString("ja-JP")}\n\n---\n\n`;
     const blob = new Blob([header + scriptText], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `台本-${template.id}-${Date.now()}.md`;
+    a.download = `台本-${topic || template.name}-${new Date().toISOString().split("T")[0]}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -86,7 +118,9 @@ function ScriptEditor({ template, onBack }: { template: ScriptTemplate; onBack: 
   return (
     <div>
       <button onClick={onBack} className="text-accent text-sm font-medium mb-6 flex items-center gap-1 hover:underline">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
         テンプレート一覧に戻る
       </button>
 
@@ -106,6 +140,17 @@ function ScriptEditor({ template, onBack }: { template: ScriptTemplate; onBack: 
         </div>
       </div>
 
+      {/* AI API未設定の案内 */}
+      {!hasAiKey && (
+        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <p className="text-sm text-amber-800">
+            <strong>AI APIキーが未設定です。</strong>
+            設定ページからClaude APIまたはOpenAI APIキーを登録すると、AIによる台本自動生成が使えます。
+            未設定の場合はテンプレートのサンプルテキストが表示されます。
+          </p>
+        </div>
+      )}
+
       {/* テーマ入力 */}
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">動画のテーマ</label>
@@ -120,9 +165,9 @@ function ScriptEditor({ template, onBack }: { template: ScriptTemplate; onBack: 
           <button
             onClick={handleGenerateAll}
             disabled={isGenerating}
-            className="px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
+            className="px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50 shrink-0"
           >
-            {isGenerating ? "生成中..." : "AIで全セクション生成"}
+            {isGenerating ? `生成中（${(generatingIndex ?? 0) + 1}/${sections.length}）...` : "AIで全セクション生成"}
           </button>
         </div>
       </div>
@@ -143,19 +188,19 @@ function ScriptEditor({ template, onBack }: { template: ScriptTemplate; onBack: 
                 onClick={() => handleAIAssist(i)}
                 disabled={isGenerating}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  generatedSections.has(i)
+                  section.content
                     ? "bg-green-50 text-green-700 border border-green-200"
                     : "bg-accent/10 text-accent hover:bg-accent/20"
                 } disabled:opacity-50`}
               >
-                {generatedSections.has(i) ? "再生成" : "AI補完"}
+                {generatingIndex === i ? "生成中..." : section.content ? "再生成" : "AI補完"}
               </button>
             </div>
             <textarea
               value={section.content}
               onChange={(e) => handleContentChange(i, e.target.value)}
               placeholder={section.placeholder}
-              rows={5}
+              rows={6}
               className="w-full px-6 py-4 text-sm resize-y outline-none placeholder:text-gray-300"
             />
           </div>
