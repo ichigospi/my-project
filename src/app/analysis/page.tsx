@@ -439,13 +439,16 @@ function AnalyzeTab() {
     const batchSize = 3;
     const totalBatches = Math.ceil(sampled.length / batchSize);
     const allTexts: string[] = [];
+    let successCount = 0;
+    let failCount = 0;
 
     for (let i = 0; i < sampled.length; i += batchSize) {
       const batch = sampled.slice(i, i + batchSize);
       const batchNum = Math.floor(i / batchSize) + 1;
-      setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}バッチ（${allTexts.length > 0 ? allTexts.join("").length + "文字取得済" : ""}）`);
+      const charCount = allTexts.join("").length;
+      setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}バッチ | 成功${successCount} 失敗${failCount} | ${charCount}文字`);
 
-      // 2バッチ目以降は8秒待機
+      // 2バッチ目以降は待機（レート制限回避）
       if (i > 0) {
         await new Promise((resolve) => setTimeout(resolve, 8000));
       }
@@ -457,19 +460,27 @@ function AnalyzeTab() {
           body: JSON.stringify({ images: batch, aiApiKey }),
         });
         const data = await res.json();
-        if (data.text) {
+        if (data.text && data.text.trim()) {
           allTexts.push(data.text);
-          // 途中結果をリアルタイム反映
           setTranscript(allTexts.join("\n\n"));
+          successCount++;
+        } else if (data.error) {
+          failCount++;
+          // レート制限なら追加で待機
+          if (data.error.includes("rate") || data.error.includes("429")) {
+            await new Promise((resolve) => setTimeout(resolve, 20000));
+          }
+        } else {
+          successCount++; // テキストなしフレーム（成功だが文字なし）
         }
       } catch {
-        // 1バッチ失敗しても続行
+        failCount++;
       }
     }
 
-    setOcrProgress(`完了！${sampled.length}枚から${allTexts.join("").length}文字を取得`);
+    const totalChars = allTexts.join("").length;
+    setOcrProgress(`完了！${sampled.length}枚 → 成功${successCount} 失敗${failCount} → ${totalChars}文字取得`);
     setExtracting(false);
-    setTimeout(() => setOcrProgress(""), 5000);
   };
 
   const runAnalysis = async () => {
