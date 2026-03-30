@@ -296,82 +296,34 @@ function AnalyzeTab() {
 
   const cleanupText = async () => {
     if (!transcript.trim()) return;
-    if (screenshots.length === 0) { setError("画像がありません。先に「自動で画面読み取り」を実行してください"); return; }
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
     setCleaning(true);
+    setCleanProgress("AIで補正中（サンプル画像と照合）...");
     setError("");
 
-    const batchSize = 5;
-    const allTexts: string[] = [];
-    const totalBatches = Math.ceil(screenshots.length / batchSize);
-
-    for (let i = 0; i < screenshots.length; i += batchSize) {
-      const batch = screenshots.slice(i, i + batchSize);
-      const batchNum = Math.floor(i / batchSize) + 1;
-      setCleanProgress(`画像照合中... ${batchNum}/${totalBatches}`);
-
-      if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 15000));
+    try {
+      // サンプル画像を均等に10枚選ぶ
+      let sampleImages: string[] = [];
+      if (screenshots.length > 0) {
+        const step = Math.max(1, Math.floor(screenshots.length / 10));
+        sampleImages = screenshots.filter((_, i) => i % step === 0).slice(0, 10);
       }
 
-      try {
-        const res = await fetch("/api/script/cleanup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ images: batch, currentText: transcript, aiApiKey }),
-        });
-        const data = await res.json();
-        if (data.text && data.text.trim()) {
-          allTexts.push(data.text);
-        }
-        if (data.error?.includes("rate") || data.error?.includes("429")) {
-          await new Promise((resolve) => setTimeout(resolve, 20000));
-        }
-      } catch {
-        // 失敗しても続行
-      }
+      const res = await fetch("/api/script/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawText: transcript, sampleImages, aiApiKey }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); }
+      else if (data.text) { setTranscript(data.text); }
+    } catch { setError("テキスト整理に失敗"); }
+    finally {
+      setCleanProgress("");
+      setCleaning(false);
     }
-
-    if (allTexts.length > 0) {
-      // 最終整理: 全バッチの結果を結合して重複除去をClaudeに依頼
-      setCleanProgress("最終整理中...");
-      try {
-        const mergeRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": aiApiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 8192,
-            messages: [{
-              role: "user",
-              content: `以下はYouTube動画のテロップを画像から読み取った結果です。
-バッチごとに処理したため重複があります。
-
-重複を除去し、動画の流れ順に整理して、完成版のテロップテキストを出力してください。
-テロップテキストのみ出力し、説明は不要です。各テロップは改行で区切り、場面の切り替わりは空行で区切ってください。
-
-${allTexts.join("\n\n---\n\n")}`,
-            }],
-          }),
-        });
-        if (mergeRes.ok) {
-          const mergeData = await mergeRes.json();
-          const finalText = mergeData.content?.[0]?.text || allTexts.join("\n\n");
-          setTranscript(finalText);
-        }
-      } catch {
-        setTranscript(allTexts.join("\n\n"));
-      }
-    }
-
-    setCleanProgress("");
-    setCleaning(false);
   };
 
   const extractVideoId = (url: string): string | null => {
@@ -403,46 +355,59 @@ ${allTexts.join("\n\n---\n\n")}`,
     finally { setLoading(false); }
   };
 
-  // 自動フレーム抽出（yt-dlp + ffmpeg）
+  // 自動フレーム抽出（シーン検出でユニークフレームのみ）
   const autoExtractFrames = async () => {
     const videoId = extractVideoId(videoUrl);
     if (!videoId) { setError("先に動画URLを入力してください"); return; }
 
     setExtracting(true);
-    setOcrProgress("動画からフレームを抽出中...");
+    setOcrProgress("動画をダウンロード＆シーン検出中...");
     setError("");
 
     try {
       const res = await fetch("/api/youtube/extract-frames", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId, intervalSeconds: 3 }),
+        body: JSON.stringify({ videoId }),
       });
       const data = await res.json();
 
       if (data.error) {
-        if (data.installGuide) {
-          setError(`${data.error}\n\n${data.installGuide}`);
-        } else {
-          setError(data.error);
-        }
+        setError(data.error);
         setExtracting(false);
         return;
       }
 
-      const frames = data.frames;
+      const frames = data.frames as string[];
       setScreenshots(frames);
-      const actualCount = frames.length > 120 ? 120 : frames.length;
-      const estimatedMin = Math.ceil((actualCount / 8) * 20 / 60);
-      setOcrProgress(`${data.frameCount}フレーム抽出 → ${actualCount}枚を読み取り中（約${estimatedMin}分）...`);
+      setOcrProgress(`${data.frameCount}フレーム抽出（${data.method === "scene_detection" ? "シーン検出" : "5秒間隔"}）→ ローカルOCR中...`);
 
-      // OCR実行
-      await runOCR(data.frames);
+      // Step 2: Tesseract.jsでローカルOCR（1枚ずつ、APIコスト0）
+      const ocrTexts: string[] = [];
+      for (let i = 0; i < frames.length; i++) {
+        setOcrProgress(`ローカルOCR中... ${i + 1}/${frames.length}枚`);
+        try {
+          const ocrRes = await fetch("/api/script/local-ocr", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: frames[i] }),
+          });
+          const ocrData = await ocrRes.json();
+          if (ocrData.text && ocrData.text.trim().length > 2) {
+            ocrTexts.push(ocrData.text.trim());
+          }
+        } catch {
+          // 失敗してもスキップ
+        }
+      }
+
+      const rawOcr = ocrTexts.join("\n\n");
+      setTranscript(rawOcr);
+      setOcrProgress(`ローカルOCR完了（${rawOcr.length}文字）。AIで最終補正できます。`);
+      setExtracting(false);
     } catch {
       setError("フレーム抽出に失敗しました");
-    } finally {
       setExtracting(false);
-      setOcrProgress("");
     }
   };
 
@@ -485,64 +450,32 @@ ${allTexts.join("\n\n---\n\n")}`,
     setScreenshots((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // OCR実行（クライアント側で1バッチずつ順番に送る）
-  const runOCR = async (images?: string[]) => {
-    const imagesToProcess = images || screenshots;
-    if (imagesToProcess.length === 0) { setError("画像がありません"); return; }
-    const aiApiKey = getApiKey("ai_api_key");
-    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
-
-    // 全フレームを処理（サンプリングしない）
-    const sampled = imagesToProcess;
+  // スクリーンショットからローカルOCR実行
+  const runOCR = async () => {
+    if (screenshots.length === 0) { setError("画像がありません"); return; }
 
     setExtracting(true);
     setError("");
-    const batchSize = 3;
-    const totalBatches = Math.ceil(sampled.length / batchSize);
-    const allTexts: string[] = [];
-    let successCount = 0;
-    let failCount = 0;
+    const ocrTexts: string[] = [];
 
-    for (let i = 0; i < sampled.length; i += batchSize) {
-      const batch = sampled.slice(i, i + batchSize);
-      const batchNum = Math.floor(i / batchSize) + 1;
-      const charCount = allTexts.join("").length;
-      setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}バッチ | 成功${successCount} 失敗${failCount} | ${charCount}文字`);
-
-      // 2バッチ目以降は待機（レート制限回避）
-      if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 15000));
-      }
-
+    for (let i = 0; i < screenshots.length; i++) {
+      setOcrProgress(`ローカルOCR中... ${i + 1}/${screenshots.length}枚`);
       try {
-        const res = await fetch("/api/script/ocr", {
+        const res = await fetch("/api/script/local-ocr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ images: batch, aiApiKey }),
+          body: JSON.stringify({ image: screenshots[i] }),
         });
         const data = await res.json();
-        if (data.text && data.text.trim()) {
-          allTexts.push(data.text);
-          setTranscript(allTexts.join("\n\n"));
-          successCount++;
-        } else if (data.error) {
-          failCount++;
-          setError(`バッチ${batchNum}エラー: ${data.error}`);
-          // レート制限なら長めに待機
-          if (data.error.includes("rate") || data.error.includes("429") || data.error.includes("limit")) {
-            await new Promise((resolve) => setTimeout(resolve, 60000));
-          }
-        } else {
-          successCount++;
+        if (data.text && data.text.trim().length > 2) {
+          ocrTexts.push(data.text.trim());
         }
-      } catch (e) {
-        failCount++;
-        setError(`バッチ${batchNum}: ${e instanceof Error ? e.message : "通信エラー"}`);
-      }
+      } catch { /* skip */ }
     }
 
-    const totalChars = allTexts.join("").length;
-    setOcrProgress(`完了！${sampled.length}枚 → 成功${successCount} 失敗${failCount} → ${totalChars}文字取得`);
+    const rawOcr = ocrTexts.join("\n\n");
+    setTranscript(rawOcr);
+    setOcrProgress(`完了（${rawOcr.length}文字）。「画像と照合して自動修正」で仕上げてください。`);
     setExtracting(false);
   };
 
