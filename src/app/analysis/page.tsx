@@ -721,76 +721,113 @@ function AnalyzeTab() {
 function AnalysisResultView({ analysis }: { analysis: AnalysisResult & { score?: AnalysisScore } }) {
   return (
     <div className="space-y-4">
-      <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-        <h3 className="font-semibold mb-3">分析結果</h3>
-        <p className="text-sm text-gray-700 mb-4">{analysis.summary}</p>
+      {/* サマリー＋スコア */}
+      <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-6 border-b border-gray-100">
+          <h3 className="font-semibold mb-2">分析サマリー</h3>
+          <p className="text-sm text-gray-700 leading-relaxed">{analysis.summary}</p>
+        </div>
 
-        {/* スコア */}
+        {/* スコアバー */}
         {analysis.score && (
-          <div className="grid grid-cols-5 gap-3 mb-6">
-            {[
-              { label: "フック", value: analysis.score.hookStrength },
-              { label: "CTA", value: analysis.score.ctaEffectiveness },
-              { label: "構成", value: analysis.score.structureBalance },
-              { label: "感情訴求", value: analysis.score.emotionalAppeal },
-              { label: "総合", value: analysis.score.overall },
-            ].map((s) => (
-              <div key={s.label} className="text-center">
-                <div className={`text-2xl font-bold ${s.value >= 8 ? "text-success" : s.value >= 6 ? "text-warning" : "text-danger"}`}>
-                  {s.value}
+          <div className="p-6 bg-gray-50/50">
+            <div className="grid grid-cols-5 gap-4">
+              {[
+                { label: "フック力", value: analysis.score.hookStrength, icon: "🎣" },
+                { label: "CTA効果", value: analysis.score.ctaEffectiveness, icon: "📢" },
+                { label: "構成力", value: analysis.score.structureBalance, icon: "📐" },
+                { label: "感情訴求", value: analysis.score.emotionalAppeal, icon: "💖" },
+                { label: "総合", value: analysis.score.overall, icon: "⭐" },
+              ].map((s) => (
+                <div key={s.label} className="text-center">
+                  <div className="text-lg mb-1">{s.icon}</div>
+                  <div className="relative h-2 bg-gray-200 rounded-full mb-1.5 overflow-hidden">
+                    <div
+                      className={`absolute left-0 top-0 h-full rounded-full ${s.value >= 8 ? "bg-green-500" : s.value >= 6 ? "bg-yellow-500" : "bg-red-400"}`}
+                      style={{ width: `${s.value * 10}%` }}
+                    />
+                  </div>
+                  <div className={`text-lg font-bold ${s.value >= 8 ? "text-green-600" : s.value >= 6 ? "text-yellow-600" : "text-red-500"}`}>
+                    {s.value}<span className="text-xs text-gray-400">/10</span>
+                  </div>
+                  <p className="text-xs text-gray-500">{s.label}</p>
                 </div>
-                <p className="text-xs text-gray-500">{s.label}</p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
-        <p className="text-xs text-gray-500 mb-1">パターン</p>
-        <p className="text-sm font-medium mb-4">{analysis.overallPattern}</p>
-        <p className="text-xs text-gray-500 mb-1">ターゲット感情</p>
-        <p className="text-sm font-medium">{analysis.targetEmotion}</p>
+        {/* パターン＆感情 */}
+        <div className="p-6 grid grid-cols-2 gap-4">
+          <div className="bg-accent/5 rounded-lg p-3">
+            <p className="text-xs font-medium text-accent mb-1">台本パターン</p>
+            <p className="text-sm font-medium">{analysis.overallPattern}</p>
+          </div>
+          <div className="bg-purple-50 rounded-lg p-3">
+            <p className="text-xs font-medium text-purple-600 mb-1">ターゲット感情</p>
+            <p className="text-sm font-medium">{analysis.targetEmotion}</p>
+          </div>
+        </div>
       </div>
 
-      {/* 構成 */}
+      {/* 構成タイムライン */}
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-        <h3 className="font-semibold mb-3">構成・時間配分</h3>
-        <div className="space-y-3">
+        <h3 className="font-semibold mb-4">構成・時間配分</h3>
+        <div className="relative">
           {analysis.structure?.map((s, i) => (
-            <div key={i} className="flex gap-3 items-start">
-              <span className="text-xs font-bold text-white bg-accent rounded-full w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{s.name}</span>
-                  <span className="text-xs text-gray-400">{s.timeRange}（{s.duration}）</span>
+            <div key={i} className="flex gap-4 mb-4 last:mb-0">
+              {/* タイムライン */}
+              <div className="flex flex-col items-center">
+                <div className="w-8 h-8 rounded-full bg-accent text-white text-xs font-bold flex items-center justify-center shrink-0">
+                  {i + 1}
                 </div>
-                <p className="text-xs text-gray-600 mt-0.5">{s.description}</p>
-                <p className="text-xs text-accent/70 mt-0.5">狙い: {s.purpose}</p>
+                {i < (analysis.structure?.length || 0) - 1 && (
+                  <div className="w-0.5 flex-1 bg-accent/20 mt-1" />
+                )}
+              </div>
+              {/* コンテンツ */}
+              <div className="flex-1 pb-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-medium text-sm">{s.name}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{s.timeRange}</span>
+                  <span className="text-xs text-gray-400">{s.duration}</span>
+                </div>
+                <p className="text-sm text-gray-600">{s.description}</p>
+                <p className="text-xs text-accent/80 mt-1">→ {s.purpose}</p>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* フック・CTA・伸び要因 */}
+      {/* フック・CTA・伸び要因・訴求 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ListCard title="フック・引きの要素" items={analysis.hooks} />
-        <ListCard title="CTA（行動喚起）" items={analysis.ctas} />
-        <ListCard title="伸びている要因" items={analysis.growthFactors} />
-        <ListCard title="刺さっている訴求" items={analysis.appealPoints} />
+        <ListCard title="フック・引きの要素" items={analysis.hooks} color="red" />
+        <ListCard title="CTA（行動喚起）" items={analysis.ctas} color="blue" />
+        <ListCard title="伸びている要因" items={analysis.growthFactors} color="green" />
+        <ListCard title="刺さっている訴求" items={analysis.appealPoints} color="purple" />
       </div>
     </div>
   );
 }
 
-function ListCard({ title, items }: { title: string; items?: string[] }) {
+function ListCard({ title, items, color = "accent" }: { title: string; items?: string[]; color?: string }) {
   if (!items || items.length === 0) return null;
+  const colors: Record<string, { bg: string; dot: string; border: string }> = {
+    red: { bg: "bg-red-50", dot: "bg-red-400", border: "border-red-100" },
+    blue: { bg: "bg-blue-50", dot: "bg-blue-400", border: "border-blue-100" },
+    green: { bg: "bg-green-50", dot: "bg-green-400", border: "border-green-100" },
+    purple: { bg: "bg-purple-50", dot: "bg-purple-400", border: "border-purple-100" },
+    accent: { bg: "bg-accent/5", dot: "bg-accent", border: "border-accent/10" },
+  };
+  const c = colors[color] || colors.accent;
   return (
-    <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
-      <h4 className="font-semibold text-sm mb-2">{title}</h4>
-      <ul className="space-y-1.5">
+    <div className={`rounded-xl p-5 shadow-sm border ${c.border} ${c.bg}`}>
+      <h4 className="font-semibold text-sm mb-3">{title}</h4>
+      <ul className="space-y-2">
         {items.map((item, i) => (
           <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-            <span className="text-accent mt-1 shrink-0"><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg></span>
+            <span className={`w-2 h-2 rounded-full ${c.dot} mt-1.5 shrink-0`} />
             {item}
           </li>
         ))}
@@ -804,12 +841,22 @@ function LibraryTab() {
   const [analyses, setAnalyses] = useState<ScriptAnalysis[]>([]);
   const [filter, setFilter] = useState<"all" | "healing" | "education" | "other">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [showTab, setShowTab] = useState<Record<string, "analysis" | "transcript">>({});
+  const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => { setAnalyses(getAnalyses()); }, []);
 
   const handleDelete = (id: string) => {
     setAnalyses(deleteAnalysis(id));
   };
+
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const getActiveTab = (id: string) => showTab[id] || "analysis";
 
   const filtered = analyses.filter((a) => filter === "all" || a.category === filter);
 
@@ -837,26 +884,83 @@ function LibraryTab() {
       <div className="space-y-3">
         {filtered.map((a) => (
           <div key={a.id} className="bg-card-bg rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            {/* ヘッダー */}
             <div className="p-4 flex gap-4 items-start cursor-pointer" onClick={() => setExpanded(expanded === a.id ? null : a.id)}>
-              {a.thumbnailUrl && <img src={a.thumbnailUrl} alt="" className="w-28 h-16 rounded object-cover shrink-0" />}
+              {a.thumbnailUrl && <img src={a.thumbnailUrl} alt="" className="w-32 h-20 rounded-lg object-cover shrink-0" />}
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm truncate">{a.videoTitle}</p>
-                <p className="text-xs text-gray-500">{a.channelName} · {formatNumber(a.views)}回再生</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${a.category === "healing" ? "bg-purple-100 text-purple-700" : a.category === "education" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>
+                <p className="font-semibold text-sm truncate">{a.videoTitle}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{a.channelName} · {formatNumber(a.views)}回再生</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${a.category === "healing" ? "bg-purple-100 text-purple-700" : a.category === "education" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>
                     {a.category === "healing" ? "ヒーリング" : a.category === "education" ? "教育系" : "その他"}
                   </span>
-                  {a.score && <span className="text-xs text-gray-500">スコア: {a.score.overall}/10</span>}
+                  {a.score && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${a.score.overall >= 8 ? "bg-green-100 text-green-700" : a.score.overall >= 6 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>
+                      {a.score.overall}/10
+                    </span>
+                  )}
                   <span className="text-xs text-gray-400">{new Date(a.createdAt).toLocaleDateString("ja-JP")}</span>
+                  {a.transcript && <span className="text-xs text-gray-400">· {a.transcript.length}文字</span>}
                 </div>
               </div>
-              <button onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }} className="text-gray-300 hover:text-danger shrink-0">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <svg className={`w-5 h-5 text-gray-400 transition-transform ${expanded === a.id ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                <button onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }} className="text-gray-300 hover:text-danger">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
             </div>
-            {expanded === a.id && a.analysisResult && (
-              <div className="px-4 pb-4 border-t border-gray-100 pt-4">
-                <AnalysisResultView analysis={{ ...a.analysisResult, score: a.score }} />
+
+            {/* 展開部分 */}
+            {expanded === a.id && (
+              <div className="border-t border-gray-100">
+                {/* タブ切り替え: 分析結果 / 台本テキスト */}
+                <div className="flex border-b border-gray-100">
+                  <button
+                    onClick={() => setShowTab({ ...showTab, [a.id]: "analysis" })}
+                    className={`flex-1 py-2.5 text-sm font-medium text-center border-b-2 transition-colors ${getActiveTab(a.id) === "analysis" ? "border-accent text-accent" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+                  >
+                    分析結果
+                  </button>
+                  <button
+                    onClick={() => setShowTab({ ...showTab, [a.id]: "transcript" })}
+                    className={`flex-1 py-2.5 text-sm font-medium text-center border-b-2 transition-colors ${getActiveTab(a.id) === "transcript" ? "border-accent text-accent" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+                  >
+                    台本テキスト {a.transcript ? `(${a.transcript.length}文字)` : "(なし)"}
+                  </button>
+                </div>
+
+                {/* 分析結果表示 */}
+                {getActiveTab(a.id) === "analysis" && a.analysisResult && (
+                  <div className="p-4">
+                    <AnalysisResultView analysis={{ ...a.analysisResult, score: a.score }} />
+                  </div>
+                )}
+
+                {/* 台本テキスト表示 */}
+                {getActiveTab(a.id) === "transcript" && (
+                  <div className="p-4">
+                    {a.transcript ? (
+                      <>
+                        <div className="flex justify-end mb-2">
+                          <button
+                            onClick={() => handleCopy(a.transcript, a.id)}
+                            className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90"
+                          >
+                            {copied === a.id ? "コピーしました！" : "台本テキストをコピー"}
+                          </button>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
+                          <pre className="text-sm leading-7 whitespace-pre-wrap font-sans text-gray-700">{a.transcript}</pre>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400 text-center py-8">台本テキストが保存されていません</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
