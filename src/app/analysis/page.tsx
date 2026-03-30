@@ -527,15 +527,17 @@ ${allTexts.join("\n\n---\n\n")}`,
           successCount++;
         } else if (data.error) {
           failCount++;
-          // レート制限なら追加で待機
-          if (data.error.includes("rate") || data.error.includes("429")) {
-            await new Promise((resolve) => setTimeout(resolve, 20000));
+          setError(`バッチ${batchNum}エラー: ${data.error}`);
+          // レート制限なら長めに待機
+          if (data.error.includes("rate") || data.error.includes("429") || data.error.includes("limit")) {
+            await new Promise((resolve) => setTimeout(resolve, 60000));
           }
         } else {
-          successCount++; // テキストなしフレーム（成功だが文字なし）
+          successCount++;
         }
-      } catch {
+      } catch (e) {
         failCount++;
+        setError(`バッチ${batchNum}: ${e instanceof Error ? e.message : "通信エラー"}`);
       }
     }
 
