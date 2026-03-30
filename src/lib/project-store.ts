@@ -1,0 +1,285 @@
+// 台本プロジェクト管理 & 関連データストア
+
+// ===== ジャンル・スタイル =====
+export type Genre = "love" | "money" | "general";
+export type Style = "healing" | "education";
+
+export const GENRE_LABELS: Record<Genre, string> = {
+  love: "恋愛運",
+  money: "金運",
+  general: "総合運",
+};
+
+export const STYLE_LABELS: Record<Style, string> = {
+  healing: "ヒーリング系",
+  education: "教育系",
+};
+
+// ===== 台本プロジェクト =====
+export interface ScriptProject {
+  id: string;
+  genre: Genre;
+  style: Style;
+  title: string;
+  titleCandidates: TitleCandidate[];
+  referenceVideos: ReferenceVideo[];
+  analyses: string[]; // ScriptAnalysis IDs
+  structureProposal: StructureProposal | null;
+  generatedScript: string;
+  telopScript: TelopLine[] | null;
+  thumbnailTexts: string[];
+  status: "genre" | "title" | "references" | "analyzing" | "proposal" | "script" | "completed";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TitleCandidate {
+  title: string;
+  reason: string;
+  sourceVideo?: string;
+  sourceChannel?: string;
+  estimatedPotential: "high" | "medium" | "low";
+}
+
+export interface ReferenceVideo {
+  videoId: string;
+  title: string;
+  channelName: string;
+  views: number;
+  thumbnailUrl: string;
+  multiplier?: number; // 平均再生倍率
+  selected: boolean;
+}
+
+export interface StructureProposal {
+  suggestedTitle: string;
+  concept: string;
+  structure: { name: string; timeRange: string; duration: string; description: string; purpose: string }[];
+  keyElements: string[];
+  suggestedHooks: string[];
+  suggestedCtas: string[];
+  estimatedDuration: string;
+  targetWordCount: number;
+}
+
+export interface TelopLine {
+  text: string;
+  displaySeconds: number;
+  section: string;
+}
+
+// ===== 台本ルールプリセット =====
+export interface ScriptRulePreset {
+  id: string;
+  genre: Genre;
+  style: Style;
+  name: string;
+  rules: string;
+  prompt: string;
+  targetWordCount: number;
+  hookPattern: string;
+  ctaPattern: string;
+  notes: string;
+}
+
+// ===== フック & CTA データベース =====
+export interface HookEntry {
+  id: string;
+  text: string;
+  genre: Genre;
+  style: Style;
+  score: number; // 1-10
+  sourceVideo: string;
+  sourceChannel: string;
+  tags: string[];
+  createdAt: string;
+}
+
+export interface CTAEntry {
+  id: string;
+  text: string;
+  genre: Genre;
+  style: Style;
+  score: number;
+  sourceVideo: string;
+  sourceChannel: string;
+  tags: string[];
+  createdAt: string;
+}
+
+// ===== パフォーマンスデータ =====
+export interface PerformanceRecord {
+  id: string;
+  projectId: string;
+  videoUrl: string;
+  title: string;
+  genre: Genre;
+  style: Style;
+  publishedAt: string;
+  views: number;
+  likes: number;
+  comments: number;
+  structureUsed: string;
+  hooksUsed: string[];
+  ctasUsed: string[];
+  notes: string;
+  recordedAt: string;
+}
+
+// ===== Storage Keys =====
+const PROJECTS_KEY = "fortune_yt_projects";
+const PRESETS_KEY = "fortune_yt_presets";
+const HOOKS_KEY = "fortune_yt_hooks";
+const CTAS_KEY = "fortune_yt_ctas";
+const PERFORMANCE_KEY = "fortune_yt_performance";
+
+// ===== ヘルパー =====
+export function genId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+}
+
+// ===== プロジェクト CRUD =====
+export function getProjects(): ScriptProject[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]");
+}
+
+export function saveProject(project: ScriptProject): ScriptProject[] {
+  const projects = getProjects();
+  const idx = projects.findIndex((p) => p.id === project.id);
+  project.updatedAt = new Date().toISOString();
+  if (idx >= 0) projects[idx] = project;
+  else projects.unshift(project);
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  return projects;
+}
+
+export function deleteProject(id: string): ScriptProject[] {
+  const projects = getProjects().filter((p) => p.id !== id);
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  return projects;
+}
+
+export function createProject(genre: Genre, style: Style): ScriptProject {
+  return {
+    id: genId(), genre, style, title: "", titleCandidates: [],
+    referenceVideos: [], analyses: [], structureProposal: null,
+    generatedScript: "", telopScript: null, thumbnailTexts: [],
+    status: "title", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  };
+}
+
+// ===== プリセット CRUD =====
+export function getPresets(): ScriptRulePreset[] {
+  if (typeof window === "undefined") return DEFAULT_PRESETS;
+  const stored = localStorage.getItem(PRESETS_KEY);
+  if (!stored) { localStorage.setItem(PRESETS_KEY, JSON.stringify(DEFAULT_PRESETS)); return DEFAULT_PRESETS; }
+  return JSON.parse(stored);
+}
+
+export function savePreset(preset: ScriptRulePreset) {
+  const presets = getPresets();
+  const idx = presets.findIndex((p) => p.id === preset.id);
+  if (idx >= 0) presets[idx] = preset;
+  else presets.push(preset);
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+export function getPresetFor(genre: Genre, style: Style): ScriptRulePreset | undefined {
+  return getPresets().find((p) => p.genre === genre && p.style === style);
+}
+
+const DEFAULT_PRESETS: ScriptRulePreset[] = [
+  { id: "lh", genre: "love", style: "healing", name: "恋愛×ヒーリング",
+    rules: "冒頭30秒で視聴者の孤独感・寂しさに共感し、希望のメッセージで引き込む。本編は癒しのアファメーション形式で展開。終盤に予祝CTAを入れる。",
+    prompt: "あなたは恋愛ヒーリング専門のスピリチュアルYouTuberです。視聴者の心に寄り添い、宇宙からの愛のメッセージを届けてください。",
+    targetWordCount: 5000, hookPattern: "この動画に出会ったあなたへ/宇宙からの緊急メッセージ", ctaPattern: "予祝コメント（完了形で書き込み）", notes: "" },
+  { id: "le", genre: "love", style: "education", name: "恋愛×教育",
+    rules: "冒頭で「知らないと損する」系のフックで好奇心を刺激。本編は具体的なサイン・方法を箇条書きで解説。終盤に次回予告とチャンネル登録CTA。",
+    prompt: "あなたは恋愛スピリチュアルの専門家です。視聴者にわかりやすく、具体的な知識と実践方法を教えてください。",
+    targetWordCount: 4000, hookPattern: "○○を知らないと損する/○つのサイン", ctaPattern: "チャンネル登録＋次回予告", notes: "" },
+  { id: "mh", genre: "money", style: "healing", name: "金運×ヒーリング",
+    rules: "お金のブロック解除をテーマに、潜在意識の書き換えを誘導。アファメーション＋ヒーリング形式。",
+    prompt: "あなたは金運ヒーリングの専門家です。視聴者のお金に対するブロックを解除し、豊かさの波動に同調させてください。",
+    targetWordCount: 5000, hookPattern: "お金のブロックが外れる/豊かさが流れ込む", ctaPattern: "豊かさのアファメーションをコメント", notes: "" },
+  { id: "me", genre: "money", style: "education", name: "金運×教育",
+    rules: "金運アップの具体的方法や開運行動を解説。数字やデータを交えて説得力を出す。",
+    prompt: "あなたは金運・開運の専門家です。具体的で実践的な金運アップの方法を教えてください。",
+    targetWordCount: 4000, hookPattern: "金運が上がる人の○つの習慣/○月の金運", ctaPattern: "実践報告コメント＋チャンネル登録", notes: "" },
+  { id: "gh", genre: "general", style: "healing", name: "総合×ヒーリング",
+    rules: "全体運のヒーリング。チャクラ・エネルギー浄化・スピリチュアル覚醒などのテーマ。穏やかな誘導瞑想形式。",
+    prompt: "あなたはスピリチュアルヒーラーです。視聴者のエネルギーを浄化し、高次の存在からのメッセージを届けてください。",
+    targetWordCount: 5000, hookPattern: "あなたのエネルギーが変わる/浄化が始まる", ctaPattern: "感想コメント＋高評価", notes: "" },
+  { id: "ge", genre: "general", style: "education", name: "総合×教育",
+    rules: "スピリチュアルの基礎知識や概念を解説。初心者にもわかりやすく、具体例を多用。",
+    prompt: "あなたはスピリチュアルの教育者です。難しい概念をわかりやすく、具体的に教えてください。",
+    targetWordCount: 4000, hookPattern: "○○とは？/知らないと危険な○○", ctaPattern: "質問コメント＋チャンネル登録", notes: "" },
+];
+
+// ===== フック & CTA DB =====
+export function getHooks(): HookEntry[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(HOOKS_KEY) || "[]");
+}
+
+export function saveHook(hook: HookEntry) {
+  const hooks = getHooks();
+  hooks.unshift(hook);
+  localStorage.setItem(HOOKS_KEY, JSON.stringify(hooks));
+}
+
+export function getHooksFor(genre?: Genre, style?: Style): HookEntry[] {
+  return getHooks().filter((h) => (!genre || h.genre === genre) && (!style || h.style === style));
+}
+
+export function deleteHook(id: string) {
+  const hooks = getHooks().filter((h) => h.id !== id);
+  localStorage.setItem(HOOKS_KEY, JSON.stringify(hooks));
+}
+
+export function getCTAs(): CTAEntry[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(CTAS_KEY) || "[]");
+}
+
+export function saveCTA(cta: CTAEntry) {
+  const ctas = getCTAs();
+  ctas.unshift(cta);
+  localStorage.setItem(CTAS_KEY, JSON.stringify(ctas));
+}
+
+export function getCTAsFor(genre?: Genre, style?: Style): CTAEntry[] {
+  return getCTAs().filter((c) => (!genre || c.genre === genre) && (!style || c.style === style));
+}
+
+export function deleteCTA(id: string) {
+  const ctas = getCTAs().filter((c) => c.id !== id);
+  localStorage.setItem(CTAS_KEY, JSON.stringify(ctas));
+}
+
+// ===== パフォーマンス =====
+export function getPerformanceRecords(): PerformanceRecord[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(PERFORMANCE_KEY) || "[]");
+}
+
+export function savePerformanceRecord(record: PerformanceRecord) {
+  const records = getPerformanceRecords();
+  const idx = records.findIndex((r) => r.id === record.id);
+  if (idx >= 0) records[idx] = record;
+  else records.unshift(record);
+  localStorage.setItem(PERFORMANCE_KEY, JSON.stringify(records));
+}
+
+export function deletePerformanceRecord(id: string) {
+  const records = getPerformanceRecords().filter((r) => r.id !== id);
+  localStorage.setItem(PERFORMANCE_KEY, JSON.stringify(records));
+}
+
+// 自チャンネルの伸びた企画パターンを取得
+export function getTopPerformingPatterns(genre?: Genre): PerformanceRecord[] {
+  return getPerformanceRecords()
+    .filter((r) => !genre || r.genre === genre)
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 10);
+}
