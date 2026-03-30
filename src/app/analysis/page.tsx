@@ -355,16 +355,19 @@ function AnalyzeTab() {
     finally { setLoading(false); }
   };
 
-  // 自動フレーム抽出（シーン検出でユニークフレームのみ）
+  // 自動フレーム抽出 → 重複除去 → Claude Vision一括OCR
   const autoExtractFrames = async () => {
     const videoId = extractVideoId(videoUrl);
     if (!videoId) { setError("先に動画URLを入力してください"); return; }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
     setExtracting(true);
-    setOcrProgress("動画をダウンロード＆シーン検出中...");
+    setOcrProgress("動画をダウンロード＆フレーム抽出中...");
     setError("");
 
     try {
+      // Step 1: フレーム抽出（3秒間隔）+ サーバー側で重複除去
       const res = await fetch("/api/youtube/extract-frames", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -380,30 +383,43 @@ function AnalyzeTab() {
 
       const frames = data.frames as string[];
       setScreenshots(frames);
-      setOcrProgress(`${data.frameCount}フレーム抽出 → ローカルOCR中...`);
+      setOcrProgress(`${data.totalExtracted}枚→重複除去→${data.uniqueCount}枚。Claude Visionで読み取り中...`);
 
-      // Step 2: Tesseract.jsでローカルOCR（1枚ずつ、APIコスト0）
-      const ocrTexts: string[] = [];
-      for (let i = 0; i < frames.length; i++) {
-        setOcrProgress(`ローカルOCR中... ${i + 1}/${frames.length}枚`);
+      // Step 2: 20枚ずつClaude Visionに送信（3-4回のAPI呼び出しだけ）
+      const batchSize = 20;
+      const totalBatches = Math.ceil(frames.length / batchSize);
+      const allTexts: string[] = [];
+
+      for (let i = 0; i < frames.length; i += batchSize) {
+        const batch = frames.slice(i, i + batchSize);
+        const batchNum = Math.floor(i / batchSize) + 1;
+        setOcrProgress(`Claude Vision読み取り中... ${batchNum}/${totalBatches}回目（${allTexts.join("").length}文字取得済）`);
+
+        // 2回目以降は30秒待機
+        if (i > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 30000));
+        }
+
         try {
-          const ocrRes = await fetch("/api/script/local-ocr", {
+          const ocrRes = await fetch("/api/script/ocr", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: frames[i] }),
+            body: JSON.stringify({ images: batch, aiApiKey }),
           });
           const ocrData = await ocrRes.json();
-          if (ocrData.text && ocrData.text.trim().length > 2) {
-            ocrTexts.push(ocrData.text.trim());
+          if (ocrData.text && ocrData.text.trim()) {
+            allTexts.push(ocrData.text.trim());
+            setTranscript(allTexts.join("\n\n"));
+          } else if (ocrData.error) {
+            setError(`バッチ${batchNum}エラー: ${ocrData.error}`);
           }
-        } catch {
-          // 失敗してもスキップ
+        } catch (e) {
+          setError(`バッチ${batchNum}: ${e instanceof Error ? e.message : "通信エラー"}`);
         }
       }
 
-      const rawOcr = ocrTexts.join("\n\n");
-      setTranscript(rawOcr);
-      setOcrProgress(`ローカルOCR完了（${rawOcr.length}文字）。AIで最終補正できます。`);
+      const totalChars = allTexts.join("").length;
+      setOcrProgress(`完了！ ${data.totalExtracted}枚→${data.uniqueCount}枚→${totalChars}文字取得`);
       setExtracting(false);
     } catch {
       setError("フレーム抽出に失敗しました");
@@ -450,32 +466,37 @@ function AnalyzeTab() {
     setScreenshots((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // スクリーンショットからローカルOCR実行
+  // スクリーンショットからClaude Vision OCR
   const runOCR = async () => {
     if (screenshots.length === 0) { setError("画像がありません"); return; }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
     setExtracting(true);
     setError("");
-    const ocrTexts: string[] = [];
+    const batchSize = 20;
+    const allTexts: string[] = [];
+    const totalBatches = Math.ceil(screenshots.length / batchSize);
 
-    for (let i = 0; i < screenshots.length; i++) {
-      setOcrProgress(`ローカルOCR中... ${i + 1}/${screenshots.length}枚`);
+    for (let i = 0; i < screenshots.length; i += batchSize) {
+      const batch = screenshots.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}`);
+      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 30000));
       try {
-        const res = await fetch("/api/script/local-ocr", {
+        const res = await fetch("/api/script/ocr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: screenshots[i] }),
+          body: JSON.stringify({ images: batch, aiApiKey }),
         });
         const data = await res.json();
-        if (data.text && data.text.trim().length > 2) {
-          ocrTexts.push(data.text.trim());
-        }
+        if (data.text?.trim()) allTexts.push(data.text.trim());
+        else if (data.error) setError(data.error);
       } catch { /* skip */ }
     }
 
-    const rawOcr = ocrTexts.join("\n\n");
-    setTranscript(rawOcr);
-    setOcrProgress(`完了（${rawOcr.length}文字）。「画像と照合して自動修正」で仕上げてください。`);
+    setTranscript(allTexts.join("\n\n"));
+    setOcrProgress(`完了（${allTexts.join("").length}文字）`);
     setExtracting(false);
   };
 
