@@ -10,13 +10,13 @@ export default function ThumbnailsPage() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Thumbnail & Title Analysis</h1>
-        <p className="text-gray-500 mt-1">Analyze title patterns and thumbnail strategies that drive views</p>
+        <h1 className="text-2xl font-bold text-foreground">サムネ・タイトル分析</h1>
+        <p className="text-gray-500 mt-1">再生数を伸ばすタイトルパターンとサムネイル戦略を分析</p>
       </div>
 
-      {/* Title Patterns */}
+      {/* タイトルパターン */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Title Patterns (by Performance)</h2>
+        <h2 className="text-lg font-semibold mb-4">タイトルパターン（パフォーマンス順）</h2>
         <div className="space-y-4">
           {mockTitlePatterns
             .sort((a, b) => b.avgViews - a.avgViews)
@@ -30,15 +30,15 @@ export default function ThumbnailsPage() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-lg font-bold text-accent">{formatNumber(pattern.avgViews)}</p>
-                    <p className="text-xs text-gray-500">avg views</p>
+                    <p className="text-lg font-bold text-accent">{formatNumber(pattern.avgViews)}回</p>
+                    <p className="text-xs text-gray-500">平均再生数</p>
                   </div>
                 </div>
 
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span>Usage frequency</span>
-                    <span>{pattern.frequency}% of top videos</span>
+                    <span>使用頻度</span>
+                    <span>人気動画の{pattern.frequency}%が使用</span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div className="h-full bg-accent rounded-full" style={{ width: `${pattern.frequency}%` }} />
@@ -46,7 +46,7 @@ export default function ThumbnailsPage() {
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-2">Examples:</p>
+                  <p className="text-xs text-gray-500 mb-2">実例:</p>
                   <div className="space-y-1">
                     {pattern.examples.map((ex, j) => (
                       <p key={j} className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
@@ -60,24 +60,24 @@ export default function ThumbnailsPage() {
         </div>
       </div>
 
-      {/* Thumbnail Analysis Summary */}
+      {/* サムネイル分析サマリ */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Thumbnail Pattern Insights</h2>
+        <h2 className="text-lg font-semibold mb-4">サムネイルパターンの傾向</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
             {
-              title: "Dominant Colors",
-              items: ["Purple / Mystical tones", "Gold / Warm highlights", "Deep blue backgrounds"],
+              title: "よく使われる色",
+              items: ["紫 / ミステリアスな色調", "金色 / 暖かいハイライト", "ダークブルーの背景"],
               icon: "M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01",
             },
             {
-              title: "Common Elements",
-              items: ["Tarot cards / Crystal imagery", "Face with surprised expression", "Text overlay with numbers/dates"],
+              title: "よく使われる要素",
+              items: ["タロットカード / クリスタルの画像", "驚いた表情の顔", "数字や日付のテキスト"],
               icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z",
             },
             {
-              title: "Text Strategies",
-              items: ["Large bold text (3-5 words max)", "Emoji usage in thumbnails", "Question marks for curiosity"],
+              title: "テキスト戦略",
+              items: ["大きい太字テキスト（3〜5文字）", "サムネにインパクトワード", "「？」で好奇心を刺激"],
               icon: "M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129",
             },
           ].map((insight) => (
@@ -103,10 +103,10 @@ export default function ThumbnailsPage() {
         </div>
       </div>
 
-      {/* Video Title Examples */}
+      {/* 高パフォーマンスタイトル一覧 */}
       <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
         <div className="p-6 border-b border-gray-100">
-          <h2 className="text-lg font-semibold">High-Performance Title Examples</h2>
+          <h2 className="text-lg font-semibold">高パフォーマンスタイトル一覧</h2>
         </div>
         <div className="divide-y divide-gray-50">
           {allVideos
@@ -118,8 +118,8 @@ export default function ThumbnailsPage() {
                   <p className="text-xs text-gray-500 mt-0.5">{video.channelName}</p>
                 </div>
                 <div className="text-right shrink-0 ml-4">
-                  <p className="font-bold text-sm">{formatNumber(video.views)}</p>
-                  <p className="text-xs text-gray-500">{video.engagementRate}% engagement</p>
+                  <p className="font-bold text-sm">{formatNumber(video.views)}回</p>
+                  <p className="text-xs text-gray-500">{video.engagementRate}% エンゲージメント</p>
                 </div>
               </div>
             ))}

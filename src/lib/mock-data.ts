@@ -1,4 +1,4 @@
-// Mock data for development (replace with YouTube API integration)
+// モックデータ（YouTube API連携後は実データに置き換え）
 
 export interface ChannelData {
   id: string;
@@ -10,7 +10,7 @@ export interface ChannelData {
   uploadFrequency: string;
   category: string;
   thumbnailUrl: string;
-  recentGrowth: number; // percentage
+  recentGrowth: number;
   topVideos: VideoData[];
 }
 
@@ -58,223 +58,223 @@ export interface ScriptSection {
   placeholder: string;
 }
 
-// --- Mock Channel Data ---
+// --- モックチャンネルデータ ---
 export const mockChannels: ChannelData[] = [
   {
     id: "ch1",
-    name: "Miracle Fortune Channel",
+    name: "奇跡のタロットチャンネル",
     subscribers: 245000,
     totalViews: 48500000,
     videoCount: 523,
     avgViews: 92800,
-    uploadFrequency: "Daily",
-    category: "Tarot Reading",
+    uploadFrequency: "毎日",
+    category: "タロットリーディング",
     thumbnailUrl: "",
     recentGrowth: 12.5,
     topVideos: [
       {
-        id: "v1", title: "Today's Fortune - What the Universe Wants to Tell You",
+        id: "v1", title: "今日の運勢 - 宇宙があなたに伝えたいこと",
         views: 385000, likes: 12400, comments: 2100, publishedAt: "2026-03-25",
-        duration: "15:32", thumbnailUrl: "", tags: ["tarot", "daily fortune", "universe message"],
+        duration: "15:32", thumbnailUrl: "", tags: ["タロット", "今日の運勢", "宇宙のメッセージ"],
         engagementRate: 3.77,
       },
       {
-        id: "v2", title: "March Horoscope - Big Changes Coming for These Signs",
+        id: "v2", title: "3月の星座占い - この星座に大きな変化が！",
         views: 298000, likes: 9800, comments: 1650, publishedAt: "2026-03-01",
-        duration: "22:15", thumbnailUrl: "", tags: ["horoscope", "march", "zodiac"],
+        duration: "22:15", thumbnailUrl: "", tags: ["星座占い", "3月", "12星座"],
         engagementRate: 3.84,
       },
     ],
   },
   {
     id: "ch2",
-    name: "Spiritual Healing Room",
+    name: "スピリチュアルヒーリングルーム",
     subscribers: 189000,
     totalViews: 32100000,
     videoCount: 312,
     avgViews: 102900,
-    uploadFrequency: "3x/week",
-    category: "Spiritual Healing",
+    uploadFrequency: "週3回",
+    category: "スピリチュアルヒーリング",
     thumbnailUrl: "",
     recentGrowth: 18.3,
     topVideos: [
       {
-        id: "v3", title: "Cleansing Negative Energy - 10 Minute Guided Meditation",
+        id: "v3", title: "ネガティブエネルギー浄化 - 10分間の誘導瞑想",
         views: 520000, likes: 18200, comments: 3400, publishedAt: "2026-03-20",
-        duration: "12:45", thumbnailUrl: "", tags: ["meditation", "energy cleanse", "healing"],
+        duration: "12:45", thumbnailUrl: "", tags: ["瞑想", "エネルギー浄化", "ヒーリング"],
         engagementRate: 4.15,
       },
     ],
   },
   {
     id: "ch3",
-    name: "Destiny Oracle",
+    name: "運命のオラクル",
     subscribers: 156000,
     totalViews: 25800000,
     videoCount: 445,
     avgViews: 57978,
-    uploadFrequency: "5x/week",
-    category: "Numerology & Oracle",
+    uploadFrequency: "週5回",
+    category: "数秘術・オラクル",
     thumbnailUrl: "",
     recentGrowth: 8.7,
     topVideos: [
       {
-        id: "v4", title: "Your Birth Number Reveals Your 2026 - Detailed Analysis",
+        id: "v4", title: "あなたの誕生数が2026年を暴く - 徹底解説",
         views: 412000, likes: 15600, comments: 2800, publishedAt: "2026-01-05",
-        duration: "28:10", thumbnailUrl: "", tags: ["numerology", "2026", "birth number"],
+        duration: "28:10", thumbnailUrl: "", tags: ["数秘術", "2026年", "誕生数"],
         engagementRate: 4.47,
       },
     ],
   },
   {
     id: "ch4",
-    name: "Angel Message Daily",
+    name: "天使のメッセージ毎日配信",
     subscribers: 98000,
     totalViews: 15200000,
     videoCount: 678,
     avgViews: 22420,
-    uploadFrequency: "Daily",
-    category: "Angel Numbers",
+    uploadFrequency: "毎日",
+    category: "エンジェルナンバー",
     thumbnailUrl: "",
     recentGrowth: 22.1,
     topVideos: [
       {
-        id: "v5", title: "Seeing 1111? Here's the Powerful Message Angels Send You",
+        id: "v5", title: "1111を見た？天使が送る強力なメッセージとは",
         views: 289000, likes: 11200, comments: 1900, publishedAt: "2026-03-15",
-        duration: "11:20", thumbnailUrl: "", tags: ["angel numbers", "1111", "spiritual signs"],
+        duration: "11:20", thumbnailUrl: "", tags: ["エンジェルナンバー", "1111", "スピリチュアルサイン"],
         engagementRate: 4.53,
       },
     ],
   },
   {
     id: "ch5",
-    name: "Chakra Balance TV",
+    name: "チャクラバランスTV",
     subscribers: 134000,
     totalViews: 21300000,
     videoCount: 289,
     avgViews: 73700,
-    uploadFrequency: "2x/week",
-    category: "Chakra & Energy",
+    uploadFrequency: "週2回",
+    category: "チャクラ・エネルギー",
     thumbnailUrl: "",
     recentGrowth: 15.4,
     topVideos: [
       {
-        id: "v6", title: "Third Eye Opening Meditation - Unlock Your Intuition",
+        id: "v6", title: "第三の目を開く瞑想 - 直感力を解放する",
         views: 445000, likes: 16800, comments: 2600, publishedAt: "2026-02-28",
-        duration: "18:55", thumbnailUrl: "", tags: ["third eye", "chakra", "intuition"],
+        duration: "18:55", thumbnailUrl: "", tags: ["第三の目", "チャクラ", "直感"],
         engagementRate: 4.36,
       },
     ],
   },
 ];
 
-// --- Mock Trend Keywords ---
+// --- モックトレンドキーワード ---
 export const mockTrendKeywords: TrendKeyword[] = [
-  { keyword: "Twin Flame 2026", searchVolume: 48000, competition: "medium", trend: "rising", relatedTopics: ["Twin Soul", "Spiritual Connection", "Soulmate"], monthlyChange: 35 },
-  { keyword: "Tarot Daily Reading", searchVolume: 125000, competition: "high", trend: "stable", relatedTopics: ["Card Reading", "Daily Fortune", "Divination"], monthlyChange: 5 },
-  { keyword: "Angel Number 444", searchVolume: 89000, competition: "medium", trend: "rising", relatedTopics: ["Angel Message", "Number Signs", "Spiritual Awakening"], monthlyChange: 22 },
-  { keyword: "Mercury Retrograde March 2026", searchVolume: 67000, competition: "low", trend: "rising", relatedTopics: ["Astrology", "Planet Influence", "Retrograde Guide"], monthlyChange: 180 },
-  { keyword: "Energy Cleansing Method", searchVolume: 34000, competition: "low", trend: "rising", relatedTopics: ["Sage Burning", "Crystal Healing", "Negativity Removal"], monthlyChange: 28 },
-  { keyword: "Past Life Reading", searchVolume: 56000, competition: "medium", trend: "stable", relatedTopics: ["Reincarnation", "Akashic Records", "Soul Journey"], monthlyChange: 3 },
-  { keyword: "Full Moon Ritual", searchVolume: 41000, competition: "low", trend: "rising", relatedTopics: ["Moon Phase", "Manifestation", "Lunar Energy"], monthlyChange: 45 },
-  { keyword: "Chakra Healing Music", searchVolume: 93000, competition: "high", trend: "stable", relatedTopics: ["Meditation Music", "Frequency Healing", "528Hz"], monthlyChange: 2 },
-  { keyword: "Spiritual Awakening Signs", searchVolume: 78000, competition: "medium", trend: "rising", relatedTopics: ["Ascension", "Consciousness Shift", "Awakening Symptoms"], monthlyChange: 18 },
-  { keyword: "Manifestation Technique 2026", searchVolume: 52000, competition: "medium", trend: "rising", relatedTopics: ["Law of Attraction", "Scripting", "369 Method"], monthlyChange: 42 },
+  { keyword: "ツインレイ 2026", searchVolume: 48000, competition: "medium", trend: "rising", relatedTopics: ["ツインソウル", "魂の繋がり", "運命の相手"], monthlyChange: 35 },
+  { keyword: "タロット 今日の運勢", searchVolume: 125000, competition: "high", trend: "stable", relatedTopics: ["カードリーディング", "毎日占い", "占術"], monthlyChange: 5 },
+  { keyword: "エンジェルナンバー 444", searchVolume: 89000, competition: "medium", trend: "rising", relatedTopics: ["天使のメッセージ", "数字のサイン", "スピリチュアル覚醒"], monthlyChange: 22 },
+  { keyword: "水星逆行 2026年3月", searchVolume: 67000, competition: "low", trend: "rising", relatedTopics: ["占星術", "惑星の影響", "逆行の過ごし方"], monthlyChange: 180 },
+  { keyword: "エネルギー浄化 方法", searchVolume: 34000, competition: "low", trend: "rising", relatedTopics: ["セージ焚き", "クリスタルヒーリング", "邪気払い"], monthlyChange: 28 },
+  { keyword: "前世リーディング", searchVolume: 56000, competition: "medium", trend: "stable", relatedTopics: ["転生", "アカシックレコード", "魂の旅"], monthlyChange: 3 },
+  { keyword: "満月の儀式", searchVolume: 41000, competition: "low", trend: "rising", relatedTopics: ["月のフェーズ", "引き寄せ", "月のエネルギー"], monthlyChange: 45 },
+  { keyword: "チャクラヒーリング音楽", searchVolume: 93000, competition: "high", trend: "stable", relatedTopics: ["瞑想音楽", "周波数ヒーリング", "528Hz"], monthlyChange: 2 },
+  { keyword: "スピリチュアル覚醒 サイン", searchVolume: 78000, competition: "medium", trend: "rising", relatedTopics: ["アセンション", "意識の変容", "覚醒の兆候"], monthlyChange: 18 },
+  { keyword: "引き寄せの法則 2026", searchVolume: 52000, competition: "medium", trend: "rising", relatedTopics: ["引き寄せ", "スクリプティング", "369メソッド"], monthlyChange: 42 },
 ];
 
-// --- Mock Title Patterns ---
+// --- モックタイトルパターン ---
 export const mockTitlePatterns: TitlePattern[] = [
   {
-    pattern: "[Urgency] + [Zodiac/Topic] + [Time Period]",
-    examples: ["Must Watch! Aries - Major Life Shift in April", "Warning! Pisces Big Change Coming This Week"],
+    pattern: "【緊急性】+ 星座/テーマ + 時期",
+    examples: ["【必見】牡羊座 - 4月に人生が激変します", "【警告】魚座 今週大きな変化が来ます"],
     avgViews: 185000,
     frequency: 34,
   },
   {
-    pattern: "[Question] + [Emotional Hook]",
-    examples: ["Why Are You Feeling This Way? The Universe Has a Message", "Is Your Twin Flame Thinking of You Right Now?"],
+    pattern: "疑問文 + 感情フック",
+    examples: ["なぜ最近こう感じるの？宇宙からのメッセージです", "ツインレイは今あなたを想っている？"],
     avgViews: 142000,
     frequency: 28,
   },
   {
-    pattern: "[Number] + [Topic] + [Benefit]",
-    examples: ["5 Signs Your Third Eye Is Opening", "3 Angel Numbers That Mean Money Is Coming"],
+    pattern: "数字 + テーマ + メリット",
+    examples: ["第三の目が開いている5つのサイン", "お金が来るエンジェルナンバー3選"],
     avgViews: 167000,
     frequency: 22,
   },
   {
-    pattern: "[Pick a Card] + [Topic]",
-    examples: ["Pick a Card - What's Coming Next for Your Love Life", "Choose a Crystal - Your Message from Spirit Guides"],
+    pattern: "カードを選んで + テーマ",
+    examples: ["カードを選んで - 恋愛の未来は？", "クリスタルを選んで - スピリットガイドからのメッセージ"],
     avgViews: 210000,
     frequency: 18,
   },
   {
-    pattern: "[Timeframe] + [Reading Type]",
-    examples: ["March 2026 - Full Month Tarot Reading", "This Week's Energy - All Signs"],
+    pattern: "時期 + 占いの種類",
+    examples: ["2026年3月 - 月間タロットリーディング", "今週のエネルギー - 全星座"],
     avgViews: 128000,
     frequency: 25,
   },
 ];
 
-// --- Script Templates ---
+// --- 台本テンプレート ---
 export const mockScriptTemplates: ScriptTemplate[] = [
   {
     id: "t1",
-    name: "Daily Tarot Reading",
-    description: "Short daily reading for all viewers",
-    category: "Tarot",
+    name: "デイリータロットリーディング",
+    description: "視聴者全員向けの毎日の短いリーディング",
+    category: "タロット",
     structure: [
-      { name: "Hook / Opening", duration: "0:00-0:30", description: "Grab attention with today's energy theme", placeholder: "Hello everyone! Today's energy is really special. The cards have an important message for you..." },
-      { name: "Card Reveal", duration: "0:30-3:00", description: "Reveal and interpret the cards", placeholder: "The first card I drew is [Card Name]. This card tells us that..." },
-      { name: "Detailed Interpretation", duration: "3:00-8:00", description: "Deep dive into the meaning and how it applies", placeholder: "What this means for your life right now is..." },
-      { name: "Actionable Advice", duration: "8:00-10:00", description: "Practical advice viewers can apply", placeholder: "Here's what I recommend you do today..." },
-      { name: "Closing & CTA", duration: "10:00-11:00", description: "Wrap up and encourage engagement", placeholder: "If this message resonated with you, please leave a comment. Subscribe and hit the bell..." },
+      { name: "フック・オープニング", duration: "0:00-0:30", description: "今日のエネルギーテーマで注目を集める", placeholder: "皆さんこんにちは！今日のエネルギーはとても特別です。カードがあなたに大切なメッセージを届けています..." },
+      { name: "カード公開", duration: "0:30-3:00", description: "カードを公開し、解釈する", placeholder: "最初に引いたカードは【カード名】です。このカードが伝えているのは..." },
+      { name: "詳細な解釈", duration: "3:00-8:00", description: "意味を深掘りし、生活への適用方法を説明", placeholder: "今のあなたの人生にとって、これが意味することは..." },
+      { name: "具体的なアドバイス", duration: "8:00-10:00", description: "視聴者が実践できるアドバイス", placeholder: "今日おすすめしたいのは..." },
+      { name: "クロージング・CTA", duration: "10:00-11:00", description: "まとめとエンゲージメント促進", placeholder: "このメッセージが響いた方は、ぜひコメントで教えてください。チャンネル登録とベルマークもお願いします..." },
     ],
   },
   {
     id: "t2",
-    name: "Pick a Card Reading",
-    description: "Interactive pick-a-card style video",
-    category: "Interactive",
+    name: "カードを選んでリーディング",
+    description: "視聴者参加型のピックアカード動画",
+    category: "参加型",
     structure: [
-      { name: "Introduction", duration: "0:00-1:00", description: "Explain the pick-a-card concept and choices", placeholder: "Welcome! Today we have 3 piles for you to choose from. Take a moment, close your eyes, and pick the pile that calls to you..." },
-      { name: "Pile 1 Reading", duration: "1:00-5:00", description: "Reading for the first pile", placeholder: "If you chose Pile 1, your cards are... The message here is about..." },
-      { name: "Pile 2 Reading", duration: "5:00-9:00", description: "Reading for the second pile", placeholder: "Pile 2 energy is very different. Your cards show..." },
-      { name: "Pile 3 Reading", duration: "9:00-13:00", description: "Reading for the third pile", placeholder: "For Pile 3, we have a powerful message..." },
-      { name: "Closing", duration: "13:00-14:00", description: "Summary and engagement prompt", placeholder: "Let me know in the comments which pile you chose and if it resonated..." },
+      { name: "イントロダクション", duration: "0:00-1:00", description: "ピックアカードの説明と選択肢の紹介", placeholder: "こんにちは！今日は3つの山を用意しました。一瞬目を閉じて、直感で呼ばれる山を選んでください..." },
+      { name: "山1のリーディング", duration: "1:00-5:00", description: "1つ目の山のリーディング", placeholder: "山1を選んだ方、あなたのカードは...ここでのメッセージは..." },
+      { name: "山2のリーディング", duration: "5:00-9:00", description: "2つ目の山のリーディング", placeholder: "山2のエネルギーはまったく違います。カードが示すのは..." },
+      { name: "山3のリーディング", duration: "9:00-13:00", description: "3つ目の山のリーディング", placeholder: "山3の方、パワフルなメッセージが来ています..." },
+      { name: "クロージング", duration: "13:00-14:00", description: "まとめとエンゲージメント促進", placeholder: "どの山を選びましたか？コメントで教えてください。響いたかどうかもぜひ..." },
     ],
   },
   {
     id: "t3",
-    name: "Zodiac Monthly Forecast",
-    description: "Monthly horoscope for specific zodiac signs",
-    category: "Astrology",
+    name: "星座別マンスリー予報",
+    description: "特定の星座の月間ホロスコープ",
+    category: "占星術",
     structure: [
-      { name: "Monthly Overview", duration: "0:00-2:00", description: "General energy for the month and key planetary transits", placeholder: "Welcome to your [Month] forecast! This month we have [Planet] moving into [Sign], which means..." },
-      { name: "Love & Relationships", duration: "2:00-5:00", description: "Love life predictions", placeholder: "In love, [Sign] can expect..." },
-      { name: "Career & Finance", duration: "5:00-8:00", description: "Work and money predictions", placeholder: "Career-wise, the stars are aligning for..." },
-      { name: "Health & Wellness", duration: "8:00-10:00", description: "Health and self-care guidance", placeholder: "For your wellbeing this month, focus on..." },
-      { name: "Key Dates & Summary", duration: "10:00-12:00", description: "Important dates and final advice", placeholder: "Mark these dates on your calendar: [Date] for... The overall theme this month is..." },
+      { name: "月のオーバービュー", duration: "0:00-2:00", description: "月全体のエネルギーと主要な惑星の動き", placeholder: "【月】の予報へようこそ！今月は【惑星】が【星座】に移動するため..." },
+      { name: "恋愛・人間関係", duration: "2:00-5:00", description: "恋愛運の予測", placeholder: "恋愛面では、【星座】の方は..." },
+      { name: "仕事・お金", duration: "5:00-8:00", description: "仕事運・金運の予測", placeholder: "仕事面では、星の配置が..." },
+      { name: "健康・セルフケア", duration: "8:00-10:00", description: "健康運とセルフケアのガイダンス", placeholder: "今月の健康面では、特に..." },
+      { name: "重要な日付・まとめ", duration: "10:00-12:00", description: "重要な日付と最終アドバイス", placeholder: "カレンダーに入れてほしい日：【日付】は...今月の全体的なテーマは..." },
     ],
   },
   {
     id: "t4",
-    name: "Spiritual Topic Deep Dive",
-    description: "Educational content about spiritual topics",
-    category: "Education",
+    name: "スピリチュアルトピック解説",
+    description: "スピリチュアルテーマの教育コンテンツ",
+    category: "教育系",
     structure: [
-      { name: "Hook", duration: "0:00-0:45", description: "Provocative question or statement to grab attention", placeholder: "Have you ever experienced [phenomenon]? What if I told you it means something incredibly powerful..." },
-      { name: "What It Is", duration: "0:45-3:00", description: "Define and explain the topic", placeholder: "[Topic] is a spiritual concept that..." },
-      { name: "Signs & Symptoms", duration: "3:00-7:00", description: "How to recognize it in your life", placeholder: "Here are the key signs that [topic] is happening to you: First..." },
-      { name: "How to Work With It", duration: "7:00-11:00", description: "Practical guidance and exercises", placeholder: "Here's how you can harness this energy: Step 1..." },
-      { name: "Personal Story & Closing", duration: "11:00-13:00", description: "Share experience and call to action", placeholder: "I personally experienced this when... If you want to learn more, check out..." },
+      { name: "フック", duration: "0:00-0:45", description: "注目を集める問いかけや発言", placeholder: "【現象】を経験したことはありますか？もしそうなら、それは驚くほどパワフルな意味があるんです..." },
+      { name: "テーマの説明", duration: "0:45-3:00", description: "テーマの定義と解説", placeholder: "【テーマ】とは、スピリチュアルな概念で..." },
+      { name: "サイン・兆候", duration: "3:00-7:00", description: "自分の人生でどう認識するか", placeholder: "【テーマ】があなたに起きているサインはこちら：まず..." },
+      { name: "実践方法", duration: "7:00-11:00", description: "具体的なガイダンスとエクササイズ", placeholder: "このエネルギーを活用する方法：ステップ1..." },
+      { name: "体験談・クロージング", duration: "11:00-13:00", description: "体験をシェアしCTAへ", placeholder: "私自身もこれを経験したのは...もっと知りたい方は..." },
     ],
   },
 ];
 
-// --- Utility functions ---
+// --- ユーティリティ関数 ---
 export function formatNumber(num: number): string {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
+  if (num >= 10000) return (num / 10000).toFixed(1) + "万";
   if (num >= 1000) return (num / 1000).toFixed(1) + "K";
   return num.toString();
 }
@@ -294,5 +294,23 @@ export function getCompetitionColor(comp: string): string {
     case "medium": return "bg-yellow-100 text-yellow-800";
     case "high": return "bg-red-100 text-red-800";
     default: return "bg-gray-100 text-gray-800";
+  }
+}
+
+export function getTrendLabel(trend: string): string {
+  switch (trend) {
+    case "rising": return "上昇中";
+    case "stable": return "安定";
+    case "declining": return "下降中";
+    default: return trend;
+  }
+}
+
+export function getCompetitionLabel(comp: string): string {
+  switch (comp) {
+    case "low": return "低";
+    case "medium": return "中";
+    case "high": return "高";
+    default: return comp;
   }
 }

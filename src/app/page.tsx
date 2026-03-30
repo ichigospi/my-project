@@ -18,24 +18,24 @@ export default function Dashboard() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-gray-500 mt-1">Competitive overview of the fortune-telling/spiritual YouTube space</p>
+        <h1 className="text-2xl font-bold text-foreground">ダッシュボード</h1>
+        <p className="text-gray-500 mt-1">占い・スピリチュアル系YouTubeの競合概況</p>
       </div>
 
-      {/* Stats Grid */}
+      {/* 統計カード */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard label="Tracked Channels" value={mockChannels.length.toString()} />
-        <StatCard label="Total Subscribers (Tracked)" value={formatNumber(totalSubscribers)} change="+15.2% avg growth" />
-        <StatCard label="Avg Engagement Rate" value={`${avgEngagement}%`} />
-        <StatCard label="Rising Keywords" value={risingKeywords.toString()} change={`${risingKeywords} trending up`} />
+        <StatCard label="追跡チャンネル数" value={mockChannels.length.toString()} />
+        <StatCard label="合計登録者数" value={formatNumber(totalSubscribers)} change="平均成長率 +15.2%" />
+        <StatCard label="平均エンゲージメント率" value={`${avgEngagement}%`} />
+        <StatCard label="上昇キーワード" value={risingKeywords.toString()} change={`${risingKeywords}件が上昇中`} />
       </div>
 
-      {/* Two Column Layout */}
+      {/* 2カラムレイアウト */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Top Channels */}
+        {/* トップチャンネル */}
         <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
           <div className="p-6 border-b border-gray-100">
-            <h2 className="text-lg font-semibold">Top Channels by Growth</h2>
+            <h2 className="text-lg font-semibold">成長率トップチャンネル</h2>
           </div>
           <div className="divide-y divide-gray-50">
             {[...mockChannels]
@@ -49,7 +49,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{ch.name}</p>
-                    <p className="text-xs text-gray-500">{formatNumber(ch.subscribers)} subscribers</p>
+                    <p className="text-xs text-gray-500">{formatNumber(ch.subscribers)}人</p>
                   </div>
                   <span className="text-sm font-semibold text-success">+{ch.recentGrowth}%</span>
                 </div>
@@ -57,10 +57,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Trending Keywords */}
+        {/* トレンドキーワード */}
         <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
           <div className="p-6 border-b border-gray-100">
-            <h2 className="text-lg font-semibold">Trending Keywords</h2>
+            <h2 className="text-lg font-semibold">急上昇キーワード</h2>
           </div>
           <div className="divide-y divide-gray-50">
             {mockTrendKeywords
@@ -71,7 +71,7 @@ export default function Dashboard() {
                 <div key={kw.keyword} className="px-6 py-4 flex items-center justify-between">
                   <div>
                     <p className="font-medium text-sm">{kw.keyword}</p>
-                    <p className="text-xs text-gray-500">{formatNumber(kw.searchVolume)} searches/month</p>
+                    <p className="text-xs text-gray-500">月間 {formatNumber(kw.searchVolume)}回検索</p>
                   </div>
                   <span className="text-sm font-semibold text-success">+{kw.monthlyChange}%</span>
                 </div>
@@ -80,20 +80,20 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Top Videos */}
+      {/* 最近の人気動画 */}
       <div className="mt-8 bg-card-bg rounded-xl shadow-sm border border-gray-100">
         <div className="p-6 border-b border-gray-100">
-          <h2 className="text-lg font-semibold">Top Performing Videos (Recent)</h2>
+          <h2 className="text-lg font-semibold">最近の人気動画</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-100">
-                <th className="px-6 py-3 font-medium">Title</th>
-                <th className="px-6 py-3 font-medium">Channel</th>
-                <th className="px-6 py-3 font-medium text-right">Views</th>
-                <th className="px-6 py-3 font-medium text-right">Engagement</th>
-                <th className="px-6 py-3 font-medium text-right">Date</th>
+                <th className="px-6 py-3 font-medium">タイトル</th>
+                <th className="px-6 py-3 font-medium">チャンネル</th>
+                <th className="px-6 py-3 font-medium text-right">再生数</th>
+                <th className="px-6 py-3 font-medium text-right">エンゲージメント</th>
+                <th className="px-6 py-3 font-medium text-right">公開日</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -105,7 +105,7 @@ export default function Dashboard() {
                   <tr key={video.id} className="hover:bg-gray-50/50">
                     <td className="px-6 py-4 font-medium max-w-xs truncate">{video.title}</td>
                     <td className="px-6 py-4 text-gray-500">{video.channelName}</td>
-                    <td className="px-6 py-4 text-right">{formatNumber(video.views)}</td>
+                    <td className="px-6 py-4 text-right">{formatNumber(video.views)}回</td>
                     <td className="px-6 py-4 text-right">{video.engagementRate}%</td>
                     <td className="px-6 py-4 text-right text-gray-500">{video.publishedAt}</td>
                   </tr>

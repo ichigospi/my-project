@@ -23,15 +23,15 @@ function ChannelCard({ channel, onSelect }: { channel: ChannelData; onSelect: (c
       <div className="grid grid-cols-3 gap-4 mt-5 text-center">
         <div>
           <p className="text-lg font-bold">{formatNumber(channel.subscribers)}</p>
-          <p className="text-xs text-gray-500">Subscribers</p>
+          <p className="text-xs text-gray-500">登録者</p>
         </div>
         <div>
           <p className="text-lg font-bold">{formatNumber(channel.avgViews)}</p>
-          <p className="text-xs text-gray-500">Avg Views</p>
+          <p className="text-xs text-gray-500">平均再生数</p>
         </div>
         <div>
           <p className="text-lg font-bold">{channel.uploadFrequency}</p>
-          <p className="text-xs text-gray-500">Uploads</p>
+          <p className="text-xs text-gray-500">投稿頻度</p>
         </div>
       </div>
     </div>
@@ -43,7 +43,7 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelData; onBack: () =
     <div>
       <button onClick={onBack} className="text-accent text-sm font-medium mb-6 flex items-center gap-1 hover:underline">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-        Back to Channel List
+        チャンネル一覧に戻る
       </button>
 
       <div className="bg-card-bg rounded-xl p-8 shadow-sm border border-gray-100 mb-6">
@@ -58,11 +58,11 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelData; onBack: () =
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
           {[
-            { label: "Subscribers", value: formatNumber(channel.subscribers) },
-            { label: "Total Views", value: formatNumber(channel.totalViews) },
-            { label: "Videos", value: channel.videoCount.toString() },
-            { label: "Avg Views", value: formatNumber(channel.avgViews) },
-            { label: "Growth", value: `+${channel.recentGrowth}%` },
+            { label: "登録者数", value: formatNumber(channel.subscribers) + "人" },
+            { label: "総再生回数", value: formatNumber(channel.totalViews) + "回" },
+            { label: "動画数", value: channel.videoCount.toString() + "本" },
+            { label: "平均再生数", value: formatNumber(channel.avgViews) + "回" },
+            { label: "成長率", value: `+${channel.recentGrowth}%` },
           ].map((stat) => (
             <div key={stat.label}>
               <p className="text-sm text-gray-500">{stat.label}</p>
@@ -72,10 +72,10 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelData; onBack: () =
         </div>
       </div>
 
-      {/* Top Videos */}
+      {/* 人気動画 */}
       <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
         <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold">Top Videos</h3>
+          <h3 className="text-lg font-semibold">人気動画</h3>
         </div>
         <div className="divide-y divide-gray-50">
           {channel.topVideos.map((video) => (
@@ -89,15 +89,15 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelData; onBack: () =
                     ))}
                   </div>
                   <div className="flex gap-6 text-sm text-gray-500">
-                    <span>{formatNumber(video.views)} views</span>
-                    <span>{formatNumber(video.likes)} likes</span>
-                    <span>{formatNumber(video.comments)} comments</span>
+                    <span>{formatNumber(video.views)}回再生</span>
+                    <span>{formatNumber(video.likes)}いいね</span>
+                    <span>{formatNumber(video.comments)}コメント</span>
                     <span>{video.duration}</span>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-lg font-bold text-accent">{video.engagementRate}%</p>
-                  <p className="text-xs text-gray-500">Engagement</p>
+                  <p className="text-xs text-gray-500">エンゲージメント</p>
                 </div>
               </div>
             </div>
@@ -128,15 +128,15 @@ export default function ChannelAnalysisPage() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Channel Analysis</h1>
-          <p className="text-gray-500 mt-1">Analyze competitor channels in the fortune/spiritual niche</p>
+          <h1 className="text-2xl font-bold text-foreground">チャンネル分析</h1>
+          <p className="text-gray-500 mt-1">占い・スピ系の競合チャンネルを分析</p>
         </div>
       </div>
 
       <div className="mb-6">
         <input
           type="text"
-          placeholder="Search channels by name or category..."
+          placeholder="チャンネル名やカテゴリで検索..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full max-w-md px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm"
@@ -151,8 +151,8 @@ export default function ChannelAnalysisPage() {
 
       {filteredChannels.length === 0 && (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg">No channels found</p>
-          <p className="text-sm mt-1">Try a different search term</p>
+          <p className="text-lg">チャンネルが見つかりません</p>
+          <p className="text-sm mt-1">別のキーワードで検索してみてください</p>
         </div>
       )}
     </div>
