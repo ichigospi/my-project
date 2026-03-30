@@ -401,33 +401,56 @@ function AnalyzeTab() {
     setScreenshots((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // OCR実行（Claude Vision）
+  // OCR実行（クライアント側で1バッチずつ順番に送る）
   const runOCR = async (images?: string[]) => {
     const imagesToProcess = images || screenshots;
     if (imagesToProcess.length === 0) { setError("画像がありません"); return; }
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
-    setExtracting(true);
-    setOcrProgress(`${imagesToProcess.length}枚の画像からテキストを読み取り中...`);
-    setError("");
+    // サンプリング（100枚上限）
+    let sampled = imagesToProcess;
+    if (sampled.length > 100) {
+      const step = Math.ceil(sampled.length / 100);
+      sampled = sampled.filter((_, i) => i % step === 0);
+    }
 
-    try {
-      const res = await fetch("/api/script/ocr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images: imagesToProcess, aiApiKey }),
-      });
-      const data = await res.json();
-      if (data.error && !data.transcript) { setError(data.error); }
-      else {
-        setTranscript((prev) => prev ? prev + "\n\n" + data.transcript : data.transcript);
-        setOcrProgress(`完了！${data.imageCount}枚から文字起こし${data.partial ? "（一部取得）" : ""}`);
-        if (data.partial) setError("一部のバッチが失敗しました。「テキストを読み取る」で残りを再取得できます。");
-        setTimeout(() => setOcrProgress(""), 5000);
+    setExtracting(true);
+    setError("");
+    const batchSize = 3;
+    const totalBatches = Math.ceil(sampled.length / batchSize);
+    const allTexts: string[] = [];
+
+    for (let i = 0; i < sampled.length; i += batchSize) {
+      const batch = sampled.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}バッチ（${allTexts.length > 0 ? allTexts.join("").length + "文字取得済" : ""}）`);
+
+      // 2バッチ目以降は10秒待機
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10000));
       }
-    } catch { setError("テキスト読み取りに失敗"); }
-    finally { setExtracting(false); }
+
+      try {
+        const res = await fetch("/api/script/ocr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ images: batch, aiApiKey }),
+        });
+        const data = await res.json();
+        if (data.text) {
+          allTexts.push(data.text);
+          // 途中結果をリアルタイム反映
+          setTranscript(allTexts.join("\n\n"));
+        }
+      } catch {
+        // 1バッチ失敗しても続行
+      }
+    }
+
+    setOcrProgress(`完了！${sampled.length}枚から${allTexts.join("").length}文字を取得`);
+    setExtracting(false);
+    setTimeout(() => setOcrProgress(""), 5000);
   };
 
   const runAnalysis = async () => {
