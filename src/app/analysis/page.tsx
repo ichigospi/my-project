@@ -290,27 +290,88 @@ function AnalyzeTab() {
     setScreenshots([]); setError(""); setOcrProgress("");
   };
 
-  // テキスト整理（重複除去・誤読修正）
+  // テキスト整理（画像と照合して抜け補完・誤読修正）
   const [cleaning, setCleaning] = useState(false);
+  const [cleanProgress, setCleanProgress] = useState("");
 
   const cleanupText = async () => {
     if (!transcript.trim()) return;
+    if (screenshots.length === 0) { setError("画像がありません。先に「自動で画面読み取り」を実行してください"); return; }
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
     setCleaning(true);
     setError("");
-    try {
-      const res = await fetch("/api/script/cleanup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawText: transcript, aiApiKey }),
-      });
-      const data = await res.json();
-      if (data.error) { setError(data.error); }
-      else if (data.text) { setTranscript(data.text); }
-    } catch { setError("テキスト整理に失敗"); }
-    finally { setCleaning(false); }
+
+    const batchSize = 5;
+    const allTexts: string[] = [];
+    const totalBatches = Math.ceil(screenshots.length / batchSize);
+
+    for (let i = 0; i < screenshots.length; i += batchSize) {
+      const batch = screenshots.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      setCleanProgress(`画像照合中... ${batchNum}/${totalBatches}`);
+
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+      }
+
+      try {
+        const res = await fetch("/api/script/cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ images: batch, currentText: transcript, aiApiKey }),
+        });
+        const data = await res.json();
+        if (data.text && data.text.trim()) {
+          allTexts.push(data.text);
+        }
+        if (data.error?.includes("rate") || data.error?.includes("429")) {
+          await new Promise((resolve) => setTimeout(resolve, 20000));
+        }
+      } catch {
+        // 失敗しても続行
+      }
+    }
+
+    if (allTexts.length > 0) {
+      // 最終整理: 全バッチの結果を結合して重複除去をClaudeに依頼
+      setCleanProgress("最終整理中...");
+      try {
+        const mergeRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": aiApiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 8192,
+            messages: [{
+              role: "user",
+              content: `以下はYouTube動画のテロップを画像から読み取った結果です。
+バッチごとに処理したため重複があります。
+
+重複を除去し、動画の流れ順に整理して、完成版のテロップテキストを出力してください。
+テロップテキストのみ出力し、説明は不要です。各テロップは改行で区切り、場面の切り替わりは空行で区切ってください。
+
+${allTexts.join("\n\n---\n\n")}`,
+            }],
+          }),
+        });
+        if (mergeRes.ok) {
+          const mergeData = await mergeRes.json();
+          const finalText = mergeData.content?.[0]?.text || allTexts.join("\n\n");
+          setTranscript(finalText);
+        }
+      } catch {
+        setTranscript(allTexts.join("\n\n"));
+      }
+    }
+
+    setCleanProgress("");
+    setCleaning(false);
   };
 
   const extractVideoId = (url: string): string | null => {
@@ -633,7 +694,7 @@ function AnalyzeTab() {
               <>
                 <button onClick={cleanupText} disabled={cleaning}
                   className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
-                  {cleaning ? "整理中..." : "AIでテキスト整理（重複除去・誤読修正）"}
+                  {cleaning ? cleanProgress || "処理中..." : "画像と照合して自動修正"}
                 </button>
                 <button onClick={() => navigator.clipboard.writeText(transcript)} className="text-xs text-accent hover:underline">
                   コピー

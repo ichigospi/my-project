@@ -1,35 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// OCR結果の重複除去・誤読修正・テキスト整理
+// 画像バッチとOCRテキストを照合して、抜けを補完・誤読を修正
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { rawText, aiApiKey } = body;
+  const { images, currentText, aiApiKey } = body;
 
-  if (!aiApiKey) {
-    return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
+  if (!aiApiKey || !aiApiKey.startsWith("sk-ant-")) {
+    return NextResponse.json({ error: "Claude APIキーが必要です" }, { status: 400 });
   }
 
-  const isAnthropic = aiApiKey.startsWith("sk-ant-");
+  if (!images || images.length === 0) {
+    return NextResponse.json({ error: "画像がありません" }, { status: 400 });
+  }
 
-  const prompt = `以下はYouTube動画のテロップをOCRで読み取った生テキストです。
-重複や誤読が含まれています。以下のルールに従って整理してください。
+  const content: { type: string; source?: { type: string; media_type: string; data: string }; text?: string }[] = [];
 
-ルール:
-1. 重複するテロップを1回だけにまとめる（同じ内容が連続するのはフレーム重複）
-2. OCRの誤読を文脈から修正する（例:「暮らと」→「愛と」、「会い魂」→「魂」）
-3. 「画像1:」「1枚目:」「---」などのOCRアーティファクトを除去
-4. テロップの表示順序は維持する
-5. 各テロップを改行で区切り、場面の切り替わりは空行で区切る
-6. 整理後のテキストのみを出力（説明や注釈は不要）
+  for (const img of images) {
+    const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
+    const mediaType = img.match(/^data:(image\/\w+);/)?.[1] || "image/png";
+    content.push({
+      type: "image",
+      source: { type: "base64", media_type: mediaType, data: base64Data },
+    });
+  }
 
---- OCR生テキスト ---
-${rawText}
---- ここまで ---`;
+  content.push({
+    type: "text",
+    text: `上の${images.length}枚の画像はYouTube動画の連続するスクリーンショットです。
 
-  try {
-    let text = "";
+【現在のOCRテキスト（一部抜けや誤読あり）】
+${currentText.substring(0, 6000)}
 
-    if (isAnthropic) {
+【あなたのタスク】
+1. 各画像のテロップ（字幕テキスト）を1枚ずつ正確に読み取る
+2. 現在のOCRテキストと照合して、抜けているテロップがあれば追加する
+3. 誤読があれば画像を見て正しいテキストに修正する
+
+出力ルール:
+- この画像バッチに対応するテロップのみ出力
+- 画像の順番通りに出力
+- 重複は1回だけ
+- テロップのテキストのみ出力（説明やラベルは不要）
+- 段落は空行で区切る
+- YouTubeのUI要素は無視`,
+  });
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -39,10 +56,15 @@ ${rawText}
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 8192,
-          messages: [{ role: "user", content: prompt }],
+          max_tokens: 2048,
+          messages: [{ role: "user", content }],
         }),
       });
+
+      if (res.status === 429) {
+        await new Promise((resolve) => setTimeout(resolve, 20000));
+        continue;
+      }
 
       if (!res.ok) {
         const error = await res.json();
@@ -50,29 +72,12 @@ ${rawText}
       }
 
       const data = await res.json();
-      text = data.content?.[0]?.text || "";
-    } else {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 8192,
-        }),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        return NextResponse.json({ error: error.error?.message || "API error" }, { status: res.status });
-      }
-
-      const data = await res.json();
-      text = data.choices?.[0]?.message?.content || "";
+      return NextResponse.json({ text: data.content?.[0]?.text || "" });
+    } catch {
+      if (attempt === 2) return NextResponse.json({ error: "API呼び出しに失敗" }, { status: 500 });
+      await new Promise((resolve) => setTimeout(resolve, 10000));
     }
-
-    return NextResponse.json({ text });
-  } catch {
-    return NextResponse.json({ error: "テキスト整理に失敗しました" }, { status: 500 });
   }
+
+  return NextResponse.json({ error: "リトライ上限" }, { status: 500 });
 }
