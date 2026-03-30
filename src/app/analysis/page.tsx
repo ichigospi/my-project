@@ -470,7 +470,7 @@ function AnalyzeTab() {
         </p>
 
         <div className="flex flex-wrap gap-3 mb-4">
-          <button onClick={autoExtractFrames} disabled={extracting || !videoUrl}
+          <button onClick={autoExtractFrames} disabled={extracting}
             className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
             {extracting ? ocrProgress || "処理中..." : "自動で画面読み取り"}
           </button>

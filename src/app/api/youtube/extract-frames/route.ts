@@ -14,24 +14,31 @@ export async function POST(request: NextRequest) {
   }
 
   // yt-dlp と ffmpeg の存在確認
+  // Macのbrewインストール先を含むPATH
+  const extendedPath = [
+    process.env.PATH || "",
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ].join(":");
+
   let ytdlpPath = "";
   let ffmpegPath = "";
 
   try {
-    ytdlpPath = execSync("which yt-dlp 2>/dev/null || where yt-dlp 2>NUL").toString().trim().split("\n")[0];
+    ytdlpPath = execSync("which yt-dlp", { env: { ...process.env, PATH: extendedPath } }).toString().trim().split("\n")[0];
   } catch {
     return NextResponse.json({
-      error: "yt-dlp がインストールされていません",
-      installGuide: "ターミナルで以下を実行してください:\nbrew install yt-dlp\n\nまたは: pip install yt-dlp",
+      error: "yt-dlp がインストールされていません。\nターミナルで以下を実行後、npm run dev を再起動してください:\n\nbrew install yt-dlp",
     }, { status: 400 });
   }
 
   try {
-    ffmpegPath = execSync("which ffmpeg 2>/dev/null || where ffmpeg 2>NUL").toString().trim().split("\n")[0];
+    ffmpegPath = execSync("which ffmpeg", { env: { ...process.env, PATH: extendedPath } }).toString().trim().split("\n")[0];
   } catch {
     return NextResponse.json({
-      error: "ffmpeg がインストールされていません",
-      installGuide: "ターミナルで以下を実行してください:\nbrew install ffmpeg",
+      error: "ffmpeg がインストールされていません。\nターミナルで以下を実行後、npm run dev を再起動してください:\n\nbrew install ffmpeg",
     }, { status: 400 });
   }
 
@@ -43,6 +50,8 @@ export async function POST(request: NextRequest) {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const videoPath = join(tempDir, "video.mp4");
 
+    const execEnv = { ...process.env, PATH: extendedPath };
+
     // yt-dlp で動画ダウンロード（720p以下、最短の形式）
     execFileSync(ytdlpPath, [
       "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best",
@@ -50,7 +59,7 @@ export async function POST(request: NextRequest) {
       "--no-playlist",
       "--socket-timeout", "30",
       videoUrl,
-    ], { timeout: 120000 });
+    ], { timeout: 180000, env: execEnv });
 
     if (!existsSync(videoPath)) {
       return NextResponse.json({ error: "動画のダウンロードに失敗しました" }, { status: 500 });
@@ -65,7 +74,7 @@ export async function POST(request: NextRequest) {
       "-vf", `fps=1/${intervalSeconds},scale=1280:-1`,
       "-q:v", "3",
       join(framesDir, "frame_%04d.jpg"),
-    ], { timeout: 120000 });
+    ], { timeout: 180000, env: execEnv });
 
     // フレームをbase64で読み込み
     const frameFiles = readdirSync(framesDir)
