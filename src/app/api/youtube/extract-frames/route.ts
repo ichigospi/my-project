@@ -7,7 +7,7 @@ import { tmpdir } from "os";
 // yt-dlp + ffmpeg でYouTube動画からフレームを抽出
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { videoId, intervalSeconds = 3 } = body;
+  const { videoId, intervalSeconds = 5 } = body;
 
   if (!videoId) {
     return NextResponse.json({ error: "videoId が必要です" }, { status: 400 });

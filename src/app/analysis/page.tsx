@@ -313,7 +313,7 @@ function AnalyzeTab() {
       setCleanProgress(`画像照合中... ${batchNum}/${totalBatches}`);
 
       if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 10000));
+        await new Promise((resolve) => setTimeout(resolve, 15000));
       }
 
       try {
@@ -511,7 +511,7 @@ ${allTexts.join("\n\n---\n\n")}`,
 
       // 2バッチ目以降は待機（レート制限回避）
       if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 8000));
+        await new Promise((resolve) => setTimeout(resolve, 15000));
       }
 
       try {
