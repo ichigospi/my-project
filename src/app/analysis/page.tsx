@@ -290,6 +290,29 @@ function AnalyzeTab() {
     setScreenshots([]); setError(""); setOcrProgress("");
   };
 
+  // テキスト整理（重複除去・誤読修正）
+  const [cleaning, setCleaning] = useState(false);
+
+  const cleanupText = async () => {
+    if (!transcript.trim()) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+
+    setCleaning(true);
+    setError("");
+    try {
+      const res = await fetch("/api/script/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawText: transcript, aiApiKey }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); }
+      else if (data.text) { setTranscript(data.text); }
+    } catch { setError("テキスト整理に失敗"); }
+    finally { setCleaning(false); }
+  };
+
   const extractVideoId = (url: string): string | null => {
     const match = url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     return match ? match[1] : null;
@@ -594,11 +617,19 @@ function AnalyzeTab() {
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold">③ 台本テキスト</h2>
-          {transcript && (
-            <button onClick={() => navigator.clipboard.writeText(transcript)} className="text-xs text-accent hover:underline">
-              クリップボードにコピー
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {transcript && (
+              <>
+                <button onClick={cleanupText} disabled={cleaning}
+                  className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
+                  {cleaning ? "整理中..." : "AIでテキスト整理（重複除去・誤読修正）"}
+                </button>
+                <button onClick={() => navigator.clipboard.writeText(transcript)} className="text-xs text-accent hover:underline">
+                  コピー
+                </button>
+              </>
+            )}
+          </div>
         </div>
         <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)}
           placeholder="上のステップで自動入力されます。手動で編集・追記もできます。"
