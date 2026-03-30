@@ -60,6 +60,9 @@ function ProfileTab() {
   const [profile, setProfile] = useState<ChannelProfile>(getProfile());
   const [saved, setSaved] = useState(false);
   const [genreInput, setGenreInput] = useState("");
+  const [channelUrl, setChannelUrl] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState("");
 
   useEffect(() => { setProfile(getProfile()); }, []);
 
@@ -80,11 +83,90 @@ function ProfileTab() {
     setProfile({ ...profile, genres: profile.genres.filter((x) => x !== g) });
   };
 
+  const handleSuggest = async () => {
+    const ytApiKey = getApiKey("yt_api_key");
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!ytApiKey) { setSuggestError("YouTube APIキーを設定してください"); return; }
+    if (!aiApiKey) { setSuggestError("AI APIキーを設定してください"); return; }
+
+    // URLからhandle or channelIdを抽出
+    const handleMatch = channelUrl.match(/@([\w.-]+)/);
+    const channelIdMatch = channelUrl.match(/\/channel\/(UC[\w-]+)/);
+    const handle = handleMatch?.[1];
+    const channelId = channelIdMatch?.[1];
+    if (!handle && !channelId) { setSuggestError("正しいYouTubeチャンネルURLを入力してください"); return; }
+
+    setSuggesting(true);
+    setSuggestError("");
+
+    try {
+      // 1. チャンネル情報取得
+      const params = new URLSearchParams({ apiKey: ytApiKey });
+      if (handle) params.set("handle", handle);
+      else if (channelId) params.set("channelId", channelId);
+
+      const chRes = await fetch(`/api/youtube/channel-info?${params}`);
+      const chData = await chRes.json();
+      if (chData.error) { setSuggestError(chData.error); setSuggesting(false); return; }
+
+      // 2. 最近の動画タイトル取得
+      let recentTitles: string[] = [];
+      if (chData.channelId) {
+        const vidRes = await fetch(`/api/youtube/videos?channelId=${chData.channelId}&apiKey=${encodeURIComponent(ytApiKey)}&maxResults=15`);
+        const vidData = await vidRes.json();
+        recentTitles = (vidData.videos || []).map((v: { title: string }) => v.title);
+      }
+
+      // 3. AIでプロフィール提案
+      const suggestRes = await fetch("/api/channel/suggest-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channelData: chData,
+          recentVideoTitles: recentTitles,
+          aiApiKey,
+        }),
+      });
+      const suggestion = await suggestRes.json();
+      if (suggestion.error) { setSuggestError(suggestion.error); setSuggesting(false); return; }
+
+      // プロフィールに反映
+      setProfile({
+        channelName: suggestion.channelName || chData.name || "",
+        concept: suggestion.concept || "",
+        tone: suggestion.tone || "",
+        target: suggestion.target || "",
+        genres: suggestion.genres || [],
+        mainStyle: (suggestion.mainStyle === "healing" || suggestion.mainStyle === "education" || suggestion.mainStyle === "both") ? suggestion.mainStyle : "healing",
+        characteristics: suggestion.characteristics || "",
+      });
+    } catch { setSuggestError("プロフィール提案に失敗しました"); }
+    finally { setSuggesting(false); }
+  };
+
   return (
     <div className="max-w-2xl space-y-6">
+      {/* URL入力でAI提案 */}
+      <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-accent/20">
+        <h2 className="font-semibold mb-2">チャンネルURLから自動設計</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          自分のチャンネルURLを入力すると、AIがチャンネル内容を分析して設計を提案します。
+        </p>
+        <div className="flex gap-3">
+          <input type="text" value={channelUrl} onChange={(e) => setChannelUrl(e.target.value)}
+            placeholder="https://youtube.com/@your-channel"
+            className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm" />
+          <button onClick={handleSuggest} disabled={suggesting}
+            className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0">
+            {suggesting ? "分析中..." : "AIで自動設計"}
+          </button>
+        </div>
+        {suggestError && <p className="text-danger text-sm mt-2">{suggestError}</p>}
+      </div>
+
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
         <p className="text-sm text-gray-500 mb-4">
-          台本生成時に自チャンネルの設計が自動反映されます。
+          台本生成時に自チャンネルの設計が自動反映されます。AIの提案を修正して保存してください。
         </p>
         <div className="space-y-4">
           <div>
@@ -179,15 +261,25 @@ function AnalyzeTab() {
     const videoId = extractVideoId(videoUrl);
     if (!videoId) { setError("YouTube URLが正しくありません"); return; }
     const apiKey = getApiKey("yt_api_key");
-    if (!apiKey) { setError("YouTube APIキーを設定してください"); return; }
 
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/youtube/transcript?videoId=${videoId}&apiKey=${encodeURIComponent(apiKey)}`);
+      const params = new URLSearchParams({ videoId });
+      if (apiKey) params.set("apiKey", apiKey);
+      const res = await fetch(`/api/youtube/transcript?${params}`);
       const data = await res.json();
       if (data.error) { setError(data.error); }
-      else { setVideoInfo(data); }
+      else {
+        setVideoInfo(data);
+        // 字幕を自動セット
+        if (data.transcript) {
+          setTranscript(data.transcript);
+        }
+        if (data.transcriptError) {
+          setError(data.transcriptError);
+        }
+      }
     } catch { setError("動画情報の取得に失敗"); }
     finally { setLoading(false); }
   };
