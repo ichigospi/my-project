@@ -380,7 +380,7 @@ function AnalyzeTab() {
 
       const frames = data.frames as string[];
       setScreenshots(frames);
-      setOcrProgress(`${data.frameCount}フレーム抽出（${data.method === "scene_detection" ? "シーン検出" : "5秒間隔"}）→ ローカルOCR中...`);
+      setOcrProgress(`${data.frameCount}フレーム抽出 → ローカルOCR中...`);
 
       // Step 2: Tesseract.jsでローカルOCR（1枚ずつ、APIコスト0）
       const ocrTexts: string[] = [];

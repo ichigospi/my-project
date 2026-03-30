@@ -58,41 +58,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "動画のダウンロードに失敗しました" }, { status: 500 });
     }
 
-    // Step 1: シーン検出で画面が変わったフレームだけ抽出
-    // scene=0.3 → 画面の30%以上が変化したら新しいシーンとして検出
+    // 5秒間隔でフレーム抽出（Tesseractなら枚数多くても高速＆無料）
     const framesDir = join(tempDir, "frames");
     mkdirSync(framesDir, { recursive: true });
 
     execFileSync(ffmpegPath, [
       "-i", videoPath,
-      "-vf", "select='gt(scene\\,0.15)',scale=640:-1",
-      "-vsync", "vfr",
+      "-vf", "fps=1/5,scale=640:-1",
       "-q:v", "4",
       join(framesDir, "frame_%04d.jpg"),
     ], { timeout: 180000, env: execEnv });
 
-    let frameFiles = readdirSync(framesDir)
+    const frameFiles = readdirSync(framesDir)
       .filter((f) => f.endsWith(".jpg"))
       .sort();
-
-    // シーン検出でフレームが少なすぎる場合は、5秒間隔にフォールバック
-    if (frameFiles.length < 10) {
-      // フレームを削除して再抽出
-      for (const f of frameFiles) {
-        try { rmSync(join(framesDir, f)); } catch { /* ignore */ }
-      }
-
-      execFileSync(ffmpegPath, [
-        "-i", videoPath,
-        "-vf", "fps=1/5,scale=640:-1",
-        "-q:v", "4",
-        join(framesDir, "frame_%04d.jpg"),
-      ], { timeout: 180000, env: execEnv });
-
-      frameFiles = readdirSync(framesDir)
-        .filter((f) => f.endsWith(".jpg"))
-        .sort();
-    }
 
     // フレームをbase64で読み込み
     const frames = frameFiles.map((f) => {
@@ -106,7 +85,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       frames,
       frameCount: frames.length,
-      method: frameFiles.length >= 10 ? "scene_detection" : "interval",
     });
   } catch (error) {
     try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ }
