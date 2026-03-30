@@ -251,6 +251,10 @@ function AnalyzeTab() {
   const [analysis, setAnalysis] = useState<(AnalysisResult & { score?: AnalysisScore }) | null>(null);
   const [category, setCategory] = useState<"healing" | "education" | "other">("healing");
   const [error, setError] = useState("");
+  // 画面読み取り関連
+  const [screenshots, setScreenshots] = useState<string[]>([]);
+  const [extracting, setExtracting] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState("");
 
   const extractVideoId = (url: string): string | null => {
     const match = url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
@@ -272,16 +276,121 @@ function AnalyzeTab() {
       if (data.error) { setError(data.error); }
       else {
         setVideoInfo(data);
-        // 字幕を自動セット
         if (data.transcript) {
           setTranscript(data.transcript);
-        }
-        if (data.transcriptError) {
-          setError(data.transcriptError);
+        } else if (data.transcriptError) {
+          setError("字幕がありません。「画面読み取り」で文字起こししてください。");
         }
       }
     } catch { setError("動画情報の取得に失敗"); }
     finally { setLoading(false); }
+  };
+
+  // 自動フレーム抽出（yt-dlp + ffmpeg）
+  const autoExtractFrames = async () => {
+    const videoId = extractVideoId(videoUrl);
+    if (!videoId) { setError("先に動画URLを入力してください"); return; }
+
+    setExtracting(true);
+    setOcrProgress("動画からフレームを抽出中...");
+    setError("");
+
+    try {
+      const res = await fetch("/api/youtube/extract-frames", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId, intervalSeconds: 3 }),
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        if (data.installGuide) {
+          setError(`${data.error}\n\n${data.installGuide}`);
+        } else {
+          setError(data.error);
+        }
+        setExtracting(false);
+        return;
+      }
+
+      setScreenshots(data.frames);
+      setOcrProgress(`${data.frameCount}フレーム抽出完了。テキストを読み取り中...`);
+
+      // OCR実行
+      await runOCR(data.frames);
+    } catch {
+      setError("フレーム抽出に失敗しました");
+    } finally {
+      setExtracting(false);
+      setOcrProgress("");
+    }
+  };
+
+  // スクリーンショットのアップロード/ペースト
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    processFiles(Array.from(files));
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    processFiles(Array.from(files));
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) processFiles(files);
+  };
+
+  const processFiles = (files: File[]) => {
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setScreenshots((prev) => [...prev, reader.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeScreenshot = (index: number) => {
+    setScreenshots((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // OCR実行（Claude Vision）
+  const runOCR = async (images?: string[]) => {
+    const imagesToProcess = images || screenshots;
+    if (imagesToProcess.length === 0) { setError("画像がありません"); return; }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+
+    setExtracting(true);
+    setOcrProgress(`${imagesToProcess.length}枚の画像からテキストを読み取り中...`);
+    setError("");
+
+    try {
+      const res = await fetch("/api/script/ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: imagesToProcess, aiApiKey }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); }
+      else {
+        setTranscript(data.transcript);
+        setOcrProgress(`完了！${data.imageCount}枚から文字起こし`);
+        setTimeout(() => setOcrProgress(""), 3000);
+      }
+    } catch { setError("テキスト読み取りに失敗"); }
+    finally { setExtracting(false); }
   };
 
   const runAnalysis = async () => {
@@ -307,7 +416,6 @@ function AnalyzeTab() {
       if (data.error) { setError(data.error); }
       else {
         setAnalysis(data);
-        // 自動保存
         const saved: ScriptAnalysis = {
           id: generateId(),
           videoId: extractVideoId(videoUrl) || "",
@@ -327,10 +435,6 @@ function AnalyzeTab() {
       }
     } catch { setError("分析に失敗しました"); }
     finally { setAnalyzing(false); }
-  };
-
-  const copyTranscript = () => {
-    navigator.clipboard.writeText(transcript);
   };
 
   return (
@@ -358,21 +462,83 @@ function AnalyzeTab() {
         )}
       </div>
 
-      {/* Step 2: 文字起こし入力 */}
+      {/* Step 2: 画面読み取り（テロップOCR） */}
+      <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+        <h2 className="font-semibold mb-1">② 画面読み取り（テロップ文字起こし）</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          テロップ動画の文字起こし。自動抽出 or スクリーンショットから読み取ります。
+        </p>
+
+        <div className="flex flex-wrap gap-3 mb-4">
+          <button onClick={autoExtractFrames} disabled={extracting || !videoUrl}
+            className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
+            {extracting ? ocrProgress || "処理中..." : "自動で画面読み取り"}
+          </button>
+          <span className="text-xs text-gray-400 self-center">
+            ※ yt-dlp + ffmpeg が必要（<code className="bg-gray-100 px-1 rounded">brew install yt-dlp ffmpeg</code>）
+          </span>
+        </div>
+
+        <div className="text-xs text-gray-500 mb-2 font-medium">または、スクリーンショットを貼り付け:</div>
+
+        {/* ドロップ＆ペーストエリア */}
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          onPaste={handlePaste}
+          tabIndex={0}
+          className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-accent/30 focus:border-accent/30 transition-colors cursor-pointer"
+        >
+          <p className="text-sm text-gray-400 mb-2">
+            ここにスクリーンショットをドラッグ&ドロップ、またはCtrl+Vで貼り付け
+          </p>
+          <label className="inline-block px-4 py-2 rounded-lg bg-gray-100 text-sm text-gray-600 hover:bg-gray-200 cursor-pointer">
+            ファイルを選択
+            <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" />
+          </label>
+        </div>
+
+        {/* スクリーンショットプレビュー */}
+        {screenshots.length > 0 && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-500">{screenshots.length}枚の画像</span>
+              <div className="flex gap-2">
+                <button onClick={() => setScreenshots([])} className="text-xs text-gray-400 hover:text-danger">すべて削除</button>
+                <button onClick={() => runOCR()} disabled={extracting}
+                  className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
+                  {extracting ? "読み取り中..." : "テキストを読み取る"}
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {screenshots.map((img, i) => (
+                <div key={i} className="relative shrink-0">
+                  <img src={img} alt="" className="h-20 rounded border border-gray-200" />
+                  <button onClick={() => removeScreenshot(i)}
+                    className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {ocrProgress && !extracting && <p className="text-sm text-success mt-2">{ocrProgress}</p>}
+      </div>
+
+      {/* Step 3: 台本テキスト */}
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">② 文字起こし・台本テキスト</h2>
+          <h2 className="font-semibold">③ 台本テキスト</h2>
           {transcript && (
-            <button onClick={copyTranscript} className="text-xs text-accent hover:underline">クリップボードにコピー</button>
+            <button onClick={() => navigator.clipboard.writeText(transcript)} className="text-xs text-accent hover:underline">
+              クリップボードにコピー
+            </button>
           )}
         </div>
-        <p className="text-xs text-gray-500 mb-3">
-          YouTubeの字幕をコピーして貼り付けるか、文字起こしツールで取得したテキストを入力してください。
-          動画の「…」→「文字起こしを表示」からコピーできます。
-        </p>
         <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)}
-          placeholder="ここに台本テキストを貼り付け..."
-          rows={12} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono" />
+          placeholder="上のステップで自動入力されます。手動で編集・追記もできます。"
+          rows={10} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm" />
         <div className="flex items-center justify-between mt-3">
           <div className="flex items-center gap-3">
             <label className="text-xs text-gray-500">カテゴリ:</label>
@@ -387,15 +553,15 @@ function AnalyzeTab() {
         </div>
       </div>
 
-      {/* Step 3: 分析実行 */}
+      {/* Step 4: 分析実行 */}
       <div className="flex gap-3">
         <button onClick={runAnalysis} disabled={analyzing || !transcript.trim()}
           className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
-          {analyzing ? "分析中（30秒ほどかかります）..." : "AIで台本を分析する"}
+          {analyzing ? "分析中（30秒ほどかかります）..." : "④ AIで台本を分析する"}
         </button>
       </div>
 
-      {error && <p className="text-danger text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm whitespace-pre-wrap">{error}</p>}
 
       {/* 分析結果 */}
       {analysis && <AnalysisResultView analysis={analysis} />}
