@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getApiKey } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
 import {
@@ -13,11 +13,36 @@ import type {
   ScriptProposal, ProposalResult, ChannelProfile,
 } from "@/lib/script-analysis-store";
 
+// ===== 状態永続化ヘルパー =====
+const STORAGE_PREFIX = "analysis_page_";
+
+function usePersisted<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T)) => void, () => void] {
+  const storageKey = STORAGE_PREFIX + key;
+  const [value, setValue] = useState<T>(() => {
+    if (typeof window === "undefined") return initial;
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      return saved ? JSON.parse(saved) : initial;
+    } catch { return initial; }
+  });
+
+  useEffect(() => {
+    try { sessionStorage.setItem(storageKey, JSON.stringify(value)); } catch { /* ignore */ }
+  }, [storageKey, value]);
+
+  const reset = useCallback(() => {
+    setValue(initial);
+    try { sessionStorage.removeItem(storageKey); } catch { /* ignore */ }
+  }, [initial, storageKey]);
+
+  return [value, setValue, reset];
+}
+
 // ===== タブ切り替え =====
 type Tab = "profile" | "analyze" | "library" | "propose";
 
 export default function AnalysisPage() {
-  const [tab, setTab] = useState<Tab>("analyze");
+  const [tab, setTab] = usePersisted<Tab>("tab", "analyze");
   const tabs: { id: Tab; label: string }[] = [
     { id: "profile", label: "自チャンネル設計" },
     { id: "analyze", label: "台本分析" },
@@ -237,24 +262,33 @@ function ProfileTab() {
 
 // ===== 台本分析タブ =====
 function AnalyzeTab() {
-  const [videoUrl, setVideoUrl] = useState(() => {
+  // sessionStorageから渡されたURLを初回だけチェック
+  const [initialUrl] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = sessionStorage.getItem("analysis_video_url");
       if (saved) { sessionStorage.removeItem("analysis_video_url"); return saved; }
     }
-    return "";
+    return null;
   });
-  const [transcript, setTranscript] = useState("");
-  const [videoInfo, setVideoInfo] = useState<{ title: string; channelTitle: string; views: number; thumbnailUrl: string } | null>(null);
+
+  const [videoUrl, setVideoUrl, resetVideoUrl] = usePersisted("videoUrl", initialUrl || "");
+  const [transcript, setTranscript, resetTranscript] = usePersisted("transcript", "");
+  const [videoInfo, setVideoInfo, resetVideoInfo] = usePersisted<{ title: string; channelTitle: string; views: number; thumbnailUrl: string } | null>("videoInfo", null);
+  const [analysis, setAnalysis, resetAnalysis] = usePersisted<(AnalysisResult & { score?: AnalysisScore }) | null>("analysis", null);
+  const [category, setCategory, resetCategory] = usePersisted<"healing" | "education" | "other">("category", "healing");
+
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analysis, setAnalysis] = useState<(AnalysisResult & { score?: AnalysisScore }) | null>(null);
-  const [category, setCategory] = useState<"healing" | "education" | "other">("healing");
   const [error, setError] = useState("");
-  // 画面読み取り関連
+  // 画面読み取り関連（スクリーンショットは大きいのでsessionStorageに入れない）
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [ocrProgress, setOcrProgress] = useState("");
+
+  const handleReset = () => {
+    resetVideoUrl(); resetTranscript(); resetVideoInfo(); resetAnalysis(); resetCategory();
+    setScreenshots([]); setError(""); setOcrProgress("");
+  };
 
   const extractVideoId = (url: string): string | null => {
     const match = url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
@@ -440,6 +474,14 @@ function AnalyzeTab() {
 
   return (
     <div className="space-y-6">
+      {/* リセットボタン */}
+      <div className="flex justify-end">
+        <button onClick={handleReset}
+          className="px-4 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 hover:text-danger transition-colors">
+          リセット
+        </button>
+      </div>
+
       {/* Step 1: 動画URL */}
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
         <h2 className="font-semibold mb-3">① 動画情報を取得</h2>
@@ -722,26 +764,27 @@ function LibraryTab() {
 // ===== 構成提案・台本作成タブ =====
 function ProposeTab() {
   const [analyses, setAnalyses] = useState<ScriptAnalysis[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [style, setStyle] = useState<"healing" | "education">("healing");
-  const [topic, setTopic] = useState("");
+  const [selectedArr, setSelectedArr] = usePersisted<string[]>("propose_selected", []);
+  const selected = new Set(selectedArr);
+  const [style, setStyle] = usePersisted<"healing" | "education">("propose_style", "healing");
+  const [topic, setTopic] = usePersisted("propose_topic", "");
   const [proposing, setProposing] = useState(false);
-  const [proposal, setProposal] = useState<ProposalResult | null>(null);
+  const [proposal, setProposal] = usePersisted<ProposalResult | null>("propose_proposal", null);
   const [generating, setGenerating] = useState(false);
-  const [script, setScript] = useState("");
-  const [additionalNotes, setAdditionalNotes] = useState("");
+  const [script, setScript] = usePersisted("propose_script", "");
+  const [additionalNotes, setAdditionalNotes] = usePersisted("propose_notes", "");
   const [error, setError] = useState("");
 
   useEffect(() => { setAnalyses(getAnalyses()); }, []);
 
   const toggleSelect = (id: string) => {
-    const next = new Set(selected);
+    const next = new Set(selectedArr);
     if (next.has(id)) next.delete(id); else next.add(id);
-    setSelected(next);
+    setSelectedArr([...next]);
   };
 
   const handlePropose = async () => {
-    if (selected.size === 0) { setError("分析を1つ以上選択してください"); return; }
+    if (selectedArr.length === 0) { setError("分析を1つ以上選択してください"); return; }
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
@@ -872,7 +915,7 @@ function ProposeTab() {
             </div>
           </div>
         </div>
-        <button onClick={handlePropose} disabled={proposing || selected.size === 0}
+        <button onClick={handlePropose} disabled={proposing || selectedArr.length === 0}
           className="mt-4 px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
           {proposing ? "構成を提案中..." : "構成を提案する"}
         </button>
