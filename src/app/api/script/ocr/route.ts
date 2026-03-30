@@ -22,23 +22,24 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // 画像が多すぎる場合はサンプリング（最大120枚）
+    // 画像が多すぎる場合は均等にサンプリング（最大200枚）
     let imagesToProcess = images;
-    if (imagesToProcess.length > 120) {
-      const step = Math.ceil(imagesToProcess.length / 120);
+    if (imagesToProcess.length > 200) {
+      const step = Math.ceil(imagesToProcess.length / 200);
       imagesToProcess = imagesToProcess.filter((_: string, i: number) => i % step === 0);
     }
 
-    // 画像を8枚ずつバッチ処理（レート制限対応で間隔を空ける）
-    const batchSize = 8;
+    // 画像を10枚ずつバッチ処理（レート制限対応で間隔を空ける）
+    const batchSize = 10;
     const allTexts: string[] = [];
+    let failCount = 0;
 
     for (let i = 0; i < imagesToProcess.length; i += batchSize) {
       const batch = imagesToProcess.slice(i, i + batchSize);
 
-      // 2バッチ目以降は20秒待機（レート制限回避）
+      // 2バッチ目以降は25秒待機（レート制限回避）
       if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 20000));
+        await new Promise((resolve) => setTimeout(resolve, 25000));
       }
 
       const content: { type: string; source?: { type: string; media_type: string; data: string }; text?: string }[] = [];
@@ -72,36 +73,61 @@ export async function POST(request: NextRequest) {
 - 段落の区切りは空行で区切る`,
       });
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": aiApiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 4096,
-          messages: [{ role: "user", content }],
-        }),
-      });
+      // リトライ付きAPI呼び出し（レート制限対策）
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": aiApiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 4096,
+            messages: [{ role: "user", content }],
+          }),
+        });
 
-      if (!res.ok) {
-        const error = await res.json();
-        return NextResponse.json(
-          { error: error.error?.message || "Claude Vision APIエラー" },
-          { status: res.status }
-        );
+        if (res.ok) break;
+
+        // レート制限の場合は待機してリトライ
+        if (res.status === 429) {
+          await new Promise((resolve) => setTimeout(resolve, 30000));
+          continue;
+        }
+        break;
       }
 
-      const data = await res.json();
-      const text = data.content?.[0]?.text || "";
-      if (text) allTexts.push(text);
+      if (!res || !res.ok) {
+        failCount++;
+        if (failCount >= 3) {
+          return NextResponse.json({
+            error: "APIエラーが連続しました。しばらく待ってから再試行してください。",
+            transcript: allTexts.join("\n\n"),
+            partial: true,
+          });
+        }
+        continue;
+      }
+
+      try {
+        const data = await res.json();
+        const text = data.content?.[0]?.text || "";
+        if (text) {
+          allTexts.push(text);
+          failCount = 0;
+        }
+      } catch {
+        failCount++;
+      }
     }
 
     return NextResponse.json({
       transcript: allTexts.join("\n\n"),
-      imageCount: images.length,
+      imageCount: imagesToProcess.length,
+      processedBatches: Math.ceil(imagesToProcess.length / batchSize),
     });
   } catch {
     return NextResponse.json({ error: "画像からのテキスト抽出に失敗しました" }, { status: 500 });

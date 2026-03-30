@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
 
     execFileSync(ffmpegPath, [
       "-i", videoPath,
-      "-vf", `fps=1/${intervalSeconds},scale=1280:-1`,
-      "-q:v", "3",
+      "-vf", `fps=1/${intervalSeconds},scale=640:-1`,
+      "-q:v", "5",
       join(framesDir, "frame_%04d.jpg"),
     ], { timeout: 180000, env: execEnv });
 

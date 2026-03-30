@@ -419,11 +419,12 @@ function AnalyzeTab() {
         body: JSON.stringify({ images: imagesToProcess, aiApiKey }),
       });
       const data = await res.json();
-      if (data.error) { setError(data.error); }
+      if (data.error && !data.transcript) { setError(data.error); }
       else {
-        setTranscript(data.transcript);
-        setOcrProgress(`完了！${data.imageCount}枚から文字起こし`);
-        setTimeout(() => setOcrProgress(""), 3000);
+        setTranscript((prev) => prev ? prev + "\n\n" + data.transcript : data.transcript);
+        setOcrProgress(`完了！${data.imageCount}枚から文字起こし${data.partial ? "（一部取得）" : ""}`);
+        if (data.partial) setError("一部のバッチが失敗しました。「テキストを読み取る」で残りを再取得できます。");
+        setTimeout(() => setOcrProgress(""), 5000);
       }
     } catch { setError("テキスト読み取りに失敗"); }
     finally { setExtracting(false); }
