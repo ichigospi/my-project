@@ -8,6 +8,7 @@ import { getApiKey } from "@/lib/channel-store";
 const navItems = [
   { href: "/", label: "\u30c0\u30c3\u30b7\u30e5\u30dc\u30fc\u30c9", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" },
   { href: "/channel", label: "\u30c1\u30e3\u30f3\u30cd\u30eb\u5206\u6790", icon: "M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" },
+  { href: "/search", label: "\u52d5\u753b\u691c\u7d22", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" },
   { href: "/trends", label: "\u30c8\u30ec\u30f3\u30c9\u30ad\u30fc\u30ef\u30fc\u30c9", icon: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" },
   { href: "/thumbnails", label: "\u30b5\u30e0\u30cd\u30fb\u30bf\u30a4\u30c8\u30eb\u5206\u6790", icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" },
   { href: "/script", label: "\u53f0\u672c\u4f5c\u6210", icon: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" },
