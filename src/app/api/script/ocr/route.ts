@@ -22,24 +22,24 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // 画像が多すぎる場合は均等にサンプリング（最大200枚）
+    // 画像が多すぎる場合は均等にサンプリング（最大100枚）
     let imagesToProcess = images;
-    if (imagesToProcess.length > 200) {
-      const step = Math.ceil(imagesToProcess.length / 200);
+    if (imagesToProcess.length > 100) {
+      const step = Math.ceil(imagesToProcess.length / 100);
       imagesToProcess = imagesToProcess.filter((_: string, i: number) => i % step === 0);
     }
 
-    // 画像を10枚ずつバッチ処理（レート制限対応で間隔を空ける）
-    const batchSize = 10;
+    // 画像を3枚ずつバッチ処理（1回のAPI消費を抑える）
+    const batchSize = 3;
     const allTexts: string[] = [];
     let failCount = 0;
 
     for (let i = 0; i < imagesToProcess.length; i += batchSize) {
       const batch = imagesToProcess.slice(i, i + batchSize);
 
-      // 2バッチ目以降は25秒待機（レート制限回避）
+      // 2バッチ目以降は12秒待機
       if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 25000));
+        await new Promise((resolve) => setTimeout(resolve, 12000));
       }
 
       const content: { type: string; source?: { type: string; media_type: string; data: string }; text?: string }[] = [];
@@ -61,16 +61,15 @@ export async function POST(request: NextRequest) {
 
       content.push({
         type: "text",
-        text: `上記の${batch.length}枚の画像は、占い・スピリチュアル系YouTube動画のスクリーンショットです。
-画面に表示されているテロップ・テキストをすべて正確に文字起こししてください。
+        text: `上の${batch.length}枚の画像はYouTube動画のスクリーンショットです。
+画面に表示されているテロップ（字幕テキスト）を1枚ずつすべて正確に書き起こしてください。
 
-ルール:
-- 画面上のテキスト（テロップ）のみを抽出
-- 画像の順番通りに出力
-- チャンネル名、高評価ボタンなどのUI要素は無視
-- 重複するテキストは1回だけ出力
-- テキストのみ出力（「画像1:」などのラベルは不要）
-- 段落の区切りは空行で区切る`,
+重要なルール:
+- 各画像のテロップを必ず1枚ずつ読み取ること（飛ばさない）
+- テロップが無い画像は飛ばしてOK
+- YouTubeのUI（チャンネル名、再生バー等）は無視
+- テキストのみ出力（画像番号ラベルは不要）
+- 各テロップの間は空行で区切る`,
       });
 
       // リトライ付きAPI呼び出し（レート制限対策）
