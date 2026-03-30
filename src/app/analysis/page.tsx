@@ -276,10 +276,9 @@ function AnalyzeTab() {
       if (data.error) { setError(data.error); }
       else {
         setVideoInfo(data);
-        if (data.transcript) {
+        // 字幕がある場合でも[music]だらけなら無視
+        if (data.transcript && !data.transcript.match(/\[music\]/gi)) {
           setTranscript(data.transcript);
-        } else if (data.transcriptError) {
-          setError("字幕がありません。「画面読み取り」で文字起こししてください。");
         }
       }
     } catch { setError("動画情報の取得に失敗"); }

@@ -52,12 +52,13 @@ export async function POST(request: NextRequest) {
 
     const execEnv = { ...process.env, PATH: extendedPath };
 
-    // yt-dlp で動画ダウンロード（720p以下、最短の形式）
+    // yt-dlp で動画ダウンロード（720p以下）
     execFileSync(ytdlpPath, [
       "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best",
       "-o", videoPath,
       "--no-playlist",
       "--socket-timeout", "30",
+      "--no-check-certificates",
       videoUrl,
     ], { timeout: 180000, env: execEnv });
 
