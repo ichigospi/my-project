@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { getChannels, getApiKey } from "@/lib/channel-store";
 import type { RegisteredChannel } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
@@ -27,6 +28,7 @@ interface ChannelStats {
 }
 
 export default function SearchPage() {
+  const router = useRouter();
   const [channels, setChannels] = useState<RegisteredChannel[]>([]);
   const [allVideos, setAllVideos] = useState<VideoResult[]>([]);
   const [channelStats, setChannelStats] = useState<Record<string, ChannelStats>>({});
@@ -381,6 +383,18 @@ export default function SearchPage() {
                         <span className="text-gray-500">{video.publishedAt}</span>
                         <span className="text-gray-500">{video.duration}</span>
                         <span className="text-gray-500">{video.engagementRate}% エンゲージメント</span>
+                        <button
+                          onClick={() => {
+                            const url = `https://www.youtube.com/watch?v=${video.id}`;
+                            if (typeof window !== "undefined") {
+                              sessionStorage.setItem("analysis_video_url", url);
+                            }
+                            router.push("/analysis");
+                          }}
+                          className="text-accent hover:underline font-medium"
+                        >
+                          台本分析へ
+                        </button>
                       </div>
 
                       {/* タグ */}
