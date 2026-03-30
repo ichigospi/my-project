@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execSync, execFileSync } from "child_process";
-import { existsSync, readdirSync, readFileSync, mkdirSync, rmSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const videoPath = join(tempDir, "video.mp4");
 
-    // yt-dlp で動画ダウンロード
     execFileSync(ytdlpPath, [
       "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best",
       "-o", videoPath,
@@ -57,7 +56,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "動画のダウンロードに失敗しました" }, { status: 500 });
     }
 
-    // 3秒間隔でフレーム抽出
+    // 3秒間隔でフレーム抽出（重複除去なし＝全フレーム送信）
     const framesDir = join(tempDir, "frames");
     mkdirSync(framesDir, { recursive: true });
 
@@ -68,37 +67,21 @@ export async function POST(request: NextRequest) {
       join(framesDir, "frame_%04d.jpg"),
     ], { timeout: 180000, env: execEnv });
 
-    const allFrameFiles = readdirSync(framesDir)
+    const frameFiles = readdirSync(framesDir)
       .filter((f) => f.endsWith(".jpg"))
       .sort();
 
-    const totalExtracted = allFrameFiles.length;
+    // 全フレームをbase64に変換
+    const frames = frameFiles.map((f) => {
+      const data = readFileSync(join(framesDir, f));
+      return `data:image/jpeg;base64,${data.toString("base64")}`;
+    });
 
-    // 重複除去: ファイルサイズが前のフレームと近い場合はスキップ
-    // テロップが変わるとファイルサイズが変化する
-    const uniqueFrames: string[] = [];
-    let prevSize = 0;
-
-    for (const file of allFrameFiles) {
-      const filePath = join(framesDir, file);
-      const size = statSync(filePath).size;
-      const sizeDiff = prevSize > 0 ? Math.abs(size - prevSize) / prevSize : 1;
-
-      // サイズが8%以上変化したフレームだけ採用
-      if (sizeDiff > 0.08 || prevSize === 0) {
-        const data = readFileSync(filePath);
-        uniqueFrames.push(`data:image/jpeg;base64,${data.toString("base64")}`);
-        prevSize = size;
-      }
-    }
-
-    // クリーンアップ
     rmSync(tempDir, { recursive: true, force: true });
 
     return NextResponse.json({
-      frames: uniqueFrames,
-      totalExtracted,
-      uniqueCount: uniqueFrames.length,
+      frames,
+      frameCount: frames.length,
     });
   } catch (error) {
     try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ }

@@ -355,7 +355,7 @@ function AnalyzeTab() {
     finally { setLoading(false); }
   };
 
-  // 自動フレーム抽出 → 重複除去 → Claude Vision一括OCR
+  // 自動フレーム抽出 → 全フレームClaude Vision → 最終整理
   const autoExtractFrames = async () => {
     const videoId = extractVideoId(videoUrl);
     if (!videoId) { setError("先に動画URLを入力してください"); return; }
@@ -367,7 +367,7 @@ function AnalyzeTab() {
     setError("");
 
     try {
-      // Step 1: フレーム抽出（3秒間隔）+ サーバー側で重複除去
+      // Step 1: 3秒間隔でフレーム抽出（重複除去なし）
       const res = await fetch("/api/youtube/extract-frames", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -383,19 +383,19 @@ function AnalyzeTab() {
 
       const frames = data.frames as string[];
       setScreenshots(frames);
-      setOcrProgress(`${data.totalExtracted}枚→重複除去→${data.uniqueCount}枚。Claude Visionで読み取り中...`);
 
-      // Step 2: 20枚ずつClaude Visionに送信（3-4回のAPI呼び出しだけ）
+      // Step 2: 20枚ずつClaude Visionに送信
       const batchSize = 20;
       const totalBatches = Math.ceil(frames.length / batchSize);
       const allTexts: string[] = [];
+      let failCount = 0;
 
       for (let i = 0; i < frames.length; i += batchSize) {
         const batch = frames.slice(i, i + batchSize);
         const batchNum = Math.floor(i / batchSize) + 1;
-        setOcrProgress(`Claude Vision読み取り中... ${batchNum}/${totalBatches}回目（${allTexts.join("").length}文字取得済）`);
+        const charCount = allTexts.join("").length;
+        setOcrProgress(`OCR ${batchNum}/${totalBatches}回目 | ${charCount}文字取得済 | 失敗${failCount}`);
 
-        // 2回目以降は30秒待機
         if (i > 0) {
           await new Promise((resolve) => setTimeout(resolve, 30000));
         }
@@ -411,15 +411,40 @@ function AnalyzeTab() {
             allTexts.push(ocrData.text.trim());
             setTranscript(allTexts.join("\n\n"));
           } else if (ocrData.error) {
-            setError(`バッチ${batchNum}エラー: ${ocrData.error}`);
+            failCount++;
+            setError(`バッチ${batchNum}: ${ocrData.error}`);
+            if (ocrData.error.includes("rate") || ocrData.error.includes("429")) {
+              await new Promise((resolve) => setTimeout(resolve, 30000));
+            }
           }
         } catch (e) {
+          failCount++;
           setError(`バッチ${batchNum}: ${e instanceof Error ? e.message : "通信エラー"}`);
         }
       }
 
-      const totalChars = allTexts.join("").length;
-      setOcrProgress(`完了！ ${data.totalExtracted}枚→${data.uniqueCount}枚→${totalChars}文字取得`);
+      // Step 3: 最終整理パス（重複除去＆テキスト整理）
+      const rawText = allTexts.join("\n\n");
+      if (rawText.length > 0) {
+        setOcrProgress("最終整理中（重複除去＆テキスト整理）...");
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        try {
+          const cleanRes = await fetch("/api/script/cleanup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rawText, sampleImages: [], aiApiKey }),
+          });
+          const cleanData = await cleanRes.json();
+          if (cleanData.text && cleanData.text.trim()) {
+            setTranscript(cleanData.text.trim());
+          }
+        } catch {
+          // 整理失敗しても生テキストは残っている
+        }
+      }
+
+      const finalLen = transcript.length || rawText.length;
+      setOcrProgress(`完了！ ${frames.length}枚 → ${finalLen}文字（失敗${failCount}）`);
       setExtracting(false);
     } catch {
       setError("フレーム抽出に失敗しました");
