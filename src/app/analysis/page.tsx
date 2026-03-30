@@ -312,8 +312,10 @@ function AnalyzeTab() {
         return;
       }
 
-      setScreenshots(data.frames);
-      setOcrProgress(`${data.frameCount}フレーム抽出完了。テキストを読み取り中...`);
+      const frames = data.frames;
+      setScreenshots(frames);
+      const actualCount = frames.length > 60 ? 60 : frames.length;
+      setOcrProgress(`${data.frameCount}フレーム抽出 → ${actualCount}枚を読み取り中（数分かかります）...`);
 
       // OCR実行
       await runOCR(data.frames);

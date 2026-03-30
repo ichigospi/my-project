@@ -22,12 +22,24 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // 画像を5枚ずつバッチ処理
+    // 画像が多すぎる場合はサンプリング（最大60枚）
+    let imagesToProcess = images;
+    if (imagesToProcess.length > 60) {
+      const step = Math.ceil(imagesToProcess.length / 60);
+      imagesToProcess = imagesToProcess.filter((_: string, i: number) => i % step === 0);
+    }
+
+    // 画像を5枚ずつバッチ処理（レート制限対応で間隔を空ける）
     const batchSize = 5;
     const allTexts: string[] = [];
 
-    for (let i = 0; i < images.length; i += batchSize) {
-      const batch = images.slice(i, i + batchSize);
+    for (let i = 0; i < imagesToProcess.length; i += batchSize) {
+      const batch = imagesToProcess.slice(i, i + batchSize);
+
+      // 2バッチ目以降は15秒待機（レート制限回避）
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 15000));
+      }
 
       const content: { type: string; source?: { type: string; media_type: string; data: string }; text?: string }[] = [];
 
