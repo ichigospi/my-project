@@ -18,17 +18,23 @@ const STORAGE_PREFIX = "analysis_page_";
 
 function usePersisted<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T)) => void, () => void] {
   const storageKey = STORAGE_PREFIX + key;
-  const [value, setValue] = useState<T>(() => {
-    if (typeof window === "undefined") return initial;
+  const [value, setValue] = useState<T>(initial);
+  const [hydrated, setHydrated] = useState(false);
+
+  // クライアント側でマウント後にsessionStorageから復元
+  useEffect(() => {
     try {
       const saved = sessionStorage.getItem(storageKey);
-      return saved ? JSON.parse(saved) : initial;
-    } catch { return initial; }
-  });
+      if (saved) setValue(JSON.parse(saved));
+    } catch { /* ignore */ }
+    setHydrated(true);
+  }, [storageKey]);
 
+  // 値が変わったらsessionStorageに保存（初回復元後のみ）
   useEffect(() => {
+    if (!hydrated) return;
     try { sessionStorage.setItem(storageKey, JSON.stringify(value)); } catch { /* ignore */ }
-  }, [storageKey, value]);
+  }, [storageKey, value, hydrated]);
 
   const reset = useCallback(() => {
     setValue(initial);
