@@ -135,6 +135,17 @@ export default function PerformancePage() {
     finally { setAnalyzing(false); }
   };
 
+  // ジャンル変更
+  const handleGenreChange = (videoId: string, newGenre: Genre) => {
+    if (!myChannel) return;
+    const updated = {
+      ...myChannel,
+      videos: myChannel.videos.map((v) => v.videoId === videoId ? { ...v, genre: newGenre } : v),
+    };
+    saveMyChannel(updated);
+    setMyChannel(updated);
+  };
+
   // 統計計算
   const getStats = () => {
     if (!myChannel || myChannel.videos.length === 0) return null;
@@ -321,7 +332,10 @@ export default function PerformancePage() {
                 <a href={`https://www.youtube.com/watch?v=${v.videoId}`} target="_blank" rel="noopener noreferrer"
                   className="text-sm font-medium hover:text-accent truncate block">{v.title}</a>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">{GENRE_LABELS[v.genre]}</span>
+                  <select value={v.genre} onChange={(e) => handleGenreChange(v.videoId, e.target.value as Genre)}
+                    className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent border-none outline-none cursor-pointer appearance-none font-medium">
+                    {Object.entries(GENRE_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                  </select>
                   <span className="text-xs text-gray-500">{v.publishedAt}</span>
                   <span className="text-xs text-gray-500">{v.duration}</span>
                 </div>
