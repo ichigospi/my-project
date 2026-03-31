@@ -38,7 +38,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         }),
       });
       const data = await res.json();
-      if (data.error) { setError(data.error); }
+      if (data.error && !data.concept) { setError(data.error); }
       else {
         const proposal: StructureProposal = {
           suggestedTitle: project.title,
@@ -87,7 +87,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         <div className="space-y-4 mb-6">
           <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
             <h3 className="font-semibold mb-2">コンセプト</h3>
-            <p className="text-sm text-gray-700">{proposal.concept}</p>
+            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{proposal.concept}</pre>
             <div className="flex gap-4 mt-3 text-xs text-gray-500">
               <span>推定尺: {proposal.estimatedDuration}</span>
               <span>目標: {proposal.targetWordCount}文字</span>

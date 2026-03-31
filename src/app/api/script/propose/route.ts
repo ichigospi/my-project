@@ -108,17 +108,34 @@ ${profileText}
       text = data.choices?.[0]?.message?.content || "";
     }
 
+    // JSON抽出を複数の方法で試みる
     const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+
+    // 方法1: 全体をJSONとしてパース
+    try {
+      const parsed = JSON.parse(cleaned);
+      return NextResponse.json(parsed);
+    } catch { /* 次の方法へ */ }
+
+    // 方法2: {から}までを抽出してパース
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return NextResponse.json(parsed);
+      } catch { /* 次の方法へ */ }
     }
 
-    try {
-      return NextResponse.json(JSON.parse(jsonMatch[0]));
-    } catch {
-      return NextResponse.json({ error: "JSON形式が不正です。再度お試しください。" }, { status: 500 });
-    }
+    // 方法3: パース失敗 → 生テキストをそのまま返す（クライアントが表示）
+    return NextResponse.json({
+      concept: text,
+      structure: [],
+      keyElements: [],
+      suggestedHooks: [],
+      suggestedCtas: [],
+      estimatedDuration: "不明",
+      rawText: true,
+    });
   } catch (error) {
     return NextResponse.json({
       error: error instanceof Error ? error.message : "構成提案の生成に失敗",
