@@ -485,16 +485,18 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
 
         if (i > 0) await new Promise((r) => setTimeout(r, 1500)); // API負荷軽減
 
-        // タイトルからキーワードを抽出（記号除去、2文字以上の単語を最大5個）
-        const keywords = title
-          .replace(/[【】「」『』（）()！？!?。、・｜|\/\s]/g, " ")
-          .split(/\s+/)
-          .filter((w: string) => w.length >= 2)
-          .slice(0, 5)
-          .join(" ");
+        // タイトルから日本語の助詞・助動詞で分割してキーワード抽出
+        const phrases = title
+          .replace(/[【】「」『』（）()！？!?。、・｜|\/\s\d]/g, " ")
+          .split(/[のはがをにでとへもやかられるたますいうえおした]+/)
+          .map((p: string) => p.trim())
+          .filter((p: string) => p.length >= 2 && p.length <= 15);
+        // 短いフレーズを複数組み合わせて検索
+        const searchQuery = phrases.slice(0, 4).join(" ");
+        if (!searchQuery) continue;
 
         try {
-          const searchRes = await fetch(`/api/youtube/search-public?q=${encodeURIComponent(keywords)}&apiKey=${encodeURIComponent(ytApiKey)}&maxResults=25`);
+          const searchRes = await fetch(`/api/youtube/search-public?q=${encodeURIComponent(searchQuery)}&apiKey=${encodeURIComponent(ytApiKey)}&maxResults=25`);
           const searchData = await searchRes.json();
 
           if (searchData.videos) {
@@ -533,7 +535,7 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
       setResults(discovered);
 
       if (discovered.length === 0) {
-        setError(`検索完了（${sourceTitles.length}タイトルで検索、${allMatched.length}件ヒット）。類似率${threshold}%以上・${minViews}回再生以上に一致するチャンネルが見つかりませんでした。類似率を下げるか最低再生数を下げてみてください。`);
+        setError(`検索完了（${sourceTitles.length}タイトルで検索、${allMatched.length}件ヒット）。${minViews}回再生以上の未登録チャンネルの動画が見つかりませんでした。最低再生数を下げてみてください。`);
       }
 
       // キャッシュに保存
