@@ -49,6 +49,8 @@ export default function CreatePage() {
   const handleBack = () => { setActiveProject(null); setProjects(getProjects()); };
 
   const stepIndex = activeProject ? STEPS.findIndex((s) => s.id === activeProject.status) : -1;
+  // completedの場合は最後のステップ扱い
+  const effectiveStepIndex = stepIndex === -1 && activeProject?.status === "completed" ? STEPS.length - 1 : stepIndex;
 
   const goToStep = (status: ScriptProject["status"]) => {
     if (!activeProject) return;
@@ -114,14 +116,15 @@ export default function CreatePage() {
         {STEPS.map((s, i) => (
           <div key={s.id} className="flex items-center">
             <button
-              onClick={() => i <= stepIndex ? goToStep(s.id as ScriptProject["status"]) : undefined}
+              onClick={() => goToStep(s.id as ScriptProject["status"])}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                i === stepIndex ? "bg-accent text-white" : i < stepIndex ? "bg-accent/10 text-accent cursor-pointer hover:bg-accent/20" : "bg-gray-100 text-gray-400"
+                i === effectiveStepIndex ? "bg-accent text-white" : i < effectiveStepIndex ? "bg-accent/10 text-accent cursor-pointer hover:bg-accent/20" : i > effectiveStepIndex ? "bg-gray-100 text-gray-400" : ""
               }`}
+              disabled={i > effectiveStepIndex}
             >
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                i === stepIndex ? "bg-white/20" : i < stepIndex ? "bg-accent/20" : "bg-gray-200"
-              }`}>{i + 1}</span>
+                i === effectiveStepIndex ? "bg-white/20" : i < effectiveStepIndex ? "bg-accent/20" : "bg-gray-200"
+              }`}>{i < effectiveStepIndex ? "✓" : i + 1}</span>
               {s.label}
             </button>
             {i < STEPS.length - 1 && <svg className="w-4 h-4 text-gray-300 mx-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>}
