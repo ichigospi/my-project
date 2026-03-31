@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
     searchUrl.searchParams.set("order", "viewCount");
     searchUrl.searchParams.set("maxResults", maxResults);
     searchUrl.searchParams.set("publishedAfter", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
-    searchUrl.searchParams.set("videoDuration", "medium"); // 4-20分
     searchUrl.searchParams.set("key", apiKey);
 
     const searchRes = await fetch(searchUrl.toString());

@@ -455,15 +455,23 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
 
       const oneMonth = new Date(); oneMonth.setMonth(oneMonth.getMonth() - 1);
       const sourceTitles = (data.videos || [])
-        .filter((v: { publishedAt: string; views: number }) => v.publishedAt >= oneMonth.toISOString().split("T")[0] && v.views >= 10000)
+        .filter((v: { publishedAt: string; views: number }) => v.publishedAt >= oneMonth.toISOString().split("T")[0] && v.views >= 3000)
         .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
-        .slice(0, 5)
+        .slice(0, 8)
         .map((v: { title: string }) => v.title);
 
       if (sourceTitles.length === 0) {
-        setError("直近1ヶ月で1万再生以上の動画が見つかりませんでした");
-        setLoading(false);
-        return;
+        // フィルタなしで再試行
+        const allTitles = (data.videos || [])
+          .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
+          .slice(0, 8)
+          .map((v: { title: string }) => v.title);
+        if (allTitles.length === 0) {
+          setError("動画データがありません。チャンネル分析で先にデータを取得してください。");
+          setLoading(false);
+          return;
+        }
+        sourceTitles.push(...allTitles);
       }
 
       // Step 2: 各ソースタイトルでYouTube検索
@@ -476,7 +484,13 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
 
         if (i > 0) await new Promise((r) => setTimeout(r, 1000)); // API負荷軽減
 
-        const keywords = title.replace(/[【】「」『』！？!?。、・\s]/g, " ").split(/\s+/).filter((w: string) => w.length >= 2).slice(0, 3).join(" ");
+        // タイトルからキーワードを抽出（記号除去、2文字以上の単語を最大5個）
+        const keywords = title
+          .replace(/[【】「」『』（）()！？!?。、・｜|\/\s]/g, " ")
+          .split(/\s+/)
+          .filter((w: string) => w.length >= 2)
+          .slice(0, 5)
+          .join(" ");
 
         try {
           const searchRes = await fetch(`/api/youtube/search-public?q=${encodeURIComponent(keywords)}&apiKey=${encodeURIComponent(ytApiKey)}&maxResults=25`);
