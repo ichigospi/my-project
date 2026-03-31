@@ -401,90 +401,137 @@ interface DiscoveredChannel {
   channelName: string;
   videos: DiscoveredVideo[];
   avgViews: number;
+  hitSources: string[]; // どのソースタイトルでヒットしたか
 }
+
+const DISCOVERY_CACHE_KEY = "fortune_yt_discovery_cache";
 
 function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registeredChannelIds: string[]; onAddChannel: (url: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [sourceTitle, setSourceTitle] = useState("");
   const [threshold, setThreshold] = useState(50);
   const [minViews, setMinViews] = useState(10000);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState("");
   const [results, setResults] = useState<DiscoveredChannel[]>([]);
   const [error, setError] = useState("");
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
-  // 登録チャンネルの人気動画タイトルを自動取得
-  const [sourceTitles, setSourceTitles] = useState<string[]>([]);
-  const [loadingSources, setLoadingSources] = useState(false);
-
-  const fetchSourceTitles = async () => {
-    const ytApiKey = getApiKey("yt_api_key");
-    if (!ytApiKey) return;
-    setLoadingSources(true);
+  // キャッシュから復元
+  useEffect(() => {
     try {
-      const channels = getChannels().filter((ch) => ch.channelId);
-      const res = await fetch("/api/youtube/search-videos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channels: channels.slice(0, 5).map((ch) => ({ channelId: ch.channelId, name: ch.name, handle: ch.handle })), apiKey: ytApiKey, maxResultsPerChannel: 20 }),
-      });
-      const data = await res.json();
-      if (data.videos) {
-        const oneMonth = new Date(); oneMonth.setMonth(oneMonth.getMonth() - 1);
-        const titles = (data.videos as { title: string; publishedAt: string; views: number }[])
-          .filter((v) => v.publishedAt >= oneMonth.toISOString().split("T")[0] && v.views >= 10000)
-          .sort((a, b) => b.views - a.views)
-          .slice(0, 20)
-          .map((v) => v.title);
-        setSourceTitles(titles);
+      const cached = localStorage.getItem(DISCOVERY_CACHE_KEY);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (data.results) setResults(data.results);
+        if (data.threshold) setThreshold(data.threshold);
+        if (data.minViews) setMinViews(data.minViews);
       }
     } catch { /* ignore */ }
-    finally { setLoadingSources(false); }
-  };
+  }, []);
 
-  const handleSearch = async () => {
+  const handleDiscover = async () => {
     const ytApiKey = getApiKey("yt_api_key");
     if (!ytApiKey) { setError("YouTube APIキーを設定してください"); return; }
-    if (!sourceTitle.trim()) { setError("検索元のタイトルを入力してください"); return; }
+
+    const channels = getChannels().filter((ch) => ch.channelId);
+    if (channels.length === 0) { setError("チャンネルを登録してデータを取得してください"); return; }
 
     setLoading(true);
     setError("");
+    setProgress("登録チャンネルの人気動画を取得中...");
 
     try {
-      // タイトルからキーワードを抽出（長い単語を2-3個）
-      const keywords = sourceTitle.replace(/[【】「」！？!?。、]/g, " ").split(/\s+/).filter((w) => w.length >= 2).slice(0, 3).join(" ");
-
-      const res = await fetch(`/api/youtube/search-public?q=${encodeURIComponent(keywords)}&apiKey=${encodeURIComponent(ytApiKey)}&maxResults=50`);
+      // Step 1: 登録チャンネルの直近1ヶ月の人気動画を取得
+      const res = await fetch("/api/youtube/search-videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channels: channels.slice(0, 5).map((ch) => ({ channelId: ch.channelId, name: ch.name, handle: ch.handle })),
+          apiKey: ytApiKey, maxResultsPerChannel: 20,
+        }),
+      });
       const data = await res.json();
       if (data.error) { setError(data.error); setLoading(false); return; }
 
-      // 類似率計算 & フィルタ
-      const thresholdDecimal = threshold / 100;
-      const matched: DiscoveredVideo[] = (data.videos || [])
-        .filter((v: { channelId: string; views: number }) => !registeredChannelIds.includes(v.channelId) && v.views >= minViews)
-        .map((v: { id: string; title: string; channelName: string; channelId: string; views: number; publishedAt: string; thumbnailUrl: string }) => ({
-          ...v, similarity: calcSimilarity(sourceTitle, v.title), matchedWith: sourceTitle,
-        }))
-        .filter((v: DiscoveredVideo) => v.similarity >= thresholdDecimal)
-        .sort((a: DiscoveredVideo, b: DiscoveredVideo) => b.similarity - a.similarity);
+      const oneMonth = new Date(); oneMonth.setMonth(oneMonth.getMonth() - 1);
+      const sourceTitles = (data.videos || [])
+        .filter((v: { publishedAt: string; views: number }) => v.publishedAt >= oneMonth.toISOString().split("T")[0] && v.views >= 10000)
+        .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
+        .slice(0, 5)
+        .map((v: { title: string }) => v.title);
 
-      // チャンネル単位で集約
-      const channelMap = new Map<string, DiscoveredChannel>();
-      for (const v of matched) {
-        if (!channelMap.has(v.channelId)) {
-          channelMap.set(v.channelId, { channelId: v.channelId, channelName: v.channelName, videos: [], avgViews: 0 });
-        }
-        channelMap.get(v.channelId)!.videos.push(v);
+      if (sourceTitles.length === 0) {
+        setError("直近1ヶ月で1万再生以上の動画が見つかりませんでした");
+        setLoading(false);
+        return;
       }
-      const discovered = [...channelMap.values()].map((ch) => ({
-        ...ch,
-        avgViews: Math.round(ch.videos.reduce((s, v) => s + v.views, 0) / ch.videos.length),
-      })).sort((a, b) => b.videos.length - a.videos.length || b.avgViews - a.avgViews);
+
+      // Step 2: 各ソースタイトルでYouTube検索
+      const allMatched: DiscoveredVideo[] = [];
+      const thresholdDecimal = threshold / 100;
+
+      for (let i = 0; i < sourceTitles.length; i++) {
+        const title = sourceTitles[i];
+        setProgress(`検索中... ${i + 1}/${sourceTitles.length}「${title.substring(0, 20)}...」`);
+
+        if (i > 0) await new Promise((r) => setTimeout(r, 1000)); // API負荷軽減
+
+        const keywords = title.replace(/[【】「」『』！？!?。、・\s]/g, " ").split(/\s+/).filter((w: string) => w.length >= 2).slice(0, 3).join(" ");
+
+        try {
+          const searchRes = await fetch(`/api/youtube/search-public?q=${encodeURIComponent(keywords)}&apiKey=${encodeURIComponent(ytApiKey)}&maxResults=25`);
+          const searchData = await searchRes.json();
+
+          if (searchData.videos) {
+            for (const v of searchData.videos) {
+              if (registeredChannelIds.includes(v.channelId)) continue;
+              if (v.views < minViews) continue;
+              const sim = calcSimilarity(title, v.title);
+              if (sim >= thresholdDecimal) {
+                allMatched.push({ ...v, similarity: sim, matchedWith: title });
+              }
+            }
+          }
+        } catch { /* skip this search */ }
+      }
+
+      // Step 3: チャンネル単位で集約
+      const channelMap = new Map<string, DiscoveredChannel>();
+      for (const v of allMatched) {
+        if (!channelMap.has(v.channelId)) {
+          channelMap.set(v.channelId, { channelId: v.channelId, channelName: v.channelName, videos: [], avgViews: 0, hitSources: [] });
+        }
+        const ch = channelMap.get(v.channelId)!;
+        // 同じ動画の重複を除外
+        if (!ch.videos.some((ev) => ev.id === v.id)) {
+          ch.videos.push(v);
+        }
+        if (!ch.hitSources.includes(v.matchedWith)) {
+          ch.hitSources.push(v.matchedWith);
+        }
+      }
+
+      const discovered = [...channelMap.values()]
+        .map((ch) => ({ ...ch, avgViews: Math.round(ch.videos.reduce((s, v) => s + v.views, 0) / ch.videos.length) }))
+        .sort((a, b) => b.hitSources.length - a.hitSources.length || b.videos.length - a.videos.length || b.avgViews - a.avgViews);
 
       setResults(discovered);
+
+      // キャッシュに保存
+      try {
+        localStorage.setItem(DISCOVERY_CACHE_KEY, JSON.stringify({ results: discovered, threshold, minViews, updatedAt: new Date().toISOString() }));
+      } catch { /* ignore */ }
+
+      setProgress("");
     } catch { setError("検索に失敗しました"); }
     finally { setLoading(false); }
   };
+
+  // フィルタ変更時にローカルで再フィルタ
+  const filteredResults = results.map((ch) => ({
+    ...ch,
+    videos: ch.videos.filter((v) => v.similarity >= threshold / 100 && v.views >= minViews),
+  })).filter((ch) => ch.videos.length > 0);
 
   const handleAddChannel = (channelId: string) => {
     onAddChannel(`https://youtube.com/channel/${channelId}`);
@@ -494,11 +541,11 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
   return (
     <div className="mt-8">
       <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <button onClick={() => { setOpen(!open); if (!open && sourceTitles.length === 0) fetchSourceTitles(); }}
+        <button onClick={() => setOpen(!open)}
           className="w-full p-5 flex items-center justify-between text-left hover:bg-gray-50 transition-colors">
           <div>
             <h2 className="font-semibold">競合チャンネルを発見</h2>
-            <p className="text-xs text-gray-500 mt-0.5">類似タイトルの動画を検索して新しい競合チャンネルを見つける</p>
+            <p className="text-xs text-gray-500 mt-0.5">登録チャンネルの人気動画と類似した動画を出している未登録チャンネルを自動発見</p>
           </div>
           <svg className={`w-5 h-5 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -507,32 +554,15 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
 
         {open && (
           <div className="px-5 pb-5 border-t border-gray-100 pt-4">
-            {/* ソースタイトル選択 or 入力 */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">検索元のタイトル</label>
-              <input type="text" value={sourceTitle} onChange={(e) => setSourceTitle(e.target.value)}
-                placeholder="類似動画を探したいタイトルを入力"
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none mb-2" />
-              {sourceTitles.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  <span className="text-xs text-gray-400 self-center mr-1">候補:</span>
-                  {sourceTitles.slice(0, 8).map((t, i) => (
-                    <button key={i} onClick={() => setSourceTitle(t)}
-                      className={`text-xs px-2 py-1 rounded-full transition-colors ${sourceTitle === t ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                      {t.length > 25 ? t.substring(0, 25) + "..." : t}
-                    </button>
-                  ))}
-                  {loadingSources && <span className="text-xs text-gray-400 self-center">読込中...</span>}
-                </div>
-              )}
-            </div>
-
-            {/* パラメータ */}
-            <div className="flex flex-wrap gap-4 mb-4">
+            {/* ワンクリック検索 */}
+            <div className="flex flex-wrap items-end gap-4 mb-4">
+              <button onClick={handleDiscover} disabled={loading}
+                className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
+                {loading ? progress || "検索中..." : results.length > 0 ? "再検索する" : "競合チャンネルを探す"}
+              </button>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">類似率: {threshold}%以上</label>
-                <input type="range" min={20} max={80} value={threshold} onChange={(e) => setThreshold(parseInt(e.target.value))}
-                  className="w-40" />
+                <input type="range" min={20} max={80} value={threshold} onChange={(e) => setThreshold(parseInt(e.target.value))} className="w-36" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">最低再生数</label>
@@ -545,24 +575,32 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
                   <option value={100000}>10万回</option>
                 </select>
               </div>
-              <button onClick={handleSearch} disabled={loading || !sourceTitle.trim()}
-                className="self-end px-5 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
-                {loading ? "検索中..." : "類似動画を検索"}
-              </button>
             </div>
 
             {error && <p className="text-danger text-sm mb-3">{error}</p>}
 
             {/* 結果 */}
-            {results.length > 0 && (
+            {filteredResults.length > 0 && (
               <div className="space-y-3">
-                <p className="text-sm text-gray-500">{results.length}チャンネル発見</p>
-                {results.map((ch) => (
+                <p className="text-sm text-gray-500">{filteredResults.length}チャンネル発見</p>
+                {filteredResults.map((ch) => (
                   <div key={ch.channelId} className="bg-gray-50 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-start justify-between mb-2">
                       <div>
                         <p className="font-semibold text-sm">{ch.channelName}</p>
-                        <p className="text-xs text-gray-500">ヒット{ch.videos.length}本 · 平均{formatNumber(ch.avgViews)}回再生</p>
+                        <p className="text-xs text-gray-500">
+                          ヒット{ch.videos.length}本 · 平均{formatNumber(ch.avgViews)}回再生
+                          {ch.hitSources.length >= 2 && (
+                            <span className="ml-2 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                              {ch.hitSources.length}つの訴求でヒット
+                            </span>
+                          )}
+                        </p>
+                        {ch.hitSources.length >= 2 && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            検索元: {ch.hitSources.map((s) => `「${s.substring(0, 15)}...」`).join(", ")}
+                          </p>
+                        )}
                       </div>
                       <button onClick={() => handleAddChannel(ch.channelId)} disabled={addedIds.has(ch.channelId)}
                         className={`px-4 py-1.5 rounded-lg text-xs font-medium shrink-0 ${addedIds.has(ch.channelId) ? "bg-green-100 text-green-700" : "bg-accent text-white hover:bg-accent/90"}`}>
@@ -575,11 +613,14 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
                           {v.thumbnailUrl && <img src={v.thumbnailUrl} alt="" className="w-16 h-10 rounded object-cover shrink-0" />}
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium truncate">{v.title}</p>
-                            <p className="text-xs text-gray-500">{formatNumber(v.views)}回再生</p>
+                            <p className="text-xs text-gray-400 truncate">検索元: {v.matchedWith.substring(0, 25)}...</p>
                           </div>
-                          <span className={`text-xs font-bold shrink-0 ${v.similarity >= 0.7 ? "text-red-500" : v.similarity >= 0.5 ? "text-yellow-600" : "text-green-600"}`}>
-                            {Math.round(v.similarity * 100)}%
-                          </span>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs font-bold">{formatNumber(v.views)}回</p>
+                            <span className={`text-xs font-bold ${v.similarity >= 0.7 ? "text-red-500" : v.similarity >= 0.5 ? "text-yellow-600" : "text-green-600"}`}>
+                              類似{Math.round(v.similarity * 100)}%
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -588,8 +629,8 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
               </div>
             )}
 
-            {results.length === 0 && !loading && sourceTitle && (
-              <p className="text-sm text-gray-400 text-center py-4">条件に一致するチャンネルが見つかりませんでした</p>
+            {filteredResults.length === 0 && results.length > 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">現在のフィルタ条件に一致するチャンネルがありません。類似率や再生数を調整してください。</p>
             )}
           </div>
         )}
