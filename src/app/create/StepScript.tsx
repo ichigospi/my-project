@@ -44,6 +44,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [revising, setRevising] = useState(false);
   const [error, setError] = useState("");
   const [revisionNote, setRevisionNote] = useState("");
+  const [revisionSummary, setRevisionSummary] = useState("");
   const [scriptHistory, setScriptHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -116,7 +117,12 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const data = await res.json();
       if (data.error) { setError(data.error); }
       else if (data.script) {
-        onUpdate({ ...project, generatedScript: data.script });
+        // 修正箇所サマリーを分離
+        const parts = data.script.split("---修正箇所---");
+        const revisedScript = parts[0].trim();
+        const summary = parts[1]?.trim() || "";
+        onUpdate({ ...project, generatedScript: revisedScript });
+        setRevisionSummary(summary);
         setRevisionNote("");
       }
     } catch { setError("修正に失敗"); }
@@ -319,6 +325,15 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               </button>
             </div>
           </div>
+
+          {/* 修正箇所サマリー */}
+          {revisionSummary && (
+            <div className="bg-green-50 rounded-xl p-5 border border-green-200">
+              <h3 className="font-semibold text-sm text-green-800 mb-2">修正箇所</h3>
+              <pre className="text-sm text-green-900 whitespace-pre-wrap font-sans leading-relaxed">{revisionSummary}</pre>
+              <button onClick={() => setRevisionSummary("")} className="text-xs text-green-600 hover:underline mt-2">閉じる</button>
+            </div>
+          )}
 
           {/* 修正履歴 */}
           {scriptHistory.length > 0 && (

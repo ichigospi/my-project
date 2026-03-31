@@ -10,7 +10,12 @@ export async function POST(request: NextRequest) {
 
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
 
-  const prompt = `以下の台本を修正指示に従って修正してください。修正箇所以外はそのまま維持してください。
+  const prompt = `以下の台本を修正指示に従って修正してください。
+
+【重要】
+- 修正指示に該当する箇所は積極的に修正すること
+- 指示が「文法を修正」なら、不自然な日本語・助詞の誤り・冗長な表現をすべて直す
+- 修正後、最後に「---修正箇所---」という行を入れ、変更した箇所を箇条書きで列挙する
 
 【修正指示】
 ${revisionNote}
@@ -18,7 +23,7 @@ ${revisionNote}
 【現在の台本】
 ${script}
 
-修正後の台本テキストのみ出力してください。`;
+まず修正後の台本全文を出力し、最後に修正箇所のまとめを出力してください。`;
 
   try {
     let text = "";
