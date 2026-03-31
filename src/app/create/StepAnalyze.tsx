@@ -139,8 +139,8 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
       <h2 className="text-xl font-bold mb-6">④ 参考動画の分析</h2>
 
       <div className="space-y-3 mb-6">
-        {progresses.map((p) => (
-          <div key={p.videoId} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+        {progresses.map((p, i) => (
+          <div key={p.videoId || `prog-${i}`} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center gap-3">
               <div className={`w-3 h-3 rounded-full shrink-0 ${
                 p.status === "done" ? "bg-green-500" : p.status === "error" ? "bg-red-500" : p.status === "pending" ? "bg-gray-300" : "bg-yellow-500 animate-pulse"
