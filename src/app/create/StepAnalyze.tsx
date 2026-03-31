@@ -40,6 +40,10 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
     const analysisIds: string[] = [];
 
     for (const video of project.referenceVideos) {
+      if (!video.videoId) {
+        updateProgress(video.videoId, { status: "error", progress: "videoIdがありません。参考動画ページで実際の動画を選択してください。" });
+        continue;
+      }
       try {
         // Step 1: フレーム抽出
         updateProgress(video.videoId, { status: "extracting", progress: "動画DL＆フレーム抽出中..." });

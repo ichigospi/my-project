@@ -115,12 +115,8 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
   };
 
   const handleSelectCandidate = (c: TitleCandidateEx) => {
-    // タイトルを設定し、参考動画があれば引き継ぎ用に保存
-    const refs = (c.referenceVideos || []).map((rv) => ({
-      videoId: "", title: rv.title, channelName: rv.channel, views: rv.views,
-      thumbnailUrl: "", multiplier: undefined, selected: true,
-    }));
-    onUpdate({ ...project, title: c.title, referenceVideos: refs, status: "references" });
+    // タイトルのみ設定（参考動画はStep③で実際のYouTubeデータから選ぶ）
+    onUpdate({ ...project, title: c.title, status: "references" });
   };
 
   const displayCandidates = candidates.length > 0 ? candidates : (project.titleCandidates as TitleCandidateEx[]);
