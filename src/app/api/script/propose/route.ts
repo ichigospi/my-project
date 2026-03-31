@@ -4,68 +4,80 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { analyses, style, topic, channelProfile, aiApiKey } = body;
 
-  if (!aiApiKey) {
-    return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
-  }
+  if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
 
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
 
-  // 分析結果をまとめる
   const analysisTexts = analyses.map((a: {
-    videoTitle: string;
-    channelName: string;
-    views: number;
+    videoTitle: string; channelName: string; views: number;
     analysisResult: {
       summary: string;
-      structure: { name: string; timeRange: string; duration: string; purpose: string }[];
-      hooks: string[];
-      ctas: string[];
-      growthFactors: string[];
-      appealPoints: string[];
-      overallPattern: string;
+      structure: { name: string; timeRange: string; purpose: string }[];
+      hooks: string[]; ctas: string[]; growthFactors: string[];
+      appealPoints: string[]; overallPattern: string;
       score?: { overall: number };
     };
   }, i: number) => `
-【分析${i + 1}】${a.videoTitle}（${a.channelName}）再生数: ${a.views?.toLocaleString()}回
+【参考動画${i + 1}】「${a.videoTitle}」（${a.channelName}）再生数: ${a.views?.toLocaleString()}回
 概要: ${a.analysisResult?.summary}
-構成: ${a.analysisResult?.structure?.map((s: { name: string; timeRange: string; duration: string; purpose: string }) => `${s.name}(${s.timeRange}) - ${s.purpose}`).join(" → ")}
-フック: ${a.analysisResult?.hooks?.join(", ")}
-CTA: ${a.analysisResult?.ctas?.join(", ")}
-伸び要因: ${a.analysisResult?.growthFactors?.join(", ")}
-訴求ポイント: ${a.analysisResult?.appealPoints?.join(", ")}
+構成: ${a.analysisResult?.structure?.map((s) => `${s.name}(${s.timeRange})`).join(" → ")}
+フック: ${a.analysisResult?.hooks?.join(" / ")}
+CTA: ${a.analysisResult?.ctas?.join(" / ")}
+伸び要因: ${a.analysisResult?.growthFactors?.join(" / ")}
+訴求: ${a.analysisResult?.appealPoints?.join(" / ")}
 パターン: ${a.analysisResult?.overallPattern}
 スコア: ${a.analysisResult?.score?.overall || "不明"}/10
 `).join("\n");
 
-  const profileText = channelProfile ? `
-【自チャンネル設計】
-チャンネル名: ${channelProfile.channelName || "未設定"}
+  const profileText = channelProfile?.channelName ? `
+自チャンネル: ${channelProfile.channelName}
 コンセプト: ${channelProfile.concept || "未設定"}
 口調: ${channelProfile.tone || "未設定"}
-ターゲット: ${channelProfile.target || "未設定"}
-得意ジャンル: ${channelProfile.genres?.join(", ") || "未設定"}
-メインスタイル: ${channelProfile.mainStyle === "healing" ? "ヒーリング系" : channelProfile.mainStyle === "education" ? "教育系" : "両方"}
-特徴: ${channelProfile.characteristics || "未設定"}
 ` : "";
 
   const prompt = `あなたは占い・スピリチュアル系YouTubeの台本構成プロデューサーです。
 
-【最重要ルール】
-- 2〜3本の参考動画の強い訴求・構成を「いいとこ取り」して上位互換の台本を作る
-- 参考動画で実際に伸びている要素（フック・訴求・構成）を軸にすること
-- オリジナリティを出しすぎて参考動画から乖離しないこと
+以下の参考動画の分析を基に、「良いとこどり」の台本骨組みを提案してください。
 
-以下の競合動画の台本分析を基に、「良いとこどり」の台本構成を提案してください。
+【鉄則】
+- 参考動画で実際に伸びている要素を軸にすること
+- 各セクションで「どの参考動画のどの要素を取り入れたか」を必ず明記すること
 
 ${analysisTexts}
 ${profileText}
-
 スタイル: ${style === "healing" ? "ヒーリング系" : "教育系"}
 テーマ: ${topic}
 
-以下のJSON形式のみ出力してください。説明文は不要です。
+以下のマークダウン形式で出力してください。
 
-{"concept":"コンセプト1-2文","structure":[{"name":"セクション名","timeRange":"0:00-1:00","duration":"60秒","description":"内容","purpose":"狙い"}],"keyElements":["要素1","要素2"],"suggestedHooks":["フック1","フック2"],"suggestedCtas":["CTA1"],"estimatedDuration":"12-15分"}`;
+---
+
+# 台本骨組み
+推定尺: ○○分 | 目標文字数: ○○○○文字
+
+## ❶ セクション名（0:00-0:50）
+このセクションで伝える内容の説明（2-3文）
+
+> 📺 参考元: 「参考動画タイトル」の○○を採用
+> 💡 この要素が有効な理由の解説
+
+## ❷ セクション名（0:50-2:00）
+...（同じ形式で全セクション）
+
+---
+
+# 🎯 訴求設計まとめ
+
+**訴求の組み合わせ:**
+- 参考動画Aの「○○訴求」× 参考動画Bの「○○訴求」
+
+**採用フック:**
+- フック内容（どの動画から採用したか）
+
+**採用CTA:**
+- CTA内容（どの動画から採用したか）
+
+---`;
 
   try {
     let text = "";
@@ -73,72 +85,23 @@ ${profileText}
     if (isAnthropic) {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": aiApiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 4096,
-          messages: [{ role: "user", content: prompt }],
-        }),
+        headers: { "content-type": "application/json", "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
       });
-      if (!res.ok) {
-        const error = await res.json();
-        return NextResponse.json({ error: error.error?.message || "API error" }, { status: res.status });
-      }
-      const data = await res.json();
-      text = data.content?.[0]?.text || "";
+      if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message }, { status: res.status }); }
+      text = (await res.json()).content?.[0]?.text || "";
     } else {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 4096,
-        }),
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 4096 }),
       });
-      if (!res.ok) {
-        const error = await res.json();
-        return NextResponse.json({ error: error.error?.message || "API error" }, { status: res.status });
-      }
-      const data = await res.json();
-      text = data.choices?.[0]?.message?.content || "";
+      if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message }, { status: res.status }); }
+      text = (await res.json()).choices?.[0]?.message?.content || "";
     }
 
-    // JSON抽出を複数の方法で試みる
-    const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-
-    // 方法1: 全体をJSONとしてパース
-    try {
-      const parsed = JSON.parse(cleaned);
-      return NextResponse.json(parsed);
-    } catch { /* 次の方法へ */ }
-
-    // 方法2: {から}までを抽出してパース
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return NextResponse.json(parsed);
-      } catch { /* 次の方法へ */ }
-    }
-
-    // 方法3: パース失敗 → 生テキストをそのまま返す（クライアントが表示）
-    return NextResponse.json({
-      concept: text,
-      structure: [],
-      keyElements: [],
-      suggestedHooks: [],
-      suggestedCtas: [],
-      estimatedDuration: "不明",
-      rawText: true,
-    });
+    return NextResponse.json({ skeleton: text });
   } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : "構成提案の生成に失敗",
-    }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "構成提案に失敗" }, { status: 500 });
   }
 }

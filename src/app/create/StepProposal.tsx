@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
 import { getAnalyses, getProfile } from "@/lib/script-analysis-store";
-import { getPresetFor, getHooksFor, getCTAsFor } from "@/lib/project-store";
-import type { ScriptProject, StructureProposal } from "@/lib/project-store";
+import type { ScriptProject } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 
 export default function StepProposal({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const [analyses, setAnalyses] = useState<ScriptAnalysis[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [skeleton, setSkeleton] = useState(project.structureProposal?.concept || "");
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -24,10 +25,6 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     setGenerating(true);
     setError("");
 
-    const preset = getPresetFor(project.genre, project.style);
-    const hooks = getHooksFor(project.genre, project.style).slice(0, 5);
-    const ctas = getCTAsFor(project.genre, project.style).slice(0, 5);
-
     try {
       const res = await fetch("/api/script/propose", {
         method: "POST",
@@ -38,32 +35,55 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         }),
       });
       const data = await res.json();
-      if (data.error && !data.concept) { setError(data.error); }
-      else {
-        const proposal: StructureProposal = {
-          suggestedTitle: project.title,
-          concept: data.concept || "",
-          structure: data.structure || [],
-          keyElements: data.keyElements || [],
-          suggestedHooks: [...(data.suggestedHooks || []), ...hooks.map((h) => h.text)].slice(0, 5),
-          suggestedCtas: [...(data.suggestedCtas || []), ...ctas.map((c) => c.text)].slice(0, 3),
-          estimatedDuration: data.estimatedDuration || "10-15分",
-          targetWordCount: preset?.targetWordCount || 5000,
-        };
-        onUpdate({ ...project, structureProposal: proposal });
+      if (data.error) { setError(data.error); }
+      else if (data.skeleton) {
+        setSkeleton(data.skeleton);
+        // 骨組みテキストをproposalに保存
+        onUpdate({
+          ...project,
+          structureProposal: {
+            suggestedTitle: project.title,
+            concept: data.skeleton,
+            structure: [], keyElements: [],
+            suggestedHooks: [], suggestedCtas: [],
+            estimatedDuration: "", targetWordCount: 5000,
+          },
+        });
       }
     } catch { setError("構成提案に失敗"); }
     finally { setGenerating(false); }
   };
 
-  const proposal = project.structureProposal;
+  // マークダウンを簡易HTML変換
+  const renderMarkdown = (md: string) => {
+    return md
+      .split("\n")
+      .map((line, i) => {
+        // 見出し
+        if (line.startsWith("# ")) return <h2 key={i} className="text-xl font-bold mt-6 mb-3">{line.slice(2)}</h2>;
+        if (line.startsWith("## ")) return <h3 key={i} className="text-lg font-bold mt-5 mb-2 text-accent">{line.slice(3)}</h3>;
+        if (line.startsWith("### ")) return <h4 key={i} className="text-base font-semibold mt-4 mb-1">{line.slice(4)}</h4>;
+        // 引用（参考元ブロック）
+        if (line.startsWith("> ")) return <p key={i} className="pl-4 border-l-2 border-accent/30 text-sm text-gray-600 my-1">{line.slice(2)}</p>;
+        // ボールド
+        if (line.startsWith("**") && line.endsWith("**")) return <p key={i} className="font-semibold text-sm mt-3 mb-1">{line.slice(2, -2)}</p>;
+        // リスト
+        if (line.startsWith("- ")) return <li key={i} className="text-sm text-gray-700 ml-4 list-disc my-0.5">{line.slice(2)}</li>;
+        // 区切り線
+        if (line.startsWith("---")) return <hr key={i} className="my-4 border-gray-200" />;
+        // 空行
+        if (line.trim() === "") return <div key={i} className="h-2" />;
+        // 通常テキスト
+        return <p key={i} className="text-sm text-gray-700 leading-relaxed">{line}</p>;
+      });
+  };
 
   return (
     <div className="max-w-3xl">
       <h2 className="text-xl font-bold mb-2">⑤ 構成提案</h2>
-      <p className="text-sm text-gray-500 mb-6">{analyses.length}本の分析を基に構成を提案</p>
+      <p className="text-sm text-gray-500 mb-6">{analyses.length}本の分析を基に台本の骨組みを提案</p>
 
-      {/* 分析サマリー */}
+      {/* 参考動画サマリー */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
         {analyses.map((a) => (
           <div key={a.id} className="bg-card-bg rounded-lg p-4 shadow-sm border border-gray-100">
@@ -74,65 +94,81 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         ))}
       </div>
 
-      {!proposal && (
+      {/* 生成ボタン */}
+      {!skeleton && (
         <button onClick={handleGenerate} disabled={generating}
           className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50 mb-6">
-          {generating ? "構成提案を生成中..." : "構成提案を生成"}
+          {generating ? "骨組みを生成中..." : "台本の骨組みを生成"}
         </button>
       )}
 
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
 
-      {proposal && (
+      {/* 骨組み表示 */}
+      {skeleton && (
         <div className="space-y-4 mb-6">
-          <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-            <h3 className="font-semibold mb-2">コンセプト</h3>
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{proposal.concept}</pre>
-            <div className="flex gap-4 mt-3 text-xs text-gray-500">
-              <span>推定尺: {proposal.estimatedDuration}</span>
-              <span>目標: {proposal.targetWordCount}文字</span>
+          {/* 表示/編集切り替え */}
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <button onClick={() => setEditing(false)}
+                className={`px-3 py-1.5 rounded-lg text-sm ${!editing ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
+                プレビュー
+              </button>
+              <button onClick={() => setEditing(true)}
+                className={`px-3 py-1.5 rounded-lg text-sm ${editing ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
+                編集
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleGenerate} disabled={generating}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50">
+                {generating ? "生成中..." : "再生成"}
+              </button>
+              <button onClick={() => navigator.clipboard.writeText(skeleton)}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">
+                コピー
+              </button>
             </div>
           </div>
 
-          <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-            <h3 className="font-semibold mb-4">構成</h3>
-            {proposal.structure.map((s, i) => (
-              <div key={i} className="flex gap-4 mb-3 last:mb-0">
-                <div className="flex flex-col items-center">
-                  <div className="w-7 h-7 rounded-full bg-accent text-white text-xs font-bold flex items-center justify-center">{i + 1}</div>
-                  {i < proposal.structure.length - 1 && <div className="w-0.5 flex-1 bg-accent/20 mt-1" />}
-                </div>
-                <div className="flex-1 pb-2">
-                  <p className="font-medium text-sm">{s.name} <span className="text-xs text-gray-400">{s.timeRange}</span></p>
-                  <p className="text-xs text-gray-600">{s.description}</p>
-                  <p className="text-xs text-accent/80 mt-0.5">→ {s.purpose}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* プレビューモード */}
+          {!editing && (
+            <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+              {renderMarkdown(skeleton)}
+            </div>
+          )}
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-              <h4 className="text-xs font-medium text-green-700 mb-2">取り入れる要素</h4>
-              <ul className="space-y-1">{proposal.keyElements.map((e, i) => <li key={i} className="text-xs text-gray-700">· {e}</li>)}</ul>
+          {/* 編集モード */}
+          {editing && (
+            <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
+              <textarea
+                value={skeleton}
+                onChange={(e) => {
+                  setSkeleton(e.target.value);
+                  if (project.structureProposal) {
+                    onUpdate({
+                      ...project,
+                      structureProposal: { ...project.structureProposal, concept: e.target.value },
+                    });
+                  }
+                }}
+                rows={25}
+                className="w-full px-6 py-4 text-sm leading-relaxed outline-none resize-y font-mono"
+              />
             </div>
-            <div className="bg-red-50 rounded-lg p-4 border border-red-100">
-              <h4 className="text-xs font-medium text-red-700 mb-2">フック</h4>
-              <ul className="space-y-1">{proposal.suggestedHooks.map((h, i) => <li key={i} className="text-xs text-gray-700">· {h}</li>)}</ul>
-            </div>
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-              <h4 className="text-xs font-medium text-blue-700 mb-2">CTA</h4>
-              <ul className="space-y-1">{proposal.suggestedCtas.map((c, i) => <li key={i} className="text-xs text-gray-700">· {c}</li>)}</ul>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
+      {/* ナビゲーション */}
       <div className="flex gap-3">
-        <button onClick={() => onUpdate({ ...project, status: "analyzing" })} className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
-        {proposal && (
+        <button onClick={() => onUpdate({ ...project, status: "analyzing" })}
+          className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
+        {skeleton && (
           <button onClick={() => onUpdate({ ...project, status: "script" })}
-            className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90">台本を生成 →</button>
+            className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90">
+            この骨組みで台本を作成 →
+          </button>
         )}
       </div>
     </div>

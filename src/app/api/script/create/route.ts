@@ -10,11 +10,8 @@ export async function POST(request: NextRequest) {
 
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
 
-  const structureText = proposal?.structure
-    ?.map((s: { name: string; timeRange: string; description: string; purpose: string }, i: number) =>
-      `${i + 1}. ${s.name}（${s.timeRange}）\n   内容: ${s.description}\n   狙い: ${s.purpose}`
-    )
-    .join("\n") || "";
+  // 骨組みテキスト（マークダウン形式のconceptに入っている）
+  const skeletonText = proposal?.concept || "";
 
   const profileText = channelProfile ? `
 【自チャンネル設計】
@@ -35,20 +32,8 @@ export async function POST(request: NextRequest) {
 【スタイル】${style === "healing" ? "ヒーリング系（癒し・瞑想・エネルギーワーク中心）" : "解説・教育系（知識・解説中心）"}
 ${profileText}
 
-【構成提案】
-コンセプト: ${proposal?.concept || ""}
-推定尺: ${proposal?.estimatedDuration || "10-15分"}
-
-${structureText}
-
-【取り入れるべきフック】
-${proposal?.suggestedHooks?.join("\n") || "特になし"}
-
-【取り入れるべきCTA】
-${proposal?.suggestedCtas?.join("\n") || "特になし"}
-
-【重要要素】
-${proposal?.keyElements?.join("\n") || "特になし"}
+【台本の骨組み（この構成に沿って台本を書くこと）】
+${skeletonText}
 
 ${additionalNotes ? `【追加指示】\n${additionalNotes}` : ""}
 
