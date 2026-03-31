@@ -1,16 +1,36 @@
 "use client";
 
 import { useState } from "react";
-import { getApiKey } from "@/lib/channel-store";
-import { getChannels } from "@/lib/channel-store";
+import { getApiKey, getChannels } from "@/lib/channel-store";
 import { getHooksFor, getPerformanceRecords, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
-import type { ScriptProject, TitleCandidate } from "@/lib/project-store";
+import type { ScriptProject } from "@/lib/project-store";
+import { formatNumber } from "@/lib/mock-data";
+
+interface RefVideo {
+  title: string;
+  channel: string;
+  views: number;
+  referencePoint: string;
+  crossGenre: boolean;
+}
+
+interface TitleCandidateEx {
+  title: string;
+  reason: string;
+  appealPattern?: string;
+  estimatedPotential: "high" | "medium" | "low";
+  referenceVideos?: RefVideo[];
+  sourceVideo?: string;
+  sourceChannel?: string;
+}
 
 export default function StepTitle({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const [suggesting, setSuggesting] = useState(false);
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<{ similar: boolean; similarTitle?: string; message: string; suggestion?: string } | null>(null);
   const [error, setError] = useState("");
+  const [candidates, setCandidates] = useState<TitleCandidateEx[]>([]);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const handleSuggestTitles = async () => {
     const aiApiKey = getApiKey("ai_api_key");
@@ -21,9 +41,9 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
     setError("");
 
     try {
-      // 競合動画タイトルを取得
+      // 競合動画を取得（タイトル+チャンネル+再生数）
       const channels = getChannels().filter((ch) => ch.channelId);
-      let competitorTitles: string[] = [];
+      let competitorVideos: { title: string; channel: string; views: number }[] = [];
       if (ytApiKey && channels.length > 0) {
         const res = await fetch("/api/youtube/search-videos", {
           method: "POST",
@@ -33,11 +53,11 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
         const data = await res.json();
         if (data.videos) {
           const oneMonthAgo = new Date(); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-          competitorTitles = data.videos
-            .filter((v: { publishedAt: string; views: number }) => v.publishedAt >= oneMonthAgo.toISOString().split("T")[0])
+          competitorVideos = data.videos
+            .filter((v: { publishedAt: string }) => v.publishedAt >= oneMonthAgo.toISOString().split("T")[0])
             .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
-            .slice(0, 20)
-            .map((v: { title: string }) => v.title);
+            .slice(0, 30)
+            .map((v: { title: string; channelName: string; views: number }) => ({ title: v.title, channel: v.channelName, views: v.views }));
         }
       }
 
@@ -50,13 +70,17 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           genre: project.genre, style: project.style,
-          competitorTitles, selfTopVideos, performanceData: perfRecords.length > 0 ? `過去実績${perfRecords.length}件` : "",
-          hookPatterns: hooks.join(", "), aiApiKey,
+          competitorVideos, selfTopVideos,
+          performanceData: perfRecords.length > 0 ? `過去実績${perfRecords.length}件、平均再生数${Math.round(perfRecords.reduce((s, r) => s + r.views, 0) / perfRecords.length)}回` : "",
+          hookPatterns: hooks.join(" / "), aiApiKey,
         }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
-      else if (data.candidates) { onUpdate({ ...project, titleCandidates: data.candidates }); }
+      else if (data.candidates) {
+        setCandidates(data.candidates);
+        onUpdate({ ...project, titleCandidates: data.candidates });
+      }
     } catch { setError("タイトル提案に失敗"); }
     finally { setSuggesting(false); }
   };
@@ -79,6 +103,17 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
     } catch { setError("類似チェックに失敗"); }
     finally { setChecking(false); }
   };
+
+  const handleSelectCandidate = (c: TitleCandidateEx) => {
+    // タイトルを設定し、参考動画があれば引き継ぎ用に保存
+    const refs = (c.referenceVideos || []).map((rv) => ({
+      videoId: "", title: rv.title, channelName: rv.channel, views: rv.views,
+      thumbnailUrl: "", multiplier: undefined, selected: true,
+    }));
+    onUpdate({ ...project, title: c.title, referenceVideos: refs, status: "references" });
+  };
+
+  const displayCandidates = candidates.length > 0 ? candidates : (project.titleCandidates as TitleCandidateEx[]);
 
   return (
     <div className="max-w-2xl">
@@ -113,26 +148,75 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
           <h3 className="font-semibold text-sm">AIで企画提案</h3>
           <button onClick={handleSuggestTitles} disabled={suggesting}
             className="px-4 py-2 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
-            {suggesting ? "分析中..." : "競合＋自チャンネルから提案"}
+            {suggesting ? "競合分析中..." : "競合＋自チャンネルから提案"}
           </button>
         </div>
 
-        {project.titleCandidates.length > 0 && (
+        {displayCandidates.length > 0 && (
           <div className="space-y-2">
-            {project.titleCandidates.map((c: TitleCandidate, i: number) => (
-              <div key={i} className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                project.title === c.title ? "border-accent bg-accent/5" : "border-gray-100 hover:border-gray-200"
-              }`} onClick={() => onUpdate({ ...project, title: c.title })}>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-sm">{c.title}</p>
-                    <p className="text-xs text-gray-500 mt-1">{c.reason}</p>
-                    {c.sourceVideo && <p className="text-xs text-gray-400 mt-0.5">元ネタ: {c.sourceChannel} - {c.sourceVideo}</p>}
+            {displayCandidates.map((c, i) => (
+              <div key={i} className="rounded-lg border border-gray-100 overflow-hidden">
+                {/* ヘッダー（クリックで展開） */}
+                <div
+                  className={`p-4 cursor-pointer transition-all hover:bg-gray-50 ${project.title === c.title ? "bg-accent/5 border-l-4 border-l-accent" : ""}`}
+                  onClick={() => setExpanded(expanded === i ? null : i)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{c.title}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${c.estimatedPotential === "high" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                          {c.estimatedPotential === "high" ? "高ポテンシャル" : "中ポテンシャル"}
+                        </span>
+                        {c.appealPattern && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">{c.appealPattern}</span>
+                        )}
+                      </div>
+                    </div>
+                    <svg className={`w-5 h-5 text-gray-400 transition-transform shrink-0 ${expanded === i ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${c.estimatedPotential === "high" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-                    {c.estimatedPotential === "high" ? "高ポテンシャル" : "中ポテンシャル"}
-                  </span>
                 </div>
+
+                {/* 展開エリア */}
+                {expanded === i && (
+                  <div className="px-4 pb-4 border-t border-gray-100 pt-3 bg-gray-50/50">
+                    {/* 提案理由 */}
+                    <div className="mb-4">
+                      <h4 className="text-xs font-medium text-gray-500 mb-1">伸びると判断した理由</h4>
+                      <p className="text-sm text-gray-700 leading-relaxed">{c.reason}</p>
+                    </div>
+
+                    {/* 参考動画 */}
+                    {c.referenceVideos && c.referenceVideos.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="text-xs font-medium text-gray-500 mb-2">参考にすべき動画</h4>
+                        <div className="space-y-2">
+                          {c.referenceVideos.map((rv, j) => (
+                            <div key={j} className="bg-white rounded-lg p-3 border border-gray-100">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium">{rv.title}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5">{rv.channel} · {formatNumber(rv.views)}回再生</p>
+                                </div>
+                                {rv.crossGenre && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 shrink-0">訴求パターン参考</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-accent mt-1.5">→ {rv.referencePoint}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <button onClick={() => handleSelectCandidate(c)}
+                      className="w-full px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
+                      この企画で進む →
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
