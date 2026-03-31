@@ -90,8 +90,8 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
           </div>
 
           <div className="space-y-2 mb-6 max-h-[60vh] overflow-y-auto">
-            {videos.map((v) => (
-              <label key={v.videoId} className={`flex items-center gap-4 p-3 rounded-lg cursor-pointer transition-all ${
+            {videos.map((v, i) => (
+              <label key={v.videoId || `ref-${i}`} className={`flex items-center gap-4 p-3 rounded-lg cursor-pointer transition-all ${
                 v.selected ? "bg-accent/5 border border-accent/30" : "bg-card-bg border border-gray-100 hover:border-gray-200"
               }`}>
                 <input type="checkbox" checked={v.selected} onChange={() => toggleSelect(v.videoId)}
