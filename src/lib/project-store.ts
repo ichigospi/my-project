@@ -126,6 +126,63 @@ export interface PerformanceRecord {
   recordedAt: string;
 }
 
+// ===== 自チャンネルトラッキング =====
+export interface MyChannelVideo {
+  videoId: string;
+  title: string;
+  publishedAt: string;
+  thumbnailUrl: string;
+  duration: string;
+  genre: Genre;
+  snapshots: VideoSnapshot[];
+  linkedProjectId?: string;
+  dropoffNote?: string; // 離脱ポイントの手動メモ
+}
+
+export interface VideoSnapshot {
+  date: string;
+  views: number;
+  likes: number;
+  comments: number;
+}
+
+export interface MyChannelData {
+  channelId: string;
+  channelName: string;
+  videos: MyChannelVideo[];
+  lastFetched: string;
+}
+
+const MY_CHANNEL_KEY = "fortune_yt_my_channel";
+
+export function getMyChannel(): MyChannelData | null {
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem(MY_CHANNEL_KEY);
+  return stored ? JSON.parse(stored) : null;
+}
+
+export function saveMyChannel(data: MyChannelData) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(MY_CHANNEL_KEY, JSON.stringify(data));
+}
+
+// ジャンル自動判定
+const GENRE_KW: Record<Genre, string[]> = {
+  love: ["恋愛", "ツインレイ", "ツインソウル", "運命の人", "復縁", "片思い", "あの人", "お相手", "パートナー", "結婚", "同棲", "連絡", "再会", "愛", "恋", "ソウルメイト", "彼"],
+  money: ["金運", "お金", "収入", "豊かさ", "富", "財", "臨時収入", "宝くじ", "昇給", "開運", "金銭"],
+  general: ["運勢", "スピリチュアル", "覚醒", "エネルギー", "浄化", "チャクラ", "瞑想", "ヒーリング", "波動", "アセンション", "守護", "天使", "エンジェル", "宇宙"],
+};
+
+export function detectGenre(title: string): Genre {
+  let best: Genre = "general";
+  let bestCount = 0;
+  for (const [genre, keywords] of Object.entries(GENRE_KW) as [Genre, string[]][]) {
+    const count = keywords.filter((kw) => title.includes(kw)).length;
+    if (count > bestCount) { best = genre; bestCount = count; }
+  }
+  return best;
+}
+
 // ===== Storage Keys =====
 const PROJECTS_KEY = "fortune_yt_projects";
 const PRESETS_KEY = "fortune_yt_presets";
