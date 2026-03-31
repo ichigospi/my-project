@@ -89,10 +89,16 @@ ${directionNote ? `【方向性の指定】\n${directionNote}\n` : ""}
       text = (await res.json()).choices?.[0]?.message?.content || "";
     }
 
-    const match = text.match(/\[[\s\S]*\]/);
-    if (!match) return NextResponse.json({ error: "パース失敗", raw: text }, { status: 500 });
-    return NextResponse.json({ candidates: JSON.parse(match[0]) });
+    // JSON抽出（コードブロック内も対応）
+    const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "");
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
+    try {
+      return NextResponse.json({ candidates: JSON.parse(match[0]) });
+    } catch {
+      return NextResponse.json({ error: "JSON形式が不正です。再度お試しください。" }, { status: 500 });
+    }
   } catch (e) {
-    return NextResponse.json({ error: e instanceof SyntaxError ? "JSONパース失敗" : "タイトル提案に失敗" }, { status: 500 });
+    return NextResponse.json({ error: e instanceof Error ? e.message : "タイトル提案に失敗" }, { status: 500 });
   }
 }

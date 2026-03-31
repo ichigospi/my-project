@@ -47,20 +47,22 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
       const channels = getChannels().filter((ch) => ch.channelId);
       let competitorVideos: { title: string; channel: string; views: number }[] = [];
       if (ytApiKey && channels.length > 0) {
-        const res = await fetch("/api/youtube/search-videos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channels: channels.slice(0, 5).map((ch) => ({ channelId: ch.channelId, name: ch.name, handle: ch.handle })), apiKey: ytApiKey, maxResultsPerChannel: 20 }),
-        });
-        const data = await res.json();
-        if (data.videos) {
-          const oneMonthAgo = new Date(); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-          competitorVideos = data.videos
-            .filter((v: { publishedAt: string }) => v.publishedAt >= oneMonthAgo.toISOString().split("T")[0])
-            .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
-            .slice(0, 30)
-            .map((v: { title: string; channelName: string; views: number }) => ({ title: v.title, channel: v.channelName, views: v.views }));
-        }
+        try {
+          const res = await fetch("/api/youtube/search-videos", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channels: channels.slice(0, 3).map((ch) => ({ channelId: ch.channelId, name: ch.name, handle: ch.handle })), apiKey: ytApiKey, maxResultsPerChannel: 15 }),
+          });
+          const data = await res.json();
+          if (data.videos) {
+            const oneMonthAgo = new Date(); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+            competitorVideos = data.videos
+              .filter((v: { publishedAt: string }) => v.publishedAt >= oneMonthAgo.toISOString().split("T")[0])
+              .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
+              .slice(0, 20)
+              .map((v: { title: string; channelName: string; views: number }) => ({ title: v.title, channel: v.channelName, views: v.views }));
+          }
+        } catch { /* 競合データ取得失敗しても提案は続行 */ }
       }
 
       const perfRecords = getPerformanceRecords().filter((r) => r.genre === project.genre);
