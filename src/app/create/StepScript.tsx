@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
 import { getProfile, getAnalyses } from "@/lib/script-analysis-store";
-import { getPresetFor } from "@/lib/project-store";
+import { getPresetFor, getPerformanceRecords } from "@/lib/project-store";
 import { calcSimilarity } from "@/lib/similarity";
 import type { ScriptProject, TelopLine } from "@/lib/project-store";
 
@@ -152,18 +152,34 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     finally { setConvertingTelop(false); }
   };
 
+  const [thumbSuggestions, setThumbSuggestions] = useState<{ text: string; reason: string; source?: string }[]>([]);
+
   const handleSuggestThumbnail = async () => {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) return;
     setSuggestingThumb(true);
     try {
+      // 競合の人気動画タイトルを取得
+      const allAnalyses = getAnalyses();
+      const refAnalyses = allAnalyses.filter((a) => project.analyses.includes(a.id));
+      const competitorTitles = refAnalyses.map((a) => a.videoTitle);
+
       const res = await fetch("/api/script/thumbnail-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: project.title, hooks: project.structureProposal?.suggestedHooks, script: project.generatedScript?.substring(0, 500), aiApiKey }),
+        body: JSON.stringify({
+          title: project.title,
+          hooks: project.structureProposal?.suggestedHooks,
+          script: project.generatedScript?.substring(0, 500),
+          competitorTitles,
+          aiApiKey,
+        }),
       });
       const data = await res.json();
-      if (data.texts) onUpdate({ ...project, thumbnailTexts: data.texts });
+      if (data.suggestions) {
+        setThumbSuggestions(data.suggestions);
+        onUpdate({ ...project, thumbnailTexts: data.suggestions.map((s: { text: string }) => s.text) });
+      }
     } catch { setError("サムネ提案に失敗"); }
     finally { setSuggestingThumb(false); }
   };
@@ -395,7 +411,21 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                   {suggestingThumb ? "提案中..." : "提案する"}
                 </button>
               </div>
-              {project.thumbnailTexts.length > 0 && (
+              {thumbSuggestions.length > 0 && (
+                <div className="space-y-2">
+                  {thumbSuggestions.map((s, i) => (
+                    <div key={i} className="bg-gray-50 rounded-lg px-3 py-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold">{s.text}</span>
+                        <button onClick={() => navigator.clipboard.writeText(s.text)} className="text-xs text-accent hover:underline shrink-0 ml-2">コピー</button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">{s.reason}</p>
+                      {s.source && <p className="text-xs text-accent/70 mt-0.5">参考: {s.source}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {thumbSuggestions.length === 0 && project.thumbnailTexts.length > 0 && (
                 <div className="space-y-2">
                   {project.thumbnailTexts.map((t, i) => (
                     <div key={i} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
