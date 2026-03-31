@@ -60,27 +60,12 @@ CTA: ${a.analysisResult?.ctas?.join(", ")}
 ${analysisTexts}
 ${profileText}
 
-動画スタイル: ${style === "healing" ? "ヒーリング系（癒し・瞑想・エネルギーワーク）" : "解説・教育系（知識・解説・啓蒙）"}
+スタイル: ${style === "healing" ? "ヒーリング系" : "教育系"}
 テーマ: ${topic}
 
-以下のJSON形式で提案してください。JSONのみ出力してください。
+以下のJSON形式のみ出力してください。説明文は不要です。
 
-{
-  "concept": "この動画のコンセプト（1-2文）",
-  "structure": [
-    {
-      "name": "セクション名",
-      "timeRange": "推定時間",
-      "duration": "推定秒数",
-      "description": "このセクションの内容",
-      "purpose": "役割・狙い（どの分析のどの要素を取り入れたか明記）"
-    }
-  ],
-  "keyElements": ["各分析から取り入れた重要要素のリスト"],
-  "suggestedHooks": ["提案するフック（各分析の良いフックを組み合わせ）"],
-  "suggestedCtas": ["提案するCTA"],
-  "estimatedDuration": "推定動画尺（例: 12-15分）"
-}`;
+{"concept":"コンセプト1-2文","structure":[{"name":"セクション名","timeRange":"0:00-1:00","duration":"60秒","description":"内容","purpose":"狙い"}],"keyElements":["要素1","要素2"],"suggestedHooks":["フック1","フック2"],"suggestedCtas":["CTA1"],"estimatedDuration":"12-15分"}`;
 
   try {
     let text = "";
