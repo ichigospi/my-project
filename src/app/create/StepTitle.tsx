@@ -30,7 +30,9 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
   const [checkResult, setCheckResult] = useState<{ similar: boolean; similarTitle?: string; message: string; suggestion?: string } | null>(null);
   const [error, setError] = useState("");
   const [candidates, setCandidates] = useState<TitleCandidateEx[]>([]);
+  const [pastCandidates, setPastCandidates] = useState<TitleCandidateEx[][]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [direction, setDirection] = useState("");
 
   const handleSuggestTitles = async () => {
     const aiApiKey = getApiKey("ai_api_key");
@@ -65,6 +67,9 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
       const selfTopVideos = perfRecords.sort((a, b) => b.views - a.views).slice(0, 5).map((r) => `${r.title}（${r.views}回再生）`);
       const hooks = getHooksFor(project.genre, project.style).slice(0, 5).map((h) => h.text);
 
+      // 前回の提案をNG例として渡す
+      const excludeTitles = candidates.map((c) => c.title);
+
       const res = await fetch("/api/script/suggest-titles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -73,11 +78,14 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
           competitorVideos, selfTopVideos,
           performanceData: perfRecords.length > 0 ? `過去実績${perfRecords.length}件、平均再生数${Math.round(perfRecords.reduce((s, r) => s + r.views, 0) / perfRecords.length)}回` : "",
           hookPatterns: hooks.join(" / "), aiApiKey,
+          excludeTitles: excludeTitles.length > 0 ? excludeTitles : undefined,
+          directionNote: direction || undefined,
         }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
       else if (data.candidates) {
+        if (candidates.length > 0) { setPastCandidates((prev) => [...prev, candidates]); }
         setCandidates(data.candidates);
         onUpdate({ ...project, titleCandidates: data.candidates });
       }
@@ -144,12 +152,19 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
 
       {/* AI提案 */}
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-accent/20 mb-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-sm">AIで企画提案</h3>
           <button onClick={handleSuggestTitles} disabled={suggesting}
             className="px-4 py-2 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
-            {suggesting ? "競合分析中..." : "競合＋自チャンネルから提案"}
+            {suggesting ? "競合分析中..." : candidates.length > 0 ? "他の企画を探す" : "競合＋自チャンネルから提案"}
           </button>
+        </div>
+
+        {/* 方向性指定 */}
+        <div className="mb-4">
+          <input type="text" value={direction} onChange={(e) => setDirection(e.target.value)}
+            placeholder="方向性を指定（例: もっと損失回避寄り、サムネ映え重視、緊急性を出したい）"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none" />
         </div>
 
         {displayCandidates.length > 0 && (
@@ -222,6 +237,31 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
           </div>
         )}
       </div>
+
+      {/* 過去の提案履歴 */}
+      {pastCandidates.length > 0 && (
+        <div className="mb-6">
+          <details className="group">
+            <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
+              過去の提案を見る（{pastCandidates.length}回分）
+            </summary>
+            <div className="mt-2 space-y-2">
+              {pastCandidates.map((batch, bi) => (
+                <div key={bi} className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-400 mb-1">{bi + 1}回目の提案</p>
+                  {batch.map((c, ci) => (
+                    <div key={ci} className="flex items-center justify-between py-1">
+                      <p className="text-sm text-gray-600">{c.title}</p>
+                      <button onClick={() => onUpdate({ ...project, title: c.title })}
+                        className="text-xs text-accent hover:underline shrink-0 ml-2">選択</button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </details>
+        </div>
+      )}
 
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 // 競合+自チャンネルデータからタイトル候補を提案（参考動画付き）
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { genre, style, competitorVideos, selfTopVideos, performanceData, hookPatterns, aiApiKey } = body;
+  const { genre, style, competitorVideos, selfTopVideos, performanceData, hookPatterns, aiApiKey, excludeTitles, directionNote } = body;
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが必要です" }, { status: 400 });
 
@@ -35,6 +35,8 @@ ${performanceData || "データなし"}
 【高スコアのフックパターン】
 ${hookPatterns || "データなし"}
 
+${excludeTitles?.length > 0 ? `\n【前回提案済み（これらと被らない新しい企画を出してください）】\n${excludeTitles.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}\n` : ""}
+${directionNote ? `【方向性の指定】\n${directionNote}\n` : ""}
 上記を踏まえて、今作るべき動画のタイトル候補を5つ提案してください。
 
 【参考動画の選定ルール】
