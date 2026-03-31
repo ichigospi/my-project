@@ -185,7 +185,12 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         <div className="text-center py-12">
           <button onClick={handleGenerate} disabled={generating}
             className="px-8 py-4 rounded-xl bg-accent text-white text-lg font-medium hover:bg-accent/90 disabled:opacity-50">
-            {generating ? "台本を生成中..." : "台本を生成する"}
+            {generating ? (
+              <span className="flex items-center gap-2">
+                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                台本を生成中...
+              </span>
+            ) : "台本を生成する"}
           </button>
         </div>
       )}
@@ -261,7 +266,16 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           </div>
 
           {/* 台本本体 */}
-          <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
+          <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 relative">
+            {/* 修正中オーバーレイ */}
+            {revising && (
+              <div className="absolute inset-0 bg-white/80 rounded-xl flex items-center justify-center z-10">
+                <div className="text-center">
+                  <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                  <p className="text-sm font-medium text-accent">台本を修正中...</p>
+                </div>
+              </div>
+            )}
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-semibold">{project.title}</h3>
               <div className="flex gap-2">
@@ -280,15 +294,28 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           </div>
 
           {/* 修正指示欄 */}
-          <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-accent/20">
-            <h3 className="font-semibold text-sm mb-2">修正指示</h3>
+          <div className={`bg-card-bg rounded-xl p-5 shadow-sm border ${revising ? "border-accent" : "border-accent/20"}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-semibold text-sm">修正指示</h3>
+              {revising && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-accent font-medium">
+                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                  修正中...
+                </span>
+              )}
+            </div>
             <div className="flex gap-3">
               <textarea value={revisionNote} onChange={(e) => setRevisionNote(e.target.value)}
-                placeholder="例: 冒頭のフックをもっと強くして / CTAの部分を予祝形式に変えて / 3セクション目を短くして"
-                rows={2} className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none" />
+                placeholder="例: 冒頭のフックをもっと強くして / CTAの部分を予祝形式に変えて / 文法を修正して"
+                rows={2} className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none" disabled={revising} />
               <button onClick={handleRevise} disabled={revising || !revisionNote.trim()}
-                className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end">
-                {revising ? "修正中..." : "修正する"}
+                className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end min-w-24">
+                {revising ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    修正中
+                  </span>
+                ) : "修正する"}
               </button>
             </div>
           </div>
