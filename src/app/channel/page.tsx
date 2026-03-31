@@ -441,48 +441,49 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
     setProgress("登録チャンネルの人気動画を取得中...");
 
     try {
-      // Step 1: 登録チャンネルの直近1ヶ月の人気動画を取得
-      const res = await fetch("/api/youtube/search-videos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channels: channels.slice(0, 5).map((ch) => ({ channelId: ch.channelId, name: ch.name, handle: ch.handle })),
-          apiKey: ytApiKey, maxResultsPerChannel: 20,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) { setError(data.error); setLoading(false); return; }
+      // Step 1: 登録チャンネルの直近の人気動画を取得
+      setProgress(`${channels.length}チャンネルの動画を取得中...`);
+      let allVideos: { title: string; views: number; publishedAt: string }[] = [];
 
-      const oneMonth = new Date(); oneMonth.setMonth(oneMonth.getMonth() - 1);
-      const sourceTitles = (data.videos || [])
-        .filter((v: { publishedAt: string; views: number }) => v.publishedAt >= oneMonth.toISOString().split("T")[0] && v.views >= 3000)
-        .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
+      // 各チャンネルの動画を個別取得（タイムアウト防止）
+      for (const ch of channels.slice(0, 5)) {
+        try {
+          setProgress(`${ch.name || ch.handle || ch.channelId}の動画を取得中...`);
+          const vidRes = await fetch(`/api/youtube/videos?channelId=${ch.channelId}&apiKey=${encodeURIComponent(ytApiKey)}&maxResults=20`);
+          const vidData = await vidRes.json();
+          if (vidData.videos) {
+            allVideos.push(...vidData.videos.map((v: { title: string; views: number; publishedAt: string }) => ({
+              title: v.title, views: v.views, publishedAt: v.publishedAt,
+            })));
+          }
+        } catch { /* skip */ }
+      }
+
+      setProgress(`${allVideos.length}本の動画からソースタイトルを選定中...`);
+
+      // 再生数順にソートして上位8本を選ぶ
+      const sourceTitles = allVideos
+        .sort((a, b) => b.views - a.views)
         .slice(0, 8)
-        .map((v: { title: string }) => v.title);
+        .map((v) => v.title);
 
       if (sourceTitles.length === 0) {
-        // フィルタなしで再試行
-        const allTitles = (data.videos || [])
-          .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
-          .slice(0, 8)
-          .map((v: { title: string }) => v.title);
-        if (allTitles.length === 0) {
-          setError("動画データがありません。チャンネル分析で先にデータを取得してください。");
-          setLoading(false);
-          return;
-        }
-        sourceTitles.push(...allTitles);
+        setError(`動画が取得できませんでした（${allVideos.length}本取得）。チャンネル分析で先に「全チャンネルのデータを取得」してください。`);
+        setLoading(false);
+        return;
       }
 
       // Step 2: 各ソースタイトルでYouTube検索
       const allMatched: DiscoveredVideo[] = [];
       const thresholdDecimal = threshold / 100;
 
+      setProgress(`${sourceTitles.length}本のソースタイトルでYouTube検索中...`);
+
       for (let i = 0; i < sourceTitles.length; i++) {
         const title = sourceTitles[i];
-        setProgress(`検索中... ${i + 1}/${sourceTitles.length}「${title.substring(0, 20)}...」`);
+        setProgress(`検索${i + 1}/${sourceTitles.length}: 「${title.substring(0, 25)}...」（${allMatched.length}件ヒット中）`);
 
-        if (i > 0) await new Promise((r) => setTimeout(r, 1000)); // API負荷軽減
+        if (i > 0) await new Promise((r) => setTimeout(r, 1500)); // API負荷軽減
 
         // タイトルからキーワードを抽出（記号除去、2文字以上の単語を最大5個）
         const keywords = title
@@ -530,6 +531,10 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
         .sort((a, b) => b.hitSources.length - a.hitSources.length || b.videos.length - a.videos.length || b.avgViews - a.avgViews);
 
       setResults(discovered);
+
+      if (discovered.length === 0) {
+        setError(`検索完了（${sourceTitles.length}タイトルで検索、${allMatched.length}件ヒット）。類似率${threshold}%以上・${minViews}回再生以上に一致するチャンネルが見つかりませんでした。類似率を下げるか最低再生数を下げてみてください。`);
+      }
 
       // キャッシュに保存
       try {
