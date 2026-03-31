@@ -1,21 +1,90 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
 
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="p-8">読み込み中...</div>}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const [youtubeApiKey, setYoutubeApiKey] = useState("");
   const [aiApiKey, setAiApiKeyState] = useState("");
   const [saved, setSaved] = useState(false);
   const [channelCount, setChannelCount] = useState(0);
   const [testingYt, setTestingYt] = useState(false);
   const [ytTestResult, setYtTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  // OAuth
+  const [oauthClientId, setOauthClientId] = useState("");
+  const [oauthClientSecret, setOauthClientSecret] = useState("");
+  const [oauthStatus, setOauthStatus] = useState<"disconnected" | "connected">("disconnected");
+  const [oauthConnecting, setOauthConnecting] = useState(false);
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setYoutubeApiKey(getApiKey("yt_api_key"));
     setAiApiKeyState(getApiKey("ai_api_key"));
     setChannelCount(getChannels().length);
-  }, []);
+    setOauthClientId(localStorage.getItem("oauth_client_id") || "");
+    setOauthClientSecret(localStorage.getItem("oauth_client_secret") || "");
+    if (localStorage.getItem("oauth_refresh_token")) setOauthStatus("connected");
+
+    // OAuthコールバック処理
+    const authCode = searchParams.get("auth_code");
+    if (authCode) {
+      handleOAuthCallback(authCode);
+    }
+  }, [searchParams]);
+
+  const handleOAuthCallback = async (code: string) => {
+    const clientId = localStorage.getItem("oauth_client_id");
+    const clientSecret = localStorage.getItem("oauth_client_secret");
+    if (!clientId || !clientSecret) return;
+
+    setOauthConnecting(true);
+    try {
+      const res = await fetch("/api/auth/youtube/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code, clientId, clientSecret,
+          redirectUri: `${window.location.origin}/api/auth/youtube/callback`,
+        }),
+      });
+      const data = await res.json();
+      if (data.accessToken) {
+        localStorage.setItem("oauth_access_token", data.accessToken);
+        localStorage.setItem("oauth_refresh_token", data.refreshToken || "");
+        setOauthStatus("connected");
+        // URLからauth_codeを消す
+        window.history.replaceState({}, "", "/settings");
+      }
+    } catch { /* ignore */ }
+    finally { setOauthConnecting(false); }
+  };
+
+  const handleOAuthConnect = async () => {
+    if (!oauthClientId) return;
+    localStorage.setItem("oauth_client_id", oauthClientId);
+    localStorage.setItem("oauth_client_secret", oauthClientSecret);
+
+    const res = await fetch(`/api/auth/youtube?clientId=${encodeURIComponent(oauthClientId)}`);
+    const data = await res.json();
+    if (data.authUrl) {
+      window.location.href = data.authUrl;
+    }
+  };
+
+  const handleOAuthDisconnect = () => {
+    localStorage.removeItem("oauth_access_token");
+    localStorage.removeItem("oauth_refresh_token");
+    setOauthStatus("disconnected");
+  };
 
   const handleSave = () => {
     setApiKey("yt_api_key", youtubeApiKey);
@@ -140,6 +209,55 @@ export default function SettingsPage() {
               <span className="text-sm font-medium">{channelCount}チャンネル</span>
             </div>
           </div>
+        </div>
+
+        {/* YouTube Analytics（OAuth連携） */}
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-semibold mb-1">YouTube Analytics連携（OAuth）</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            視聴者維持率・インプレッションCTR・トラフィックソース等の詳細分析に必要です。
+          </p>
+
+          {oauthStatus === "connected" ? (
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-50 text-green-700">
+                <span className="w-2 h-2 rounded-full bg-green-500" /> 連携済み
+              </span>
+              <button onClick={handleOAuthDisconnect} className="text-sm text-gray-500 hover:text-danger">連携解除</button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">OAuthクライアントID</label>
+                  <input type="text" value={oauthClientId} onChange={(e) => setOauthClientId(e.target.value)}
+                    placeholder="xxxxxxxxx.apps.googleusercontent.com"
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">OAuthクライアントシークレット</label>
+                  <input type="password" value={oauthClientSecret} onChange={(e) => setOauthClientSecret(e.target.value)}
+                    placeholder="GOCSPX-..."
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm font-mono" />
+                </div>
+              </div>
+              <button onClick={handleOAuthConnect} disabled={oauthConnecting || !oauthClientId || !oauthClientSecret}
+                className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
+                {oauthConnecting ? "接続中..." : "Googleアカウントと連携"}
+              </button>
+              <div className="mt-3 p-3 bg-amber-50 rounded-lg">
+                <p className="text-xs text-amber-800"><strong>設定手順:</strong></p>
+                <ol className="text-xs text-amber-700 mt-1 space-y-1 list-decimal list-inside">
+                  <li>Google Cloud Console → 認証情報</li>
+                  <li>「＋認証情報を作成」→「OAuthクライアントID」</li>
+                  <li>アプリの種類: 「ウェブアプリケーション」</li>
+                  <li>承認済みリダイレクトURI: <code className="bg-amber-100 px-1 rounded">{typeof window !== "undefined" ? `${window.location.origin}/api/auth/youtube/callback` : ""}</code></li>
+                  <li>クライアントIDとシークレットをコピーして上に貼り付け</li>
+                  <li>YouTube Analytics APIも有効化してください</li>
+                </ol>
+              </div>
+            </>
+          )}
         </div>
 
         {/* 保存ボタン */}

@@ -16,6 +16,11 @@ export default function PerformancePage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [sortBy, setSortBy] = useState<"views" | "date" | "engagement">("views");
   const [filterGenre, setFilterGenre] = useState<Genre | "all">("all");
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
+  const [retention, setRetention] = useState<{ timePercent: number; retentionPercent: number }[]>([]);
+  const [videoAnalytics, setVideoAnalytics] = useState<{ avgViewPercentage?: number; subscribersGained?: number; trafficSources?: { source: string; views: number }[] } | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const hasOAuth = typeof window !== "undefined" && !!localStorage.getItem("oauth_access_token");
 
   useEffect(() => {
     const saved = getMyChannel();
@@ -144,6 +149,41 @@ export default function PerformancePage() {
     };
     saveMyChannel(updated);
     setMyChannel(updated);
+  };
+
+  // 動画の詳細アナリティクスを取得
+  const fetchVideoAnalytics = async (videoId: string) => {
+    const accessToken = localStorage.getItem("oauth_access_token");
+    if (!accessToken) return;
+
+    setLoadingAnalytics(true);
+    setRetention([]);
+    setVideoAnalytics(null);
+
+    try {
+      const [retRes, statsRes] = await Promise.all([
+        fetch(`/api/analytics/retention?videoId=${videoId}&accessToken=${encodeURIComponent(accessToken)}`),
+        fetch(`/api/analytics/video-stats?videoId=${videoId}&accessToken=${encodeURIComponent(accessToken)}`),
+      ]);
+      const retData = await retRes.json();
+      const statsData = await statsRes.json();
+
+      if (retData.retention) setRetention(retData.retention);
+      if (statsData.stats || statsData.trafficSources) {
+        setVideoAnalytics({
+          avgViewPercentage: statsData.stats?.avgViewPercentage,
+          subscribersGained: statsData.stats?.subscribersGained,
+          trafficSources: statsData.trafficSources,
+        });
+      }
+    } catch { /* ignore */ }
+    finally { setLoadingAnalytics(false); }
+  };
+
+  const handleSelectVideo = (videoId: string) => {
+    if (selectedVideo === videoId) { setSelectedVideo(null); return; }
+    setSelectedVideo(videoId);
+    if (hasOAuth) fetchVideoAnalytics(videoId);
   };
 
   // 統計計算
@@ -322,7 +362,9 @@ export default function PerformancePage() {
           const isWinner = stats && v.views >= stats.avgViews * 1.5;
           const isLoser = stats && v.views <= stats.avgViews * 0.5;
           return (
-            <div key={v.videoId} className={`bg-card-bg rounded-xl p-4 shadow-sm border flex gap-4 items-start ${isWinner ? "border-green-200" : isLoser ? "border-red-200" : "border-gray-100"}`}>
+            <div key={v.videoId}>
+            <div onClick={() => handleSelectVideo(v.videoId)}
+              className={`bg-card-bg rounded-xl p-4 shadow-sm border flex gap-4 items-start cursor-pointer hover:shadow-md transition-shadow ${isWinner ? "border-green-200" : isLoser ? "border-red-200" : "border-gray-100"}`}>
               {v.thumbnailUrl && (
                 <a href={`https://www.youtube.com/watch?v=${v.videoId}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
                   <img src={v.thumbnailUrl} alt="" className="w-28 h-16 rounded-lg object-cover hover:opacity-80" />
@@ -349,6 +391,83 @@ export default function PerformancePage() {
                   </p>
                 )}
               </div>
+            </div>
+
+            {/* アナリティクス詳細パネル */}
+            {selectedVideo === v.videoId && (
+              <div className="bg-gray-50 rounded-xl p-5 mt-1 border border-gray-200">
+                {!hasOAuth && (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    設定ページから「YouTube Analytics連携」を設定すると、視聴者維持率やCTRが表示されます。
+                  </p>
+                )}
+                {hasOAuth && loadingAnalytics && <p className="text-sm text-gray-400 text-center py-4">アナリティクスを取得中...</p>}
+                {hasOAuth && !loadingAnalytics && (
+                  <div className="space-y-4">
+                    {/* リテンションカーブ */}
+                    {retention.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2">視聴者維持率カーブ</h4>
+                        <div className="h-32 flex items-end gap-px bg-white rounded-lg p-2">
+                          {retention.map((r, i) => (
+                            <div key={i} className="flex-1 flex flex-col items-center justify-end" title={`${r.timePercent}%時点: ${r.retentionPercent}%維持`}>
+                              <div className={`w-full rounded-t ${r.retentionPercent >= 50 ? "bg-green-400" : r.retentionPercent >= 30 ? "bg-yellow-400" : "bg-red-400"}`}
+                                style={{ height: `${r.retentionPercent}%` }} />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                          <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 統計 */}
+                    {videoAnalytics && (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {videoAnalytics.avgViewPercentage != null && (
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-lg font-bold">{videoAnalytics.avgViewPercentage}%</p>
+                            <p className="text-xs text-gray-500">平均視聴率</p>
+                          </div>
+                        )}
+                        {videoAnalytics.subscribersGained != null && (
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-lg font-bold text-green-600">+{videoAnalytics.subscribersGained}</p>
+                            <p className="text-xs text-gray-500">登録者獲得</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* トラフィックソース */}
+                    {videoAnalytics?.trafficSources && videoAnalytics.trafficSources.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2">トラフィックソース</h4>
+                        <div className="space-y-1">
+                          {videoAnalytics.trafficSources.slice(0, 5).map((ts, i) => {
+                            const maxV = videoAnalytics.trafficSources![0].views;
+                            return (
+                              <div key={i} className="flex items-center gap-2">
+                                <span className="text-xs text-gray-600 w-28 shrink-0">{ts.source}</span>
+                                <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+                                  <div className="h-full bg-accent rounded-full" style={{ width: `${(ts.views / maxV) * 100}%` }} />
+                                </div>
+                                <span className="text-xs text-gray-500 w-12 text-right">{formatNumber(ts.views)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {retention.length === 0 && !videoAnalytics && (
+                      <p className="text-sm text-gray-400 text-center">この動画のアナリティクスデータがありません</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             </div>
           );
         })}
