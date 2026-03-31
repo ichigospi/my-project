@@ -138,9 +138,14 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
                 <input type="checkbox" checked={v.selected} onChange={() => toggleSelect(v.videoId)}
                   disabled={!v.selected && selectedCount >= 3}
                   className="w-4 h-4 rounded text-accent shrink-0" />
-                {v.thumbnailUrl && <img src={v.thumbnailUrl} alt="" className="w-24 h-14 rounded object-cover shrink-0" />}
+                {v.thumbnailUrl && (
+                  <a href={`https://www.youtube.com/watch?v=${v.videoId}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="shrink-0">
+                    <img src={v.thumbnailUrl} alt="" className="w-24 h-14 rounded object-cover hover:opacity-80 transition-opacity" />
+                  </a>
+                )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium line-clamp-1">{v.title}</p>
+                  <a href={`https://www.youtube.com/watch?v=${v.videoId}`} target="_blank" rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()} className="text-sm font-medium line-clamp-1 hover:text-accent transition-colors">{v.title}</a>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-gray-500">{v.channelName}</span>
                     {(v as { genreMatch?: number }).genreMatch && (v as { genreMatch?: number }).genreMatch! > 0 && (
