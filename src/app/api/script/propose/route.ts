@@ -123,15 +123,20 @@ ${profileText}
       text = data.choices?.[0]?.message?.content || "";
     }
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return NextResponse.json({ error: "提案結果のパースに失敗", raw: text }, { status: 500 });
+      return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
     }
 
-    return NextResponse.json(JSON.parse(jsonMatch[0]));
+    try {
+      return NextResponse.json(JSON.parse(jsonMatch[0]));
+    } catch {
+      return NextResponse.json({ error: "JSON形式が不正です。再度お試しください。" }, { status: 500 });
+    }
   } catch (error) {
     return NextResponse.json({
-      error: error instanceof SyntaxError ? "JSONパースに失敗" : "構成提案の生成に失敗",
+      error: error instanceof Error ? error.message : "構成提案の生成に失敗",
     }, { status: 500 });
   }
 }

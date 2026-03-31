@@ -98,14 +98,19 @@ ${transcript.substring(0, 8000)}
       text = data.choices?.[0]?.message?.content || "";
     }
 
-    // JSONを抽出
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    // JSONを抽出（コードブロック対応）
+    const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return NextResponse.json({ error: "分析結果のパースに失敗しました", raw: text }, { status: 500 });
+      return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
     }
 
-    const analysis = JSON.parse(jsonMatch[0]);
-    return NextResponse.json(analysis);
+    try {
+      const analysis = JSON.parse(jsonMatch[0]);
+      return NextResponse.json(analysis);
+    } catch {
+      return NextResponse.json({ error: "JSON形式が不正です。再度お試しください。" }, { status: 500 });
+    }
   } catch (error) {
     return NextResponse.json({
       error: error instanceof SyntaxError ? "分析結果のJSONパースに失敗" : "台本分析に失敗しました",

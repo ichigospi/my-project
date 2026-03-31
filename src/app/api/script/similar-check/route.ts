@@ -47,9 +47,11 @@ ${pastTitles.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}
       if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message }, { status: res.status }); }
       text = (await res.json()).choices?.[0]?.message?.content || "";
     }
-    const match = text.match(/\{[\s\S]*\}/);
+    const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
     if (!match) return NextResponse.json({ similar: false, message: "チェック不可" });
-    return NextResponse.json(JSON.parse(match[0]));
+    try { return NextResponse.json(JSON.parse(match[0])); }
+    catch { return NextResponse.json({ similar: false, message: "パース失敗" }); }
   } catch {
     return NextResponse.json({ similar: false, message: "チェックに失敗" });
   }
