@@ -501,10 +501,10 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
             for (const v of searchData.videos) {
               if (registeredChannelIds.includes(v.channelId)) continue;
               if (v.views < minViews) continue;
+              // 重複動画を除外
+              if (allMatched.some((m) => m.id === v.id)) continue;
               const sim = calcSimilarity(title, v.title);
-              if (sim >= thresholdDecimal) {
-                allMatched.push({ ...v, similarity: sim, matchedWith: title });
-              }
+              allMatched.push({ ...v, similarity: sim, matchedWith: title });
             }
           }
         } catch { /* skip this search */ }
@@ -546,10 +546,10 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
     finally { setLoading(false); }
   };
 
-  // フィルタ変更時にローカルで再フィルタ
+  // フィルタ: 再生数のみ（類似率はソートに使用）
   const filteredResults = results.map((ch) => ({
     ...ch,
-    videos: ch.videos.filter((v) => v.similarity >= threshold / 100 && v.views >= minViews),
+    videos: ch.videos.filter((v) => v.views >= minViews),
   })).filter((ch) => ch.videos.length > 0);
 
   const handleAddChannel = (channelId: string) => {
@@ -579,10 +579,7 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
                 className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
                 {loading ? progress || "検索中..." : results.length > 0 ? "再検索する" : "競合チャンネルを探す"}
               </button>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">類似率: {threshold}%以上</label>
-                <input type="range" min={20} max={80} value={threshold} onChange={(e) => setThreshold(parseInt(e.target.value))} className="w-36" />
-              </div>
+              {/* 類似率スライダーは非表示（キーワード検索で十分絞れるため） */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">最低再生数</label>
                 <select value={minViews} onChange={(e) => setMinViews(parseInt(e.target.value))}
