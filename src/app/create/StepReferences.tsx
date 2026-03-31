@@ -1,13 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { getApiKey, getChannels } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
 import { GENRE_LABELS } from "@/lib/project-store";
-import type { ScriptProject, ReferenceVideo } from "@/lib/project-store";
+import type { ScriptProject, ReferenceVideo, Genre } from "@/lib/project-store";
+
+// ジャンルごとのフィルタキーワード（タイトルにいずれかが含まれる動画を優先）
+const GENRE_KEYWORDS: Record<Genre, string[]> = {
+  love: ["恋愛", "ツインレイ", "ツインソウル", "運命の人", "復縁", "片思い", "あの人", "お相手", "彼", "好きな人", "パートナー", "結婚", "同棲", "連絡", "再会", "出会い", "愛", "恋", "ソウルメイト"],
+  money: ["金運", "お金", "収入", "豊かさ", "富", "財", "臨時収入", "宝くじ", "昇給", "副業", "開運", "金銭"],
+  general: ["運勢", "スピリチュアル", "覚醒", "エネルギー", "浄化", "チャクラ", "瞑想", "ヒーリング", "波動", "アセンション", "守護", "天使", "エンジェル", "宇宙"],
+};
 
 export default function StepReferences({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
-  const [videos, setVideos] = useState<ReferenceVideo[]>(project.referenceVideos.length > 0 ? project.referenceVideos : []);
+  const [videos, setVideos] = useState<(ReferenceVideo & { duration?: string })[]>(project.referenceVideos.length > 0 ? project.referenceVideos : []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fetched, setFetched] = useState(project.referenceVideos.length > 0);
@@ -32,23 +39,55 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
 
       const oneMonthAgo = new Date(); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
       const dateStr = oneMonthAgo.toISOString().split("T")[0];
+      const keywords = GENRE_KEYWORDS[project.genre] || [];
 
-      const refs: ReferenceVideo[] = (data.videos || [])
-        .filter((v: { publishedAt: string }) => v.publishedAt >= dateStr)
-        .sort((a: { views: number }, b: { views: number }) => b.views - a.views)
-        .slice(0, 30)
-        .map((v: { id: string; title: string; channelName: string; views: number; thumbnailUrl: string; channelId: string }) => {
-          const stats = data.channelStats?.[v.channelId];
-          return {
-            videoId: v.id, title: v.title, channelName: v.channelName, views: v.views,
-            thumbnailUrl: v.thumbnailUrl,
-            multiplier: stats?.avgViews ? Math.round((v.views / stats.avgViews) * 10) / 10 : undefined,
-            selected: false,
-          };
+      const allVideos = (data.videos || [])
+        .filter((v: { publishedAt: string; duration?: string; title?: string }) => {
+          // 直近1ヶ月
+          if (v.publishedAt < dateStr) return false;
+          // ショート除外: durationが5分未満
+          if (v.duration) {
+            const parts = v.duration.split(":");
+            if (parts.length === 2) {
+              // M:SS形式
+              const mins = parseInt(parts[0]);
+              if (mins < 5) return false;
+            } else if (parts.length === 3) {
+              // H:MM:SS形式 → 常に5分以上なのでOK
+            } else if (v.duration === "0:00") {
+              return false;
+            }
+          }
+          // #shortsタグを除外
+          if (v.title && v.title.toLowerCase().includes("#shorts")) return false;
+          return true;
         });
 
+      // ジャンル一致の動画を優先ソート
+      const scored = allVideos.map((v: { id: string; title: string; channelName: string; views: number; thumbnailUrl: string; channelId: string; duration?: string }) => {
+        const matchCount = keywords.filter((kw) => v.title.includes(kw)).length;
+        const stats = data.channelStats?.[v.channelId];
+        return {
+          videoId: v.id, title: v.title, channelName: v.channelName, views: v.views,
+          thumbnailUrl: v.thumbnailUrl, duration: v.duration,
+          multiplier: stats?.avgViews ? Math.round((v.views / stats.avgViews) * 10) / 10 : undefined,
+          selected: false,
+          genreMatch: matchCount,
+        };
+      });
+
+      // ジャンル一致数 → 再生数の順でソート
+      scored.sort((a: { genreMatch: number; views: number }, b: { genreMatch: number; views: number }) =>
+        b.genreMatch - a.genreMatch || b.views - a.views
+      );
+
+      const refs: ReferenceVideo[] = scored.slice(0, 30);
       setVideos(refs);
       setFetched(true);
+
+      if (scored.filter((v: { genreMatch: number }) => v.genreMatch > 0).length === 0) {
+        setError(`「${GENRE_LABELS[project.genre]}」に関連する動画が見つかりませんでした。他のジャンルの動画から選んでください。`);
+      }
     } catch { setError("動画の取得に失敗"); }
     finally { setLoading(false); }
   };
@@ -67,7 +106,7 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
     <div>
       <h2 className="text-xl font-bold mb-2">③ 参考動画を選択（2-3本）</h2>
       <p className="text-sm text-gray-500 mb-6">
-        「{project.title}」に関連する競合の人気動画（直近1ヶ月）
+        「{project.title}」 · {GENRE_LABELS[project.genre]}の競合人気動画（直近1ヶ月・長尺のみ）
       </p>
 
       {!fetched && (
@@ -83,11 +122,13 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
       {fetched && (
         <>
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm text-gray-500">{videos.length}件 | {selectedCount}/3 選択中</span>
+            <span className="text-sm text-gray-500">{videos.length}件（{GENRE_LABELS[project.genre]}優先） | {selectedCount}/3 選択中</span>
             <button onClick={fetchVideos} disabled={loading} className="text-xs text-accent hover:underline">
               {loading ? "更新中..." : "再取得"}
             </button>
           </div>
+
+          {error && <p className="text-danger text-sm mb-3">{error}</p>}
 
           <div className="space-y-2 mb-6 max-h-[60vh] overflow-y-auto">
             {videos.map((v, i) => (
@@ -100,7 +141,12 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
                 {v.thumbnailUrl && <img src={v.thumbnailUrl} alt="" className="w-24 h-14 rounded object-cover shrink-0" />}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium line-clamp-1">{v.title}</p>
-                  <p className="text-xs text-gray-500">{v.channelName}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-gray-500">{v.channelName}</span>
+                    {(v as { genreMatch?: number }).genreMatch && (v as { genreMatch?: number }).genreMatch! > 0 && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent font-medium">{GENRE_LABELS[project.genre]}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-sm font-bold">{formatNumber(v.views)}回</p>
@@ -113,8 +159,6 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
               </label>
             ))}
           </div>
-
-          {error && <p className="text-danger text-sm mb-4">{error}</p>}
 
           <div className="flex gap-3">
             <button onClick={() => onUpdate({ ...project, status: "title" })} className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
