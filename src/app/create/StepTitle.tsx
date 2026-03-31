@@ -4,22 +4,12 @@ import { useState } from "react";
 import { getApiKey, getChannels } from "@/lib/channel-store";
 import { getHooksFor, getPerformanceRecords, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
 import type { ScriptProject } from "@/lib/project-store";
-import { formatNumber } from "@/lib/mock-data";
-
-interface RefVideo {
-  title: string;
-  channel: string;
-  views: number;
-  referencePoint: string;
-  crossGenre: boolean;
-}
 
 interface TitleCandidateEx {
   title: string;
   reason: string;
   appealPattern?: string;
   estimatedPotential: "high" | "medium" | "low";
-  referenceVideos?: RefVideo[];
   sourceVideo?: string;
   sourceChannel?: string;
 }
@@ -201,26 +191,12 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
                       <p className="text-sm text-gray-700 leading-relaxed">{c.reason}</p>
                     </div>
 
-                    {/* 参考動画 */}
-                    {c.referenceVideos && c.referenceVideos.length > 0 && (
+                    {/* 元ネタ動画 */}
+                    {c.sourceVideo && (
                       <div className="mb-4">
-                        <h4 className="text-xs font-medium text-gray-500 mb-2">参考にすべき動画</h4>
-                        <div className="space-y-2">
-                          {c.referenceVideos.map((rv, j) => (
-                            <div key={j} className="bg-white rounded-lg p-3 border border-gray-100">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium">{rv.title}</p>
-                                  <p className="text-xs text-gray-500 mt-0.5">{rv.channel} · {formatNumber(rv.views)}回再生</p>
-                                </div>
-                                {rv.crossGenre && (
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 shrink-0">訴求パターン参考</span>
-                                )}
-                              </div>
-                              <p className="text-xs text-accent mt-1.5">→ {rv.referencePoint}</p>
-                            </div>
-                          ))}
-                        </div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">元ネタ動画</h4>
+                        <p className="text-sm text-gray-700">{c.sourceVideo}</p>
+                        {c.sourceChannel && <p className="text-xs text-gray-500">{c.sourceChannel}</p>}
                       </div>
                     )}
 
