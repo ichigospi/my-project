@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
 import { getAnalyses, getProfile } from "@/lib/script-analysis-store";
+import { formatNumber } from "@/lib/mock-data";
 import type { ScriptProject } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 
@@ -12,6 +13,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   const [skeleton, setSkeleton] = useState(project.structureProposal?.concept || "");
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
+  const [viewTab, setViewTab] = useState<"skeleton" | "analyses">("skeleton");
 
   useEffect(() => {
     const all = getAnalyses();
@@ -94,42 +96,130 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         ))}
       </div>
 
-      {/* 生成ボタン */}
-      {!skeleton && (
-        <button onClick={handleGenerate} disabled={generating}
-          className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50 mb-6">
-          {generating ? "骨組みを生成中..." : "台本の骨組みを生成"}
+      {/* メインタブ: 骨組み / 参考動画の分析 */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200">
+        <button onClick={() => setViewTab("skeleton")}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${viewTab === "skeleton" ? "border-accent text-accent" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+          骨組み
         </button>
-      )}
+        <button onClick={() => setViewTab("analyses")}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${viewTab === "analyses" ? "border-accent text-accent" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+          参考動画の分析を見る（{analyses.length}本）
+        </button>
+      </div>
 
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
 
-      {/* 骨組み表示 */}
-      {skeleton && (
+      {/* 参考動画の分析タブ */}
+      {viewTab === "analyses" && (
         <div className="space-y-4 mb-6">
-          {/* 表示/編集切り替え */}
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2">
-              <button onClick={() => setEditing(false)}
-                className={`px-3 py-1.5 rounded-lg text-sm ${!editing ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
-                プレビュー
-              </button>
-              <button onClick={() => setEditing(true)}
-                className={`px-3 py-1.5 rounded-lg text-sm ${editing ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
-                編集
-              </button>
+          {analyses.map((a) => (
+            <div key={a.id} className="bg-card-bg rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-4 flex gap-4 items-start bg-gray-50/50">
+                {a.thumbnailUrl && <img src={a.thumbnailUrl} alt="" className="w-28 h-16 rounded object-cover shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{a.videoTitle}</p>
+                  <p className="text-xs text-gray-500">{a.channelName} · {formatNumber(a.views)}回再生 · スコア {a.score?.overall || "?"}/10</p>
+                </div>
+              </div>
+
+              {a.analysisResult && (
+                <div className="p-4 space-y-3">
+                  <p className="text-sm text-gray-700">{a.analysisResult.summary}</p>
+
+                  {/* 構成 */}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">構成パターン</p>
+                    <p className="text-sm text-accent">{a.analysisResult.overallPattern}</p>
+                  </div>
+
+                  {/* フック・CTA */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {a.analysisResult.hooks?.length > 0 && (
+                      <div className="bg-red-50 rounded-lg p-3 border border-red-100">
+                        <p className="text-xs font-medium text-red-700 mb-1">フック</p>
+                        <ul className="space-y-0.5">{a.analysisResult.hooks.map((h, i) => <li key={i} className="text-xs text-gray-700">· {h}</li>)}</ul>
+                      </div>
+                    )}
+                    {a.analysisResult.ctas?.length > 0 && (
+                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                        <p className="text-xs font-medium text-blue-700 mb-1">CTA</p>
+                        <ul className="space-y-0.5">{a.analysisResult.ctas.map((c, i) => <li key={i} className="text-xs text-gray-700">· {c}</li>)}</ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 伸び要因・訴求 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {a.analysisResult.growthFactors?.length > 0 && (
+                      <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                        <p className="text-xs font-medium text-green-700 mb-1">伸び要因</p>
+                        <ul className="space-y-0.5">{a.analysisResult.growthFactors.map((g, i) => <li key={i} className="text-xs text-gray-700">· {g}</li>)}</ul>
+                      </div>
+                    )}
+                    {a.analysisResult.appealPoints?.length > 0 && (
+                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                        <p className="text-xs font-medium text-purple-700 mb-1">訴求ポイント</p>
+                        <ul className="space-y-0.5">{a.analysisResult.appealPoints.map((ap, i) => <li key={i} className="text-xs text-gray-700">· {ap}</li>)}</ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 台本テキスト */}
+                  {a.transcript && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs font-medium text-gray-500">台本テキスト（{a.transcript.length}文字）</p>
+                        <button onClick={() => navigator.clipboard.writeText(a.transcript)} className="text-xs text-accent hover:underline">コピー</button>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
+                        <pre className="text-xs leading-5 whitespace-pre-wrap font-sans text-gray-600">{a.transcript}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex gap-2">
-              <button onClick={handleGenerate} disabled={generating}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50">
-                {generating ? "生成中..." : "再生成"}
-              </button>
-              <button onClick={() => navigator.clipboard.writeText(skeleton)}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">
-                コピー
-              </button>
-            </div>
-          </div>
+          ))}
+        </div>
+      )}
+
+      {/* 骨組みタブ */}
+      {viewTab === "skeleton" && (
+        <>
+          {/* 生成ボタン */}
+          {!skeleton && (
+            <button onClick={handleGenerate} disabled={generating}
+              className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50 mb-6">
+              {generating ? "骨組みを生成中..." : "台本の骨組みを生成"}
+            </button>
+          )}
+
+          {skeleton && (
+            <div className="space-y-4 mb-6">
+              {/* 表示/編集切り替え */}
+              <div className="flex items-center justify-between">
+                <div className="flex gap-2">
+                  <button onClick={() => setEditing(false)}
+                    className={`px-3 py-1.5 rounded-lg text-sm ${!editing ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
+                    プレビュー
+                  </button>
+                  <button onClick={() => setEditing(true)}
+                    className={`px-3 py-1.5 rounded-lg text-sm ${editing ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
+                    編集
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleGenerate} disabled={generating}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50">
+                    {generating ? "生成中..." : "再生成"}
+                  </button>
+                  <button onClick={() => navigator.clipboard.writeText(skeleton)}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">
+                    コピー
+                  </button>
+                </div>
+              </div>
 
           {/* プレビューモード */}
           {!editing && (
@@ -158,6 +248,8 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
             </div>
           )}
         </div>
+      )}
+        </>
       )}
 
       {/* ナビゲーション */}
