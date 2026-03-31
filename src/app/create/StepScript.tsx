@@ -103,44 +103,20 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
-    // 現在の台本を履歴に保存
     setScriptHistory((prev) => [...prev, project.generatedScript]);
-
     setRevising(true);
     setError("");
+
     try {
-      const isAnthropic = aiApiKey.startsWith("sk-ant-");
-      const prompt = `以下の台本を修正指示に従って修正してください。修正箇所以外はそのまま維持してください。
-
-【修正指示】
-${revisionNote}
-
-【現在の台本】
-${project.generatedScript}
-
-修正後の台本テキストのみ出力してください。`;
-
-      let text = "";
-      if (isAnthropic) {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8192, messages: [{ role: "user", content: prompt }] }),
-        });
-        if (!res.ok) { const e = await res.json(); setError(e.error?.message || "修正に失敗"); setRevising(false); return; }
-        text = (await res.json()).content?.[0]?.text || "";
-      } else {
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-          body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 8192 }),
-        });
-        if (!res.ok) { const e = await res.json(); setError(e.error?.message || "修正に失敗"); setRevising(false); return; }
-        text = (await res.json()).choices?.[0]?.message?.content || "";
-      }
-
-      if (text) {
-        onUpdate({ ...project, generatedScript: text });
+      const res = await fetch("/api/script/revise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: project.generatedScript, revisionNote, aiApiKey }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); }
+      else if (data.script) {
+        onUpdate({ ...project, generatedScript: data.script });
         setRevisionNote("");
       }
     } catch { setError("修正に失敗"); }
