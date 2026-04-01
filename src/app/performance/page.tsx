@@ -77,22 +77,58 @@ export default function PerformancePage() {
   const hasOAuth =
     typeof window !== "undefined" && !!localStorage.getItem("oauth_access_token");
 
+  // ===== トークンリフレッシュ =====
+  const getValidAccessToken = async (): Promise<string> => {
+    const accessToken = localStorage.getItem("oauth_access_token") || "";
+    const refreshToken = localStorage.getItem("oauth_refresh_token") || "";
+    const clientId = localStorage.getItem("oauth_client_id") || "";
+    const clientSecret = localStorage.getItem("oauth_client_secret") || "";
+
+    if (!refreshToken || !clientId || !clientSecret) return accessToken;
+
+    // まずアクセストークンで試す。失敗したらリフレッシュ
+    try {
+      const testRes = await fetch(`/api/analytics/channel?accessToken=${encodeURIComponent(accessToken)}`);
+      if (testRes.ok) {
+        const testData = await testRes.json();
+        if (!testData.error) return accessToken;
+      }
+    } catch { /* refresh */ }
+
+    // リフレッシュ
+    try {
+      const res = await fetch("/api/auth/youtube/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken, clientId, clientSecret }),
+      });
+      const data = await res.json();
+      if (data.accessToken) {
+        localStorage.setItem("oauth_access_token", data.accessToken);
+        return data.accessToken;
+      }
+    } catch { /* ignore */ }
+
+    return accessToken;
+  };
+
   // ===== チャンネルアナリティクス取得 =====
   const fetchChannelAnalytics = useCallback(async () => {
     if (!hasOAuth) return;
-    const accessToken =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oauth_access_token") || ""
-        : "";
-    if (!accessToken) return;
 
     setAnalyticsLoading(true);
     try {
+      const accessToken = await getValidAccessToken();
+      if (!accessToken) return;
+
       const res = await fetch(
         `/api/analytics/channel?accessToken=${encodeURIComponent(accessToken)}`
       );
       const data = await res.json();
-      if (data.error) return;
+      if (data.error) {
+        console.error("Analytics error:", data.error);
+        return;
+      }
 
       if (data.channelStats) setChannelStats(data.channelStats);
 
@@ -272,10 +308,7 @@ export default function PerformancePage() {
 
   // ===== 動画詳細アナリティクス取得 =====
   const fetchDetailAnalytics = async (videoId: string) => {
-    const accessToken =
-      typeof window !== "undefined"
-        ? localStorage.getItem("oauth_access_token") || ""
-        : "";
+    const accessToken = await getValidAccessToken();
     if (!accessToken) return;
 
     setLoadingDetail(true);
