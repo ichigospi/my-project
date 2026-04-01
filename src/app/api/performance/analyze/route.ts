@@ -1,44 +1,74 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// パフォーマンス分析: 勝ち/負けパターン抽出 + 次の企画提案 + 改善提案
+// KPIベースのパフォーマンス分析 + 再生数最大化のアクション提案
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { videos, aiApiKey } = body;
+  const { videos, channelStats, aiApiKey } = body;
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが必要です" }, { status: 400 });
 
-  const avgViews = videos.reduce((s: number, v: { views: number }) => s + v.views, 0) / videos.length;
+  const prompt = `占い・スピリチュアル系YouTubeチャンネルのパフォーマンスを分析し、再生数最大化のための具体的アクションを提案してください。
 
-  const winners = videos.filter((v: { views: number }) => v.views >= avgViews * 1.5);
-  const losers = videos.filter((v: { views: number }) => v.views <= avgViews * 0.5);
+【重要なロジック】
+- CTRは再生数が伸びるほど下がるのが正常（非登録者への露出が増えるため）。
+  CTRの評価は「同じ再生数レンジの動画同士」で比較すること。
+- 平均視聴時間（= 尺 × 維持率）が最重要KPI。YouTubeは総視聴時間でおすすめ露出を決定。
+- 維持率は動画の尺によって異なる。20分の動画で40%=8分視聴は優秀。短くして維持率を上げるのは逆効果。
+- ヒーリング系は尺が長く「聞き流し」で総視聴時間が稼げるのが強み。
 
-  const prompt = `占い・スピリチュアル系YouTubeチャンネルのパフォーマンス分析をしてください。
+${channelStats ? `【チャンネル全体KPI（直近90日）】
+総再生数: ${channelStats.views?.toLocaleString()}回
+平均視聴時間: ${Math.floor((channelStats.avgDurationSec || 0) / 60)}分${(channelStats.avgDurationSec || 0) % 60}秒
+平均維持率: ${channelStats.avgPercentage}%
+登録者獲得: +${channelStats.subscribersGained}
+総視聴時間: ${channelStats.watchTimeMinutes?.toLocaleString()}分
+` : ""}
 
-【チャンネル平均再生数】${Math.round(avgViews).toLocaleString()}回
+【動画別データ（再生数順）】
+${videos.map((v: {
+  title: string; views: number; genre: string;
+  avgDurationSec?: number; avgPercentage?: number;
+  subscribersGained?: number; likes: number; comments: number;
+  publishedAt: string;
+}, i: number) => {
+  const dur = v.avgDurationSec ? `${Math.floor(v.avgDurationSec / 60)}分${v.avgDurationSec % 60}秒` : "不明";
+  const eng = v.views > 0 ? ((v.likes + v.comments) / v.views * 100).toFixed(1) : "0";
+  const subRate = v.views > 0 && v.subscribersGained ? (v.subscribersGained / v.views * 100).toFixed(2) : "不明";
+  return `${i + 1}. ${v.title}
+   再生数: ${v.views.toLocaleString()}回 / ${v.genre} / ${v.publishedAt}
+   平均視聴時間: ${dur} / 維持率: ${v.avgPercentage ?? "不明"}%
+   エンゲージメント: ${eng}% / 登録者転換率: ${subRate}%
+   登録者獲得: ${v.subscribersGained ?? "不明"}`;
+}).join("\n\n")}
 
-【伸びた動画（平均の1.5倍以上）】
-${winners.map((v: { title: string; views: number; genre: string; publishedAt: string }, i: number) => `${i + 1}. ${v.title}（${v.views.toLocaleString()}回 / ${v.genre} / ${v.publishedAt}）`).join("\n") || "なし"}
+以下のマークダウン形式で分析してください。
 
-【伸びなかった動画（平均の0.5倍以下）】
-${losers.map((v: { title: string; views: number; genre: string; publishedAt: string }, i: number) => `${i + 1}. ${v.title}（${v.views.toLocaleString()}回 / ${v.genre} / ${v.publishedAt}）`).join("\n") || "なし"}
+# 📊 KPI診断
 
-【全動画一覧（再生数順）】
-${videos.slice(0, 20).map((v: { title: string; views: number; genre: string; likes: number; comments: number }, i: number) => `${i + 1}. ${v.title}（${v.views.toLocaleString()}回 / ${v.genre} / いいね${v.likes} / コメント${v.comments}）`).join("\n")}
+## 平均視聴時間（最重要）
+現状の評価と、同ジャンル同尺での位置づけ。改善の余地がある動画と具体的な改善案。
 
-以下の3つを分析してください。マークダウン形式で出力。
+## CTR（再生数レンジ別で評価）
+再生数が多い動画のCTRが低いのは正常。同規模の動画同士で比較した上での評価。
+
+## 平均維持率（同尺比較で）
+離脱が激しい動画があれば台本のどこに問題がありそうか推定。
+
+## 登録者転換率
+CTAが効いている動画と効いていない動画の差分分析。
 
 # 🏆 勝ちパターン・負けパターン
-伸びた動画の共通点（ジャンル、訴求、タイトルパターン、投稿タイミング等）と
-伸びなかった動画の共通点を分析。具体的な動画タイトルを引用して解説。
+伸びた動画の共通点と伸びなかった動画の共通点。具体的な動画タイトルを引用。
 
-# 💡 次に作るべき企画TOP3
-勝ちパターンを踏まえて具体的な企画タイトルを3つ提案。
-各提案に「根拠（どの勝ち動画のどの要素を活用するか）」と「推定再生数レンジ」を添える。
+# 💡 再生数最大化の優先アクションTOP3
+1. 最優先: 何をすべきか（具体的に）
+2. 次点: 何をすべきか
+3. 中期: 何をすべきか
 
-# 📈 改善提案
-- エンゲージメント（いいね率・コメント率）が低い動画の改善案
-- 再生数は高いがエンゲージメントが低い動画 = 途中離脱の可能性 → 台本構成の改善案
-- 全体的なチャンネル運営の改善提案`;
+各アクションに「根拠（どのデータから判断したか）」と「期待効果」を添える。
+
+# 📈 次に作るべき企画
+勝ちパターンを踏まえた具体的な企画タイトル3つ。根拠と推定再生数レンジ付き。`;
 
   try {
     const isAnthropic = aiApiKey.startsWith("sk-ant-");
@@ -60,7 +90,6 @@ ${videos.slice(0, 20).map((v: { title: string; views: number; genre: string; lik
       if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message }, { status: res.status }); }
       text = (await res.json()).choices?.[0]?.message?.content || "";
     }
-
     return NextResponse.json({ analysis: text });
   } catch {
     return NextResponse.json({ error: "分析に失敗" }, { status: 500 });
