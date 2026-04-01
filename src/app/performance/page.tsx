@@ -130,12 +130,27 @@ export default function PerformancePage() {
         return;
       }
 
-      if (data.channelStats) setChannelStats(data.channelStats);
+      if (data.channelStats) {
+        setChannelStats({
+          avgViewDuration: data.channelStats.avgDurationSec ?? data.channelStats.avgViewDuration,
+          avgViewPercentage: data.channelStats.avgPercentage ?? data.channelStats.avgViewPercentage,
+          totalViews: data.channelStats.views ?? data.channelStats.totalViews,
+        });
+      }
 
       if (data.perVideoStats && Array.isArray(data.perVideoStats)) {
         const map: Record<string, VideoAnalyticsData> = {};
-        for (const vs of data.perVideoStats as VideoAnalyticsData[]) {
-          if (vs.videoId) map[vs.videoId] = vs;
+        for (const vs of data.perVideoStats) {
+          const id = vs.videoId;
+          if (id) {
+            map[id] = {
+              videoId: id,
+              avgViewDuration: vs.avgDurationSec ?? vs.avgViewDuration,
+              avgViewPercentage: vs.avgPercentage ?? vs.avgViewPercentage,
+              views: vs.views,
+              subscribersGained: vs.subscribersGained,
+            };
+          }
         }
         setAnalyticsMap(map);
       }
