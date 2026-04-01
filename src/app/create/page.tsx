@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
+import { getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus } from "@/lib/project-store";
 import type { ScriptProject, Genre, Style } from "@/lib/project-store";
 import StepGenre from "./StepGenre";
 import StepTitle from "./StepTitle";
@@ -41,9 +41,25 @@ export default function CreatePage() {
   };
 
   const updateProject = (updated: ScriptProject) => {
+    const prev = activeProject;
     saveProject(updated);
     setActiveProject(updated);
     setProjects(getProjects());
+
+    // 工程表との自動連動
+    if (updated.title && updated.status === "references" && prev?.status === "title") {
+      // タイトル確定 → 工程表に追加+企画出し完了
+      addTaskFromProject(updated.title, updated.genre, updated.style, updated.id);
+      updateTaskStepStatus(updated.id, "企画出し", "completed");
+    }
+    if (updated.status === "script" && prev?.status === "proposal") {
+      // 台本生成開始 → 台本作成を作業中に
+      updateTaskStepStatus(updated.id, "台本作成", "in_progress");
+    }
+    if (updated.generatedScript && !prev?.generatedScript) {
+      // 台本生成完了 → 台本作成を検収待ちに
+      updateTaskStepStatus(updated.id, "台本作成", "review_waiting");
+    }
   };
 
   const handleBack = () => { setActiveProject(null); setProjects(getProjects()); };

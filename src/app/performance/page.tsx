@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { getApiKey } from "@/lib/channel-store";
 import { getMyChannel, saveMyChannel, detectGenre, GENRE_LABELS, genId, getAnalysisLogs, saveAnalysisLog, getWeeklySnapshots, saveWeeklySnapshot } from "@/lib/project-store";
 import type { MyChannelData, MyChannelVideo, Genre, AnalysisLog, WeeklySnapshot } from "@/lib/project-store";
@@ -54,6 +55,7 @@ function renderMd(md: string) {
 }
 
 export default function PerformancePage() {
+  const router = useRouter();
   const [myChannel, setMyChannel] = useState<MyChannelData | null>(null);
   const [channelStats, setChannelStats] = useState<ChannelStats | null>(null);
   const [analyticsMap, setAnalyticsMap] = useState<Record<string, VideoAnalyticsData>>({});
@@ -687,7 +689,13 @@ export default function PerformancePage() {
       {/* ===== AI分析結果 ===== */}
       {analysis && (
         <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
-          <h2 className="font-semibold mb-4">AI分析結果</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold">AI分析結果</h2>
+            <button onClick={() => router.push("/create")}
+              className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90">
+              分析を踏まえて台本作成へ →
+            </button>
+          </div>
           <div>{renderMd(analysis)}</div>
         </div>
       )}

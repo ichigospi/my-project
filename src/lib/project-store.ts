@@ -227,11 +227,13 @@ export function saveWeeklySnapshot(snapshot: WeeklySnapshot) {
 }
 
 // ===== 作業工程表 =====
-export type TaskStatus = "not_started" | "in_progress" | "completed" | "rejected";
+export type TaskStatus = "not_started" | "in_progress" | "review_waiting" | "reviewing" | "completed" | "rejected";
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   not_started: "未着手",
   in_progress: "作業中",
+  review_waiting: "検収待ち",
+  reviewing: "検収中",
   completed: "完了",
   rejected: "差し戻し",
 };
@@ -241,7 +243,7 @@ export interface WorkflowStep {
   status: TaskStatus;
   assignee: string;
   memo: string;
-  isReview: boolean; // 検収工程かどうか
+  needsReview: boolean; // 検収が必要な工程
   completedAt?: string;
 }
 
@@ -254,6 +256,8 @@ export interface ProductionTask {
   deadline: string;
   publishUrl: string;
   linkedProjectId: string;
+  sourceVideoUrl: string; // ネタ元動画URL
+  urgent: boolean; // 急ぎフラグ
   createdAt: string;
   updatedAt: string;
 }
@@ -262,14 +266,38 @@ const TASKS_KEY = "fortune_yt_tasks";
 const MEMBERS_KEY = "fortune_yt_members";
 
 export const DEFAULT_STEPS: Omit<WorkflowStep, "assignee">[] = [
-  { name: "企画出し", status: "not_started", memo: "", isReview: false },
-  { name: "台本作成", status: "not_started", memo: "", isReview: false },
-  { name: "台本検収", status: "not_started", memo: "", isReview: true },
-  { name: "動画編集", status: "not_started", memo: "", isReview: false },
-  { name: "編集検収", status: "not_started", memo: "", isReview: true },
-  { name: "サムネ作成", status: "not_started", memo: "", isReview: false },
-  { name: "アップロード", status: "not_started", memo: "", isReview: false },
+  { name: "企画出し", status: "not_started", memo: "", needsReview: false },
+  { name: "台本作成", status: "not_started", memo: "", needsReview: true },
+  { name: "動画編集", status: "not_started", memo: "", needsReview: true },
+  { name: "サムネ作成", status: "not_started", memo: "", needsReview: false },
+  { name: "アップロード", status: "not_started", memo: "", needsReview: false },
 ];
+
+// 工程表にタスクを追加（台本作成ウィザードやAI分析から呼び出し）
+export function addTaskFromProject(title: string, genre: Genre, style: Style, projectId: string, sourceVideoUrl?: string): ProductionTask {
+  const members = getMembers();
+  const task: ProductionTask = {
+    id: genId(), title, genre, style,
+    steps: DEFAULT_STEPS.map((s) => ({ ...s, assignee: members[0] || "自分" })),
+    deadline: "", publishUrl: "", linkedProjectId: projectId,
+    sourceVideoUrl: sourceVideoUrl || "", urgent: false,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  };
+  saveTask(task);
+  return task;
+}
+
+// 工程表のステータスを外部から更新
+export function updateTaskStepStatus(projectId: string, stepName: string, status: TaskStatus) {
+  const tasks = getTasks();
+  const task = tasks.find((t) => t.linkedProjectId === projectId);
+  if (!task) return;
+  const stepIdx = task.steps.findIndex((s) => s.name === stepName);
+  if (stepIdx < 0) return;
+  task.steps[stepIdx].status = status;
+  if (status === "completed") task.steps[stepIdx].completedAt = new Date().toISOString();
+  saveTask(task);
+}
 
 export function getTasks(): ProductionTask[] {
   if (typeof window === "undefined") return [];
