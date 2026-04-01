@@ -21,12 +21,13 @@ export default function WorkflowPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<ProductionTask[]>([]);
   const [members, setMembersState] = useState<string[]>([]);
+  const [mounted, setMounted] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [newMember, setNewMember] = useState("");
   const [editingMemo, setEditingMemo] = useState<{ taskId: string; stepIdx: number } | null>(null);
   const [memoText, setMemoText] = useState("");
 
-  useEffect(() => { setTasks(getTasks()); setMembersState(getMembers()); }, []);
+  useEffect(() => { setTasks(getTasks()); setMembersState(getMembers()); setMounted(true); }, []);
 
   const handleAddRow = () => {
     const task: ProductionTask = {
@@ -166,6 +167,7 @@ export default function WorkflowPage() {
         </div>
       )}
 
+      {!mounted ? <div className="text-center py-8 text-gray-400">読み込み中...</div> : (
       <div className="overflow-x-auto">
         <table className="w-full text-xs border-collapse min-w-[1100px]">
           <thead>
@@ -272,6 +274,7 @@ export default function WorkflowPage() {
           </tbody>
         </table>
       </div>
+      )}
 
       <div className="flex gap-4 mt-3 text-[10px] text-gray-500">
         <span><span className="inline-block w-3 h-3 rounded bg-gray-100 mr-1" />未着手</span>
