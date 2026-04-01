@@ -226,6 +226,82 @@ export function saveWeeklySnapshot(snapshot: WeeklySnapshot) {
   localStorage.setItem(WEEKLY_KEY, JSON.stringify(trimmed));
 }
 
+// ===== 作業工程表 =====
+export type TaskStatus = "not_started" | "in_progress" | "completed" | "rejected";
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  not_started: "未着手",
+  in_progress: "作業中",
+  completed: "完了",
+  rejected: "差し戻し",
+};
+
+export interface WorkflowStep {
+  name: string;
+  status: TaskStatus;
+  assignee: string;
+  memo: string;
+  isReview: boolean; // 検収工程かどうか
+  completedAt?: string;
+}
+
+export interface ProductionTask {
+  id: string;
+  title: string;
+  genre: Genre;
+  style: Style;
+  steps: WorkflowStep[];
+  deadline: string;
+  publishUrl: string;
+  linkedProjectId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const TASKS_KEY = "fortune_yt_tasks";
+const MEMBERS_KEY = "fortune_yt_members";
+
+export const DEFAULT_STEPS: Omit<WorkflowStep, "assignee">[] = [
+  { name: "企画出し", status: "not_started", memo: "", isReview: false },
+  { name: "台本作成", status: "not_started", memo: "", isReview: false },
+  { name: "台本検収", status: "not_started", memo: "", isReview: true },
+  { name: "動画編集", status: "not_started", memo: "", isReview: false },
+  { name: "編集検収", status: "not_started", memo: "", isReview: true },
+  { name: "サムネ作成", status: "not_started", memo: "", isReview: false },
+  { name: "アップロード", status: "not_started", memo: "", isReview: false },
+];
+
+export function getTasks(): ProductionTask[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(TASKS_KEY) || "[]");
+}
+
+export function saveTask(task: ProductionTask): ProductionTask[] {
+  const tasks = getTasks();
+  const idx = tasks.findIndex((t) => t.id === task.id);
+  task.updatedAt = new Date().toISOString();
+  if (idx >= 0) tasks[idx] = task;
+  else tasks.unshift(task);
+  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  return tasks;
+}
+
+export function deleteTask(id: string): ProductionTask[] {
+  const tasks = getTasks().filter((t) => t.id !== id);
+  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  return tasks;
+}
+
+export function getMembers(): string[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(MEMBERS_KEY) || '["自分"]');
+}
+
+export function saveMembers(members: string[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(MEMBERS_KEY, JSON.stringify(members));
+}
+
 export function detectGenre(title: string): Genre {
   let best: Genre = "general";
   let bestCount = 0;
