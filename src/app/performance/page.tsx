@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getApiKey } from "@/lib/channel-store";
-import { getMyChannel, saveMyChannel, detectGenre, GENRE_LABELS, genId } from "@/lib/project-store";
-import type { MyChannelData, MyChannelVideo, Genre } from "@/lib/project-store";
+import { getMyChannel, saveMyChannel, detectGenre, GENRE_LABELS, genId, getAnalysisLogs, saveAnalysisLog, getWeeklySnapshots, saveWeeklySnapshot } from "@/lib/project-store";
+import type { MyChannelData, MyChannelVideo, Genre, AnalysisLog, WeeklySnapshot } from "@/lib/project-store";
 import { formatNumber } from "@/lib/mock-data";
 
 // ===== アナリティクス型 =====
@@ -62,6 +62,10 @@ export default function PerformancePage() {
   const [error, setError] = useState("");
   const [channelUrl, setChannelUrl] = useState("");
   const [analysis, setAnalysis] = useState("");
+  const [analysisLogs, setAnalysisLogs] = useState<AnalysisLog[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
+  const [weeklySnapshots, setWeeklySnapshots] = useState<WeeklySnapshot[]>([]);
+  const [showWeekly, setShowWeekly] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [sortBy, setSortBy] = useState<"views" | "date" | "engagement" | "avgDuration">("views");
   const [filterGenre, setFilterGenre] = useState<Genre | "all">("all");
@@ -163,9 +167,9 @@ export default function PerformancePage() {
 
   useEffect(() => {
     const saved = getMyChannel();
-    if (saved) {
-      setMyChannel(saved);
-    }
+    if (saved) setMyChannel(saved);
+    setAnalysisLogs(getAnalysisLogs());
+    setWeeklySnapshots(getWeeklySnapshots());
   }, []);
 
   useEffect(() => {
@@ -248,6 +252,44 @@ export default function PerformancePage() {
   };
 
   // ===== データ更新（YouTube + Analytics） =====
+  // 週次スナップショット自動保存
+  const autoSaveWeeklySnapshot = () => {
+    const ch = getMyChannel();
+    if (!ch || ch.videos.length === 0) return;
+    // 今週の月曜日を計算
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? 6 : day - 1;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - diff);
+    const weekStart = monday.toISOString().split("T")[0];
+
+    const videos = ch.videos.map((v) => {
+      const latest = v.snapshots[v.snapshots.length - 1];
+      return { title: v.title, views: latest?.views || 0, likes: latest?.likes || 0, comments: latest?.comments || 0 };
+    });
+
+    const totalViews = videos.reduce((s, v) => s + v.views, 0);
+    const totalLikes = videos.reduce((s, v) => s + v.likes, 0);
+    const totalComments = videos.reduce((s, v) => s + v.comments, 0);
+    const best = videos.reduce((a, b) => a.views > b.views ? a : b, videos[0]);
+
+    // analyticsMapからsubscribersGainedを集計
+    const totalSubs = Object.values(analyticsMap).reduce((s, v) => s + (v.subscribersGained || 0), 0);
+
+    saveWeeklySnapshot({
+      weekStart,
+      totalViews,
+      avgViews: Math.round(totalViews / videos.length),
+      totalLikes,
+      totalComments,
+      videoCount: videos.length,
+      subscribersGained: totalSubs,
+      topVideo: { title: best.title, views: best.views },
+    });
+    setWeeklySnapshots(getWeeklySnapshots());
+  };
+
   const handleRefresh = async () => {
     if (!myChannel) return;
     const ytApiKey = getApiKey("yt_api_key");
@@ -257,6 +299,8 @@ export default function PerformancePage() {
     try {
       await fetchVideos(myChannel.channelId, myChannel.channelName, ytApiKey);
       await fetchChannelAnalytics();
+      // 週次スナップショット自動保存
+      autoSaveWeeklySnapshot();
     } catch {
       setError("更新に失敗しました");
     } finally {
@@ -301,7 +345,20 @@ export default function PerformancePage() {
       });
       const data = await res.json();
       if (data.error) setError(data.error);
-      else setAnalysis(data.analysis);
+      else {
+        setAnalysis(data.analysis);
+        // 履歴保存
+        const totalViews = enrichedVideos.reduce((s, v) => s + v.views, 0);
+        const log: AnalysisLog = {
+          id: genId(),
+          date: new Date().toISOString(),
+          analysis: data.analysis,
+          videoCount: enrichedVideos.length,
+          avgViews: enrichedVideos.length > 0 ? Math.round(totalViews / enrichedVideos.length) : 0,
+        };
+        saveAnalysisLog(log);
+        setAnalysisLogs(getAnalysisLogs());
+      }
     } catch {
       setError("分析に失敗しました");
     } finally {
@@ -632,6 +689,114 @@ export default function PerformancePage() {
         <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
           <h2 className="font-semibold mb-4">AI分析結果</h2>
           <div>{renderMd(analysis)}</div>
+        </div>
+      )}
+
+      {/* ===== 分析履歴 ===== */}
+      {analysisLogs.length > 0 && (
+        <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 mb-6">
+          <button onClick={() => setShowLogs(!showLogs)}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50">
+            <span className="font-semibold text-sm">分析履歴（{analysisLogs.length}件）</span>
+            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showLogs ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showLogs && (
+            <div className="px-4 pb-4 space-y-2">
+              {analysisLogs.map((log) => (
+                <div key={log.id} className="bg-gray-50 rounded-lg overflow-hidden">
+                  <button onClick={() => setAnalysis(analysis === log.analysis ? "" : log.analysis)}
+                    className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-100">
+                    <div>
+                      <span className="text-sm font-medium">{new Date(log.date).toLocaleDateString("ja-JP")} {new Date(log.date).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="text-xs text-gray-500 ml-3">{log.videoCount}本 · 平均{formatNumber(log.avgViews)}回</span>
+                    </div>
+                    <span className="text-xs text-accent">表示</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== 週次レポート ===== */}
+      {weeklySnapshots.length > 0 && (
+        <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 mb-6">
+          <button onClick={() => setShowWeekly(!showWeekly)}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50">
+            <span className="font-semibold text-sm">週次レポート（{weeklySnapshots.length}週分）</span>
+            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showWeekly ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showWeekly && (
+            <div className="px-4 pb-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-200">
+                      <th className="py-2 font-medium">週</th>
+                      <th className="py-2 font-medium text-right">平均再生</th>
+                      <th className="py-2 font-medium text-right">総いいね</th>
+                      <th className="py-2 font-medium text-right">コメント</th>
+                      <th className="py-2 font-medium text-right">登録者獲得</th>
+                      <th className="py-2 font-medium text-right">変化</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {weeklySnapshots.map((snap, i) => {
+                      const prev = weeklySnapshots[i + 1];
+                      const viewsDiff = prev ? snap.avgViews - prev.avgViews : 0;
+                      return (
+                        <tr key={snap.weekStart} className="border-b border-gray-50">
+                          <td className="py-2 text-gray-700">{snap.weekStart}〜</td>
+                          <td className="py-2 text-right font-medium">{formatNumber(snap.avgViews)}</td>
+                          <td className="py-2 text-right">{formatNumber(snap.totalLikes)}</td>
+                          <td className="py-2 text-right">{formatNumber(snap.totalComments)}</td>
+                          <td className="py-2 text-right text-green-600">+{snap.subscribersGained}</td>
+                          <td className="py-2 text-right">
+                            {prev && (
+                              <span className={`font-medium ${viewsDiff > 0 ? "text-green-600" : viewsDiff < 0 ? "text-red-500" : "text-gray-400"}`}>
+                                {viewsDiff > 0 ? "+" : ""}{formatNumber(viewsDiff)}
+                              </span>
+                            )}
+                            {!prev && <span className="text-gray-400">—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {weeklySnapshots.length >= 2 && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs font-medium text-gray-500 mb-1">先週との比較</p>
+                  {(() => {
+                    const curr = weeklySnapshots[0];
+                    const prev = weeklySnapshots[1];
+                    const viewsChange = curr.avgViews - prev.avgViews;
+                    const likesChange = curr.totalLikes - prev.totalLikes;
+                    return (
+                      <div className="space-y-1">
+                        <p className="text-sm">
+                          平均再生数: <span className={viewsChange >= 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
+                            {viewsChange >= 0 ? "+" : ""}{formatNumber(viewsChange)}（{prev.avgViews > 0 ? `${viewsChange >= 0 ? "+" : ""}${Math.round(viewsChange / prev.avgViews * 100)}%` : "—"}）
+                          </span>
+                        </p>
+                        <p className="text-sm">
+                          いいね: <span className={likesChange >= 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
+                            {likesChange >= 0 ? "+" : ""}{formatNumber(likesChange)}
+                          </span>
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

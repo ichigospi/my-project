@@ -173,6 +173,59 @@ const GENRE_KW: Record<Genre, string[]> = {
   general: ["運勢", "スピリチュアル", "覚醒", "エネルギー", "浄化", "チャクラ", "瞑想", "ヒーリング", "波動", "アセンション", "守護", "天使", "エンジェル", "宇宙"],
 };
 
+// ===== AI分析履歴 =====
+export interface AnalysisLog {
+  id: string;
+  date: string;
+  analysis: string;
+  videoCount: number;
+  avgViews: number;
+}
+
+const ANALYSIS_LOG_KEY = "fortune_yt_analysis_log";
+
+export function getAnalysisLogs(): AnalysisLog[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(ANALYSIS_LOG_KEY) || "[]");
+}
+
+export function saveAnalysisLog(log: AnalysisLog) {
+  const logs = getAnalysisLogs();
+  logs.unshift(log);
+  // 最大10件保持
+  const trimmed = logs.slice(0, 10);
+  localStorage.setItem(ANALYSIS_LOG_KEY, JSON.stringify(trimmed));
+}
+
+// ===== 週次スナップショット =====
+export interface WeeklySnapshot {
+  weekStart: string; // YYYY-MM-DD（月曜日）
+  totalViews: number;
+  avgViews: number;
+  totalLikes: number;
+  totalComments: number;
+  videoCount: number;
+  subscribersGained: number;
+  topVideo: { title: string; views: number };
+}
+
+const WEEKLY_KEY = "fortune_yt_weekly";
+
+export function getWeeklySnapshots(): WeeklySnapshot[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(WEEKLY_KEY) || "[]");
+}
+
+export function saveWeeklySnapshot(snapshot: WeeklySnapshot) {
+  const snapshots = getWeeklySnapshots();
+  const idx = snapshots.findIndex((s) => s.weekStart === snapshot.weekStart);
+  if (idx >= 0) snapshots[idx] = snapshot;
+  else snapshots.unshift(snapshot);
+  // 最大12週分保持
+  const trimmed = snapshots.slice(0, 12);
+  localStorage.setItem(WEEKLY_KEY, JSON.stringify(trimmed));
+}
+
 export function detectGenre(title: string): Genre {
   let best: Genre = "general";
   let bestCount = 0;
