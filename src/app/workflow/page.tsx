@@ -7,46 +7,94 @@ import {
 } from "@/lib/project-store";
 import type { ProductionTask, WorkflowStep, TaskStatus, Genre, Style } from "@/lib/project-store";
 
+const STATUS_COLORS: Record<TaskStatus, string> = {
+  not_started: "bg-gray-100 text-gray-500",
+  in_progress: "bg-blue-100 text-blue-700",
+  completed: "bg-green-100 text-green-700",
+  rejected: "bg-red-100 text-red-700",
+};
+
+const STATUS_CYCLE: TaskStatus[] = ["not_started", "in_progress", "completed"];
+
 export default function WorkflowPage() {
   const [tasks, setTasks] = useState<ProductionTask[]>([]);
   const [members, setMembersState] = useState<string[]>([]);
-  const [filter, setFilter] = useState<"all" | "in_progress" | "completed">("all");
-  const [showNewForm, setShowNewForm] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [newMember, setNewMember] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [newTitle, setNewTitle] = useState("");
-  const [newGenre, setNewGenre] = useState<Genre>("love");
-  const [newStyle, setNewStyle] = useState<Style>("healing");
-  const [newDeadline, setNewDeadline] = useState("");
+  const [editingMemo, setEditingMemo] = useState<{ taskId: string; stepIdx: number } | null>(null);
+  const [memoText, setMemoText] = useState("");
 
   useEffect(() => {
     setTasks(getTasks());
     setMembersState(getMembers());
   }, []);
 
-  // 新規動画追加
-  const handleCreate = () => {
-    if (!newTitle.trim()) return;
+  // 新規行を追加
+  const handleAddRow = () => {
     const task: ProductionTask = {
       id: genId(),
-      title: newTitle,
-      genre: newGenre,
-      style: newStyle,
+      title: "",
+      genre: "love",
+      style: "healing",
       steps: DEFAULT_STEPS.map((s) => ({ ...s, assignee: members[0] || "自分" })),
-      deadline: newDeadline,
+      deadline: "",
       publishUrl: "",
       linkedProjectId: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     setTasks(saveTask(task));
-    setNewTitle("");
-    setNewDeadline("");
-    setShowNewForm(false);
   };
 
-  // メンバー追加
+  // フィールド更新
+  const updateField = (taskId: string, field: keyof ProductionTask, value: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    setTasks(saveTask({ ...task, [field]: value }));
+  };
+
+  // 工程ステータストグル
+  const toggleStatus = (taskId: string, stepIdx: number) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const current = task.steps[stepIdx].status;
+    const nextIdx = (STATUS_CYCLE.indexOf(current) + 1) % STATUS_CYCLE.length;
+    const next = STATUS_CYCLE[nextIdx];
+    const newSteps = task.steps.map((s, i) => i === stepIdx ? {
+      ...s, status: next, completedAt: next === "completed" ? new Date().toISOString() : s.completedAt,
+    } : s);
+    setTasks(saveTask({ ...task, steps: newSteps }));
+  };
+
+  // 担当者更新
+  const updateAssignee = (taskId: string, stepIdx: number, assignee: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const newSteps = task.steps.map((s, i) => i === stepIdx ? { ...s, assignee } : s);
+    setTasks(saveTask({ ...task, steps: newSteps }));
+  };
+
+  // 差し戻し
+  const handleReject = (taskId: string, stepIdx: number) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const newSteps = [...task.steps];
+    newSteps[stepIdx] = { ...newSteps[stepIdx], status: "rejected" };
+    if (stepIdx > 0) newSteps[stepIdx - 1] = { ...newSteps[stepIdx - 1], status: "in_progress" };
+    setTasks(saveTask({ ...task, steps: newSteps }));
+  };
+
+  // メモ保存
+  const saveMemo = () => {
+    if (!editingMemo) return;
+    const task = tasks.find((t) => t.id === editingMemo.taskId);
+    if (!task) return;
+    const newSteps = task.steps.map((s, i) => i === editingMemo.stepIdx ? { ...s, memo: memoText } : s);
+    setTasks(saveTask({ ...task, steps: newSteps }));
+    setEditingMemo(null);
+  };
+
+  // メンバー管理
   const handleAddMember = () => {
     if (!newMember.trim() || members.includes(newMember.trim())) return;
     const updated = [...members, newMember.trim()];
@@ -55,266 +103,189 @@ export default function WorkflowPage() {
     setNewMember("");
   };
 
-  const handleRemoveMember = (name: string) => {
-    const updated = members.filter((m) => m !== name);
-    saveMembers(updated);
-    setMembersState(updated);
-  };
-
-  // 工程ステータス更新
-  const updateStep = (taskId: string, stepIdx: number, updates: Partial<WorkflowStep>) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    const newSteps = task.steps.map((s, i) => i === stepIdx ? {
-      ...s, ...updates,
-      completedAt: updates.status === "completed" ? new Date().toISOString() : s.completedAt,
-    } : s);
-    setTasks(saveTask({ ...task, steps: newSteps }));
-  };
-
-  // 差し戻し（検収NG → 前工程を作業中に戻す）
-  const handleReject = (taskId: string, stepIdx: number, memo: string) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    const newSteps = [...task.steps];
-    newSteps[stepIdx] = { ...newSteps[stepIdx], status: "rejected", memo };
-    if (stepIdx > 0) newSteps[stepIdx - 1] = { ...newSteps[stepIdx - 1], status: "in_progress" };
-    setTasks(saveTask({ ...task, steps: newSteps }));
-  };
-
   // 進捗計算
   const getProgress = (task: ProductionTask) => {
     const done = task.steps.filter((s) => s.status === "completed").length;
     return Math.round((done / task.steps.length) * 100);
   };
 
-  const getTaskStatus = (task: ProductionTask) => {
-    if (task.steps.every((s) => s.status === "completed")) return "completed";
-    if (task.steps.some((s) => s.status === "in_progress" || s.status === "rejected")) return "in_progress";
-    return "not_started";
-  };
-
-  // フィルタ
-  const filtered = tasks.filter((t) => {
-    if (filter === "all") return true;
-    return getTaskStatus(t) === filter;
-  });
-
-  const statusCounts = {
-    all: tasks.length,
-    in_progress: tasks.filter((t) => getTaskStatus(t) === "in_progress").length,
-    completed: tasks.filter((t) => getTaskStatus(t) === "completed").length,
-  };
-
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">作業工程表</h1>
-          <p className="text-gray-500 mt-1">完了 {statusCounts.completed}/{tasks.length}本 · 進行中 {statusCounts.in_progress}本</p>
-        </div>
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">工程表</h1>
         <div className="flex gap-2">
           <button onClick={() => setShowMembers(!showMembers)}
-            className="px-4 py-2 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">
             担当者管理
           </button>
-          <button onClick={() => setShowNewForm(!showNewForm)}
-            className="px-5 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
-            + 新規動画を追加
+          <button onClick={handleAddRow}
+            className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90">
+            + 行を追加
           </button>
         </div>
       </div>
 
       {/* 担当者管理 */}
       {showMembers && (
-        <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
-          <h3 className="font-semibold text-sm mb-3">担当者管理</h3>
-          <div className="flex gap-2 mb-3">
+        <div className="bg-card-bg rounded-xl p-4 shadow-sm border border-gray-100 mb-4">
+          <div className="flex gap-2 mb-2">
             <input type="text" value={newMember} onChange={(e) => setNewMember(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
-              placeholder="名前を入力" className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none" />
-            <button onClick={handleAddMember} className="px-4 py-2 rounded-lg bg-accent text-white text-sm hover:bg-accent/90">追加</button>
+              placeholder="名前を入力" className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm outline-none" />
+            <button onClick={handleAddMember} className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs">追加</button>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1">
             {members.map((m) => (
-              <span key={m} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm">
+              <span key={m} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-accent/10 text-accent text-xs">
                 {m}
-                <button onClick={() => handleRemoveMember(m)} className="text-accent/50 hover:text-accent ml-1">&times;</button>
+                <button onClick={() => { saveMembers(members.filter((x) => x !== m)); setMembersState(members.filter((x) => x !== m)); }} className="text-accent/50 hover:text-accent">&times;</button>
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {/* 新規追加フォーム */}
-      {showNewForm && (
-        <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-accent/20 mb-6">
-          <h3 className="font-semibold text-sm mb-3">新規動画を追加</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="動画タイトル" className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none" />
-            <input type="date" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none" />
-            <select value={newGenre} onChange={(e) => setNewGenre(e.target.value as Genre)}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm">
-              {Object.entries(GENRE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-            <select value={newStyle} onChange={(e) => setNewStyle(e.target.value as Style)}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm">
-              {Object.entries(STYLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+      {/* メモ編集モーダル */}
+      {editingMemo && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setEditingMemo(null)}>
+          <div className="bg-white rounded-xl p-5 w-96 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-sm mb-2">メモ編集</h3>
+            <textarea value={memoText} onChange={(e) => setMemoText(e.target.value)}
+              rows={3} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none mb-3" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditingMemo(null)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs">キャンセル</button>
+              <button onClick={saveMemo} className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs">保存</button>
+            </div>
           </div>
-          <button onClick={handleCreate} disabled={!newTitle.trim()}
-            className="px-5 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">追加</button>
         </div>
       )}
 
-      {/* フィルタ */}
-      <div className="flex gap-1 mb-4">
-        {([["all", `全て（${statusCounts.all}）`], ["in_progress", `進行中（${statusCounts.in_progress}）`], ["completed", `完了（${statusCounts.completed}）`]] as const).map(([val, label]) => (
-          <button key={val} onClick={() => setFilter(val)}
-            className={`px-4 py-1.5 rounded-lg text-sm ${filter === val ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-            {label}
-          </button>
-        ))}
+      {/* スプレッドシート風テーブル */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse min-w-[1200px]">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="border border-gray-200 px-2 py-2 text-left w-10 font-semibold">No.</th>
+              <th className="border border-gray-200 px-2 py-2 text-left w-56 font-semibold">タイトル</th>
+              <th className="border border-gray-200 px-2 py-2 text-center w-16 font-semibold">ジャンル</th>
+              <th className="border border-gray-200 px-2 py-2 text-center w-20 font-semibold">期限</th>
+              <th className="border border-gray-200 px-2 py-2 text-center w-12 font-semibold">進捗</th>
+              {DEFAULT_STEPS.map((s) => (
+                <th key={s.name} className={`border border-gray-200 px-1 py-2 text-center w-24 font-semibold ${s.isReview ? "bg-yellow-50" : ""}`}>
+                  {s.isReview ? `✋${s.name}` : s.name}
+                </th>
+              ))}
+              <th className="border border-gray-200 px-2 py-2 text-center w-28 font-semibold">公開URL</th>
+              <th className="border border-gray-200 px-2 py-2 text-center w-10 font-semibold"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.map((task, rowIdx) => (
+              <tr key={task.id} className="hover:bg-gray-50/50">
+                {/* No */}
+                <td className="border border-gray-200 px-2 py-1.5 text-center font-bold text-gray-400">{rowIdx + 1}</td>
+
+                {/* タイトル */}
+                <td className="border border-gray-200 px-1 py-0.5">
+                  <input type="text" value={task.title}
+                    onChange={(e) => updateField(task.id, "title", e.target.value)}
+                    placeholder="タイトルを入力"
+                    className="w-full px-1 py-1 text-xs outline-none bg-transparent" />
+                </td>
+
+                {/* ジャンル */}
+                <td className="border border-gray-200 px-0.5 py-0.5">
+                  <select value={task.genre} onChange={(e) => updateField(task.id, "genre", e.target.value)}
+                    className="w-full px-0.5 py-1 text-xs outline-none bg-transparent text-center">
+                    {Object.entries(GENRE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </td>
+
+                {/* 期限 */}
+                <td className="border border-gray-200 px-0.5 py-0.5">
+                  <input type="date" value={task.deadline}
+                    onChange={(e) => updateField(task.id, "deadline", e.target.value)}
+                    className="w-full px-0.5 py-1 text-xs outline-none bg-transparent" />
+                </td>
+
+                {/* 進捗 */}
+                <td className="border border-gray-200 px-1 py-1.5 text-center">
+                  <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${getProgress(task)}%` }} />
+                  </div>
+                  <span className="text-[10px] text-gray-400">{getProgress(task)}%</span>
+                </td>
+
+                {/* 各工程 */}
+                {task.steps.map((step, stepIdx) => (
+                  <td key={stepIdx} className={`border border-gray-200 px-0.5 py-0.5 ${step.isReview ? "bg-yellow-50/30" : ""}`}>
+                    <div className="flex flex-col items-center gap-0.5">
+                      {/* ステータスボタン */}
+                      <button onClick={() => toggleStatus(task.id, stepIdx)}
+                        className={`w-full px-1 py-0.5 rounded text-[10px] font-medium ${STATUS_COLORS[step.status]}`}>
+                        {TASK_STATUS_LABELS[step.status]}
+                      </button>
+
+                      {/* 担当者 */}
+                      <select value={step.assignee} onChange={(e) => updateAssignee(task.id, stepIdx, e.target.value)}
+                        className="w-full text-[10px] text-gray-500 outline-none bg-transparent text-center">
+                        {members.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+
+                      {/* 検収の差し戻し+メモ */}
+                      <div className="flex gap-0.5">
+                        {step.isReview && step.status === "in_progress" && (
+                          <button onClick={() => handleReject(task.id, stepIdx)}
+                            className="text-[9px] text-red-500 hover:underline">戻し</button>
+                        )}
+                        <button onClick={() => { setEditingMemo({ taskId: task.id, stepIdx }); setMemoText(step.memo); }}
+                          className={`text-[9px] ${step.memo ? "text-accent" : "text-gray-400"} hover:underline`}>
+                          {step.memo ? "📝" : "メモ"}
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                ))}
+
+                {/* 公開URL */}
+                <td className="border border-gray-200 px-1 py-0.5">
+                  {task.publishUrl ? (
+                    <a href={task.publishUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline text-[10px] truncate block">公開済み</a>
+                  ) : (
+                    <input type="text" placeholder="URL"
+                      onBlur={(e) => { if (e.target.value) updateField(task.id, "publishUrl", e.target.value); }}
+                      className="w-full px-1 py-1 text-[10px] outline-none bg-transparent" />
+                  )}
+                </td>
+
+                {/* 削除 */}
+                <td className="border border-gray-200 px-1 py-0.5 text-center">
+                  <button onClick={() => { deleteTask(task.id); setTasks(getTasks()); }}
+                    className="text-gray-300 hover:text-red-500 text-xs">×</button>
+                </td>
+              </tr>
+            ))}
+
+            {/* 空行（追加用） */}
+            {tasks.length === 0 && (
+              <tr>
+                <td colSpan={5 + DEFAULT_STEPS.length + 2} className="border border-gray-200 px-4 py-8 text-center text-gray-400">
+                  「+ 行を追加」で動画を追加してください
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* タスク一覧 */}
-      {filtered.length === 0 && (
-        <div className="text-center py-16 text-gray-400">
-          <p className="text-lg">動画がありません</p>
-          <p className="text-sm mt-1">「+ 新規動画を追加」で始めましょう</p>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {filtered.map((task) => {
-          const progress = getProgress(task);
-          const status = getTaskStatus(task);
-          const isExpanded = expanded === task.id;
-          const currentStepIdx = task.steps.findIndex((s) => s.status !== "completed");
-
-          return (
-            <div key={task.id} className={`bg-card-bg rounded-xl shadow-sm border overflow-hidden ${
-              status === "completed" ? "border-green-200" : status === "in_progress" ? "border-accent/30" : "border-gray-100"
-            }`}>
-              {/* ヘッダー */}
-              <div className="p-4 cursor-pointer" onClick={() => setExpanded(isExpanded ? null : task.id)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${status === "completed" ? "bg-green-500" : status === "in_progress" ? "bg-accent" : "bg-gray-300"}`} />
-                      <h3 className="font-semibold text-sm truncate">{task.title}</h3>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1.5 ml-5">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">{GENRE_LABELS[task.genre]}</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{STYLE_LABELS[task.style]}</span>
-                      {task.deadline && <span className="text-xs text-gray-500">期限: {task.deadline}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm font-bold text-accent">{progress}%</span>
-                    <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-
-                {/* ミニ工程バー */}
-                <div className="flex gap-1 mt-3 ml-5">
-                  {task.steps.map((step, i) => (
-                    <div key={i} className={`flex-1 h-2 rounded-full ${
-                      step.status === "completed" ? "bg-green-500" :
-                      step.status === "in_progress" ? "bg-accent" :
-                      step.status === "rejected" ? "bg-red-400" :
-                      "bg-gray-200"
-                    }`} title={`${step.name}: ${TASK_STATUS_LABELS[step.status]}`} />
-                  ))}
-                </div>
-              </div>
-
-              {/* 展開エリア */}
-              {isExpanded && (
-                <div className="px-4 pb-4 border-t border-gray-100 pt-4">
-                  <div className="space-y-3">
-                    {task.steps.map((step, i) => (
-                      <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${
-                        step.status === "completed" ? "bg-green-50" :
-                        step.status === "in_progress" ? "bg-accent/5" :
-                        step.status === "rejected" ? "bg-red-50" :
-                        "bg-gray-50"
-                      }`}>
-                        {/* ステータスアイコン */}
-                        <button onClick={() => {
-                          const next: TaskStatus = step.status === "not_started" ? "in_progress" :
-                            step.status === "in_progress" ? "completed" : "not_started";
-                          updateStep(task.id, i, { status: next });
-                        }} className="shrink-0 mt-0.5" title="クリックでステータス切替">
-                          {step.status === "completed" && <span className="text-green-500 text-lg">✅</span>}
-                          {step.status === "in_progress" && <span className="text-accent text-lg">🔵</span>}
-                          {step.status === "rejected" && <span className="text-red-500 text-lg">🔴</span>}
-                          {step.status === "not_started" && <span className="text-gray-300 text-lg">⬜</span>}
-                        </button>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{step.isReview ? `✋ ${step.name}` : step.name}</span>
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${
-                              step.status === "completed" ? "bg-green-100 text-green-700" :
-                              step.status === "in_progress" ? "bg-accent/10 text-accent" :
-                              step.status === "rejected" ? "bg-red-100 text-red-700" :
-                              "bg-gray-100 text-gray-500"
-                            }`}>{TASK_STATUS_LABELS[step.status]}</span>
-                          </div>
-
-                          {/* 担当者 */}
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-gray-500">担当:</span>
-                            <select value={step.assignee} onChange={(e) => updateStep(task.id, i, { assignee: e.target.value })}
-                              className="text-xs px-2 py-0.5 rounded border border-gray-200 outline-none">
-                              {members.map((m) => <option key={m} value={m}>{m}</option>)}
-                            </select>
-                          </div>
-
-                          {/* メモ */}
-                          {(step.memo || step.isReview) && (
-                            <input type="text" value={step.memo}
-                              onChange={(e) => updateStep(task.id, i, { memo: e.target.value })}
-                              placeholder={step.isReview ? "検収メモ（フィードバック等）" : "メモ"}
-                              className="mt-1 w-full text-xs px-2 py-1 rounded border border-gray-200 outline-none focus:border-accent" />
-                          )}
-
-                          {/* 検収工程の差し戻しボタン */}
-                          {step.isReview && step.status === "in_progress" && (
-                            <button onClick={() => handleReject(task.id, i, step.memo || "要修正")}
-                              className="mt-1 text-xs text-red-500 hover:underline">
-                              差し戻し
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* フッター */}
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-                    <div className="flex gap-2">
-                      {task.publishUrl ? (
-                        <a href={task.publishUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-accent hover:underline">YouTube</a>
-                      ) : (
-                        <input type="text" placeholder="公開URLを貼り付け"
-                          onBlur={(e) => { if (e.target.value) setTasks(saveTask({ ...task, publishUrl: e.target.value })); }}
-                          className="text-xs px-2 py-1 rounded border border-gray-200 outline-none w-48" />
-                      )}
-                    </div>
-                    <button onClick={() => { deleteTask(task.id); setTasks(getTasks()); }}
-                      className="text-xs text-gray-400 hover:text-red-500">削除</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+      {/* 凡例 */}
+      <div className="flex gap-4 mt-3 text-[10px] text-gray-500">
+        <span><span className="inline-block w-3 h-3 rounded bg-gray-100 mr-1" />未着手</span>
+        <span><span className="inline-block w-3 h-3 rounded bg-blue-100 mr-1" />作業中</span>
+        <span><span className="inline-block w-3 h-3 rounded bg-green-100 mr-1" />完了</span>
+        <span><span className="inline-block w-3 h-3 rounded bg-red-100 mr-1" />差し戻し</span>
+        <span>✋ = 検収工程（人の確認が必要）</span>
+        <span>📝 = メモあり</span>
       </div>
     </div>
   );
