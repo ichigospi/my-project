@@ -283,6 +283,7 @@ export default function PerformancePage() {
           comments: latest?.comments || 0,
           genre: GENRE_LABELS[v.genre],
           publishedAt: v.publishedAt,
+          duration: v.duration,
           avgViewDuration: analytic?.avgViewDuration,
           avgViewPercentage: analytic?.avgViewPercentage,
           subscribersGained: analytic?.subscribersGained,

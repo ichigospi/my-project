@@ -16,27 +16,27 @@ export async function POST(request: NextRequest) {
 - 維持率は動画の尺によって異なる。20分の動画で40%=8分視聴は優秀。短くして維持率を上げるのは逆効果。
 - ヒーリング系は尺が長く「聞き流し」で総視聴時間が稼げるのが強み。
 
-${channelStats ? `【チャンネル全体KPI（直近90日）】
-総再生数: ${channelStats.views?.toLocaleString()}回
-平均視聴時間: ${Math.floor((channelStats.avgDurationSec || 0) / 60)}分${(channelStats.avgDurationSec || 0) % 60}秒
-平均維持率: ${channelStats.avgPercentage}%
-登録者獲得: +${channelStats.subscribersGained}
-総視聴時間: ${channelStats.watchTimeMinutes?.toLocaleString()}分
-` : ""}
+${channelStats?.avgViewDuration ? `【チャンネル全体KPI（直近90日）】
+総再生数: ${channelStats.totalViews?.toLocaleString() || "不明"}回
+平均視聴時間: ${Math.floor((channelStats.avgViewDuration || 0) / 60)}分${Math.round((channelStats.avgViewDuration || 0) % 60)}秒
+平均維持率: ${channelStats.avgViewPercentage || "不明"}%
+` : "【チャンネル全体KPI】データ不足のため動画個別データから推定してください。"}
 
 【動画別データ（再生数順）】
 ${videos.map((v: {
   title: string; views: number; genre: string;
-  avgDurationSec?: number; avgPercentage?: number;
+  avgDurationSec?: number; avgViewDuration?: number; avgPercentage?: number; avgViewPercentage?: number;
   subscribersGained?: number; likes: number; comments: number;
-  publishedAt: string;
+  publishedAt: string; duration?: string;
 }, i: number) => {
-  const dur = v.avgDurationSec ? `${Math.floor(v.avgDurationSec / 60)}分${v.avgDurationSec % 60}秒` : "不明";
+  const durSec = v.avgDurationSec || v.avgViewDuration;
+  const dur = durSec ? `${Math.floor(durSec / 60)}分${Math.round(durSec % 60)}秒` : "不明";
+  const pct = v.avgPercentage || v.avgViewPercentage;
   const eng = v.views > 0 ? ((v.likes + v.comments) / v.views * 100).toFixed(1) : "0";
   const subRate = v.views > 0 && v.subscribersGained ? (v.subscribersGained / v.views * 100).toFixed(2) : "不明";
   return `${i + 1}. ${v.title}
-   再生数: ${v.views.toLocaleString()}回 / ${v.genre} / ${v.publishedAt}
-   平均視聴時間: ${dur} / 維持率: ${v.avgPercentage ?? "不明"}%
+   再生数: ${v.views.toLocaleString()}回 / ${v.genre} / ${v.publishedAt}${v.duration ? ` / 動画尺${v.duration}` : ""}
+   平均視聴時間: ${dur} / 維持率: ${pct ?? "不明"}%
    エンゲージメント: ${eng}% / 登録者転換率: ${subRate}%
    登録者獲得: ${v.subscribersGained ?? "不明"}`;
 }).join("\n\n")}
