@@ -251,7 +251,7 @@ function SettingsContent() {
                   <li>Google Cloud Console → 認証情報</li>
                   <li>「＋認証情報を作成」→「OAuthクライアントID」</li>
                   <li>アプリの種類: 「ウェブアプリケーション」</li>
-                  <li>承認済みリダイレクトURI: <code className="bg-amber-100 px-1 rounded">{typeof window !== "undefined" ? `${window.location.origin}/api/auth/youtube/callback` : ""}</code></li>
+                  <li>承認済みリダイレクトURI: <code className="bg-amber-100 px-1 rounded">http://localhost:3000/api/auth/youtube/callback</code></li>
                   <li>クライアントIDとシークレットをコピーして上に貼り付け</li>
                   <li>YouTube Analytics APIも有効化してください</li>
                 </ol>
