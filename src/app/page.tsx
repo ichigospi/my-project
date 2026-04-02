@@ -264,10 +264,10 @@ function MyChannelSection() {
             </span>
           </div>
           <Link
-            href="/create"
+            href="/performance"
             className="inline-flex items-center text-sm text-accent hover:underline font-medium"
           >
-            この企画で台本作成 →
+            パフォーマンス詳細 →
           </Link>
         </div>
       )}
@@ -279,91 +279,51 @@ function MyChannelSection() {
 function CompetitorSection({ channels }: { channels: RegisteredChannel[] }) {
   const router = useRouter();
 
-  // データがあるチャンネル（handle または channelId を持つもの）上位5件
-  const topChannels = channels
-    .filter((ch) => ch.handle || ch.channelId || ch.name)
+  // 登録チャンネルの中でデータがあるもの
+  const channelsWithData = channels.filter((ch) => ch.subscribers != null && ch.name);
+
+  // 平均登録者数を計算して、登録者の割に再生数が多いチャンネルの動画を注目動画とする
+  // ここでは登録者数の多い上位チャンネルを表示し、動画検索への導線を出す
+  const topChannels = channelsWithData
+    .sort((a, b) => (b.subscribers || 0) - (a.subscribers || 0))
     .slice(0, 5);
 
   return (
     <section className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-foreground">
-          競合の注目動画
-        </h2>
-        <Link href="/channel" className="text-sm text-accent hover:underline">
-          全チャンネル →
-        </Link>
+        <h2 className="text-lg font-semibold text-foreground">競合チャンネル概況</h2>
+        <div className="flex gap-3">
+          <Link href="/search" className="text-sm text-accent hover:underline">伸びてる動画を検索 →</Link>
+          <Link href="/channel" className="text-sm text-gray-500 hover:underline">全チャンネル →</Link>
+        </div>
       </div>
 
       {topChannels.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-4">
-          競合チャンネルが登録されていません。
-        </p>
+        <div className="text-center py-6">
+          <p className="text-sm text-gray-500 mb-2">競合チャンネルのデータがありません。</p>
+          <Link href="/channel" className="text-sm text-accent hover:underline">チャンネル分析でデータを取得 →</Link>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {topChannels.map((ch) => {
-            const displayName =
-              ch.name ||
-              (ch.handle ? `@${ch.handle}` : ch.channelId || "不明なチャンネル");
-            const initial = displayName.replace(/^@/, "").charAt(0).toUpperCase();
-
-            return (
-              <div
-                key={ch.url}
-                className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:border-gray-200 transition-colors"
-              >
-                {/* アバター */}
-                {ch.thumbnailUrl ? (
-                  <img
-                    src={ch.thumbnailUrl}
-                    alt=""
-                    className="w-10 h-10 rounded-full object-cover shrink-0"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold text-sm shrink-0">
-                    {initial}
-                  </div>
-                )}
-
-                {/* チャンネル情報 */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {displayName}
-                  </p>
-                  {ch.subscribers != null ? (
-                    <p className="text-xs text-gray-500">
-                      登録者: {formatNumber(ch.subscribers)}人
-                      {ch.totalViews != null && (
-                        <span className="ml-2">
-                          総再生: {formatNumber(ch.totalViews)}
-                        </span>
-                      )}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-gray-400">データ未取得</p>
-                  )}
+        <div className="space-y-2">
+          {topChannels.map((ch) => (
+            <div key={ch.url} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+              {ch.thumbnailUrl ? (
+                <img src={ch.thumbnailUrl} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold text-xs shrink-0">
+                  {(ch.name || "?").charAt(0)}
                 </div>
-
-                {/* アクションボタン */}
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => router.push("/analysis")}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-accent text-accent hover:bg-accent/10 transition-colors"
-                  >
-                    分析する
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/create")}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors"
-                  >
-                    この企画で作る
-                  </button>
-                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{ch.name}</p>
+                <p className="text-xs text-gray-500">{formatNumber(ch.subscribers || 0)}人 · {ch.videoCount || 0}本</p>
               </div>
-            );
-          })}
+              <button onClick={() => router.push("/search")}
+                className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 shrink-0">
+                動画を検索
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </section>
