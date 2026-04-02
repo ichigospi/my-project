@@ -9,13 +9,18 @@ import { getChannels } from "@/lib/channel-store";
 import type { RegisteredChannel } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
 
-// ===== パイプラインの工程名 =====
-const PIPELINE_STEPS = ["企画出し", "台本作成", "動画編集", "サムネ作成", "アップロード"];
+// ===== 工程名定数 =====
+const PIPELINE_STEPS = [
+  { key: "企画出し", label: "企画出し" },
+  { key: "台本作成", label: "台本作成" },
+  { key: "動画編集", label: "動画編集" },
+  { key: "サムネ作成", label: "サムネ" },
+  { key: "アップロード", label: "アップロード" },
+];
 
 // ===== セクション1: 制作パイプライン =====
 function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
-  const router = useRouter();
-
+  // サマリーカウント
   const urgentCount = tasks.filter((t) => t.urgent).length;
   const reviewWaitingCount = tasks.filter((t) =>
     t.steps.some((s) => s.status === "review_waiting")
@@ -27,16 +32,16 @@ function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
     t.steps.every((s) => s.status === "completed")
   ).length;
 
-  // 各工程の未完了タスク数
+  // パイプライン各工程の未完了タスク数
   const stepCounts: Record<string, number> = {};
   for (const step of PIPELINE_STEPS) {
-    stepCounts[step] = tasks.filter((task) => {
-      const s = task.steps.find((st) => st.name === step);
+    stepCounts[step.key] = tasks.filter((task) => {
+      const s = task.steps.find((st) => st.name === step.key);
       return s && s.status !== "completed";
     }).length;
   }
 
-  // 期限3日以内のアラート
+  // 期限3日以内アラート
   const now = new Date();
   const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
   const deadlineAlerts = tasks.filter((t) => {
@@ -52,7 +57,9 @@ function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
 
   return (
     <section className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
-      <h2 className="text-lg font-semibold text-foreground mb-4">制作パイプライン</h2>
+      <h2 className="text-lg font-semibold text-foreground mb-4">
+        制作パイプライン
+      </h2>
 
       {/* サマリー */}
       <div className="grid grid-cols-4 gap-3 mb-6">
@@ -77,13 +84,15 @@ function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
       {/* パイプラインフロー */}
       <div className="flex items-center gap-1 flex-wrap mb-6">
         {PIPELINE_STEPS.map((step, i) => (
-          <div key={step} className="flex items-center gap-1">
-            <div className="bg-sidebar-bg rounded-lg px-3 py-2 text-center min-w-[80px]">
-              <p className="text-xs text-gray-500">{step}</p>
-              <p className="text-lg font-bold text-foreground">{stepCounts[step]}</p>
+          <div key={step.key} className="flex items-center gap-1">
+            <div className="bg-sidebar-bg/10 border border-gray-200 rounded-lg px-3 py-2 text-center min-w-[72px]">
+              <p className="text-xs text-gray-500 leading-tight">{step.label}</p>
+              <p className="text-lg font-bold text-foreground">
+                {stepCounts[step.key]}
+              </p>
             </div>
             {i < PIPELINE_STEPS.length - 1 && (
-              <span className="text-gray-400 font-bold">→</span>
+              <span className="text-gray-400 font-semibold text-sm">→</span>
             )}
           </div>
         ))}
@@ -98,7 +107,7 @@ function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
               href="/workflow"
               className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors"
             >
-              <span className="text-warning">⚠</span>
+              <span className="text-warning shrink-0">⚠</span>
               <span className="text-sm text-yellow-800 flex-1">
                 <strong>{t.title}</strong> — 期限{" "}
                 {new Date(t.deadline).toLocaleDateString("ja-JP", {
@@ -107,7 +116,9 @@ function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
                 })}
                 まで
               </span>
-              <span className="text-xs text-yellow-600">→ 工程表</span>
+              <span className="text-xs text-yellow-600 shrink-0">
+                → 工程表
+              </span>
             </Link>
           ))}
           {reviewAlerts.map((t) => (
@@ -116,11 +127,11 @@ function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
               href="/workflow"
               className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
             >
-              <span>✋</span>
+              <span className="shrink-0">✋</span>
               <span className="text-sm text-blue-800 flex-1">
                 <strong>{t.title}</strong> — 検収待ち
               </span>
-              <span className="text-xs text-blue-600">→ 工程表</span>
+              <span className="text-xs text-blue-600 shrink-0">→ 工程表</span>
             </Link>
           ))}
         </div>
@@ -148,7 +159,9 @@ function MyChannelSection() {
   if (!loaded) {
     return (
       <section className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4">自チャンネルKPI</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-4">
+          自チャンネルKPI
+        </h2>
         <p className="text-sm text-gray-400 text-center py-4">読み込み中...</p>
       </section>
     );
@@ -157,13 +170,14 @@ function MyChannelSection() {
   if (!myChannel) {
     return (
       <section className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4">自チャンネルKPI</h2>
-        <div className="text-center py-6">
-          <p className="text-sm text-gray-500 mb-3">チャンネルが登録されていません。</p>
-          <Link
-            href="/performance"
-            className="text-sm text-accent hover:underline"
-          >
+        <h2 className="text-lg font-semibold text-foreground mb-4">
+          自チャンネルKPI
+        </h2>
+        <div className="text-center py-8">
+          <p className="text-sm text-gray-500 mb-3">
+            チャンネルが登録されていません。
+          </p>
+          <Link href="/performance" className="text-sm text-accent hover:underline">
             パフォーマンスページでチャンネルを登録 →
           </Link>
         </div>
@@ -171,18 +185,21 @@ function MyChannelSection() {
     );
   }
 
-  // 全動画のスナップショットから平均再生数を計算
+  // 全スナップショットから集計
   const allSnapshots = myChannel.videos.flatMap((v) => v.snapshots);
   const totalViews = allSnapshots.reduce((sum, s) => sum + s.views, 0);
-  const avgViews = allSnapshots.length > 0 ? Math.round(totalViews / myChannel.videos.length) : 0;
+  const avgViews =
+    myChannel.videos.length > 0
+      ? Math.round(totalViews / myChannel.videos.length)
+      : 0;
 
-  // 登録者転換率: 総コメント / 総再生数 (engagement proxy)
+  // 登録者転換率: 総いいね数 / 総再生数
   const totalLikes = allSnapshots.reduce((sum, s) => sum + s.likes, 0);
   const conversionRate =
     totalViews > 0 ? ((totalLikes / totalViews) * 100).toFixed(2) : "0.00";
 
-  // 最高再生数の動画
-  const topVideo = myChannel.videos.reduce<typeof myChannel.videos[0] | null>(
+  // 最高再生数動画
+  const topVideo = myChannel.videos.reduce<MyChannelData["videos"][0] | null>(
     (best, v) => {
       const views = v.snapshots.reduce((sum, s) => sum + s.views, 0);
       const bestViews = best
@@ -206,33 +223,49 @@ function MyChannelSection() {
 
   return (
     <section className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
-      <h2 className="text-lg font-semibold text-foreground mb-1">自チャンネルKPI</h2>
+      <h2 className="text-lg font-semibold text-foreground mb-1">
+        自チャンネルKPI
+      </h2>
       <p className="text-sm text-gray-400 mb-4">{myChannel.channelName}</p>
 
+      {/* KPIグリッド */}
       <div className="grid grid-cols-2 gap-4 mb-5">
-        <div className="bg-sidebar-bg rounded-lg p-4">
+        <div className="bg-sidebar-bg/5 border border-gray-100 rounded-lg p-4">
           <p className="text-xs text-gray-500 mb-1">平均再生数</p>
-          <p className="text-2xl font-bold text-foreground">{formatNumber(avgViews)}</p>
+          <p className="text-2xl font-bold text-foreground">
+            {formatNumber(avgViews)}
+          </p>
         </div>
-        <div className="bg-sidebar-bg rounded-lg p-4">
+        <div className="bg-sidebar-bg/5 border border-gray-100 rounded-lg p-4">
           <p className="text-xs text-gray-500 mb-1">登録者転換率（いいね率）</p>
-          <p className="text-2xl font-bold text-foreground">{conversionRate}%</p>
+          <p className="text-2xl font-bold text-foreground">
+            {conversionRate}%
+          </p>
         </div>
       </div>
 
+      {/* トップ動画 */}
       {topVideo && (
-        <div className="border border-gray-100 rounded-lg p-4 mb-4">
+        <div className="border border-gray-100 rounded-lg p-4">
           <p className="text-xs text-gray-500 mb-2">トップ動画</p>
-          <p className="text-sm font-semibold text-foreground line-clamp-2 mb-2">
+          <p className="text-sm font-semibold text-foreground line-clamp-2 mb-3">
             {topVideo.title}
           </p>
-          <div className="flex gap-4 text-xs text-gray-500">
-            <span>再生数: <strong className="text-foreground">{formatNumber(topVideoViews)}</strong></span>
-            <span>エンゲージメント: <strong className="text-foreground">{topVideoEngagement}%</strong></span>
+          <div className="flex gap-4 text-xs text-gray-500 mb-3">
+            <span>
+              再生数:{" "}
+              <strong className="text-foreground">
+                {formatNumber(topVideoViews)}
+              </strong>
+            </span>
+            <span>
+              エンゲージメント:{" "}
+              <strong className="text-foreground">{topVideoEngagement}%</strong>
+            </span>
           </div>
           <Link
             href="/create"
-            className="mt-3 inline-flex items-center text-sm text-accent hover:underline font-medium"
+            className="inline-flex items-center text-sm text-accent hover:underline font-medium"
           >
             この企画で台本作成 →
           </Link>
@@ -245,13 +278,18 @@ function MyChannelSection() {
 // ===== セクション3: 競合の注目動画 =====
 function CompetitorSection({ channels }: { channels: RegisteredChannel[] }) {
   const router = useRouter();
-  const channelsWithData = channels.filter((ch) => ch.name || ch.handle || ch.channelId);
-  const topChannels = channelsWithData.slice(0, 5);
+
+  // データがあるチャンネル（handle または channelId を持つもの）上位5件
+  const topChannels = channels
+    .filter((ch) => ch.handle || ch.channelId || ch.name)
+    .slice(0, 5);
 
   return (
     <section className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-foreground">競合の注目動画</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          競合の注目動画
+        </h2>
         <Link href="/channel" className="text-sm text-accent hover:underline">
           全チャンネル →
         </Link>
@@ -265,12 +303,16 @@ function CompetitorSection({ channels }: { channels: RegisteredChannel[] }) {
         <div className="space-y-3">
           {topChannels.map((ch) => {
             const displayName =
-              ch.name || (ch.handle ? `@${ch.handle}` : ch.channelId || "不明なチャンネル");
+              ch.name ||
+              (ch.handle ? `@${ch.handle}` : ch.channelId || "不明なチャンネル");
+            const initial = displayName.replace(/^@/, "").charAt(0).toUpperCase();
+
             return (
               <div
                 key={ch.url}
                 className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:border-gray-200 transition-colors"
               >
+                {/* アバター */}
                 {ch.thumbnailUrl ? (
                   <img
                     src={ch.thumbnailUrl}
@@ -279,23 +321,30 @@ function CompetitorSection({ channels }: { channels: RegisteredChannel[] }) {
                   />
                 ) : (
                   <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold text-sm shrink-0">
-                    {displayName.charAt(0).toUpperCase()}
+                    {initial}
                   </div>
                 )}
+
+                {/* チャンネル情報 */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
-                  {ch.subscribers != null && (
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {displayName}
+                  </p>
+                  {ch.subscribers != null ? (
                     <p className="text-xs text-gray-500">
                       登録者: {formatNumber(ch.subscribers)}人
                       {ch.totalViews != null && (
-                        <span className="ml-2">総再生: {formatNumber(ch.totalViews)}</span>
+                        <span className="ml-2">
+                          総再生: {formatNumber(ch.totalViews)}
+                        </span>
                       )}
                     </p>
-                  )}
-                  {ch.subscribers == null && (
+                  ) : (
                     <p className="text-xs text-gray-400">データ未取得</p>
                   )}
                 </div>
+
+                {/* アクションボタン */}
                 <div className="flex gap-2 shrink-0">
                   <button
                     type="button"
@@ -326,62 +375,106 @@ const QUICK_ACTIONS = [
   {
     label: "新規企画を作成",
     href: "/create",
+    colorClass: "bg-purple-50 text-purple-600 hover:bg-purple-100",
     icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+        />
       </svg>
     ),
-    colorClass: "bg-purple-50 text-purple-600 hover:bg-purple-100",
   },
   {
     label: "競合動画を検索",
     href: "/search",
+    colorClass: "bg-blue-50 text-blue-600 hover:bg-blue-100",
     icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"
+        />
       </svg>
     ),
-    colorClass: "bg-blue-50 text-blue-600 hover:bg-blue-100",
   },
   {
     label: "台本を分析",
     href: "/analysis",
+    colorClass: "bg-green-50 text-green-600 hover:bg-green-100",
     icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+        />
       </svg>
     ),
-    colorClass: "bg-green-50 text-green-600 hover:bg-green-100",
   },
   {
     label: "パフォーマンスを確認",
     href: "/performance",
+    colorClass: "bg-orange-50 text-orange-600 hover:bg-orange-100",
     icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+        />
       </svg>
     ),
-    colorClass: "bg-orange-50 text-orange-600 hover:bg-orange-100",
   },
 ];
 
 function QuickActionsSection() {
   return (
     <section className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
-      <h2 className="text-lg font-semibold text-foreground mb-4">クイックアクション</h2>
+      <h2 className="text-lg font-semibold text-foreground mb-4">
+        クイックアクション
+      </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {QUICK_ACTIONS.map((action) => (
           <Link
             key={action.href}
             href={action.href}
-            className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-colors ${action.colorClass}`}
+            className={`flex flex-col items-center gap-2 p-5 rounded-xl transition-colors ${action.colorClass}`}
           >
             {action.icon}
-            <span className="text-sm font-medium text-center">{action.label}</span>
+            <span className="text-sm font-medium text-center leading-tight">
+              {action.label}
+            </span>
           </Link>
         ))}
       </div>
@@ -416,22 +509,24 @@ export default function DashboardPage() {
     <div className="p-8 space-y-6">
       <div className="mb-2">
         <h1 className="text-2xl font-bold text-foreground">ダッシュボード</h1>
-        <p className="text-sm text-gray-500 mt-1">占い・スピリチュアル系YouTube管理ツール</p>
+        <p className="text-sm text-gray-500 mt-1">
+          占い・スピリチュアル系YouTube管理ツール
+        </p>
       </div>
 
-      {/* Section 1: 制作パイプライン */}
+      {/* セクション1: 制作パイプライン */}
       <PipelineSection tasks={tasks} />
 
-      {/* Section 2 & 3: 2カラム */}
+      {/* セクション2 & 3: 2カラム */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Section 2: 自チャンネルKPI */}
+        {/* セクション2: 自チャンネルKPI */}
         <MyChannelSection />
 
-        {/* Section 3: 競合の注目動画 */}
+        {/* セクション3: 競合の注目動画 */}
         <CompetitorSection channels={channels} />
       </div>
 
-      {/* Section 4: クイックアクション */}
+      {/* セクション4: クイックアクション */}
       <QuickActionsSection />
     </div>
   );
