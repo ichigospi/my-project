@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ===== ユーザー & 認証 =====
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  hashedPassword String
+  role           String   @default("editor") // owner, admin, editor, viewer
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  invitedBy   User?   @relation("InvitedBy", fields: [invitedById], references: [id])
+  invitedById String?
+  invitees    User[]  @relation("InvitedBy")
+  invites     Invite[]
+}
+
+model Invite {
+  id        String   @id @default(cuid())
+  email     String
+  role      String   @default("editor")
+  token     String   @unique
+  usedAt    DateTime?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String
+}
+
+model AppSetting {
+  key   String @id
+  value String
+}

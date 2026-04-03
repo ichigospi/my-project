@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
 
 export default function SettingsPage() {
@@ -12,7 +13,16 @@ export default function SettingsPage() {
   );
 }
 
+interface UserInfo { id: string; name: string; email: string; role: string; createdAt: string }
+interface InviteInfo { id: string; email: string; role: string; token: string; expiresAt: string }
+
+const ROLE_LABELS: Record<string, string> = { owner: "オーナー", admin: "管理者", editor: "編集者", viewer: "閲覧者" };
+
 function SettingsContent() {
+  const { data: session } = useSession();
+  const userRole = (session?.user as { role?: string } | undefined)?.role || "";
+  const isAdmin = userRole === "owner" || userRole === "admin";
+
   const [youtubeApiKey, setYoutubeApiKey] = useState("");
   const [aiApiKey, setAiApiKeyState] = useState("");
   const [saved, setSaved] = useState(false);
@@ -25,6 +35,30 @@ function SettingsContent() {
   const [oauthStatus, setOauthStatus] = useState<"disconnected" | "connected">("disconnected");
   const [oauthConnecting, setOauthConnecting] = useState(false);
   const searchParams = useSearchParams();
+  // ユーザー管理
+  const [users, setUsers] = useState<UserInfo[]>([]);
+  const [invites, setInvites] = useState<InviteInfo[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("editor");
+  const [inviting, setInviting] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [copiedToken, setCopiedToken] = useState("");
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/users");
+      const data = await res.json();
+      if (data.users) setUsers(data.users);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchInvites = useCallback(async () => {
+    try {
+      const res = await fetch("/api/users/invite");
+      const data = await res.json();
+      if (data.invites) setInvites(data.invites);
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     setYoutubeApiKey(getApiKey("yt_api_key"));
@@ -39,7 +73,10 @@ function SettingsContent() {
     if (authCode) {
       handleOAuthCallback(authCode);
     }
-  }, [searchParams]);
+
+    fetchUsers();
+    fetchInvites();
+  }, [searchParams, fetchUsers, fetchInvites]);
 
   const handleOAuthCallback = async (code: string) => {
     const clientId = localStorage.getItem("oauth_client_id");
@@ -84,6 +121,53 @@ function SettingsContent() {
     localStorage.removeItem("oauth_access_token");
     localStorage.removeItem("oauth_refresh_token");
     setOauthStatus("disconnected");
+  };
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    setInviteResult(null);
+    try {
+      const res = await fetch("/api/users/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setInviteResult({ ok: false, message: data.error });
+      } else {
+        setInviteResult({ ok: true, message: `招待リンクを発行しました` });
+        setInviteEmail("");
+        fetchInvites();
+      }
+    } catch {
+      setInviteResult({ ok: false, message: "エラーが発生しました" });
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleChangeRole = async (userId: string, newRole: string) => {
+    await fetch(`/api/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: newRole }),
+    });
+    fetchUsers();
+  };
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (!confirm(`${userName} を削除しますか？`)) return;
+    await fetch(`/api/users/${userId}`, { method: "DELETE" });
+    fetchUsers();
+  };
+
+  const copyInviteLink = (token: string) => {
+    const url = `${window.location.origin}/register?token=${token}`;
+    navigator.clipboard.writeText(url);
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(""), 2000);
   };
 
   const handleSave = () => {
@@ -259,6 +343,126 @@ function SettingsContent() {
             </>
           )}
         </div>
+
+        {/* ユーザー管理 */}
+        {isAdmin && (
+          <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+            <h2 className="font-semibold mb-4">ユーザー管理</h2>
+
+            {/* 現在のユーザー一覧 */}
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">登録ユーザー</h3>
+              <div className="space-y-2">
+                {users.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <span className="text-sm font-medium">{u.name}</span>
+                        <span className="text-xs text-gray-500 ml-2">{u.email}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {u.role === "owner" ? (
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                          {ROLE_LABELS[u.role]}
+                        </span>
+                      ) : (
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleChangeRole(u.id, e.target.value)}
+                          className="px-2 py-1 rounded border border-gray-200 text-xs outline-none"
+                        >
+                          <option value="admin">管理者</option>
+                          <option value="editor">編集者</option>
+                          <option value="viewer">閲覧者</option>
+                        </select>
+                      )}
+                      {u.role !== "owner" && (
+                        <button
+                          onClick={() => handleDeleteUser(u.id, u.name)}
+                          className="text-gray-400 hover:text-red-500 text-sm"
+                        >
+                          &times;
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 招待 */}
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">メンバーを招待</h3>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="メールアドレス"
+                  className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none"
+                />
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none"
+                >
+                  <option value="admin">管理者</option>
+                  <option value="editor">編集者</option>
+                  <option value="viewer">閲覧者</option>
+                </select>
+                <button
+                  onClick={handleInvite}
+                  disabled={inviting || !inviteEmail.trim()}
+                  className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50"
+                >
+                  {inviting ? "発行中..." : "招待リンク発行"}
+                </button>
+              </div>
+              {inviteResult && (
+                <p className={`text-sm mt-2 ${inviteResult.ok ? "text-green-600" : "text-red-500"}`}>
+                  {inviteResult.message}
+                </p>
+              )}
+            </div>
+
+            {/* 未使用の招待リンク一覧 */}
+            {invites.length > 0 && (
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">発行済み招待リンク</h3>
+                <div className="space-y-2">
+                  {invites.map((inv) => (
+                    <div key={inv.id} className="flex items-center justify-between bg-yellow-50 rounded-lg px-3 py-2">
+                      <div>
+                        <span className="text-sm">{inv.email}</span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          ({ROLE_LABELS[inv.role]}) 期限: {new Date(inv.expiresAt).toLocaleString("ja-JP")}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => copyInviteLink(inv.token)}
+                        className="px-3 py-1 rounded-lg border border-gray-200 text-xs hover:bg-white"
+                      >
+                        {copiedToken === inv.token ? "コピー済み" : "リンクをコピー"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ロール説明 */}
+            <div className="border-t border-gray-100 pt-4 mt-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">ロールの権限</h3>
+              <div className="text-xs text-gray-500 space-y-1">
+                <div><strong>オーナー:</strong> 全操作 + ユーザー管理 + ロール変更（1人のみ）</div>
+                <div><strong>管理者:</strong> 全操作 + ユーザー招待</div>
+                <div><strong>編集者:</strong> 台本作成・工程表編集・分析（ユーザー管理は不可）</div>
+                <div><strong>閲覧者:</strong> 全ページ閲覧のみ</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 保存ボタン */}
         <button

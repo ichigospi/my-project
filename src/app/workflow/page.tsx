@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
-  getTasks, saveTask, deleteTask, getMembers, saveMembers,
+  getTasks, saveTask, deleteTask,
   genId, DEFAULT_STEPS, GENRE_LABELS, TASK_STATUS_LABELS,
 } from "@/lib/project-store";
-import type { ProductionTask, WorkflowStep, TaskStatus, Genre } from "@/lib/project-store";
+import type { ProductionTask, TaskStatus } from "@/lib/project-store";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   not_started: "bg-gray-100 text-gray-500",
@@ -17,17 +18,32 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   rejected: "bg-red-100 text-red-700",
 };
 
+interface UserInfo { id: string; name: string; email: string; role: string }
+
 export default function WorkflowPage() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const userRole = (session?.user as { role?: string } | undefined)?.role || "";
+  const isViewer = userRole === "viewer";
   const [tasks, setTasks] = useState<ProductionTask[]>([]);
   const [members, setMembersState] = useState<string[]>([]);
   const [mounted, setMounted] = useState(false);
-  const [showMembers, setShowMembers] = useState(false);
-  const [newMember, setNewMember] = useState("");
   const [editingMemo, setEditingMemo] = useState<{ taskId: string; stepIdx: number } | null>(null);
   const [memoText, setMemoText] = useState("");
 
-  useEffect(() => { setTasks(getTasks()); setMembersState(getMembers()); setMounted(true); }, []);
+  useEffect(() => {
+    setTasks(getTasks());
+    // DBからユーザー一覧を取得して担当者リストに使う
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users) {
+          setMembersState(data.users.map((u: UserInfo) => u.name));
+        }
+      })
+      .catch(() => setMembersState(["自分"]));
+    setMounted(true);
+  }, []);
 
   const handleAddRow = () => {
     const task: ProductionTask = {
@@ -94,14 +110,6 @@ export default function WorkflowPage() {
     setEditingMemo(null);
   };
 
-  const handleAddMember = () => {
-    if (!newMember.trim() || members.includes(newMember.trim())) return;
-    const updated = [...members, newMember.trim()];
-    saveMembers(updated);
-    setMembersState(updated);
-    setNewMember("");
-  };
-
   const getProgress = (task: ProductionTask) => {
     const done = task.steps.filter((s) => s.status === "completed").length;
     return Math.round((done / task.steps.length) * 100);
@@ -127,31 +135,11 @@ export default function WorkflowPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">工程表</h1>
-        <div className="flex gap-2">
-          <button onClick={() => setShowMembers(!showMembers)}
-            className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">担当者管理</button>
+        {!isViewer && (
           <button onClick={handleAddRow}
             className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90">+ 行を追加</button>
-        </div>
+        )}
       </div>
-
-      {showMembers && (
-        <div className="bg-card-bg rounded-xl p-4 shadow-sm border border-gray-100 mb-4">
-          <div className="flex gap-2 mb-2">
-            <input type="text" value={newMember} onChange={(e) => setNewMember(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
-              placeholder="名前を入力" className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm outline-none" />
-            <button onClick={handleAddMember} className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs">追加</button>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {members.map((m) => (
-              <span key={m} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-accent/10 text-accent text-xs">
-                {m}<button onClick={() => { saveMembers(members.filter((x) => x !== m)); setMembersState(members.filter((x) => x !== m)); }} className="text-accent/50 hover:text-accent">&times;</button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {editingMemo && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setEditingMemo(null)}>

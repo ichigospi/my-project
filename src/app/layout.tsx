@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import SessionProvider from "@/components/SessionProvider";
+import AuthGuard from "@/components/AuthGuard";
+import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "Fortune YT Tool - Competitive Research & Script Creator",
@@ -15,10 +17,11 @@ export default function RootLayout({
   return (
     <html lang="ja" className="h-full antialiased">
       <body className="min-h-screen flex">
-        <Sidebar />
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
+        <SessionProvider>
+          <AuthGuard>
+            <AppShell>{children}</AppShell>
+          </AuthGuard>
+        </SessionProvider>
       </body>
     </html>
   );
