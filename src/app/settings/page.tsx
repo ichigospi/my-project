@@ -81,7 +81,10 @@ function SettingsContent() {
   const handleOAuthCallback = async (code: string) => {
     const clientId = localStorage.getItem("oauth_client_id");
     const clientSecret = localStorage.getItem("oauth_client_secret");
-    if (!clientId || !clientSecret) return;
+    if (!clientId || !clientSecret) {
+      console.error("OAuth: clientId or clientSecret missing from localStorage");
+      return;
+    }
 
     setOauthConnecting(true);
     try {
@@ -98,10 +101,15 @@ function SettingsContent() {
         localStorage.setItem("oauth_access_token", data.accessToken);
         localStorage.setItem("oauth_refresh_token", data.refreshToken || "");
         setOauthStatus("connected");
-        // URLからauth_codeを消す
         window.history.replaceState({}, "", "/settings");
+      } else {
+        console.error("OAuth token exchange failed:", data);
+        alert("OAuth連携に失敗しました: " + (data.error || "不明なエラー"));
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error("OAuth error:", e);
+      alert("OAuth連携でエラーが発生しました");
+    }
     finally { setOauthConnecting(false); }
   };
 
