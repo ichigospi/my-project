@@ -406,10 +406,7 @@ export default function SearchPage() {
                         <button
                           onClick={() => {
                             const url = `https://www.youtube.com/watch?v=${video.id}`;
-                            if (typeof window !== "undefined") {
-                              sessionStorage.setItem("analysis_video_url", url);
-                            }
-                            router.push("/analysis");
+                            router.push(`/analysis?video=${encodeURIComponent(url)}`);
                           }}
                           className="text-accent hover:underline font-medium"
                         >

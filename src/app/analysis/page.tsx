@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { getApiKey } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
 import {
@@ -48,7 +49,17 @@ function usePersisted<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T))
 type Tab = "profile" | "analyze" | "library" | "propose";
 
 export default function AnalysisPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-400">読み込み中...</div>}>
+      <AnalysisContent />
+    </Suspense>
+  );
+}
+
+function AnalysisContent() {
   const [tab, setTab] = usePersisted<Tab>("tab", "analyze");
+  const searchParams = useSearchParams();
+  const videoFromQuery = searchParams.get("video") || "";
   const tabs: { id: Tab; label: string }[] = [
     { id: "profile", label: "自チャンネル設計" },
     { id: "analyze", label: "台本分析" },
@@ -56,12 +67,12 @@ export default function AnalysisPage() {
     { id: "propose", label: "構成提案・台本作成" },
   ];
 
-  // サイドバーから直接アクセスした場合は「台本分析」タブを表示
+  // サイドバーから直接アクセス、または動画URLパラメータがある場合は「台本分析」タブを表示
   useEffect(() => {
-    if (typeof window !== "undefined" && !window.location.search) {
+    if (typeof window !== "undefined" && (!window.location.search || videoFromQuery)) {
       setTab("analyze");
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [videoFromQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="p-8">
@@ -86,7 +97,7 @@ export default function AnalysisPage() {
       </div>
 
       {tab === "profile" && <ProfileTab />}
-      {tab === "analyze" && <AnalyzeTab />}
+      {tab === "analyze" && <AnalyzeTab videoFromQuery={videoFromQuery} />}
       {tab === "library" && <LibraryTab />}
       {tab === "propose" && <ProposeTab />}
     </div>
@@ -274,17 +285,23 @@ function ProfileTab() {
 }
 
 // ===== 台本分析タブ =====
-function AnalyzeTab() {
-  // sessionStorageから渡されたURLを初回だけチェック
-  const [initialUrl] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("analysis_video_url");
-      if (saved) { sessionStorage.removeItem("analysis_video_url"); return saved; }
-    }
-    return null;
-  });
+function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
+  const [videoUrl, setVideoUrl, resetVideoUrl] = usePersisted("videoUrl", "");
 
-  const [videoUrl, setVideoUrl, resetVideoUrl] = usePersisted("videoUrl", initialUrl || "");
+  // クエリパラメータまたはsessionStorageから動画URLを読み込み
+  useEffect(() => {
+    if (videoFromQuery) {
+      setVideoUrl(videoFromQuery);
+      // URLパラメータをクリアして再読み込み防止
+      window.history.replaceState({}, "", "/analysis");
+    } else if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("analysis_video_url");
+      if (saved) {
+        setVideoUrl(saved);
+        sessionStorage.removeItem("analysis_video_url");
+      }
+    }
+  }, [videoFromQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   const [transcript, setTranscript, resetTranscript] = usePersisted("transcript", "");
   const [videoInfo, setVideoInfo, resetVideoInfo] = usePersisted<{ title: string; channelTitle: string; views: number; thumbnailUrl: string } | null>("videoInfo", null);
   const [analysis, setAnalysis, resetAnalysis] = usePersisted<(AnalysisResult & { score?: AnalysisScore }) | null>("analysis", null);
