@@ -634,18 +634,18 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
 
       {/* Step 2: 画面読み取り（テロップOCR） */}
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-        <h2 className="font-semibold mb-1">② 画面読み取り（テロップ文字起こし）</h2>
+        <h2 className="font-semibold mb-1">② 画面読み取り（テロップ文字起こし）<span className="text-xs text-gray-400 font-normal ml-2">オプション</span></h2>
         <p className="text-xs text-gray-500 mb-4">
-          テロップ動画の文字起こし。自動抽出 or スクリーンショットから読み取ります。
+          字幕がない動画はスクリーンショットから文字起こしできます。字幕が取得済みなら③に進んでOK。
         </p>
 
         <div className="flex flex-wrap gap-3 mb-4">
           <button onClick={autoExtractFrames} disabled={extracting}
-            className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
-            {extracting ? ocrProgress || "処理中..." : "自動で画面読み取り"}
+            className="px-5 py-2.5 rounded-lg bg-gray-200 text-gray-500 text-sm font-medium cursor-not-allowed" title="ローカル環境でのみ利用可能">
+            自動で画面読み取り
           </button>
           <span className="text-xs text-gray-400 self-center">
-            ※ yt-dlp + ffmpeg が必要（<code className="bg-gray-100 px-1 rounded">brew install yt-dlp ffmpeg</code>）
+            ※ ローカル環境でのみ利用可能（yt-dlp + ffmpeg が必要）
           </span>
         </div>
 
