@@ -43,6 +43,8 @@ function SettingsContent() {
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [copiedToken, setCopiedToken] = useState("");
+  const [showYtKey, setShowYtKey] = useState(false);
+  const [showAiKey, setShowAiKey] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -223,13 +225,19 @@ function SettingsContent() {
           <p className="text-sm text-gray-500 mb-4">
             チャンネル情報・動画データの取得に必要です。
           </p>
-          <input
-            type="password"
-            value={youtubeApiKey}
-            onChange={(e) => setYoutubeApiKey(e.target.value)}
-            placeholder="AIza..."
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
-          />
+          <div className="relative">
+            <input
+              type={showYtKey ? "text" : "password"}
+              value={youtubeApiKey}
+              onChange={(e) => setYoutubeApiKey(e.target.value)}
+              placeholder="AIza..."
+              className="w-full px-4 py-2.5 pr-16 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+            />
+            <button type="button" onClick={() => setShowYtKey(!showYtKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+              {showYtKey ? "隠す" : "表示"}
+            </button>
+          </div>
           <div className="flex items-center gap-3 mt-3">
             <button
               onClick={testYoutubeApi}
@@ -265,13 +273,19 @@ function SettingsContent() {
             台本の自動生成に使用。<code className="bg-gray-100 px-1 rounded text-xs">sk-ant-</code> で始まるならClaude API、
             <code className="bg-gray-100 px-1 rounded text-xs">sk-</code> で始まるならOpenAI APIとして自動判別します。
           </p>
-          <input
-            type="password"
-            value={aiApiKey}
-            onChange={(e) => setAiApiKeyState(e.target.value)}
-            placeholder="sk-ant-... または sk-..."
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
-          />
+          <div className="relative">
+            <input
+              type={showAiKey ? "text" : "password"}
+              value={aiApiKey}
+              onChange={(e) => setAiApiKeyState(e.target.value)}
+              placeholder="sk-ant-... または sk-..."
+              className="w-full px-4 py-2.5 pr-16 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+            />
+            <button type="button" onClick={() => setShowAiKey(!showAiKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+              {showAiKey ? "隠す" : "表示"}
+            </button>
+          </div>
         </div>
 
         {/* ステータスサマリ */}
