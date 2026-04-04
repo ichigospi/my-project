@@ -406,7 +406,11 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
       const data = await res.json();
 
       if (data.error) {
-        setError(data.error);
+        if (data.error.includes("yt-dlp") || data.error.includes("ffmpeg")) {
+          setError("この環境では自動読み取りが利用できません。下のスクリーンショット貼り付けで読み取ってください。動画を再生しながらスクリーンショットを撮って貼り付けると、AIがテキストを読み取ります。");
+        } else {
+          setError(data.error);
+        }
         setExtracting(false);
         return;
       }
@@ -476,8 +480,13 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
       const finalLen = transcript.length || rawText.length;
       setOcrProgress(`完了！ ${frames.length}枚 → ${finalLen}文字（失敗${failCount}）`);
       setExtracting(false);
-    } catch {
-      setError("フレーム抽出に失敗しました");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("yt-dlp") || msg.includes("ffmpeg")) {
+        setError("自動読み取りはこの環境では利用できません。下のスクリーンショット貼り付けで読み取ってください。");
+      } else {
+        setError("フレーム抽出に失敗しました。スクリーンショット貼り付けをお試しください。");
+      }
       setExtracting(false);
     }
   };
@@ -634,18 +643,18 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
 
       {/* Step 2: 画面読み取り（テロップOCR） */}
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-        <h2 className="font-semibold mb-1">② 画面読み取り（テロップ文字起こし）<span className="text-xs text-gray-400 font-normal ml-2">オプション</span></h2>
+        <h2 className="font-semibold mb-1">② 画面読み取り（テロップ文字起こし）</h2>
         <p className="text-xs text-gray-500 mb-4">
-          字幕がない動画はスクリーンショットから文字起こしできます。字幕が取得済みなら③に進んでOK。
+          テロップ動画の文字起こし。自動抽出 or スクリーンショットから読み取ります。
         </p>
 
         <div className="flex flex-wrap gap-3 mb-4">
           <button onClick={autoExtractFrames} disabled={extracting}
-            className="px-5 py-2.5 rounded-lg bg-gray-200 text-gray-500 text-sm font-medium cursor-not-allowed" title="ローカル環境でのみ利用可能">
-            自動で画面読み取り
+            className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
+            {extracting ? ocrProgress || "処理中..." : "自動で画面読み取り"}
           </button>
           <span className="text-xs text-gray-400 self-center">
-            ※ ローカル環境でのみ利用可能（yt-dlp + ffmpeg が必要）
+            ※ 失敗する場合はスクリーンショットを貼り付けてください
           </span>
         </div>
 
