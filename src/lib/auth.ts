@@ -48,5 +48,5 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   session: { strategy: "jwt" },
-  secret: process.env.NEXTAUTH_SECRET || "fortune-yt-tool-secret-change-me",
+  secret: process.env.NEXTAUTH_SECRET || "fortune-marketing-tool-secret-change-me",
 };

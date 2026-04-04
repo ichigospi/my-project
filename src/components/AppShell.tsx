@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Sidebar from "./Sidebar";
 
-const NO_SIDEBAR_PATHS = ["/login", "/setup", "/register"];
+const NO_SIDEBAR_PATHS = ["/login", "/register"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

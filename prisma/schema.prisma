@@ -21,6 +21,9 @@ model User {
   invitedById String?
   invitees    User[]  @relation("InvitedBy")
   invites     Invite[]
+
+  kpiGoals     KpiGoal[]
+  selfAnalysis SelfAnalysis?
 }
 
 model Invite {
@@ -39,4 +42,276 @@ model Invite {
 model AppSetting {
   key   String @id
   value String
+}
+
+// ===== 教材ナレッジベース =====
+model KnowledgeSource {
+  id          String   @id @default(cuid())
+  title       String
+  sourceType  String   // pdf, text, image, url
+  fileName    String?
+  description String?
+  tags        String   @default("[]") // JSON array
+  totalChunks Int      @default(0)
+  status      String   @default("processing") // processing, ready, error
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  chunks KnowledgeChunk[]
+}
+
+model KnowledgeChunk {
+  id         String  @id @default(cuid())
+  sourceId   String
+  chunkIndex Int
+  content    String
+  embedding  String  @default("[]") // JSON float array
+  pageNumber Int?
+  metadata   String  @default("{}") // JSON
+
+  source KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+}
+
+// ===== 競合ローンチ分析 =====
+model CompetitorLaunch {
+  id              String   @id @default(cuid())
+  name            String
+  competitorName  String
+  launchType      String   @default("product_launch") // product_launch, evergreen, webinar, challenge
+  status          String   @default("draft") // draft, analyzing, completed
+  analysisResult  String?  // JSON
+  funnelStructure String?  // JSON
+  knowledgeIds    String   @default("[]") // JSON array of KnowledgeSource IDs
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  messages LaunchMessage[]
+}
+
+model LaunchMessage {
+  id            String   @id @default(cuid())
+  launchId      String
+  sourceType    String   // screenshot, text, url
+  rawContent    String?
+  imageUrl      String?
+  sequenceOrder Int      @default(0)
+  phase         String?  // pre_pre, pre, launch, post
+  sentAt        DateTime?
+  analysis      String?  // JSON
+
+  launch CompetitorLaunch @relation(fields: [launchId], references: [id], onDelete: Cascade)
+
+  @@index([launchId])
+}
+
+// ===== セールスレター =====
+model SalesLetter {
+  id            String   @id @default(cuid())
+  title         String
+  productName   String
+  productPrice  Int?
+  targetPersona String   @default("{}") // JSON
+  fortuneType   String?  // tarot, astrology, numerology, psychic
+  launchType    String   @default("product_launch")
+  totalDays     Int      @default(7)
+  status        String   @default("draft") // draft, generating, review, exported
+  knowledgeIds  String   @default("[]") // JSON
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages SalesMessage[]
+}
+
+model SalesMessage {
+  id                String  @id @default(cuid())
+  letterId          String
+  sequenceOrder     Int     @default(0)
+  dayOffset         Int     @default(0)
+  phase             String? // pre_pre, pre, launch, post
+  subject           String?
+  body              String
+  cta               String?
+  ctaUrl            String?
+  psychologyTriggers String @default("[]") // JSON
+  status            String  @default("draft") // draft, approved, exported
+  notes             String?
+
+  letter SalesLetter @relation(fields: [letterId], references: [id], onDelete: Cascade)
+
+  @@index([letterId])
+}
+
+// ===== ローンチ提案 =====
+model LaunchProposal {
+  id             String   @id @default(cuid())
+  title          String
+  serviceInfo    String   @default("{}") // JSON
+  targetAudience String   @default("{}") // JSON
+  currentMetrics String   @default("{}") // JSON
+  proposalResult String?  // JSON - 3 plans
+  selectedPlan   Int?
+  timeline       String?  // JSON
+  simulation     String?  // JSON
+  status         String   @default("draft") // draft, proposed, accepted, in_progress
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// ===== KGI/KPI =====
+model KpiGoal {
+  id          String   @id @default(cuid())
+  userId      String
+  period      String   @default("monthly") // monthly, quarterly, yearly
+  periodStart DateTime
+  periodEnd   DateTime
+  goalType    String   // revenue, line_followers, cvr, ltv, aov, open_rate, click_rate
+  targetValue Float
+  currentValue Float   @default(0)
+  unit        String   @default("円") // 円, 人, %
+  updatedAt   DateTime @updatedAt
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots KpiSnapshot[]
+
+  @@index([userId])
+}
+
+model KpiSnapshot {
+  id         String   @id @default(cuid())
+  goalId     String
+  value      Float
+  recordedAt DateTime @default(now())
+  note       String?
+
+  goal KpiGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+}
+
+// ===== 自己分析 =====
+model SelfAnalysis {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  fortuneSkills String   @default("{}") // JSON {tarot: 4, astrology: 3, ...}
+  usp           String?
+  swot          String   @default("{}") // JSON {strengths:[], weaknesses:[], opportunities:[], threats:[]}
+  contentAssets String   @default("[]") // JSON
+  aiInsight     String?  // JSON
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ===== UTAGE顧客管理 =====
+model UtageConfig {
+  id            String   @id @default(cuid())
+  apiKey        String?
+  apiSecret     String?
+  webhookSecret String?
+  baseUrl       String?
+  lastSyncAt    DateTime?
+  status        String   @default("disconnected") // connected, disconnected, error
+}
+
+model Customer {
+  id                  String   @id @default(cuid())
+  utageCustomerId     String?  @unique
+  email               String?
+  name                String?
+  lineDisplayName     String?
+  lineUserId          String?
+  source              String?  // line_ad, sns, referral, organic
+  firstContactAt      DateTime?
+  tags                String   @default("[]") // JSON
+  totalPurchaseAmount Float    @default(0)
+  purchaseCount       Int      @default(0)
+  ltv                 Float    @default(0)
+  segment             String   @default("cold") // vip, active, cold, lost
+  aiScore             String?  // JSON
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  purchases    Purchase[]
+  events       CustomerEvent[]
+  conversation LineConversation?
+}
+
+model Purchase {
+  id              String   @id @default(cuid())
+  customerId      String
+  productName     String
+  amount          Float
+  purchasedAt     DateTime @default(now())
+  utagePurchaseId String?
+  metadata        String   @default("{}") // JSON
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+model CustomerEvent {
+  id         String   @id @default(cuid())
+  customerId String
+  eventType  String   // register, purchase, open, click, unsubscribe
+  eventData  String   @default("{}") // JSON
+  occurredAt DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+// ===== LINE連携 =====
+model LineAccount {
+  id                 String  @id @default(cuid())
+  channelId          String?
+  channelSecret      String?
+  channelAccessToken String?
+  autoReplyMode      String  @default("suggest") // suggest, auto, off
+  updatedAt          DateTime @updatedAt
+}
+
+model LineConversation {
+  id              String   @id @default(cuid())
+  lineUserId      String   @unique
+  displayName     String?
+  profileImageUrl String?
+  lastMessageAt   DateTime?
+  status          String   @default("active") // active, waiting, resolved
+  customerId      String?  @unique
+  unreadCount     Int      @default(0)
+
+  customer Customer?     @relation(fields: [customerId], references: [id])
+  messages LineMessage[]
+
+  @@index([lineUserId])
+}
+
+model LineMessage {
+  id                     String   @id @default(cuid())
+  conversationId         String
+  direction              String   // incoming, outgoing
+  messageType            String   @default("text") // text, image, sticker
+  content                String?
+  aiSuggestions          String?  // JSON array
+  selectedSuggestionIdx  Int?
+  isAutoReplied          Boolean  @default(false)
+  sentAt                 DateTime @default(now())
+
+  conversation LineConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model ReplyTemplate {
+  id              String @id @default(cuid())
+  category        String // faq, booking, complaint, greeting, sales
+  name            String
+  triggerKeywords String @default("[]") // JSON
+  body            String
+  tone            String @default("polite") // polite, casual, spiritual
+  usageCount      Int    @default(0)
 }

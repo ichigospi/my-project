@@ -5,8 +5,8 @@ import AuthGuard from "@/components/AuthGuard";
 import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "Fortune YT Tool - Competitive Research & Script Creator",
-  description: "Fortune-telling & spiritual YouTube competitive research and script creation tool",
+  title: "占いスピマーケティングツール",
+  description: "占い・スピリチュアル業界向け LINE × UTAGE マーケティング自動化ツール",
 };
 
 export default function RootLayout({

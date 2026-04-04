@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const PUBLIC_PATHS = ["/login", "/setup", "/register"];
+const PUBLIC_PATHS = ["/login", "/register"];
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -18,17 +18,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
     if (!session && !isPublic) {
-      // セットアップが必要か確認
-      fetch("/api/setup")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.needsSetup) {
-            router.replace("/setup");
-          } else {
-            router.replace("/login");
-          }
-        })
-        .catch(() => router.replace("/login"));
+      router.replace("/login");
       return;
     }
 
