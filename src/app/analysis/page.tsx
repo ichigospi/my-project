@@ -56,6 +56,13 @@ export default function AnalysisPage() {
     { id: "propose", label: "構成提案・台本作成" },
   ];
 
+  // サイドバーから直接アクセスした場合は「台本分析」タブを表示
+  useEffect(() => {
+    if (typeof window !== "undefined" && !window.location.search) {
+      setTab("analyze");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="p-8">
       <div className="mb-6">
