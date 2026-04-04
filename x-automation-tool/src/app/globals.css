@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sidebar-bg: #1a1a2e;
+  --color-sidebar-text: #c4c4d4;
+  --color-sidebar-active: #16213e;
+  --color-card-bg: #ffffff;
+  --color-foreground: #1a1a2e;
+  --color-accent: #0f3460;
+  --color-danger: #e94560;
+  --color-warning: #f59e0b;
+  --color-success: #10b981;
+}
+
+body {
+  background-color: #f5f5f7;
+  color: var(--color-foreground);
+}
