@@ -27,6 +27,8 @@ interface ChannelStats {
   avgViews: number;
 }
 
+const SEARCH_CACHE_KEY = "fortune_yt_search_cache";
+
 export default function SearchPage() {
   const router = useRouter();
   const [channels, setChannels] = useState<RegisteredChannel[]>([]);
@@ -48,6 +50,18 @@ export default function SearchPage() {
 
   useEffect(() => {
     setChannels(getChannels());
+    // キャッシュから復元
+    try {
+      const cached = localStorage.getItem(SEARCH_CACHE_KEY);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (data.videos?.length > 0) {
+          setAllVideos(data.videos);
+          setChannelStats(data.channelStats || {});
+          setFetched(true);
+        }
+      }
+    } catch { /* ignore */ }
   }, []);
 
   const fetchAllVideos = async () => {
@@ -86,10 +100,16 @@ export default function SearchPage() {
       if (data.error) {
         setError(data.error);
       } else {
-        setAllVideos(data.videos || []);
-        setChannelStats(data.channelStats || {});
+        const videos = data.videos || [];
+        const stats = data.channelStats || {};
+        setAllVideos(videos);
+        setChannelStats(stats);
         setFetched(true);
         setProgress("");
+        // キャッシュに保存
+        try {
+          localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify({ videos, channelStats: stats, savedAt: new Date().toISOString() }));
+        } catch { /* ignore */ }
       }
     } catch {
       setError("動画データの取得に失敗しました");
@@ -211,7 +231,7 @@ export default function SearchPage() {
 
       {fetched && (
         <>
-          {/* 検索フィルター */}
+          {/* 検索フィルター + データ更新 */}
           <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold">検索条件</h2>
