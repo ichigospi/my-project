@@ -40,3 +40,78 @@ model AppSetting {
   key   String @id
   value String
 }
+
+// ===== X（Twitter）自動化 =====
+model XAccount {
+  id             String   @id @default(cuid())
+  xUserId        String   @unique
+  username       String
+  displayName    String?
+  accessToken    String
+  refreshToken   String
+  tokenExpiresAt DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  posts          XPost[]
+  schedules      XSchedule[]
+  safetyConfig   XSafetyConfig?
+}
+
+model XPost {
+  id          String    @id @default(cuid())
+  tweetId     String?   @unique
+  content     String
+  type        String    // promotion, trend, daily, reply, thread
+  status      String    @default("draft") // draft, scheduled, posted, failed
+  impressions Int?
+  engagements Int?
+  likes       Int?
+  retweets    Int?
+  replies     Int?
+  postedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  account     XAccount  @relation(fields: [accountId], references: [id])
+  accountId   String
+}
+
+model XSchedule {
+  id          String   @id @default(cuid())
+  content     String
+  type        String   @default("single") // single, daily, weekly
+  scheduledAt DateTime
+  cronExpr    String?
+  status      String   @default("pending") // pending, completed, failed, cancelled
+  lastRunAt   DateTime?
+  account     XAccount @relation(fields: [accountId], references: [id])
+  accountId   String
+  createdAt   DateTime @default(now())
+}
+
+model XArticle {
+  id         String   @id @default(cuid())
+  title      String
+  content    String
+  sourceType String   // script, trend, curated
+  format     String   @default("markdown") // markdown, html
+  status     String   @default("draft")    // draft, published
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model XSafetyConfig {
+  id                  String   @id @default(cuid())
+  maxDailyPosts       Int      @default(10)
+  minIntervalMinutes  Int      @default(30)
+  maxDailyLinks       Int      @default(3)
+  similarityThreshold Float    @default(0.8)
+  autoPostEnabled     Boolean  @default(false)
+  account             XAccount @relation(fields: [accountId], references: [id])
+  accountId           String   @unique
+}
+
+model XSafetyLog {
+  id        String   @id @default(cuid())
+  event     String   // rate_limit, spam_blocked, auto_pause, duplicate_blocked, etc.
+  detail    String
+  createdAt DateTime @default(now())
+}
