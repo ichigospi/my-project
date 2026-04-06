@@ -43,19 +43,36 @@ export async function POST(request: NextRequest) {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const videoPath = join(tempDir, "video.mp4");
 
-    execFileSync(ytdlpPath, [
-      "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best",
-      "-o", videoPath,
-      "--no-playlist",
-      "--socket-timeout", "30",
-      "--no-check-certificates",
-      "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      "--extractor-args", "youtube:player_client=mediaconnect",
-      videoUrl,
-    ], { timeout: 300000, env: execEnv });
+    // 複数のプレイヤークライアントを順番に試す
+    const clients = ["tv", "ios", "mediaconnect", "web"];
+    let downloaded = false;
 
-    if (!existsSync(videoPath)) {
-      return NextResponse.json({ error: "動画のダウンロードに失敗しました" }, { status: 500 });
+    for (const client of clients) {
+      try {
+        execFileSync(ytdlpPath, [
+          "-f", "bestvideo[height<=480][ext=mp4]/best[height<=480][ext=mp4]/best",
+          "-o", videoPath,
+          "--no-playlist",
+          "--socket-timeout", "30",
+          "--no-check-certificates",
+          "--geo-bypass",
+          "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "--extractor-args", `youtube:player_client=${client}`,
+          videoUrl,
+        ], { timeout: 300000, env: execEnv, stdio: "pipe" });
+
+        if (existsSync(videoPath)) {
+          downloaded = true;
+          break;
+        }
+      } catch {
+        // 次のクライアントを試す
+        continue;
+      }
+    }
+
+    if (!downloaded) {
+      return NextResponse.json({ error: "動画のダウンロードに失敗しました。YouTubeのbot対策によりサーバーからのダウンロードがブロックされています。" }, { status: 500 });
     }
 
     // 3秒間隔でフレーム抽出（重複除去なし＝全フレーム送信）
