@@ -49,8 +49,10 @@ export async function POST(request: NextRequest) {
       "--no-playlist",
       "--socket-timeout", "30",
       "--no-check-certificates",
+      "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      "--extractor-args", "youtube:player_client=mediaconnect",
       videoUrl,
-    ], { timeout: 180000, env: execEnv });
+    ], { timeout: 300000, env: execEnv });
 
     if (!existsSync(videoPath)) {
       return NextResponse.json({ error: "動画のダウンロードに失敗しました" }, { status: 500 });
