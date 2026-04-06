@@ -5,7 +5,8 @@ export async function GET(request: NextRequest) {
   const clientId = request.nextUrl.searchParams.get("clientId");
   if (!clientId) return NextResponse.json({ error: "clientIdが必要です" }, { status: 400 });
 
-  const redirectUri = `${request.nextUrl.origin}/api/auth/youtube/callback`;
+  const baseUrl = process.env.NEXTAUTH_URL || request.nextUrl.origin;
+  const redirectUri = `${baseUrl}/api/auth/youtube/callback`;
   const scope = [
     "https://www.googleapis.com/auth/yt-analytics.readonly",
     "https://www.googleapis.com/auth/youtube.readonly",
