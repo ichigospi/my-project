@@ -1,4 +1,4 @@
-FROM node:20-slim AS base
+FROM node:20-slim
 
 # yt-dlp + ffmpeg インストール
 RUN apt-get update && apt-get install -y \
@@ -7,8 +7,6 @@ RUN apt-get update && apt-get install -y \
   && chmod a+rx /usr/local/bin/yt-dlp \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# --- Builder ---
-FROM base AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -21,18 +19,8 @@ RUN npx prisma generate
 COPY . .
 RUN npm run build
 
-# --- Runner ---
-FROM base AS runner
-WORKDIR /app
-
 ENV NODE_ENV=production
 ENV PORT=3000
-
-# standalone出力をコピー
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["npm", "start"]
