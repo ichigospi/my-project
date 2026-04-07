@@ -22,4 +22,4 @@ ENV NODE_ENV=production
 ENV PORT=3000
 EXPOSE 3000
 
-CMD npx prisma db push --skip-generate && npm start
+CMD npm run migrate:turso && npm start
