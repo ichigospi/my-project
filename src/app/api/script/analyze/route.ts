@@ -58,24 +58,35 @@ ${transcript.substring(0, 8000)}
     let text = "";
 
     if (isAnthropic) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": aiApiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 4096,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        return NextResponse.json({ error: error.error?.message || "API error" }, { status: res.status });
+      let anthropicRes: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": aiApiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 4096,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        });
+        if (anthropicRes.status === 429 || anthropicRes.status === 529) {
+          if (attempt === 2) {
+            return NextResponse.json({ error: "Overloaded", retryable: true }, { status: anthropicRes.status });
+          }
+          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
+          continue;
+        }
+        break;
       }
-      const data = await res.json();
+      if (!anthropicRes!.ok) {
+        const error = await anthropicRes!.json();
+        return NextResponse.json({ error: error.error?.message || "API error" }, { status: anthropicRes!.status });
+      }
+      const data = await anthropicRes!.json();
       text = data.content?.[0]?.text || "";
     } else {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -98,19 +109,37 @@ ${transcript.substring(0, 8000)}
       text = data.choices?.[0]?.message?.content || "";
     }
 
-    // JSONを抽出（コードブロック対応）
+    // JSONを抽出（コードブロック対応、複数のパース試行）
+    let analysis;
     const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
+
+    // 試行1: そのままパース
+    try {
+      analysis = JSON.parse(cleaned);
+    } catch {
+      // 試行2: JSONオブジェクト部分を抽出
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          analysis = JSON.parse(jsonMatch[0]);
+        } catch {
+          // 試行3: 制御文字を除去してリトライ
+          try {
+            const sanitized = jsonMatch[0]
+              .replace(/[\x00-\x1F\x7F]/g, (c) => c === '\n' || c === '\t' ? c : '')
+              .replace(/,\s*([\]}])/g, '$1');
+            analysis = JSON.parse(sanitized);
+          } catch {
+            console.error("JSON parse failed. Raw text:", text.substring(0, 500));
+            return NextResponse.json({ error: "JSON形式が不正です。再度お試しください。", raw: text.substring(0, 200) }, { status: 500 });
+          }
+        }
+      } else {
+        return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
+      }
     }
 
-    try {
-      const analysis = JSON.parse(jsonMatch[0]);
-      return NextResponse.json(analysis);
-    } catch {
-      return NextResponse.json({ error: "JSON形式が不正です。再度お試しください。" }, { status: 500 });
-    }
+    return NextResponse.json(analysis);
   } catch (error) {
     return NextResponse.json({
       error: error instanceof SyntaxError ? "分析結果のJSONパースに失敗" : "台本分析に失敗しました",

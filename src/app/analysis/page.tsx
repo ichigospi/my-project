@@ -636,18 +636,28 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
     setAnalyzing(true);
     setError("");
     try {
-      const res = await fetch("/api/script/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript,
-          videoTitle: videoInfo?.title || "",
-          channelName: videoInfo?.channelTitle || "",
-          views: videoInfo?.views || 0,
-          aiApiKey,
-        }),
-      });
-      const data = await res.json();
+      let data;
+      for (let retry = 0; retry < 5; retry++) {
+        const res = await fetch("/api/script/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transcript,
+            videoTitle: videoInfo?.title || "",
+            channelName: videoInfo?.channelTitle || "",
+            views: videoInfo?.views || 0,
+            aiApiKey,
+          }),
+        });
+        data = await res.json();
+        if (data.retryable) {
+          const wait = 15000 * (retry + 1);
+          setError(`API混雑中... ${Math.round(wait/1000)}秒後にリトライ (${retry+1}/5)`);
+          await new Promise((r) => setTimeout(r, wait));
+          continue;
+        }
+        break;
+      }
       if (data.error) { setError(data.error); }
       else {
         setAnalysis(data);
