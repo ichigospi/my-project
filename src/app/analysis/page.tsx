@@ -456,7 +456,7 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
         setOcrProgress(`OCR ${batchNum}/${totalBatches}回目 | ${charCount}文字取得済 | 失敗${failCount}`);
 
         if (i > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 30000));
+          await new Promise((resolve) => setTimeout(resolve, 5000));
         }
 
         try {
@@ -472,9 +472,6 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
           } else if (ocrData.error) {
             failCount++;
             setError(`バッチ${batchNum}: ${ocrData.error}`);
-            if (ocrData.error.includes("rate") || ocrData.error.includes("429")) {
-              await new Promise((resolve) => setTimeout(resolve, 30000));
-            }
           }
         } catch (e) {
           failCount++;
@@ -573,7 +570,7 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
       const batch = screenshots.slice(i, i + batchSize);
       const batchNum = Math.floor(i / batchSize) + 1;
       setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}`);
-      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 30000));
+      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 5000));
       try {
         const res = await fetch("/api/script/ocr", {
           method: "POST",
@@ -581,8 +578,12 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
           body: JSON.stringify({ images: batch, aiApiKey }),
         });
         const data = await res.json();
-        if (data.text?.trim()) allTexts.push(data.text.trim());
-        else if (data.error) setError(data.error);
+        if (data.text?.trim()) {
+          allTexts.push(data.text.trim());
+        } else if (data.error) {
+          // Overloaded/rate limitはサーバー側でリトライ済みなので表示のみ
+          setError(`バッチ${batchNum}: ${data.error}`);
+        }
       } catch { /* skip */ }
     }
 

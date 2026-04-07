@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
 - 各テロップは改行で区切り、場面転換は空行で区切る`,
   });
 
-  // リトライ付き
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // リトライ付き（429 rate limit + 529 overloaded対応）
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -55,8 +55,9 @@ export async function POST(request: NextRequest) {
         }),
       });
 
-      if (res.status === 429) {
-        await new Promise((resolve) => setTimeout(resolve, 30000));
+      if (res.status === 429 || res.status === 529) {
+        const wait = Math.min(30000 * Math.pow(2, attempt), 120000);
+        await new Promise((resolve) => setTimeout(resolve, wait));
         continue;
       }
 
@@ -68,8 +69,8 @@ export async function POST(request: NextRequest) {
       const data = await res.json();
       return NextResponse.json({ text: data.content?.[0]?.text || "" });
     } catch {
-      if (attempt === 2) return NextResponse.json({ error: "API呼び出し失敗" }, { status: 500 });
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+      if (attempt === 4) return NextResponse.json({ error: "API呼び出し失敗" }, { status: 500 });
+      await new Promise((resolve) => setTimeout(resolve, 10000 * (attempt + 1)));
     }
   }
 
