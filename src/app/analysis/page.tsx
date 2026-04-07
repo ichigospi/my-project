@@ -7,7 +7,7 @@ import { formatNumber } from "@/lib/mock-data";
 import {
   getAnalyses, saveAnalysis, deleteAnalysis,
   getProposals, saveProposal, deleteProposal,
-  getProfile, saveProfile, generateId,
+  getProfile, saveProfile, generateId, syncFromServer,
 } from "@/lib/script-analysis-store";
 import type {
   ScriptAnalysis, AnalysisResult, AnalysisScore,
@@ -957,7 +957,11 @@ function LibraryTab() {
   const [showTab, setShowTab] = useState<Record<string, "analysis" | "transcript">>({});
   const [copied, setCopied] = useState<string | null>(null);
 
-  useEffect(() => { setAnalyses(getAnalyses()); }, []);
+  useEffect(() => {
+    setAnalyses(getAnalyses());
+    // サーバーと同期
+    syncFromServer().then(({ analyses }) => setAnalyses(analyses));
+  }, []);
 
   const handleDelete = (id: string) => {
     setAnalyses(deleteAnalysis(id));
@@ -1097,7 +1101,10 @@ function ProposeTab() {
   const [additionalNotes, setAdditionalNotes] = usePersisted("propose_notes", "");
   const [error, setError] = useState("");
 
-  useEffect(() => { setAnalyses(getAnalyses()); }, []);
+  useEffect(() => {
+    setAnalyses(getAnalyses());
+    syncFromServer().then(({ analyses }) => setAnalyses(analyses));
+  }, []);
 
   const toggleSelect = (id: string) => {
     const next = new Set(selectedArr);

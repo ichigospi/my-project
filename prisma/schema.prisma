@@ -21,6 +21,9 @@ model User {
   invitedById String?
   invitees    User[]  @relation("InvitedBy")
   invites     Invite[]
+
+  analyses  ScriptAnalysis[]
+  proposals ScriptProposal[]
 }
 
 model Invite {
@@ -39,4 +42,43 @@ model Invite {
 model AppSetting {
   key   String @id
   value String
+}
+
+// ===== 台本分析ライブラリ =====
+model ScriptAnalysis {
+  id             String   @id @default(cuid())
+  userId         String
+  videoId        String
+  videoUrl       String
+  videoTitle     String
+  channelName    String
+  thumbnailUrl   String   @default("")
+  views          Int      @default(0)
+  transcript     String
+  analysisResult String?  // JSON string
+  category       String   @default("other")
+  tags           String   @default("[]") // JSON array
+  score          String?  // JSON string
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ScriptProposal {
+  id                String   @id @default(cuid())
+  userId            String
+  sourceAnalysisIds String   @default("[]") // JSON array
+  style             String   @default("healing")
+  topic             String   @default("")
+  proposal          String?  // JSON string
+  generatedScript   String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
