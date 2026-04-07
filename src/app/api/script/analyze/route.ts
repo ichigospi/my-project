@@ -25,6 +25,8 @@ ${transcript.substring(0, 8000)}
   "appealPoints": ["訴求ポイント"],
   "targetEmotion": "ターゲット感情",
   "overallPattern": "台本パターン",
+  "thumbnailWords": ["サムネイルに使うと効果的なパワーワード（タイトルや台本から抽出、3-5個）"],
+  "titleElements": ["このタイトルの効果的な要素（数字訴求、限定感、感情喚起など、2-4個）"],
   "score": {"hookStrength": 8, "ctaEffectiveness": 7, "structureBalance": 9, "emotionalAppeal": 8, "overall": 8}
 }`;
 }

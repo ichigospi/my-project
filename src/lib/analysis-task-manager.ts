@@ -2,7 +2,7 @@
 // コンポーネント外に存在し、画面遷移しても分析が中断されない
 
 import { saveAnalysis, generateId } from "@/lib/script-analysis-store";
-import { saveHook, saveCTA, genId, type Genre, type Style } from "@/lib/project-store";
+import { saveHook, saveCTA, saveThumbnailWord, saveTitle, genId, type Genre, type Style } from "@/lib/project-store";
 
 export interface AnalysisTask {
   id: string; // taskId（ユニーク）
@@ -241,16 +241,32 @@ class AnalysisTaskManager {
         tags: [], createdAt: new Date().toISOString(), score: ad.score,
       });
 
+      // フック・CTA・サムネワード・タイトルを保存（再生数も記録）
+      const now = new Date().toISOString();
+      const views = task.views || 0;
+
       if (ad.hooks) {
         for (const h of ad.hooks) {
-          saveHook({ id: genId(), text: h, genre: task.genre, style: task.style, score: ad.score?.hookStrength || 7, sourceVideo: task.title, sourceChannel: task.channelName, tags: [], createdAt: new Date().toISOString() });
+          saveHook({ id: genId(), text: h, genre: task.genre, style: task.style, score: ad.score?.hookStrength || 7, sourceVideo: task.title, sourceChannel: task.channelName, sourceViews: views, tags: [], createdAt: now });
         }
       }
       if (ad.ctas) {
         for (const c of ad.ctas) {
-          saveCTA({ id: genId(), text: c, genre: task.genre, style: task.style, score: ad.score?.ctaEffectiveness || 7, sourceVideo: task.title, sourceChannel: task.channelName, tags: [], createdAt: new Date().toISOString() });
+          saveCTA({ id: genId(), text: c, genre: task.genre, style: task.style, score: ad.score?.ctaEffectiveness || 7, sourceVideo: task.title, sourceChannel: task.channelName, sourceViews: views, tags: [], createdAt: now });
         }
       }
+      if (ad.thumbnailWords) {
+        for (const w of ad.thumbnailWords) {
+          saveThumbnailWord({ id: genId(), word: w, genre: task.genre, style: task.style, score: ad.score?.overall || 7, sourceVideo: task.title, sourceChannel: task.channelName, sourceViews: views, createdAt: now });
+        }
+      }
+      if (ad.titleElements) {
+        for (const t of ad.titleElements) {
+          saveTitle({ id: genId(), title: t, genre: task.genre, style: task.style, score: ad.score?.overall || 7, sourceVideo: task.title, sourceChannel: task.channelName, sourceViews: views, createdAt: now });
+        }
+      }
+      // タイトル自体も保存
+      saveTitle({ id: genId(), title: task.title, genre: task.genre, style: task.style, score: ad.score?.overall || 7, sourceVideo: task.title, sourceChannel: task.channelName, sourceViews: views, createdAt: now });
 
       this.updateTask(task.id, { status: "done", progress: "完了", analysisId });
     } catch (e) {

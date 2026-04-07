@@ -91,6 +91,7 @@ export interface HookEntry {
   score: number; // 1-10
   sourceVideo: string;
   sourceChannel: string;
+  sourceViews?: number;     // 参考動画の再生数
   tags: string[];
   createdAt: string;
 }
@@ -103,7 +104,32 @@ export interface CTAEntry {
   score: number;
   sourceVideo: string;
   sourceChannel: string;
+  sourceViews?: number;
   tags: string[];
+  createdAt: string;
+}
+
+export interface ThumbnailWordEntry {
+  id: string;
+  word: string;           // サムネに使われているワード
+  genre: Genre;
+  style: Style;
+  score: number;
+  sourceVideo: string;
+  sourceChannel: string;
+  sourceViews?: number;
+  createdAt: string;
+}
+
+export interface TitleEntry {
+  id: string;
+  title: string;           // 動画タイトル
+  genre: Genre;
+  style: Style;
+  score: number;
+  sourceVideo: string;     // 元の動画タイトル（同じ場合あり）
+  sourceChannel: string;
+  sourceViews?: number;
   createdAt: string;
 }
 
@@ -469,6 +495,44 @@ export function getCTAsFor(genre?: Genre, style?: Style): CTAEntry[] {
 export function deleteCTA(id: string) {
   const ctas = getCTAs().filter((c) => c.id !== id);
   localStorage.setItem(CTAS_KEY, JSON.stringify(ctas));
+}
+
+// ===== サムネワード =====
+const THUMBNAIL_WORDS_KEY = "fortune_yt_thumbnail_words";
+
+export function getThumbnailWords(): ThumbnailWordEntry[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(THUMBNAIL_WORDS_KEY) || "[]");
+}
+
+export function saveThumbnailWord(entry: ThumbnailWordEntry) {
+  const items = getThumbnailWords();
+  items.unshift(entry);
+  localStorage.setItem(THUMBNAIL_WORDS_KEY, JSON.stringify(items));
+}
+
+export function deleteThumbnailWord(id: string) {
+  const items = getThumbnailWords().filter((i) => i.id !== id);
+  localStorage.setItem(THUMBNAIL_WORDS_KEY, JSON.stringify(items));
+}
+
+// ===== タイトル =====
+const TITLES_KEY = "fortune_yt_titles";
+
+export function getTitles(): TitleEntry[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(TITLES_KEY) || "[]");
+}
+
+export function saveTitle(entry: TitleEntry) {
+  const items = getTitles();
+  items.unshift(entry);
+  localStorage.setItem(TITLES_KEY, JSON.stringify(items));
+}
+
+export function deleteTitle(id: string) {
+  const items = getTitles().filter((i) => i.id !== id);
+  localStorage.setItem(TITLES_KEY, JSON.stringify(items));
 }
 
 // ===== パフォーマンス =====
