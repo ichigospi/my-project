@@ -130,15 +130,25 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
           } catch { /* use raw */ }
         }
 
-        // Step 4: 台本分析
+        // Step 4: 台本分析（リトライ付き）
         updateProgress(video.videoId, { status: "analyzing", progress: "AI分析中..." });
         await new Promise((r) => setTimeout(r, 5000));
-        const analyzeRes = await fetch("/api/script/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript, videoTitle: video.title, channelName: video.channelName, views: video.views, aiApiKey }),
-        });
-        const analysisData = await analyzeRes.json();
+        let analysisData;
+        for (let retry = 0; retry < 5; retry++) {
+          const analyzeRes = await fetch("/api/script/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript, videoTitle: video.title, channelName: video.channelName, views: video.views, aiApiKey }),
+          });
+          analysisData = await analyzeRes.json();
+          if (analysisData.retryable) {
+            const wait = 15000 * (retry + 1);
+            updateProgress(video.videoId, { status: "analyzing", progress: `AI分析中... API混雑リトライ${retry+1}/5` });
+            await new Promise((r) => setTimeout(r, wait));
+            continue;
+          }
+          break;
+        }
 
         if (analysisData.error) { updateProgress(video.videoId, { status: "error", progress: analysisData.error }); continue; }
 
