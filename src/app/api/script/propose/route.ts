@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { analyses, style, topic, channelProfile, aiApiKey } = body;
+  const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton } = body;
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
 
@@ -35,7 +35,28 @@ CTA: ${a.analysisResult?.ctas?.join(" / ")}
 口調: ${channelProfile.tone || "未設定"}
 ` : "";
 
-  const prompt = `あなたは占い・スピリチュアル系YouTubeの台本構成プロデューサーです。
+  // 修正依頼モード（既存の骨組み+ユーザー指示がある場合）
+  const isRevision = !!(currentSkeleton && userPrompt);
+
+  let prompt: string;
+  if (isRevision) {
+    prompt = `あなたは占い・スピリチュアル系YouTubeの台本構成プロデューサーです。
+
+以下の台本骨組みに対するユーザーからの修正依頼を反映してください。
+
+【現在の骨組み】
+${currentSkeleton}
+
+【参考動画の分析】
+${analysisTexts}
+${profileText}
+
+【ユーザーの修正依頼】
+${userPrompt}
+
+修正後の骨組み全体をマークダウン形式で出力してください。修正点以外はできるだけ維持してください。`;
+  } else {
+    prompt = `あなたは占い・スピリチュアル系YouTubeの台本構成プロデューサーです。
 
 以下の参考動画の分析を基に、「良いとこどり」の台本骨組みを提案してください。
 
@@ -50,6 +71,7 @@ ${analysisTexts}
 ${profileText}
 スタイル: ${style === "healing" ? "ヒーリング系" : "教育系"}
 テーマ: ${topic}
+${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
 
 以下のマークダウン形式で出力してください。
 
@@ -81,18 +103,28 @@ ${profileText}
 - CTA内容（どの動画から採用したか）
 
 ---`;
+  }
 
   try {
     let text = "";
 
     if (isAnthropic) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
-      });
-      if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message }, { status: res.status }); }
-      text = (await res.json()).content?.[0]?.text || "";
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
+        });
+        if (res.status === 429 || res.status === 529) {
+          if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
+          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
+          continue;
+        }
+        break;
+      }
+      if (!res!.ok) { const e = await res!.json(); return NextResponse.json({ error: e.error?.message }, { status: res!.status }); }
+      text = (await res!.json()).content?.[0]?.text || "";
     } else {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",

@@ -14,6 +14,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   const [viewTab, setViewTab] = useState<"skeleton" | "analyses">("skeleton");
+  const [promptText, setPromptText] = useState("");
 
   useEffect(() => {
     const all = getAnalyses();
@@ -34,12 +35,15 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         body: JSON.stringify({
           analyses, style: project.style, topic: project.title,
           channelProfile: getProfile(), aiApiKey,
+          userPrompt: promptText || undefined,
+          currentSkeleton: skeleton || undefined,
         }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
       else if (data.skeleton) {
         setSkeleton(data.skeleton);
+        setPromptText("");
         // 骨組みテキストをproposalに保存
         onUpdate({
           ...project,
@@ -250,6 +254,31 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         </div>
       )}
         </>
+      )}
+
+      {/* プロンプト入力欄（AIへの指示） */}
+      {skeleton && (
+        <div className="mb-6">
+          <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-4">
+            <label className="text-xs font-medium text-gray-500 mb-2 block">AIへの指示（修正依頼・追加指示）</label>
+            <div className="flex gap-2">
+              <textarea
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                placeholder="例: フックをもっと強くして / オープニングを短くして / ヒーリングパートの前に共感セクションを入れて"
+                rows={2}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent resize-none"
+              />
+              <button
+                onClick={handleGenerate}
+                disabled={generating || !promptText.trim()}
+                className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end"
+              >
+                {generating ? "生成中..." : "反映"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ナビゲーション */}
