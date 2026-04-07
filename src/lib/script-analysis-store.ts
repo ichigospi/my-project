@@ -179,14 +179,19 @@ export async function syncFromServer(): Promise<{ analyses: ScriptAnalysis[]; pr
       fetch("/api/proposals"),
     ]);
     if (!analysesRes.ok || !proposalsRes.ok) {
+      const aErr = !analysesRes.ok ? await analysesRes.text() : "ok";
+      const pErr = !proposalsRes.ok ? await proposalsRes.text() : "ok";
+      console.warn("[sync] API error:", aErr, pErr);
       return { analyses: getAnalyses(), proposals: getProposals() };
     }
 
     const serverAnalyses: ScriptAnalysis[] = await analysesRes.json();
     const serverProposals: ScriptProposal[] = await proposalsRes.json();
+    console.log(`[sync] server: ${serverAnalyses.length} analyses, ${serverProposals.length} proposals`);
 
     const localAnalyses = getAnalyses();
     const localProposals = getProposals();
+    console.log(`[sync] local: ${localAnalyses.length} analyses, ${localProposals.length} proposals`);
 
     // マージ（サーバー優先、ローカルのみのものは保持＆アップロード）
     const mergedAnalyses = mergeData(localAnalyses, serverAnalyses);
@@ -201,15 +206,18 @@ export async function syncFromServer(): Promise<{ analyses: ScriptAnalysis[]; pr
     const serverAnalysisIds = new Set(serverAnalyses.map((a) => a.id));
     const serverProposalIds = new Set(serverProposals.map((p) => p.id));
 
+    let uploadCount = 0;
     for (const a of localAnalyses) {
-      if (!serverAnalysisIds.has(a.id)) syncAnalysisToServer(a);
+      if (!serverAnalysisIds.has(a.id)) { syncAnalysisToServer(a); uploadCount++; }
     }
     for (const p of localProposals) {
-      if (!serverProposalIds.has(p.id)) syncProposalToServer(p);
+      if (!serverProposalIds.has(p.id)) { syncProposalToServer(p); uploadCount++; }
     }
+    if (uploadCount > 0) console.log(`[sync] uploading ${uploadCount} local-only items to server`);
 
     return { analyses: mergedAnalyses, proposals: mergedProposals };
-  } catch {
+  } catch (e) {
+    console.error("[sync] failed:", e);
     return { analyses: getAnalyses(), proposals: getProposals() };
   }
 }
@@ -232,7 +240,9 @@ function syncAnalysisToServer(analysis: ScriptAnalysis) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(analysis),
-  }).catch(() => {});
+  }).then(async (r) => {
+    if (!r.ok) console.error("[sync] save analysis failed:", await r.text());
+  }).catch((e) => console.error("[sync] save analysis error:", e));
 }
 
 function deleteAnalysisFromServer(id: string) {
@@ -240,7 +250,7 @@ function deleteAnalysisFromServer(id: string) {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id }),
-  }).catch(() => {});
+  }).catch((e) => console.error("[sync] delete analysis error:", e));
 }
 
 function syncProposalToServer(proposal: ScriptProposal) {
@@ -248,7 +258,9 @@ function syncProposalToServer(proposal: ScriptProposal) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(proposal),
-  }).catch(() => {});
+  }).then(async (r) => {
+    if (!r.ok) console.error("[sync] save proposal failed:", await r.text());
+  }).catch((e) => console.error("[sync] save proposal error:", e));
 }
 
 function deleteProposalFromServer(id: string) {
@@ -256,5 +268,5 @@ function deleteProposalFromServer(id: string) {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id }),
-  }).catch(() => {});
+  }).catch((e) => console.error("[sync] delete proposal error:", e));
 }
