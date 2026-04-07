@@ -956,12 +956,71 @@ function LibraryTab() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showTab, setShowTab] = useState<Record<string, "analysis" | "transcript">>({});
   const [copied, setCopied] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState("");
 
   useEffect(() => {
     setAnalyses(getAnalyses());
     // サーバーと同期
-    syncFromServer().then(({ analyses }) => setAnalyses(analyses));
+    syncFromServer().then(({ analyses }) => {
+      setAnalyses(analyses);
+      setSyncStatus("");
+    });
   }, []);
+
+  // エクスポート（localStorageのデータをJSONファイルとしてダウンロード）
+  const handleExport = () => {
+    const data = {
+      analyses: getAnalyses(),
+      proposals: getProposals(),
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `script-analyses-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // インポート（JSONファイルからデータを読み込んでlocalStorage+サーバーに保存）
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const importedAnalyses: ScriptAnalysis[] = data.analyses || [];
+      const importedProposals: ScriptProposal[] = data.proposals || [];
+
+      setSyncStatus(`インポート中... ${importedAnalyses.length}件の分析`);
+
+      // localStorageにマージ
+      const current = getAnalyses();
+      const currentIds = new Set(current.map((a) => a.id));
+      let added = 0;
+      for (const a of importedAnalyses) {
+        if (!currentIds.has(a.id)) {
+          saveAnalysis(a); // localStorage + サーバー同期
+          added++;
+        }
+      }
+      const currentProposals = getProposals();
+      const currentPIds = new Set(currentProposals.map((p) => p.id));
+      for (const p of importedProposals) {
+        if (!currentPIds.has(p.id)) {
+          saveProposal(p);
+        }
+      }
+
+      setAnalyses(getAnalyses());
+      setSyncStatus(`インポート完了！ ${added}件追加`);
+      setTimeout(() => setSyncStatus(""), 3000);
+    } catch {
+      setSyncStatus("インポート失敗: JSONファイルが不正です");
+    }
+    e.target.value = "";
+  };
 
   const handleDelete = (id: string) => {
     setAnalyses(deleteAnalysis(id));
@@ -988,7 +1047,18 @@ function LibraryTab() {
             </button>
           ))}
         </div>
-        <span className="text-sm text-gray-500">{filtered.length}件</span>
+        <div className="flex items-center gap-2">
+          {syncStatus && <span className="text-xs text-green-600">{syncStatus}</span>}
+          <button onClick={handleExport}
+            className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 text-gray-600 hover:bg-gray-200">
+            エクスポート
+          </button>
+          <label className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer">
+            インポート
+            <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+          </label>
+          <span className="text-sm text-gray-500">{filtered.length}件</span>
+        </div>
       </div>
 
       {filtered.length === 0 && (
