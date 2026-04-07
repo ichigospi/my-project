@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
-import { saveAnalysis, generateId } from "@/lib/script-analysis-store";
+import { getAnalyses, saveAnalysis, generateId } from "@/lib/script-analysis-store";
 import { saveHook, saveCTA, genId } from "@/lib/project-store";
 import type { ScriptProject } from "@/lib/project-store";
 
@@ -168,19 +168,27 @@ async function analyzeOneVideo(
 }
 
 export default function StepAnalyze({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
-  const [progresses, setProgresses] = useState<AnalysisProgress[]>(
-    project.referenceVideos.map((v) => ({
+  const [progresses, setProgresses] = useState<AnalysisProgress[]>(() => {
+    // 分析済みの動画を特定（analysisIdとvideoIdで紐付け）
+    const existingAnalyses = getAnalyses();
+    const analyzedVideoIds = new Set(
+      existingAnalyses
+        .filter((a) => project.analyses.includes(a.id))
+        .map((a) => a.videoId)
+    );
+
+    return project.referenceVideos.map((v) => ({
       videoId: v.videoId, title: v.title,
-      status: project.analyses.length > 0 ? "done" : "pending",
-      progress: project.analyses.length > 0 ? "分析済み" : "待機中",
-      selected: project.analyses.length === 0, // 未分析のみ選択
-    }))
-  );
+      status: analyzedVideoIds.has(v.videoId) ? "done" as const : "pending" as const,
+      progress: analyzedVideoIds.has(v.videoId) ? "分析済み" : "待機中",
+      selected: !analyzedVideoIds.has(v.videoId),
+    }));
+  });
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
 
-  const allDone = progresses.every((p) => p.status === "done" || p.status === "skipped");
-  const hasSelected = progresses.some((p) => p.selected && p.status !== "done");
+  const allDone = progresses.some((p) => p.status === "done") && progresses.every((p) => p.status === "done" || p.status === "skipped" || p.status === "pending");
+  const hasSelected = progresses.some((p) => p.selected);
 
   const updateProgress = (videoId: string, update: Partial<AnalysisProgress>) => {
     setProgresses((prev) => prev.map((p) => p.videoId === videoId ? { ...p, ...update } : p));
@@ -188,16 +196,16 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
 
   const toggleSelect = (videoId: string) => {
     setProgresses((prev) => prev.map((p) =>
-      p.videoId === videoId && p.status !== "done" ? { ...p, selected: !p.selected } : p
+      p.videoId === videoId ? { ...p, selected: !p.selected } : p
     ));
   };
 
   const selectAll = () => {
-    setProgresses((prev) => prev.map((p) => p.status !== "done" ? { ...p, selected: true } : p));
+    setProgresses((prev) => prev.map((p) => ({ ...p, selected: true })));
   };
 
   const deselectAll = () => {
-    setProgresses((prev) => prev.map((p) => p.status !== "done" ? { ...p, selected: false } : p));
+    setProgresses((prev) => prev.map((p) => ({ ...p, selected: false })));
   };
 
   // 選択した動画を分析
@@ -209,7 +217,7 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
     setError("");
     const analysisIds: string[] = [...project.analyses];
 
-    const targets = progresses.filter((p) => p.selected && p.status !== "done");
+    const targets = progresses.filter((p) => p.selected);
     for (const target of targets) {
       const video = project.referenceVideos.find((v) => v.videoId === target.videoId);
       if (!video) continue;
@@ -271,8 +279,8 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
         {progresses.map((p, i) => (
           <div key={p.videoId || `prog-${i}`} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center gap-3">
-              {/* チェックボックス（完了済み以外） */}
-              {p.status !== "done" && !running && (
+              {/* チェックボックス */}
+              {!running && (
                 <input
                   type="checkbox"
                   checked={p.selected}
@@ -291,15 +299,16 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
                 <p className="text-sm font-medium truncate">{p.title}</p>
                 <p className={`text-xs mt-0.5 ${p.status === "error" ? "text-red-500" : "text-gray-500"}`}>{p.progress}</p>
               </div>
-              {/* リトライボタン */}
-              {p.status === "error" && !running && (
+              {/* リトライボタン（エラー・完了問わず） */}
+              {(p.status === "error" || p.status === "done") && !running && (
                 <button onClick={() => retryOne(p.videoId)}
-                  className="px-3 py-1.5 rounded-lg text-xs bg-accent text-white hover:bg-accent/90 shrink-0">
-                  リトライ
+                  className={`px-3 py-1.5 rounded-lg text-xs shrink-0 ${
+                    p.status === "error"
+                      ? "bg-accent text-white hover:bg-accent/90"
+                      : "border border-gray-200 text-gray-500 hover:bg-gray-50"
+                  }`}>
+                  {p.status === "error" ? "リトライ" : "再分析"}
                 </button>
-              )}
-              {p.status === "done" && (
-                <span className="text-xs text-green-600 shrink-0">✓ 完了</span>
               )}
             </div>
           </div>
@@ -314,7 +323,7 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
         {!allDone ? (
           <button onClick={runAnalysis} disabled={running || !hasSelected}
             className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
-            {running ? "分析中..." : `選択した動画を分析（${progresses.filter((p) => p.selected && p.status !== "done").length}件）`}
+            {running ? "分析中..." : `選択した動画を分析（${progresses.filter((p) => p.selected).length}件）`}
           </button>
         ) : (
           <button onClick={() => onUpdate({ ...project, status: "proposal" })}
