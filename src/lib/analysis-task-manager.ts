@@ -121,7 +121,7 @@ class AnalysisTaskManager {
       if (!next) break;
 
       const aiApiKey = typeof window !== "undefined"
-        ? localStorage.getItem("fortune_yt_ai_api_key") || ""
+        ? localStorage.getItem("ai_api_key") || ""
         : "";
       if (!aiApiKey) {
         this.updateTask(next.id, { status: "error", progress: "AI APIキーが未設定" });
