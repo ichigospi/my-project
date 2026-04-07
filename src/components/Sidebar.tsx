@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { getApiKey } from "@/lib/channel-store";
+import { getTaskManager } from "@/lib/analysis-task-manager";
 
 const navItems = [
   { href: "/workflow", label: "\u5de5\u7a0b\u8868", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" },
@@ -33,18 +34,29 @@ export default function Sidebar() {
   const { data: session } = useSession();
   const [ytStatus, setYtStatus] = useState(false);
   const [aiStatus, setAiStatus] = useState(false);
+  const [analysisActive, setAnalysisActive] = useState(0);
+  const [analysisProgress, setAnalysisProgress] = useState("");
   const userRole = (session?.user as { role?: string } | undefined)?.role || "";
 
   useEffect(() => {
     setYtStatus(!!getApiKey("yt_api_key"));
     setAiStatus(!!getApiKey("ai_api_key"));
 
-    // localStorageの変更を監視
     const interval = setInterval(() => {
       setYtStatus(!!getApiKey("yt_api_key"));
       setAiStatus(!!getApiKey("ai_api_key"));
     }, 3000);
-    return () => clearInterval(interval);
+
+    // タスクマネージャーの進捗を購読
+    const mgr = getTaskManager();
+    const unsubscribe = mgr.subscribe((tasks) => {
+      const active = tasks.filter((t) => t.status !== "done" && t.status !== "error");
+      setAnalysisActive(active.length);
+      const current = tasks.find((t) => t.status !== "done" && t.status !== "error" && t.status !== "queued");
+      setAnalysisProgress(current ? current.progress : "");
+    });
+
+    return () => { clearInterval(interval); unsubscribe(); };
   }, []);
 
   const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
@@ -79,6 +91,11 @@ export default function Sidebar() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
               </svg>
               {item.label}
+              {analysisActive > 0 && (item.href === "/analysis" || item.href === "/create") && (
+                <span className="ml-auto px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500 text-white animate-pulse">
+                  {analysisActive}
+                </span>
+              )}
             </Link>
           );
         })}
@@ -93,6 +110,12 @@ export default function Sidebar() {
             <span className={`w-2 h-2 rounded-full ${aiStatus ? "bg-green-400" : "bg-amber-400"}`} />
             <span className="text-sidebar-text/60">AI API: {aiStatus ? "接続済み" : "未設定"}</span>
           </div>
+          {analysisActive > 0 && (
+            <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+              <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+              <span className="text-sidebar-text/60 truncate">分析中({analysisActive}) {analysisProgress}</span>
+            </div>
+          )}
         </div>
         {session?.user && (
           <div className="flex items-center justify-between">
