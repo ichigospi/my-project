@@ -70,8 +70,7 @@ async function callAnthropic(
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [
-          { role: "user", content: userPrompt },
-          { role: "assistant", content: "{" }, // prefill: JSON開始を強制
+          { role: "user", content: userPrompt + "\n\nJSONのみ出力してください。```は不要です。{から始めてください。" },
         ],
       }),
     });
@@ -89,7 +88,7 @@ async function callAnthropic(
 
     const data = await res.json();
     const raw = data.content?.[0]?.text || "";
-    return { text: "{" + raw, retryable: false }; // prefillの「{」を先頭に付与
+    return { text: raw, retryable: false };
   }
   return { text: "", retryable: true, error: "リトライ上限" };
 }
