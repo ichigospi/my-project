@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey } = body;
+  const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey, rulesText } = body;
 
   if (!aiApiKey) {
     return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
@@ -35,6 +35,7 @@ ${profileText}
 【台本の骨組み（この構成に沿って台本を書くこと）】
 ${skeletonText}
 
+${rulesText || ""}
 ${additionalNotes ? `【追加指示】\n${additionalNotes}` : ""}
 
 以下のルールに従って台本を書いてください：

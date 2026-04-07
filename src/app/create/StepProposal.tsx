@@ -4,8 +4,10 @@ import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
 import { getAnalyses, getProfile } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
+import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import type { ScriptProject } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
+import type { Genre, Style } from "@/lib/project-store";
 
 export default function StepProposal({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const [analyses, setAnalyses] = useState<ScriptAnalysis[]>([]);
@@ -29,6 +31,8 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     setError("");
 
     try {
+      const rules = buildInjectedRules(project.genre as Genre, project.style as Style);
+      const rulesText = formatRulesForPrompt(rules);
       const res = await fetch("/api/script/propose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -37,6 +41,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
           channelProfile: getProfile(), aiApiKey,
           userPrompt: promptText || undefined,
           currentSkeleton: skeleton || undefined,
+          rulesText,
         }),
       });
       const data = await res.json();

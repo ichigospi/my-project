@@ -204,6 +204,7 @@ function ProfileTab() {
 
       // プロフィールに反映
       setProfile({
+        ...profile,
         channelName: suggestion.channelName || chData.name || "",
         concept: suggestion.concept || "",
         tone: suggestion.tone || "",

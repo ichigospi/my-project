@@ -5,7 +5,8 @@ import { getApiKey } from "@/lib/channel-store";
 import { getProfile, getAnalyses } from "@/lib/script-analysis-store";
 import { getPresetFor, getPerformanceRecords } from "@/lib/project-store";
 import { calcSimilarity } from "@/lib/similarity";
-import type { ScriptProject, TelopLine } from "@/lib/project-store";
+import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
+import type { ScriptProject, TelopLine, Genre, Style } from "@/lib/project-store";
 
 // マークダウン記法を除いた純粋なテキスト文字数
 function pureTextLength(text: string): number {
@@ -88,6 +89,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           style: project.style,
           topic: project.title,
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${preset.targetWordCount}文字\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
+          rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style)),
           aiApiKey,
         }),
       });

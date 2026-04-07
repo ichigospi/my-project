@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton } = body;
+  const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText } = body;
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
 
@@ -51,6 +51,8 @@ ${currentSkeleton}
 ${analysisTexts}
 ${profileText}
 
+${rulesText || ""}
+
 【ユーザーの修正依頼】
 ${userPrompt}
 
@@ -71,6 +73,7 @@ ${analysisTexts}
 ${profileText}
 スタイル: ${style === "healing" ? "ヒーリング系" : "教育系"}
 テーマ: ${topic}
+${rulesText || ""}
 ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
 
 以下のマークダウン形式で出力してください。

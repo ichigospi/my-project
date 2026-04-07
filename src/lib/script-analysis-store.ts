@@ -8,6 +8,10 @@ export interface ChannelProfile {
   genres: string[];       // 得意ジャンル
   mainStyle: "healing" | "education" | "both";  // メインスタイル
   characteristics: string; // その他の特徴・こだわり
+  // --- 台本ルール（指示記憶） ---
+  commonRules: string;    // チャンネル共通ルール（全台本に適用）
+  ngExpressions: string;  // NG表現リスト
+  referenceAnalysisIds: string[]; // お手本台本のID
 }
 
 export interface ScriptAnalysis {
@@ -98,6 +102,9 @@ function defaultProfile(): ChannelProfile {
     genres: [],
     mainStyle: "healing",
     characteristics: "",
+    commonRules: "",
+    ngExpressions: "",
+    referenceAnalysisIds: [],
   };
 }
 
