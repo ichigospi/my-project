@@ -187,7 +187,8 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
 
-  const allDone = progresses.some((p) => p.status === "done") && progresses.every((p) => p.status === "done" || p.status === "skipped" || p.status === "pending");
+  const hasPendingSelected = progresses.some((p) => p.selected && p.status !== "done");
+  const allDone = progresses.some((p) => p.status === "done") && !hasPendingSelected;
   const hasSelected = progresses.some((p) => p.selected);
 
   const updateProgress = (videoId: string, update: Partial<AnalysisProgress>) => {
@@ -268,7 +269,7 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
     <div className="max-w-2xl">
       <h2 className="text-xl font-bold mb-6">④ 参考動画の分析</h2>
 
-      {!running && progresses.some((p) => p.status !== "done") && (
+      {!running && (
         <div className="flex gap-2 mb-3">
           <button onClick={selectAll} className="text-xs text-accent hover:underline">すべて選択</button>
           <button onClick={deselectAll} className="text-xs text-gray-400 hover:underline">選択解除</button>
@@ -320,14 +321,15 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
       <div className="flex gap-3">
         <button onClick={() => onUpdate({ ...project, status: "references" })}
           className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
-        {!allDone ? (
-          <button onClick={runAnalysis} disabled={running || !hasSelected}
+        {hasSelected && (
+          <button onClick={runAnalysis} disabled={running}
             className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
             {running ? "分析中..." : `選択した動画を分析（${progresses.filter((p) => p.selected).length}件）`}
           </button>
-        ) : (
+        )}
+        {progresses.some((p) => p.status === "done") && (
           <button onClick={() => onUpdate({ ...project, status: "proposal" })}
-            className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90">
+            className="px-6 py-3 rounded-lg bg-accent/80 text-white font-medium hover:bg-accent/90">
             構成提案へ →
           </button>
         )}
