@@ -45,11 +45,20 @@ export default function Sidebar() {
     return () => clearInterval(interval);
   }, []);
 
+  const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+
   return (
-    <aside className="w-64 min-h-screen bg-sidebar-bg text-sidebar-text flex flex-col shrink-0">
+    <aside className={`w-64 min-h-screen ${isLocal ? "bg-[#1a2332]" : "bg-sidebar-bg"} text-sidebar-text flex flex-col shrink-0`}>
       <div className="p-6 border-b border-white/10">
-        <h1 className="text-xl font-bold text-white">占いスピYTツール</h1>
-        <p className="text-xs text-sidebar-text/60 mt-1">競合リサーチ & 台本作成</p>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold text-white">占いスピYTツール</h1>
+          {isLocal && (
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500 text-white">LOCAL</span>
+          )}
+        </div>
+        <p className="text-xs text-sidebar-text/60 mt-1">
+          {isLocal ? "ローカル環境（OCR作業用）" : "競合リサーチ & 台本作成"}
+        </p>
       </div>
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
