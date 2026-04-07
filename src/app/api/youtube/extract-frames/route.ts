@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
     // 複数のプレイヤークライアントを順番に試す
     const clients = ["tv", "ios", "mediaconnect", "web"];
     let downloaded = false;
+    let lastError = "";
 
     for (const client of clients) {
       try {
@@ -81,14 +82,19 @@ export async function POST(request: NextRequest) {
           downloaded = true;
           break;
         }
-      } catch {
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e);
+        if ((e as { stderr?: Buffer }).stderr) {
+          lastError = (e as { stderr: Buffer }).stderr.toString().slice(-500);
+        }
         continue;
       }
     }
 
     if (!downloaded) {
+      console.error("yt-dlp failed:", lastError);
       const msg = cookiePath
-        ? "動画のダウンロードに失敗しました。Cookieが期限切れの可能性があります。設定ページからCookieを再アップロードしてください。"
+        ? `動画のダウンロードに失敗しました。Cookieが期限切れの可能性があります。設定ページからCookieを再アップロードしてください。\n詳細: ${lastError.slice(0, 200)}`
         : "動画のダウンロードに失敗しました。設定ページからYouTubeのCookieをアップロードしてください。";
       return NextResponse.json({ error: msg }, { status: 500 });
     }
