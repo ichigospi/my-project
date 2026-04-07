@@ -1,13 +1,15 @@
 // AIプロンプトに自動注入するルールを構築するヘルパー
 import { getProfile, getAnalyses, type ChannelProfile } from "./script-analysis-store";
 import { getPresetFor, type Genre, type Style } from "./project-store";
+import { getWinningPatterns } from "./winning-patterns-store";
 
 export interface InjectedRules {
-  channelContext: string;  // チャンネル情報
-  commonRules: string;     // 共通ルール
-  categoryRules: string;   // カテゴリ別ルール
-  ngExpressions: string;   // NG表現
-  referenceExamples: string; // お手本台本の要約
+  channelContext: string;
+  commonRules: string;
+  categoryRules: string;
+  ngExpressions: string;
+  referenceExamples: string;
+  winningPatterns: string;
 }
 
 export function buildInjectedRules(genre?: Genre, style?: Style): InjectedRules {
@@ -19,8 +21,9 @@ export function buildInjectedRules(genre?: Genre, style?: Style): InjectedRules 
   const ngExpressions = profile.ngExpressions?.trim() || "";
   const categoryRules = preset ? `${preset.rules}\n\nフックパターン: ${preset.hookPattern}\nCTAパターン: ${preset.ctaPattern}` : "";
   const referenceExamples = buildReferenceExamples(profile);
+  const winningPatterns = buildWinningPatterns();
 
-  return { channelContext, commonRules, categoryRules, ngExpressions, referenceExamples };
+  return { channelContext, commonRules, categoryRules, ngExpressions, referenceExamples, winningPatterns };
 }
 
 function buildChannelContext(profile: ChannelProfile): string {
@@ -49,6 +52,24 @@ CTA: ${r?.ctas?.join(" / ") || ""}`;
   }).join("\n\n");
 }
 
+function buildWinningPatterns(): string {
+  const wp = getWinningPatterns();
+  if (!wp) return "";
+
+  const lines: string[] = [];
+  if (wp.bestStructure) lines.push(`- 最も再生された構成: ${wp.bestStructure}`);
+  if (wp.bestHookPattern) lines.push(`- 効果的なフック: ${wp.bestHookPattern}`);
+  if (wp.bestDuration) lines.push(`- 最適な動画長: ${wp.bestDuration}`);
+  if (wp.avoidPatterns?.length) lines.push(`- 避けるべき: ${wp.avoidPatterns.join("、")}`);
+  if (wp.hookEffectiveness) lines.push(`- フック傾向: ${wp.hookEffectiveness}`);
+  if (wp.ctaEffectiveness) lines.push(`- CTA傾向: ${wp.ctaEffectiveness}`);
+  if (wp.topPerformers?.length) {
+    lines.push(`- お手本動画: ${wp.topPerformers.map((t) => `「${t.title}」(${t.views?.toLocaleString()}再生)`).join("、")}`);
+  }
+
+  return lines.length > 0 ? lines.join("\n") : "";
+}
+
 // AIプロンプトに挿入するテキストブロックを生成
 export function formatRulesForPrompt(rules: InjectedRules): string {
   const sections: string[] = [];
@@ -67,6 +88,9 @@ export function formatRulesForPrompt(rules: InjectedRules): string {
   }
   if (rules.referenceExamples) {
     sections.push(`【お手本台本（参考にすべきパターン）】\n${rules.referenceExamples}`);
+  }
+  if (rules.winningPatterns) {
+    sections.push(`【実績データに基づく勝ちパターン（このチャンネルの成功法則）】\n${rules.winningPatterns}`);
   }
 
   return sections.length > 0 ? "\n\n" + sections.join("\n\n") + "\n" : "";

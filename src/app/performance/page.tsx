@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getApiKey } from "@/lib/channel-store";
+import { getWinningPatterns, saveWinningPatterns, type WinningPatterns } from "@/lib/winning-patterns-store";
+import { getAnalyses } from "@/lib/script-analysis-store";
 import { getMyChannel, saveMyChannel, detectGenre, GENRE_LABELS, genId, getAnalysisLogs, saveAnalysisLog, getWeeklySnapshots, saveWeeklySnapshot } from "@/lib/project-store";
 import type { MyChannelData, MyChannelVideo, Genre, AnalysisLog, WeeklySnapshot } from "@/lib/project-store";
 import { formatNumber } from "@/lib/mock-data";
@@ -66,6 +68,8 @@ export default function PerformancePage() {
   const [analysis, setAnalysis] = useState("");
   const [analysisLogs, setAnalysisLogs] = useState<AnalysisLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [winPatterns, setWinPatterns] = useState<WinningPatterns | null>(null);
+  const [analyzingPatterns, setAnalyzingPatterns] = useState(false);
   const [weeklySnapshots, setWeeklySnapshots] = useState<WeeklySnapshot[]>([]);
   const [showWeekly, setShowWeekly] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -172,6 +176,7 @@ export default function PerformancePage() {
     if (saved) setMyChannel(saved);
     setAnalysisLogs(getAnalysisLogs());
     setWeeklySnapshots(getWeeklySnapshots());
+    setWinPatterns(getWinningPatterns());
   }, []);
 
   useEffect(() => {
@@ -308,6 +313,53 @@ export default function PerformancePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ===== 勝ちパターン分析 =====
+  const handlePatternAnalysis = async () => {
+    if (!myChannel?.videos?.length) { setError("動画データがありません"); return; }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+
+    setAnalyzingPatterns(true);
+    setError("");
+    try {
+      const allAnalyses = getAnalyses();
+      const videosWithStats = myChannel.videos.map((v) => {
+        const snap = v.snapshots?.[v.snapshots.length - 1];
+        return {
+          videoId: v.videoId, title: v.title, publishedAt: v.publishedAt, duration: v.duration,
+          views: snap?.views || 0, likes: snap?.likes || 0, comments: snap?.comments || 0,
+        };
+      }).filter((v) => v.views > 0);
+
+      const matchedAnalyses = allAnalyses.filter((a) =>
+        videosWithStats.some((v) => v.videoId === a.videoId)
+      );
+
+      const res = await fetch("/api/performance/patterns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videos: videosWithStats,
+          analyses: matchedAnalyses,
+          channelName: myChannel.channelName,
+          aiApiKey,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+
+      const patterns: WinningPatterns = {
+        ...data,
+        updatedAt: new Date().toISOString(),
+        videoCount: videosWithStats.length,
+        rawAnalysis: JSON.stringify(data, null, 2),
+      };
+      saveWinningPatterns(patterns);
+      setWinPatterns(patterns);
+    } catch { setError("勝ちパターン分析に失敗"); }
+    finally { setAnalyzingPatterns(false); }
   };
 
   // ===== AI分析 =====
@@ -685,6 +737,71 @@ export default function PerformancePage() {
           | 緑: 1.5倍以上　赤: 0.5倍以下
         </p>
       </div>
+
+      {/* ===== 勝ちパターン ===== */}
+      {myChannel && (
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="font-semibold">勝ちパターン</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {winPatterns ? `${winPatterns.videoCount}本の動画を分析（${new Date(winPatterns.updatedAt).toLocaleDateString()}更新）` : "動画パフォーマンスから成功法則を自動抽出"}
+              </p>
+            </div>
+            <button onClick={handlePatternAnalysis} disabled={analyzingPatterns}
+              className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
+              {analyzingPatterns ? "分析中..." : winPatterns ? "再分析" : "勝ちパターンを分析"}
+            </button>
+          </div>
+
+          {winPatterns && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {winPatterns.bestStructure && (
+                <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                  <p className="text-xs font-medium text-green-700 mb-1">最も効果的な構成</p>
+                  <p className="text-sm text-gray-700">{winPatterns.bestStructure}</p>
+                </div>
+              )}
+              {winPatterns.bestHookPattern && (
+                <div className="bg-red-50 rounded-lg p-3 border border-red-100">
+                  <p className="text-xs font-medium text-red-700 mb-1">効果的なフック</p>
+                  <p className="text-sm text-gray-700">{winPatterns.bestHookPattern}</p>
+                </div>
+              )}
+              {winPatterns.bestDuration && (
+                <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                  <p className="text-xs font-medium text-blue-700 mb-1">最適な動画長</p>
+                  <p className="text-sm text-gray-700">{winPatterns.bestDuration}</p>
+                </div>
+              )}
+              {winPatterns.ctaEffectiveness && (
+                <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                  <p className="text-xs font-medium text-purple-700 mb-1">CTA傾向</p>
+                  <p className="text-sm text-gray-700">{winPatterns.ctaEffectiveness}</p>
+                </div>
+              )}
+              {winPatterns.avoidPatterns?.length > 0 && (
+                <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-100 md:col-span-2">
+                  <p className="text-xs font-medium text-yellow-700 mb-1">避けるべきパターン</p>
+                  <ul className="space-y-0.5">{winPatterns.avoidPatterns.map((p, i) => <li key={i} className="text-sm text-gray-700">· {p}</li>)}</ul>
+                </div>
+              )}
+              {winPatterns.audienceInsights && (
+                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 md:col-span-2">
+                  <p className="text-xs font-medium text-gray-600 mb-1">視聴者インサイト</p>
+                  <p className="text-sm text-gray-700">{winPatterns.audienceInsights}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {winPatterns && (
+            <p className="text-xs text-gray-400 mt-3">
+              この勝ちパターンは台本生成時に自動的にAIプロンプトに注入されます
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ===== AI分析結果 ===== */}
       {analysis && (
