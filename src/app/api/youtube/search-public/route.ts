@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q") || "";
   const apiKey = request.nextUrl.searchParams.get("apiKey") || "";
   const maxResults = request.nextUrl.searchParams.get("maxResults") || "20";
+  const publishedAfter = request.nextUrl.searchParams.get("publishedAfter") || "";
 
   if (!apiKey) return NextResponse.json({ error: "YouTube APIキーが必要です" }, { status: 400 });
   if (!query) return NextResponse.json({ error: "検索クエリが必要です" }, { status: 400 });
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
     searchUrl.searchParams.set("order", "viewCount");
     searchUrl.searchParams.set("maxResults", maxResults);
     searchUrl.searchParams.set("relevanceLanguage", "ja");
+    if (publishedAfter) searchUrl.searchParams.set("publishedAfter", publishedAfter);
     searchUrl.searchParams.set("key", apiKey);
 
     const searchRes = await fetch(searchUrl.toString());

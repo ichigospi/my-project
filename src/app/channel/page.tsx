@@ -43,22 +43,27 @@ function ChannelCard({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <h3
-            className="font-semibold text-foreground truncate cursor-pointer hover:text-accent"
-            onClick={() => onSelect(channel)}
-          >
-            {channel.name || channel.handle || channel.channelId || "取得中..."}
-          </h3>
-          <a
-            href={channel.handle ? `https://youtube.com/@${channel.handle}` : channel.channelId ? `https://youtube.com/channel/${channel.channelId}` : "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-gray-400 mt-0.5 truncate hover:text-accent hover:underline block"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="flex items-center gap-2">
+            <h3
+              className="font-semibold text-foreground truncate cursor-pointer hover:text-accent"
+              onClick={() => onSelect(channel)}
+            >
+              {channel.name || channel.handle || channel.channelId || "取得中..."}
+            </h3>
+            <a
+              href={channel.handle ? `https://www.youtube.com/@${channel.handle}` : channel.channelId ? `https://www.youtube.com/channel/${channel.channelId}` : "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-400 hover:text-red-500 shrink-0"
+              onClick={(e) => e.stopPropagation()}
+              title="YouTubeで開く"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </a>
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5 truncate">
             {channel.handle ? `@${channel.handle}` : channel.channelId || ""}
-            <svg className="w-3 h-3 inline ml-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-          </a>
+          </p>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(channel.url); }}
@@ -422,6 +427,8 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
   const [results, setResults] = useState<DiscoveredChannel[]>([]);
   const [error, setError] = useState("");
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [keyword, setKeyword] = useState("");
+  const [publishedAfter, setPublishedAfter] = useState("");
 
   // キャッシュから復元
   useEffect(() => {
@@ -503,7 +510,9 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
         if (!searchQuery) continue;
 
         try {
-          const searchRes = await fetch(`/api/youtube/search-public?q=${encodeURIComponent(searchQuery)}&apiKey=${encodeURIComponent(ytApiKey)}&maxResults=25`);
+          const searchParams = new URLSearchParams({ q: keyword ? `${searchQuery} ${keyword}` : searchQuery, apiKey: ytApiKey, maxResults: "25" });
+          if (publishedAfter) searchParams.set("publishedAfter", new Date(publishedAfter).toISOString());
+          const searchRes = await fetch(`/api/youtube/search-public?${searchParams}`);
           const searchData = await searchRes.json();
 
           if (searchData.videos) {
@@ -588,7 +597,24 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
                 className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
                 {loading ? progress || "検索中..." : results.length > 0 ? "再検索する" : "競合チャンネルを探す"}
               </button>
-              {/* 類似率スライダーは非表示（キーワード検索で十分絞れるため） */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">キーワード（追加絞り込み）</label>
+                <input type="text" value={keyword} onChange={(e) => setKeyword(e.target.value)}
+                  placeholder="例: 金運 ヒーリング"
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm w-48 focus:border-accent outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">投稿期間</label>
+                <select value={publishedAfter} onChange={(e) => setPublishedAfter(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm">
+                  <option value="">全期間</option>
+                  <option value={new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}>1週間以内</option>
+                  <option value={new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}>1ヶ月以内</option>
+                  <option value={new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}>3ヶ月以内</option>
+                  <option value={new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}>半年以内</option>
+                  <option value={new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}>1年以内</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">最低再生数</label>
                 <select value={minViews} onChange={(e) => setMinViews(parseInt(e.target.value))}
