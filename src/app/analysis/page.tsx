@@ -443,8 +443,8 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
       const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
       setScreenshots(frames);
 
-      // Step 2: 5枚ずつClaude Visionに送信（20MB制限対策）
-      const batchSize = 5;
+      // Step 2: 10枚ずつClaude Visionに送信（クライアント側Overloadedリトライ付き）
+      const batchSize = 10;
       const totalBatches = Math.ceil(frames.length / batchSize);
       const allTexts: string[] = [];
       let failCount = 0;
@@ -455,27 +455,43 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
         const charCount = allTexts.join("").length;
         setOcrProgress(`OCR ${batchNum}/${totalBatches}回目 | ${charCount}文字取得済 | 失敗${failCount}`);
 
-        if (i > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-        }
-
-        try {
-          const ocrRes = await fetch("/api/script/ocr", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ images: batch, aiApiKey }),
-          });
-          const ocrData = await ocrRes.json();
-          if (ocrData.text && ocrData.text.trim()) {
-            allTexts.push(ocrData.text.trim());
-            setTranscript(allTexts.join("\n\n"));
-          } else if (ocrData.error) {
-            failCount++;
-            setError(`バッチ${batchNum}: ${ocrData.error}`);
+        let success = false;
+        for (let retry = 0; retry < 5; retry++) {
+          try {
+            const ocrRes = await fetch("/api/script/ocr", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ images: batch, aiApiKey }),
+            });
+            const ocrData = await ocrRes.json();
+            if (ocrData.retryable) {
+              const wait = 15000 * (retry + 1);
+              setOcrProgress(`OCR ${batchNum}/${totalBatches}回目 | API混雑中、${Math.round(wait/1000)}秒後にリトライ ${retry+1}/5`);
+              await new Promise((resolve) => setTimeout(resolve, wait));
+              continue;
+            }
+            if (ocrData.text && ocrData.text.trim()) {
+              allTexts.push(ocrData.text.trim());
+              setTranscript(allTexts.join("\n\n"));
+            } else if (ocrData.error) {
+              failCount++;
+              setError(`バッチ${batchNum}: ${ocrData.error}`);
+            }
+            success = true;
+            break;
+          } catch (e) {
+            if (retry < 4) {
+              await new Promise((resolve) => setTimeout(resolve, 10000));
+            } else {
+              failCount++;
+              setError(`バッチ${batchNum}: ${e instanceof Error ? e.message : "通信エラー"}`);
+            }
           }
-        } catch (e) {
-          failCount++;
-          setError(`バッチ${batchNum}: ${e instanceof Error ? e.message : "通信エラー"}`);
+        }
+        if (!success) failCount++;
+        // バッチ間の小休止
+        if (i + batchSize < frames.length) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         }
       }
 
@@ -562,7 +578,7 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
 
     setExtracting(true);
     setError("");
-    const batchSize = 5;
+    const batchSize = 10;
     const allTexts: string[] = [];
     const totalBatches = Math.ceil(screenshots.length / batchSize);
 
@@ -570,21 +586,41 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
       const batch = screenshots.slice(i, i + batchSize);
       const batchNum = Math.floor(i / batchSize) + 1;
       setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}`);
-      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 5000));
-      try {
-        const res = await fetch("/api/script/ocr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ images: batch, aiApiKey }),
-        });
-        const data = await res.json();
-        if (data.text?.trim()) {
-          allTexts.push(data.text.trim());
-        } else if (data.error) {
-          // Overloaded/rate limitはサーバー側でリトライ済みなので表示のみ
-          setError(`バッチ${batchNum}: ${data.error}`);
+
+      // クライアント側リトライ（Overloaded対応）
+      let success = false;
+      for (let retry = 0; retry < 5; retry++) {
+        try {
+          const res = await fetch("/api/script/ocr", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ images: batch, aiApiKey }),
+          });
+          const data = await res.json();
+          if (data.retryable) {
+            const wait = 15000 * (retry + 1);
+            setOcrProgress(`読み取り中... ${batchNum}/${totalBatches}（API混雑中、${Math.round(wait/1000)}秒後にリトライ ${retry+1}/5）`);
+            await new Promise((resolve) => setTimeout(resolve, wait));
+            continue;
+          }
+          if (data.text?.trim()) {
+            allTexts.push(data.text.trim());
+          } else if (data.error) {
+            setError(`バッチ${batchNum}: ${data.error}`);
+          }
+          success = true;
+          break;
+        } catch {
+          if (retry < 4) {
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+          }
         }
-      } catch { /* skip */ }
+      }
+      if (!success) setError(`バッチ${batchNum}: リトライ上限`);
+      // バッチ間の小休止
+      if (i + batchSize < screenshots.length) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
     }
 
     setTranscript(allTexts.join("\n\n"));

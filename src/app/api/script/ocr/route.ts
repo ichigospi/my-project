@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// 最大5枚の画像を一括でClaude Visionに送信してOCR
+// 画像を一括でClaude Visionに送信してOCR
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { images, aiApiKey } = body;
@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
 - 各テロップは改行で区切り、場面転換は空行で区切る`,
   });
 
-  // リトライ付き（429 rate limit + 529 overloaded対応）
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // リトライ付き（429/529対応、Railway タイムアウトを考慮して短めに）
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -56,8 +56,14 @@ export async function POST(request: NextRequest) {
       });
 
       if (res.status === 429 || res.status === 529) {
-        const wait = Math.min(30000 * Math.pow(2, attempt), 120000);
-        await new Promise((resolve) => setTimeout(resolve, wait));
+        if (attempt === 2) {
+          return NextResponse.json(
+            { error: "Overloaded", retryable: true },
+            { status: res.status }
+          );
+        }
+        // 短めのリトライ待機（Railwayタイムアウト対策）
+        await new Promise((resolve) => setTimeout(resolve, 5000 * (attempt + 1)));
         continue;
       }
 
@@ -69,10 +75,10 @@ export async function POST(request: NextRequest) {
       const data = await res.json();
       return NextResponse.json({ text: data.content?.[0]?.text || "" });
     } catch {
-      if (attempt === 4) return NextResponse.json({ error: "API呼び出し失敗" }, { status: 500 });
-      await new Promise((resolve) => setTimeout(resolve, 10000 * (attempt + 1)));
+      if (attempt === 2) return NextResponse.json({ error: "API呼び出し失敗" }, { status: 500 });
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
   }
 
-  return NextResponse.json({ error: "リトライ上限" }, { status: 500 });
+  return NextResponse.json({ error: "リトライ上限", retryable: true }, { status: 500 });
 }

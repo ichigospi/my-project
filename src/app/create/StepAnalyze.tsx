@@ -77,10 +77,10 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
         const frameData = await frameRes.json();
         if (frameData.error) { updateProgress(video.videoId, { status: "error", progress: frameData.error }); continue; }
 
-        // Step 2: OCR（5枚ずつ、圧縮して送信）
+        // Step 2: OCR（10枚ずつ、圧縮して送信、Overloadedリトライ付き）
         const rawFrames = frameData.frames as string[];
         const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
-        const batchSize = 5;
+        const batchSize = 10;
         const totalBatches = Math.ceil(frames.length / batchSize);
         const ocrTexts: string[] = [];
 
@@ -88,16 +88,30 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
           const batch = frames.slice(i, i + batchSize);
           const batchNum = Math.floor(i / batchSize) + 1;
           updateProgress(video.videoId, { status: "ocr", progress: `OCR ${batchNum}/${totalBatches}` });
-          if (i > 0) await new Promise((r) => setTimeout(r, 30000));
-          try {
-            const ocrRes = await fetch("/api/script/ocr", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ images: batch, aiApiKey }),
-            });
-            const ocrData = await ocrRes.json();
-            if (ocrData.text?.trim()) ocrTexts.push(ocrData.text.trim());
-          } catch { /* skip */ }
+
+          for (let retry = 0; retry < 5; retry++) {
+            try {
+              const ocrRes = await fetch("/api/script/ocr", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ images: batch, aiApiKey }),
+              });
+              const ocrData = await ocrRes.json();
+              if (ocrData.retryable) {
+                const wait = 15000 * (retry + 1);
+                updateProgress(video.videoId, { status: "ocr", progress: `OCR ${batchNum}/${totalBatches} API混雑中リトライ${retry+1}/5` });
+                await new Promise((r) => setTimeout(r, wait));
+                continue;
+              }
+              if (ocrData.text?.trim()) ocrTexts.push(ocrData.text.trim());
+              break;
+            } catch {
+              if (retry < 4) await new Promise((r) => setTimeout(r, 10000));
+            }
+          }
+          if (i + batchSize < frames.length) {
+            await new Promise((r) => setTimeout(r, 3000));
+          }
         }
 
         // Step 3: テキスト整理
