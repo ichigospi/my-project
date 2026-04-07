@@ -1,0 +1,15 @@
+=== ローカル→Railway データ移行手順 ===
+
+1. ローカル (localhost:3000) のブラウザで:
+   - ⌘+Option+J でコンソールを開く
+   - 「allow pasting」と入力してEnter
+   - 以下を貼り付けてEnter:
+
+copy(localStorage.getItem("fortune_yt_analyses"))
+
+   - クリップボードにJSONがコピーされる
+
+2. テキストエディタに貼り付けて保存（export.json）
+
+3. Railway (my-project-production-d888...) の
+   分析ライブラリ → インポートボタンでファイルを選択
