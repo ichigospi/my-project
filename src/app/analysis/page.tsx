@@ -14,6 +14,29 @@ import type {
   ScriptProposal, ProposalResult, ChannelProfile,
 } from "@/lib/script-analysis-store";
 
+// ===== 画像圧縮ヘルパー =====
+function compressImage(dataUrl: string, maxWidth = 1280, quality = 0.6): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let w = img.width;
+      let h = img.height;
+      if (w > maxWidth) {
+        h = Math.round((h * maxWidth) / w);
+        w = maxWidth;
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 // ===== 状態永続化ヘルパー =====
 const STORAGE_PREFIX = "analysis_page_";
 
@@ -415,11 +438,13 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
         return;
       }
 
-      const frames = data.frames as string[];
+      const rawFrames = data.frames as string[];
+      // フレームを圧縮してサイズ削減
+      const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
       setScreenshots(frames);
 
-      // Step 2: 20枚ずつClaude Visionに送信
-      const batchSize = 20;
+      // Step 2: 5枚ずつClaude Visionに送信（20MB制限対策）
+      const batchSize = 5;
       const totalBatches = Math.ceil(frames.length / batchSize);
       const allTexts: string[] = [];
       let failCount = 0;
@@ -516,14 +541,16 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
     if (files.length > 0) processFiles(files);
   };
 
-  const processFiles = (files: File[]) => {
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setScreenshots((prev) => [...prev, reader.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
+  const processFiles = async (files: File[]) => {
+    for (const file of files) {
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      const compressed = await compressImage(dataUrl);
+      setScreenshots((prev) => [...prev, compressed]);
+    }
   };
 
   const removeScreenshot = (index: number) => {
@@ -538,7 +565,7 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
 
     setExtracting(true);
     setError("");
-    const batchSize = 20;
+    const batchSize = 5;
     const allTexts: string[] = [];
     const totalBatches = Math.ceil(screenshots.length / batchSize);
 

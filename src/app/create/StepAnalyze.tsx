@@ -6,6 +6,28 @@ import { saveAnalysis, generateId } from "@/lib/script-analysis-store";
 import { saveHook, saveCTA, genId } from "@/lib/project-store";
 import type { ScriptProject } from "@/lib/project-store";
 
+function compressImage(dataUrl: string, maxWidth = 1280, quality = 0.6): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let w = img.width;
+      let h = img.height;
+      if (w > maxWidth) {
+        h = Math.round((h * maxWidth) / w);
+        w = maxWidth;
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 interface AnalysisProgress {
   videoId: string;
   title: string;
@@ -55,9 +77,10 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
         const frameData = await frameRes.json();
         if (frameData.error) { updateProgress(video.videoId, { status: "error", progress: frameData.error }); continue; }
 
-        // Step 2: OCR（20枚ずつ）
-        const frames = frameData.frames as string[];
-        const batchSize = 20;
+        // Step 2: OCR（5枚ずつ、圧縮して送信）
+        const rawFrames = frameData.frames as string[];
+        const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
+        const batchSize = 5;
         const totalBatches = Math.ceil(frames.length / batchSize);
         const ocrTexts: string[] = [];
 

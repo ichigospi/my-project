@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// 最大20枚の画像を一括でClaude Visionに送信してOCR
+// 最大5枚の画像を一括でClaude Visionに送信してOCR
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { images, aiApiKey } = body;
