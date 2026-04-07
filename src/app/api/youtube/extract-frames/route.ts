@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execSync, execFileSync } from "child_process";
-import { existsSync, readdirSync, readFileSync, mkdirSync, rmSync } from "fs";
+import { existsSync, readdirSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -43,13 +44,23 @@ export async function POST(request: NextRequest) {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const videoPath = join(tempDir, "video.mp4");
 
+    // DBからCookieを取得
+    let cookiePath = "";
+    try {
+      const cookieSetting = await prisma.appSetting.findUnique({ where: { key: "yt_cookies" } });
+      if (cookieSetting?.value) {
+        cookiePath = join(tempDir, "cookies.txt");
+        writeFileSync(cookiePath, cookieSetting.value);
+      }
+    } catch { /* Cookie取得失敗は無視 */ }
+
     // 複数のプレイヤークライアントを順番に試す
     const clients = ["tv", "ios", "mediaconnect", "web"];
     let downloaded = false;
 
     for (const client of clients) {
       try {
-        execFileSync(ytdlpPath, [
+        const args = [
           "-f", "bestvideo[height<=480][ext=mp4]/best[height<=480][ext=mp4]/best",
           "-o", videoPath,
           "--no-playlist",
@@ -58,21 +69,28 @@ export async function POST(request: NextRequest) {
           "--geo-bypass",
           "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
           "--extractor-args", `youtube:player_client=${client}`,
-          videoUrl,
-        ], { timeout: 300000, env: execEnv, stdio: "pipe" });
+        ];
+        if (cookiePath && existsSync(cookiePath)) {
+          args.push("--cookies", cookiePath);
+        }
+        args.push(videoUrl);
+
+        execFileSync(ytdlpPath, args, { timeout: 300000, env: execEnv, stdio: "pipe" });
 
         if (existsSync(videoPath)) {
           downloaded = true;
           break;
         }
       } catch {
-        // 次のクライアントを試す
         continue;
       }
     }
 
     if (!downloaded) {
-      return NextResponse.json({ error: "動画のダウンロードに失敗しました。YouTubeのbot対策によりサーバーからのダウンロードがブロックされています。" }, { status: 500 });
+      const msg = cookiePath
+        ? "動画のダウンロードに失敗しました。Cookieが期限切れの可能性があります。設定ページからCookieを再アップロードしてください。"
+        : "動画のダウンロードに失敗しました。設定ページからYouTubeのCookieをアップロードしてください。";
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
 
     // 3秒間隔でフレーム抽出（重複除去なし＝全フレーム送信）

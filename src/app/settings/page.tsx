@@ -45,6 +45,9 @@ function SettingsContent() {
   const [copiedToken, setCopiedToken] = useState("");
   const [showYtKey, setShowYtKey] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
+  const [cookieStatus, setCookieStatus] = useState<{ hasCookies: boolean; size: number } | null>(null);
+  const [uploadingCookie, setUploadingCookie] = useState(false);
+  const [cookieResult, setCookieResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -78,6 +81,7 @@ function SettingsContent() {
 
     fetchUsers();
     fetchInvites();
+    fetch("/api/youtube/cookies").then(r => r.json()).then(d => setCookieStatus(d)).catch(() => {});
   }, [searchParams, fetchUsers, fetchInvites]);
 
   const handleOAuthCallback = async (code: string) => {
@@ -178,6 +182,39 @@ function SettingsContent() {
     navigator.clipboard.writeText(url);
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(""), 2000);
+  };
+
+  const handleCookieUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCookie(true);
+    setCookieResult(null);
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/youtube/cookies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cookies: text }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCookieResult({ ok: true, message: `Cookieをアップロードしました（${Math.round(data.size / 1024)}KB）` });
+        setCookieStatus({ hasCookies: true, size: data.size });
+      } else {
+        setCookieResult({ ok: false, message: data.error || "アップロードに失敗しました" });
+      }
+    } catch {
+      setCookieResult({ ok: false, message: "アップロードに失敗しました" });
+    } finally {
+      setUploadingCookie(false);
+    }
+  };
+
+  const handleCookieDelete = async () => {
+    if (!confirm("Cookieを削除しますか？")) return;
+    await fetch("/api/youtube/cookies", { method: "DELETE" });
+    setCookieStatus({ hasCookies: false, size: 0 });
+    setCookieResult({ ok: true, message: "Cookieを削除しました" });
   };
 
   const handleSave = () => {
@@ -364,6 +401,54 @@ function SettingsContent() {
               </div>
             </>
           )}
+        </div>
+
+        {/* YouTube Cookie（画面読み取り用） */}
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-semibold mb-1">YouTube Cookie（画面読み取り用）</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            台本分析の「自動で画面読み取り」機能に必要です。YouTubeにログイン済みのCookieをアップロードしてください。
+          </p>
+
+          {cookieStatus?.hasCookies ? (
+            <div className="flex items-center gap-3 mb-3">
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-50 text-green-700">
+                <span className="w-2 h-2 rounded-full bg-green-500" /> Cookie設定済み（{Math.round((cookieStatus.size || 0) / 1024)}KB）
+              </span>
+              {isAdmin && (
+                <button onClick={handleCookieDelete} className="text-sm text-gray-500 hover:text-danger">削除</button>
+              )}
+            </div>
+          ) : (
+            <div className="mb-3">
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-50 text-amber-700">
+                <span className="w-2 h-2 rounded-full bg-amber-500" /> 未設定
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <label className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 cursor-pointer disabled:opacity-50">
+              {uploadingCookie ? "アップロード中..." : "cookies.txtをアップロード"}
+              <input type="file" accept=".txt" onChange={handleCookieUpload} className="hidden" disabled={uploadingCookie} />
+            </label>
+          </div>
+          {cookieResult && (
+            <p className={`text-sm mt-2 ${cookieResult.ok ? "text-green-600" : "text-red-500"}`}>
+              {cookieResult.message}
+            </p>
+          )}
+
+          <div className="mt-3 p-3 bg-amber-50 rounded-lg">
+            <p className="text-xs text-amber-800"><strong>Cookieの取得方法:</strong></p>
+            <ol className="text-xs text-amber-700 mt-1 space-y-1 list-decimal list-inside">
+              <li>Chromeで <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener noreferrer" className="text-accent underline">Get cookies.txt LOCALLY</a> 拡張機能をインストール</li>
+              <li>YouTubeにログインした状態で <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" className="text-accent underline">youtube.com</a> を開く</li>
+              <li>拡張機能のアイコンをクリック →「Export」でcookies.txtをダウンロード</li>
+              <li>ダウンロードしたファイルを上のボタンからアップロード</li>
+            </ol>
+            <p className="text-xs text-amber-600 mt-2">※ Cookieは数週間で期限切れになります。読み取りが失敗したら再アップロードしてください。</p>
+          </div>
         </div>
 
         {/* ユーザー管理 */}
