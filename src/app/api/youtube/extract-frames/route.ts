@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
           args.push("--cookies", cookiePath);
         }
         args.push(
-          "-f", "bestvideo[height<=480][ext=mp4]/best[height<=480][ext=mp4]/best",
+          "-f", "bestvideo[height<=480]/best[height<=480]/bestvideo/best",
           "-o", videoPath,
           "--no-playlist",
           "--socket-timeout", "30",
