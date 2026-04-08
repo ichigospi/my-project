@@ -87,6 +87,36 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
     setProgresses(buildProgresses());
   }, [buildProgresses]);
 
+  // OCRキューをポーリングしてローカル読み取り完了を自動検知
+  useEffect(() => {
+    const pollOcrQueue = async () => {
+      try {
+        const res = await fetch("/api/ocr-queue");
+        const data = await res.json();
+        if (!data.queue) return;
+
+        const completedItems = (data.queue as { videoId: string; status: string; transcript?: string }[])
+          .filter((q) => q.status === "done" && q.transcript);
+        if (completedItems.length === 0) return;
+
+        // 完了したOCRアイテムのvideoIdをチェック
+        const videoIds = new Set(project.referenceVideos.map((v) => v.videoId));
+        const relevantDone = completedItems.filter((q) => videoIds.has(q.videoId));
+
+        if (relevantDone.length > 0) {
+          // サーバーから分析ライブラリを同期して最新状態を取得
+          const { syncFromServer } = await import("@/lib/script-analysis-store");
+          await syncFromServer();
+          setProgresses(buildProgresses());
+        }
+      } catch { /* ignore */ }
+    };
+
+    pollOcrQueue();
+    const interval = setInterval(pollOcrQueue, 15000);
+    return () => clearInterval(interval);
+  }, [project.referenceVideos, buildProgresses]);
+
   const isRunning = mgr.isRunning();
 
   const toggleSelect = (videoId: string) => {

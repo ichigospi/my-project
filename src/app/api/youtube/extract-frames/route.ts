@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { videoId } = body;
+  const { videoId, skipSubtitle } = body;
 
   if (!videoId) {
     return NextResponse.json({ error: "videoId が必要です" }, { status: 400 });
@@ -59,21 +59,23 @@ export async function POST(request: NextRequest) {
       } catch { /* Cookie取得失敗は無視 */ }
     }
 
-    // まず字幕APIで取得を試みる（Cookie不要）
+    // まず字幕APIで取得を試みる（Cookie不要、skipSubtitle指定時はスキップ）
     let transcriptFromApi = "";
-    try {
-      const transcriptRes = await fetch(`${request.nextUrl.origin}/api/youtube/transcript?videoId=${videoId}`);
-      const transcriptData = await transcriptRes.json();
-      if (transcriptData.transcript && transcriptData.transcript.length > 100 && !transcriptData.transcript.match(/^\[music\]\s*$/gim)) {
-        // 字幕が取得できた場合はフレーム抽出をスキップして字幕テキストを返す
-        return NextResponse.json({
-          frames: [],
-          frameCount: 0,
-          transcript: transcriptData.transcript,
-          method: "subtitle",
-        });
-      }
-    } catch { /* 字幕取得失敗は無視してフレーム抽出に進む */ }
+    if (!skipSubtitle) {
+      try {
+        const transcriptRes = await fetch(`${request.nextUrl.origin}/api/youtube/transcript?videoId=${videoId}`);
+        const transcriptData = await transcriptRes.json();
+        if (transcriptData.transcript && transcriptData.transcript.length > 100 && !transcriptData.transcript.match(/^\[music\]\s*$/gim)) {
+          // 字幕が取得できた場合はフレーム抽出をスキップして字幕テキストを返す
+          return NextResponse.json({
+            frames: [],
+            frameCount: 0,
+            transcript: transcriptData.transcript,
+            method: "subtitle",
+          });
+        }
+      } catch { /* 字幕取得失敗は無視してフレーム抽出に進む */ }
+    }
 
     // 複数のプレイヤークライアントを順番に試す（Cookie有無で順序変更）
     const clients = cookiePath ? ["web", "web_creator", "mweb", "tv", "ios"] : ["tv", "ios", "mediaconnect", "web"];
