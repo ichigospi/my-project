@@ -188,12 +188,30 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
                 <p className={`text-xs mt-0.5 ${p.status === "error" ? "text-red-500" : "text-gray-500"}`}>{p.progress}</p>
               </div>
               {(p.status === "error" || p.status === "done") && !hasActiveTask && (
-                <button onClick={() => retryOne(p.videoId)}
-                  className={`px-3 py-1.5 rounded-lg text-xs shrink-0 ${
-                    p.status === "error" ? "bg-accent text-white hover:bg-accent/90" : "border border-gray-200 text-gray-500 hover:bg-gray-50"
-                  }`}>
-                  {p.status === "error" ? "リトライ" : "再分析"}
-                </button>
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={() => retryOne(p.videoId)}
+                    className={`px-3 py-1.5 rounded-lg text-xs ${
+                      p.status === "error" ? "bg-accent text-white hover:bg-accent/90" : "border border-gray-200 text-gray-500 hover:bg-gray-50"
+                    }`}>
+                    {p.status === "error" ? "リトライ" : "再分析"}
+                  </button>
+                  {p.status === "error" && (
+                    <button onClick={async () => {
+                      const video = project.referenceVideos.find((v) => v.videoId === p.videoId);
+                      if (!video) return;
+                      await fetch("/api/ocr-queue", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "add", videoId: video.videoId, videoTitle: video.title, channelName: video.channelName, thumbnailUrl: video.thumbnailUrl, views: video.views }),
+                      });
+                      setProgresses((prev) => prev.map((pp) =>
+                        pp.videoId === p.videoId ? { ...pp, progress: "ローカル読み取り待ち" } : pp
+                      ));
+                    }} className="px-3 py-1.5 rounded-lg text-xs border border-blue-300 text-blue-600 hover:bg-blue-50">
+                      ローカルで読み取り
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>

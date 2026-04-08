@@ -44,15 +44,20 @@ export async function POST(request: NextRequest) {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const videoPath = join(tempDir, "video.mp4");
 
-    // DBからCookieを取得
+    // ローカル環境かどうか判定
+    const isLocal = request.nextUrl.hostname === "localhost" || request.nextUrl.hostname === "127.0.0.1";
+
+    // DBからCookieを取得（本番用）
     let cookiePath = "";
-    try {
-      const cookieSetting = await prisma.appSetting.findUnique({ where: { key: "yt_cookies" } });
-      if (cookieSetting?.value) {
-        cookiePath = join(tempDir, "cookies.txt");
-        writeFileSync(cookiePath, cookieSetting.value);
-      }
-    } catch { /* Cookie取得失敗は無視 */ }
+    if (!isLocal) {
+      try {
+        const cookieSetting = await prisma.appSetting.findUnique({ where: { key: "yt_cookies" } });
+        if (cookieSetting?.value) {
+          cookiePath = join(tempDir, "cookies.txt");
+          writeFileSync(cookiePath, cookieSetting.value);
+        }
+      } catch { /* Cookie取得失敗は無視 */ }
+    }
 
     // まず字幕APIで取得を試みる（Cookie不要）
     let transcriptFromApi = "";
@@ -78,7 +83,10 @@ export async function POST(request: NextRequest) {
     for (const client of clients) {
       try {
         const args: string[] = [];
-        if (cookiePath && existsSync(cookiePath)) {
+        if (isLocal) {
+          // ローカル: ブラウザのCookieを直接参照（最も確実）
+          args.push("--cookies-from-browser", "chrome");
+        } else if (cookiePath && existsSync(cookiePath)) {
           args.push("--cookies", cookiePath);
         }
         args.push(
