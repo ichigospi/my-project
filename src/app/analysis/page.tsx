@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { getApiKey } from "@/lib/channel-store";
+import { pushSharedSettings } from "@/lib/shared-sync";
 import { formatNumber } from "@/lib/mock-data";
 import {
   getAnalyses, saveAnalysis, deleteAnalysis,
@@ -140,6 +141,7 @@ function ProfileTab() {
 
   const handleSave = () => {
     saveProfile(profile);
+    pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

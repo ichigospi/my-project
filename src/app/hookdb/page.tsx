@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import {
   getHooks, getCTAs, getThumbnailWords, getTitles,
   saveHook, saveCTA, saveThumbnailWord, saveTitle,
@@ -22,10 +23,12 @@ export default function HookDBPage() {
   const [highPerformOnly, setHighPerformOnly] = useState(false);
 
   useEffect(() => {
-    setHooks(getHooks());
-    setCtas(getCTAs());
-    setThumbnails(getThumbnailWords());
-    setTitles(getTitles());
+    pullSharedSettings().then(() => {
+      setHooks(getHooks());
+      setCtas(getCTAs());
+      setThumbnails(getThumbnailWords());
+      setTitles(getTitles());
+    });
   }, []);
 
   const [newText, setNewText] = useState("");
@@ -51,6 +54,7 @@ export default function HookDBPage() {
       setTitles(getTitles());
     }
     setNewText(""); setNewSource("");
+    pushSharedSettings();
   };
 
   const handleDelete = (id: string) => {
@@ -58,6 +62,7 @@ export default function HookDBPage() {
     else if (tab === "ctas") { deleteCTA(id); setCtas(getCTAs()); }
     else if (tab === "thumbnails") { deleteThumbnailWord(id); setThumbnails(getThumbnailWords()); }
     else { deleteTitle(id); setTitles(getTitles()); }
+    pushSharedSettings();
   };
 
   // 平均再生数を計算（全エントリのsourceViewsから）

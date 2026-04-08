@@ -6,6 +6,7 @@ import { getApiKey } from "@/lib/channel-store";
 import { getWinningPatterns, saveWinningPatterns, type WinningPatterns } from "@/lib/winning-patterns-store";
 import { getAnalyses } from "@/lib/script-analysis-store";
 import { getMyChannel, saveMyChannel, detectGenre, GENRE_LABELS, genId, getAnalysisLogs, saveAnalysisLog, getWeeklySnapshots, saveWeeklySnapshot } from "@/lib/project-store";
+import { pushSharedSettings } from "@/lib/shared-sync";
 import type { MyChannelData, MyChannelVideo, Genre, AnalysisLog, WeeklySnapshot } from "@/lib/project-store";
 import { formatNumber } from "@/lib/mock-data";
 
@@ -358,6 +359,7 @@ export default function PerformancePage() {
       };
       saveWinningPatterns(patterns);
       setWinPatterns(patterns);
+      pushSharedSettings();
     } catch { setError("勝ちパターン分析に失敗"); }
     finally { setAnalyzingPatterns(false); }
   };

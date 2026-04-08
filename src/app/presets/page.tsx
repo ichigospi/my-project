@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { getPresets, savePreset, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
 import { getProfile, saveProfile, getAnalyses } from "@/lib/script-analysis-store";
+import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { ScriptRulePreset, Genre, Style } from "@/lib/project-store";
 import type { ChannelProfile, ScriptAnalysis } from "@/lib/script-analysis-store";
 
@@ -15,15 +16,18 @@ export default function PresetsPage() {
   const [tab, setTab] = useState<"common" | "presets">("common");
 
   useEffect(() => {
-    setPresets(getPresets());
-    setProfileState(getProfile());
-    setAnalysesState(getAnalyses());
+    pullSharedSettings().then(() => {
+      setPresets(getPresets());
+      setProfileState(getProfile());
+      setAnalysesState(getAnalyses());
+    });
   }, []);
 
   const handleSavePreset = () => {
     if (!editing) return;
     savePreset(editing);
     setPresets(getPresets());
+    pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -31,6 +35,7 @@ export default function PresetsPage() {
   const handleSaveProfile = () => {
     if (!profile) return;
     saveProfile(profile);
+    pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
