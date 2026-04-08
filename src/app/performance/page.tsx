@@ -6,7 +6,7 @@ import { getApiKey } from "@/lib/channel-store";
 import { getWinningPatterns, saveWinningPatterns, type WinningPatterns } from "@/lib/winning-patterns-store";
 import { getAnalyses } from "@/lib/script-analysis-store";
 import { getMyChannel, saveMyChannel, detectGenre, GENRE_LABELS, genId, getAnalysisLogs, saveAnalysisLog, getWeeklySnapshots, saveWeeklySnapshot } from "@/lib/project-store";
-import { pushSharedSettings } from "@/lib/shared-sync";
+import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { MyChannelData, MyChannelVideo, Genre, AnalysisLog, WeeklySnapshot } from "@/lib/project-store";
 import { formatNumber } from "@/lib/mock-data";
 
@@ -173,11 +173,13 @@ export default function PerformancePage() {
   }, [hasOAuth]);
 
   useEffect(() => {
-    const saved = getMyChannel();
-    if (saved) setMyChannel(saved);
-    setAnalysisLogs(getAnalysisLogs());
-    setWeeklySnapshots(getWeeklySnapshots());
-    setWinPatterns(getWinningPatterns());
+    pullSharedSettings().then(() => {
+      const saved = getMyChannel();
+      if (saved) setMyChannel(saved);
+      setAnalysisLogs(getAnalysisLogs());
+      setWeeklySnapshots(getWeeklySnapshots());
+      setWinPatterns(getWinningPatterns());
+    });
   }, []);
 
   useEffect(() => {

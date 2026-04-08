@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { pullSharedSettings } from "@/lib/shared-sync";
 import { getTasks, getMyChannel } from "@/lib/project-store";
 import type { ProductionTask, MyChannelData } from "@/lib/project-store";
 import { getChannels } from "@/lib/channel-store";
@@ -152,8 +153,10 @@ function MyChannelSection() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    setMyChannel(getMyChannel());
-    setLoaded(true);
+    pullSharedSettings().then(() => {
+      setMyChannel(getMyChannel());
+      setLoaded(true);
+    });
   }, []);
 
   if (!loaded) {

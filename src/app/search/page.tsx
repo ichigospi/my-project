@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { getChannels, getApiKey } from "@/lib/channel-store";
+import { pullSharedSettings } from "@/lib/shared-sync";
 import type { RegisteredChannel } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
 
@@ -49,7 +50,7 @@ export default function SearchPage() {
   const [sortBy, setSortBy] = useState<"views" | "date" | "multiplier" | "engagement">("views");
 
   useEffect(() => {
-    setChannels(getChannels());
+    pullSharedSettings().then(() => setChannels(getChannels()));
     // キャッシュから復元
     try {
       const cached = localStorage.getItem(SEARCH_CACHE_KEY);

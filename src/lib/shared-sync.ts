@@ -6,7 +6,11 @@ import { getProfile, saveProfile, type ChannelProfile } from "./script-analysis-
 import {
   getHooks, getCTAs, getThumbnailWords, getTitles,
   getPresets, savePreset,
+  getProjects, getTasks, getMembers, getMyChannel, saveMyChannel,
+  getAnalysisLogs, getWeeklySnapshots, getPerformanceRecords,
   type HookEntry, type CTAEntry, type ThumbnailWordEntry, type TitleEntry,
+  type ScriptProject, type ProductionTask, type MyChannelData,
+  type AnalysisLog, type WeeklySnapshot, type PerformanceRecord,
 } from "./project-store";
 import { getWinningPatterns, saveWinningPatterns } from "./winning-patterns-store";
 import type { RegisteredChannel } from "./channel-store";
@@ -109,6 +113,57 @@ export async function pullSharedSettings(): Promise<void> {
       }
     }
 
+    // プロジェクト（台本作成）: マージ
+    if (data.projects?.length > 0) {
+      const local: ScriptProject[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
+      const merged = mergeById(local, data.projects);
+      localStorage.setItem("fortune_yt_projects", JSON.stringify(merged));
+    }
+
+    // 工程表タスク: マージ
+    if (data.tasks?.length > 0) {
+      const local: ProductionTask[] = JSON.parse(localStorage.getItem("fortune_yt_tasks") || "[]");
+      const merged = mergeById(local, data.tasks);
+      localStorage.setItem("fortune_yt_tasks", JSON.stringify(merged));
+    }
+
+    // メンバー: マージ
+    if (data.members?.length > 0) {
+      const local: string[] = JSON.parse(localStorage.getItem("fortune_yt_members") || "[]");
+      const merged = [...new Set([...local, ...data.members])];
+      localStorage.setItem("fortune_yt_members", JSON.stringify(merged));
+    }
+
+    // 自チャンネルデータ: ローカルが空ならサーバーから
+    if (data.myChannel && !getMyChannel()) {
+      saveMyChannel(data.myChannel);
+    }
+
+    // 分析ログ: マージ
+    if (data.analysisLogs?.length > 0) {
+      const local: AnalysisLog[] = JSON.parse(localStorage.getItem("fortune_yt_analysis_log") || "[]");
+      const merged = mergeById(local, data.analysisLogs);
+      localStorage.setItem("fortune_yt_analysis_log", JSON.stringify(merged));
+    }
+
+    // 週次スナップショット: weekStartでマージ
+    if (data.weeklySnapshots?.length > 0) {
+      const local: WeeklySnapshot[] = JSON.parse(localStorage.getItem("fortune_yt_weekly") || "[]");
+      const map = new Map<string, WeeklySnapshot>();
+      for (const s of local) map.set(s.weekStart, s);
+      for (const s of data.weeklySnapshots as WeeklySnapshot[]) {
+        if (!map.has(s.weekStart)) map.set(s.weekStart, s);
+      }
+      localStorage.setItem("fortune_yt_weekly", JSON.stringify(Array.from(map.values())));
+    }
+
+    // パフォーマンス記録: マージ
+    if (data.performanceRecords?.length > 0) {
+      const local: PerformanceRecord[] = JSON.parse(localStorage.getItem("fortune_yt_performance") || "[]");
+      const merged = mergeById(local, data.performanceRecords);
+      localStorage.setItem("fortune_yt_performance", JSON.stringify(merged));
+    }
+
     // 勝ちパターン: サーバーの方が新しければ採用
     if (data.winningPatterns) {
       const local = getWinningPatterns();
@@ -152,6 +207,13 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         titles: getTitles(),
         profile: getProfile(),
         presets: getPresets(),
+        projects: getProjects(),
+        tasks: getTasks(),
+        members: getMembers(),
+        myChannel: getMyChannel(),
+        analysisLogs: getAnalysisLogs(),
+        weeklySnapshots: getWeeklySnapshots(),
+        performanceRecords: getPerformanceRecords(),
         winningPatterns: getWinningPatterns(),
       }),
     });

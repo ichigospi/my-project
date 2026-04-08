@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import {
   getTasks, saveTask, deleteTask,
   genId, DEFAULT_STEPS, GENRE_LABELS, TASK_STATUS_LABELS,
@@ -31,8 +32,15 @@ export default function WorkflowPage() {
   const [editingMemo, setEditingMemo] = useState<{ taskId: string; stepIdx: number } | null>(null);
   const [memoText, setMemoText] = useState("");
 
+  const saveAndSync = (task: ProductionTask) => {
+    const result = saveTask(task);
+    setTasks(result);
+    pushSharedSettings();
+    return result;
+  };
+
   useEffect(() => {
-    setTasks(getTasks());
+    pullSharedSettings().then(() => setTasks(getTasks()));
     // DBからユーザー一覧を取得して担当者リストに使う
     fetch("/api/users")
       .then((r) => r.json())
@@ -52,13 +60,13 @@ export default function WorkflowPage() {
       deadline: "", publishUrl: "", linkedProjectId: "", sourceVideoUrl: "", urgent: false,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
-    setTasks(saveTask(task));
+    saveAndSync(task);
   };
 
   const updateField = (taskId: string, field: string, value: string | boolean) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
-    setTasks(saveTask({ ...task, [field]: value } as ProductionTask));
+    saveAndSync({ ...task, [field]: value } as ProductionTask);
   };
 
   // ステータス切替（検収ありの工程は検収フローを経由）
@@ -83,7 +91,7 @@ export default function WorkflowPage() {
     const newSteps = task.steps.map((s, i) => i === stepIdx ? {
       ...s, status: next, completedAt: next === "completed" ? new Date().toISOString() : s.completedAt,
     } : s);
-    setTasks(saveTask({ ...task, steps: newSteps }));
+    saveAndSync({ ...task, steps: newSteps });
   };
 
   const handleReject = (taskId: string, stepIdx: number) => {
@@ -91,14 +99,14 @@ export default function WorkflowPage() {
     if (!task) return;
     const newSteps = [...task.steps];
     newSteps[stepIdx] = { ...newSteps[stepIdx], status: "rejected" };
-    setTasks(saveTask({ ...task, steps: newSteps }));
+    saveAndSync({ ...task, steps: newSteps });
   };
 
   const updateAssignee = (taskId: string, stepIdx: number, assignee: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
     const newSteps = task.steps.map((s, i) => i === stepIdx ? { ...s, assignee } : s);
-    setTasks(saveTask({ ...task, steps: newSteps }));
+    saveAndSync({ ...task, steps: newSteps });
   };
 
   const saveMemo = () => {
@@ -106,7 +114,7 @@ export default function WorkflowPage() {
     const task = tasks.find((t) => t.id === editingMemo.taskId);
     if (!task) return;
     const newSteps = task.steps.map((s, i) => i === editingMemo.stepIdx ? { ...s, memo: memoText } : s);
-    setTasks(saveTask({ ...task, steps: newSteps }));
+    saveAndSync({ ...task, steps: newSteps });
     setEditingMemo(null);
   };
 
@@ -249,7 +257,7 @@ export default function WorkflowPage() {
                     )}
                   </td>
                   <td className="border border-gray-200 px-1 py-0.5 text-center">
-                    <button onClick={() => { deleteTask(task.id); setTasks(getTasks()); }} className="text-gray-300 hover:text-red-500">×</button>
+                    <button onClick={() => { deleteTask(task.id); setTasks(getTasks()); pushSharedSettings(); }} className="text-gray-300 hover:text-red-500">×</button>
                   </td>
                 </tr>
               );

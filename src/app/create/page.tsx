@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus } from "@/lib/project-store";
 import type { ScriptProject, Genre, Style } from "@/lib/project-store";
+import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import StepGenre from "./StepGenre";
 import StepTitle from "./StepTitle";
 import StepReferences from "./StepReferences";
@@ -23,7 +24,7 @@ export default function CreatePage() {
   const [projects, setProjects] = useState<ScriptProject[]>([]);
   const [activeProject, setActiveProject] = useState<ScriptProject | null>(null);
 
-  useEffect(() => { setProjects(getProjects()); }, []);
+  useEffect(() => { pullSharedSettings().then(() => setProjects(getProjects())); }, []);
 
   const handleNew = () => {
     const p = createProject("love", "healing");
@@ -31,6 +32,7 @@ export default function CreatePage() {
     saveProject(p);
     setActiveProject(p);
     setProjects(getProjects());
+    pushSharedSettings();
   };
 
   const handleResume = (p: ScriptProject) => { setActiveProject(p); };
@@ -38,6 +40,7 @@ export default function CreatePage() {
   const handleDelete = (id: string) => {
     deleteProject(id);
     setProjects(getProjects());
+    pushSharedSettings();
   };
 
   const updateProject = (updated: ScriptProject) => {
@@ -45,6 +48,7 @@ export default function CreatePage() {
     saveProject(updated);
     setActiveProject(updated);
     setProjects(getProjects());
+    pushSharedSettings();
 
     // 工程表との自動連動
     if (updated.title && updated.status === "references" && prev?.status === "title") {

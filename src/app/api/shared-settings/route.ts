@@ -23,6 +23,13 @@ export async function GET() {
       profile: map["shared_profile"] ? JSON.parse(map["shared_profile"]) : null,
       winningPatterns: map["shared_winning_patterns"] ? JSON.parse(map["shared_winning_patterns"]) : null,
       presets: map["shared_presets"] ? JSON.parse(map["shared_presets"]) : [],
+      projects: map["shared_projects"] ? JSON.parse(map["shared_projects"]) : [],
+      tasks: map["shared_tasks"] ? JSON.parse(map["shared_tasks"]) : [],
+      members: map["shared_members"] ? JSON.parse(map["shared_members"]) : [],
+      myChannel: map["shared_my_channel"] ? JSON.parse(map["shared_my_channel"]) : null,
+      analysisLogs: map["shared_analysis_logs"] ? JSON.parse(map["shared_analysis_logs"]) : [],
+      weeklySnapshots: map["shared_weekly_snapshots"] ? JSON.parse(map["shared_weekly_snapshots"]) : [],
+      performanceRecords: map["shared_performance_records"] ? JSON.parse(map["shared_performance_records"]) : [],
     });
   } catch (e) {
     console.error("GET /api/shared-settings error:", e);
@@ -49,6 +56,13 @@ export async function POST(request: NextRequest) {
     if (body.profile !== undefined) updates.push({ key: "shared_profile", value: JSON.stringify(body.profile) });
     if (body.winningPatterns !== undefined) updates.push({ key: "shared_winning_patterns", value: JSON.stringify(body.winningPatterns) });
     if (body.presets !== undefined) updates.push({ key: "shared_presets", value: JSON.stringify(body.presets) });
+    if (body.projects !== undefined) updates.push({ key: "shared_projects", value: JSON.stringify(body.projects) });
+    if (body.tasks !== undefined) updates.push({ key: "shared_tasks", value: JSON.stringify(body.tasks) });
+    if (body.members !== undefined) updates.push({ key: "shared_members", value: JSON.stringify(body.members) });
+    if (body.myChannel !== undefined) updates.push({ key: "shared_my_channel", value: JSON.stringify(body.myChannel) });
+    if (body.analysisLogs !== undefined) updates.push({ key: "shared_analysis_logs", value: JSON.stringify(body.analysisLogs) });
+    if (body.weeklySnapshots !== undefined) updates.push({ key: "shared_weekly_snapshots", value: JSON.stringify(body.weeklySnapshots) });
+    if (body.performanceRecords !== undefined) updates.push({ key: "shared_performance_records", value: JSON.stringify(body.performanceRecords) });
 
     for (const { key, value } of updates) {
       const existing = await prisma.appSetting.findUnique({ where: { key } });
