@@ -40,6 +40,11 @@ export default function OcrPage() {
   const [currentVideo, setCurrentVideo] = useState("");
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+  const [debugLog, setDebugLog] = useState<string[]>([]);
+
+  const addLog = (msg: string) => {
+    setDebugLog((prev) => [...prev, `${new Date().toLocaleTimeString()} ${msg}`]);
+  };
 
   const fetchQueue = async () => {
     setLoading(true);
@@ -64,16 +69,20 @@ export default function OcrPage() {
 
     setProcessing(true);
     setCurrentVideo(item.videoTitle);
+    setDebugLog([]);
+    addLog(`処理開始: skipSubtitle=${skipSubtitle}, videoId=${item.videoId}`);
     setProgress(skipSubtitle ? "OCR強制モード：フレーム抽出中..." : "動画DL＆フレーム抽出中...");
 
     try {
       // Step 1: フレーム抽出（ローカルなのでCookie使える）
+      addLog("extract-frames API呼び出し中...");
       const frameRes = await fetch("/api/youtube/extract-frames", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoId: item.videoId, skipSubtitle }),
       });
       let frameData = await frameRes.json();
+      addLog(`応答: method=${frameData.method || "none"}, transcript=${frameData.transcript?.length || 0}文字, frames=${frameData.frames?.length || 0}枚, error=${frameData.error || "none"}`);
 
       let transcript = "";
 
@@ -82,12 +91,14 @@ export default function OcrPage() {
         : "";
       if (frameData.method === "subtitle" && cleanedSub.length >= 100) {
         transcript = cleanedSub;
+        addLog(`字幕採用: ${cleanedSub.length}文字`);
         setProgress("字幕から取得完了");
       } else if (frameData.error) {
         throw new Error(frameData.error);
       } else {
         // 字幕が短すぎた場合はフレーム抽出をやり直す
         if (frameData.method === "subtitle" && (!frameData.frames || frameData.frames.length === 0)) {
+          addLog("字幕短すぎ→skipSubtitleでリトライ");
           setProgress("字幕が短すぎるため、フレーム抽出でリトライ...");
           const retryRes = await fetch("/api/youtube/extract-frames", {
             method: "POST",
@@ -95,6 +106,7 @@ export default function OcrPage() {
             body: JSON.stringify({ videoId: item.videoId, skipSubtitle: true }),
           });
           frameData = await retryRes.json();
+          addLog(`リトライ応答: frames=${frameData.frames?.length || 0}枚, error=${frameData.error || "none"}`);
           if (frameData.error) throw new Error(frameData.error);
         }
 
@@ -103,6 +115,7 @@ export default function OcrPage() {
         if (!rawFrames || rawFrames.length === 0) {
           throw new Error(`フレームが0枚です（method=${frameData.method || "none"}, frameCount=${frameData.frameCount || 0}）`);
         }
+        addLog(`OCR開始: ${rawFrames.length}枚`);
         setProgress(`${rawFrames.length}枚のフレームをOCR処理中...`);
         const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
         const batchSize = 10;
@@ -128,6 +141,7 @@ export default function OcrPage() {
                 continue;
               }
               if (ocrData.text?.trim()) ocrTexts.push(ocrData.text.trim());
+              addLog(`OCR batch${batchNum}: ${ocrData.text?.length || 0}文字`);
               break;
             } catch {
               if (retry < 4) await new Promise((r) => setTimeout(r, 10000));
@@ -138,6 +152,7 @@ export default function OcrPage() {
 
         // Step 3: テキスト整理
         transcript = ocrTexts.join("\n\n");
+        addLog(`OCR合計: ${transcript.length}文字`);
         if (transcript.length > 0) {
           setProgress("テキスト整理中...");
           try {
@@ -147,7 +162,10 @@ export default function OcrPage() {
               body: JSON.stringify({ rawText: transcript, sampleImages: [], aiApiKey }),
             });
             const cleanData = await cleanRes.json();
-            if (cleanData.text?.trim()) transcript = cleanData.text.trim();
+            if (cleanData.text?.trim()) {
+              addLog(`整理後: ${cleanData.text.trim().length}文字（元: ${transcript.length}文字）`);
+              transcript = cleanData.text.trim();
+            }
           } catch {}
         }
       }
@@ -239,6 +257,13 @@ export default function OcrPage() {
 
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
       {progress && !processing && <p className="text-green-600 text-sm mb-4">{progress}</p>}
+
+      {/* 処理ログ */}
+      {debugLog.length > 0 && (
+        <div className="bg-gray-900 text-green-400 rounded-lg p-3 mb-6 text-xs font-mono max-h-48 overflow-y-auto">
+          {debugLog.map((log, i) => <div key={i}>{log}</div>)}
+        </div>
+      )}
 
       {/* アクションボタン */}
       <div className="flex gap-3 mb-6">
