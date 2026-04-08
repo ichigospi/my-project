@@ -984,6 +984,39 @@ function LibraryTab() {
     URL.revokeObjectURL(url);
   };
 
+  // 全データをサーバーに強制アップロード
+  const handleForceSync = async () => {
+    setSyncStatus("サーバーにアップロード中...");
+    const localAnalyses = getAnalyses();
+    const localProposals = getProposals();
+    let uploaded = 0;
+    let failed = 0;
+    for (const a of localAnalyses) {
+      try {
+        const res = await fetch("/api/analyses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(a),
+        });
+        if (res.ok) uploaded++;
+        else failed++;
+      } catch { failed++; }
+    }
+    for (const p of localProposals) {
+      try {
+        const res = await fetch("/api/proposals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(p),
+        });
+        if (res.ok) uploaded++;
+        else failed++;
+      } catch { failed++; }
+    }
+    setSyncStatus(`同期完了！ ${uploaded}件アップロード${failed > 0 ? ` / ${failed}件失敗` : ""}`);
+    setTimeout(() => setSyncStatus(""), 5000);
+  };
+
   // インポート（JSONファイルからデータを読み込んでlocalStorage+サーバーに保存）
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1050,6 +1083,10 @@ function LibraryTab() {
         </div>
         <div className="flex items-center gap-2">
           {syncStatus && <span className="text-xs text-green-600">{syncStatus}</span>}
+          <button onClick={handleForceSync}
+            className="px-3 py-1.5 rounded-lg text-xs bg-accent/10 text-accent hover:bg-accent/20">
+            サーバーに同期
+          </button>
           <button onClick={handleExport}
             className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 text-gray-600 hover:bg-gray-200">
             エクスポート
