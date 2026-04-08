@@ -54,27 +54,27 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* Cookie取得失敗は無視 */ }
 
-    // 複数のプレイヤークライアントを順番に試す
-    const clients = ["tv", "ios", "mediaconnect", "web"];
+    // 複数のプレイヤークライアントを順番に試す（Cookie有無で順序変更）
+    const clients = cookiePath ? ["web", "web_creator", "mweb", "tv", "ios"] : ["tv", "ios", "mediaconnect", "web"];
     let downloaded = false;
     let lastError = "";
 
     for (const client of clients) {
       try {
-        const args = [
+        const args: string[] = [];
+        if (cookiePath && existsSync(cookiePath)) {
+          args.push("--cookies", cookiePath);
+        }
+        args.push(
           "-f", "bestvideo[height<=480][ext=mp4]/best[height<=480][ext=mp4]/best",
           "-o", videoPath,
           "--no-playlist",
           "--socket-timeout", "30",
           "--no-check-certificates",
           "--geo-bypass",
-          "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
           "--extractor-args", `youtube:player_client=${client}`,
-        ];
-        if (cookiePath && existsSync(cookiePath)) {
-          args.push("--cookies", cookiePath);
-        }
-        args.push(videoUrl);
+          videoUrl,
+        );
 
         execFileSync(ytdlpPath, args, { timeout: 300000, env: execEnv, stdio: "pipe" });
 
