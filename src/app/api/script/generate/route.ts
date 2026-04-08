@@ -35,30 +35,39 @@ export async function POST(request: NextRequest) {
 
   try {
     if (isAnthropic) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": aiApiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 2048,
-          system: systemPrompt,
-          messages: [{ role: "user", content: userPrompt }],
-        }),
-      });
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": aiApiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 2048,
+            system: systemPrompt,
+            messages: [{ role: "user", content: userPrompt }],
+          }),
+        });
+        if (res.status === 429 || res.status === 529) {
+          if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
+          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
+          continue;
+        }
+        break;
+      }
 
-      if (!res.ok) {
-        const error = await res.json();
+      if (!res!.ok) {
+        const error = await res!.json();
         return NextResponse.json(
           { error: error.error?.message || "Claude APIエラー" },
-          { status: res.status }
+          { status: res!.status }
         );
       }
 
-      const data = await res.json();
+      const data = await res!.json();
       const text = data.content?.[0]?.text || "";
       return NextResponse.json({ text });
     } else {

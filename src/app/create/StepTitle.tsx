@@ -62,19 +62,28 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
       // 前回の提案をNG例として渡す
       const excludeTitles = candidates.map((c) => c.title);
 
-      const res = await fetch("/api/script/suggest-titles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          genre: project.genre, style: project.style,
-          competitorVideos, selfTopVideos,
-          performanceData: perfRecords.length > 0 ? `過去実績${perfRecords.length}件、平均再生数${Math.round(perfRecords.reduce((s, r) => s + r.views, 0) / perfRecords.length)}回` : "",
-          hookPatterns: hooks.join(" / "), aiApiKey,
-          excludeTitles: excludeTitles.length > 0 ? excludeTitles : undefined,
-          directionNote: direction || undefined,
-        }),
-      });
-      const data = await res.json();
+      let data;
+      for (let retry = 0; retry < 5; retry++) {
+        const res = await fetch("/api/script/suggest-titles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            genre: project.genre, style: project.style,
+            competitorVideos, selfTopVideos,
+            performanceData: perfRecords.length > 0 ? `過去実績${perfRecords.length}件、平均再生数${Math.round(perfRecords.reduce((s, r) => s + r.views, 0) / perfRecords.length)}回` : "",
+            hookPatterns: hooks.join(" / "), aiApiKey,
+            excludeTitles: excludeTitles.length > 0 ? excludeTitles : undefined,
+            directionNote: direction || undefined,
+          }),
+        });
+        data = await res.json();
+        if (data.retryable) {
+          setError(`API混雑中... リトライ ${retry + 1}/5`);
+          await new Promise((r) => setTimeout(r, 15000 * (retry + 1)));
+          continue;
+        }
+        break;
+      }
       if (data.error) { setError(data.error); }
       else if (data.candidates) {
         if (candidates.length > 0) { setPastCandidates((prev) => [...prev, candidates]); }

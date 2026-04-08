@@ -50,24 +50,33 @@ ${rawText.substring(0, 15000)}
     let text = "";
 
     if (isAnthropic) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": aiApiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 8192,
-          messages: [{ role: "user", content }],
-        }),
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        return NextResponse.json({ error: error.error?.message || "API error" }, { status: res.status });
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": aiApiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 8192,
+            messages: [{ role: "user", content }],
+          }),
+        });
+        if (res.status === 429 || res.status === 529) {
+          if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
+          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
+          continue;
+        }
+        break;
       }
-      const data = await res.json();
+      if (!res!.ok) {
+        const error = await res!.json();
+        return NextResponse.json({ error: error.error?.message || "API error" }, { status: res!.status });
+      }
+      const data = await res!.json();
       text = data.content?.[0]?.text || "";
     } else {
       // OpenAI（画像なし、テキストのみ）
