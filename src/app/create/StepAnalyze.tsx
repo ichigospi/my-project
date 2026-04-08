@@ -152,6 +152,25 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
     }
   };
 
+  const [sentToLocal, setSentToLocal] = useState<Set<string>>(new Set());
+
+  const sendToLocalQueue = async (videoId: string) => {
+    const video = project.referenceVideos.find((v) => v.videoId === videoId);
+    if (!video) return;
+    await fetch("/api/ocr-queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add", videoId: video.videoId, videoTitle: video.title, channelName: video.channelName, thumbnailUrl: video.thumbnailUrl, views: video.views }),
+    });
+    setSentToLocal((prev) => new Set(prev).add(videoId));
+  };
+
+  const sendAllToLocal = async () => {
+    for (const p of progresses) {
+      if (p.status !== "done") await sendToLocalQueue(p.videoId);
+    }
+  };
+
   const hasSelected = progresses.some((p) => p.selected);
   const hasDone = progresses.some((p) => p.status === "done");
   const hasActiveTask = progresses.some((p) =>
@@ -187,28 +206,20 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
                 <p className="text-sm font-medium truncate">{p.title}</p>
                 <p className={`text-xs mt-0.5 ${p.status === "error" ? "text-red-500" : "text-gray-500"}`}>{p.progress}</p>
               </div>
-              {(p.status === "error" || p.status === "done") && !hasActiveTask && (
+              {!hasActiveTask && (
                 <div className="flex gap-1 shrink-0">
-                  <button onClick={() => retryOne(p.videoId)}
-                    className={`px-3 py-1.5 rounded-lg text-xs ${
-                      p.status === "error" ? "bg-accent text-white hover:bg-accent/90" : "border border-gray-200 text-gray-500 hover:bg-gray-50"
-                    }`}>
-                    {p.status === "error" ? "リトライ" : "再分析"}
-                  </button>
-                  {p.status === "error" && (
-                    <button onClick={async () => {
-                      const video = project.referenceVideos.find((v) => v.videoId === p.videoId);
-                      if (!video) return;
-                      await fetch("/api/ocr-queue", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "add", videoId: video.videoId, videoTitle: video.title, channelName: video.channelName, thumbnailUrl: video.thumbnailUrl, views: video.views }),
-                      });
-                      setProgresses((prev) => prev.map((pp) =>
-                        pp.videoId === p.videoId ? { ...pp, progress: "ローカル読み取り待ち" } : pp
-                      ));
-                    }} className="px-3 py-1.5 rounded-lg text-xs border border-blue-300 text-blue-600 hover:bg-blue-50">
-                      ローカルで読み取り
+                  {(p.status === "error" || p.status === "done") && (
+                    <button onClick={() => retryOne(p.videoId)}
+                      className={`px-3 py-1.5 rounded-lg text-xs ${
+                        p.status === "error" ? "bg-accent text-white hover:bg-accent/90" : "border border-gray-200 text-gray-500 hover:bg-gray-50"
+                      }`}>
+                      {p.status === "error" ? "リトライ" : "再分析"}
+                    </button>
+                  )}
+                  {p.status !== "done" && (
+                    <button onClick={() => sendToLocalQueue(p.videoId)} disabled={sentToLocal.has(p.videoId)}
+                      className={`px-3 py-1.5 rounded-lg text-xs ${sentToLocal.has(p.videoId) ? "bg-blue-50 text-blue-400" : "border border-blue-300 text-blue-600 hover:bg-blue-50"}`}>
+                      {sentToLocal.has(p.videoId) ? "送信済み" : "ローカルで読み取り"}
                     </button>
                   )}
                 </div>
@@ -219,6 +230,26 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
       </div>
 
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
+
+      {/* ローカル連携 */}
+      <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-blue-800">ローカルで読み取り</p>
+            <p className="text-xs text-blue-600 mt-0.5">動画をローカルPCに送信してテロップ読み取りを行います</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={sendAllToLocal}
+              className="px-4 py-2 rounded-lg text-xs bg-blue-600 text-white hover:bg-blue-700">
+              全てローカルに送信
+            </button>
+            <a href="http://localhost:3000/ocr" target="_blank" rel="noopener noreferrer"
+              className="px-4 py-2 rounded-lg text-xs border border-blue-300 text-blue-600 hover:bg-blue-100">
+              ローカルツールを開く ↗
+            </a>
+          </div>
+        </div>
+      </div>
 
       <div className="flex gap-3">
         <button onClick={() => onUpdate({ ...project, status: "references" })}
