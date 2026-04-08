@@ -305,10 +305,19 @@ export default function OcrPage() {
               <p className="text-sm font-medium truncate">{item.videoTitle}</p>
               <p className="text-xs text-gray-500">{item.channelName} · {formatNumber(item.views)}回</p>
             </div>
-            <button onClick={() => processOne(item)} disabled={processing}
-              className="px-3 py-1.5 rounded-lg text-xs bg-accent text-white hover:bg-accent/90 disabled:opacity-50 shrink-0">
-              読み取り
-            </button>
+            <div className="flex gap-1 shrink-0">
+              <button onClick={() => processOne(item)} disabled={processing}
+                className="px-3 py-1.5 rounded-lg text-xs bg-accent text-white hover:bg-accent/90 disabled:opacity-50">
+                読み取り
+              </button>
+              <button onClick={async () => {
+                await fetch("/api/ocr-queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", id: item.id }) });
+                await fetchQueue();
+              }} disabled={processing}
+                className="px-2 py-1.5 rounded-lg text-xs border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-50">
+                取消
+              </button>
+            </div>
           </div>
         ))}
       </div>

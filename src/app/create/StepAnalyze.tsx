@@ -104,14 +104,16 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
 
         if (relevantDone.length > 0) {
           const { saveAnalysis, generateId, getAnalyses } = await import("@/lib/script-analysis-store");
-          const existingAnalyses = getAnalyses();
+          let existingAnalyses = getAnalyses();
+          let updated = false;
 
           for (const item of relevantDone) {
-            // 既に保存済みならスキップ
-            if (existingAnalyses.some((a) => a.videoId === item.videoId)) continue;
+            // 既存の分析を探す
+            const existing = existingAnalyses.find((a) => a.videoId === item.videoId);
+            // 十分なtranscriptがあればスキップ（短い場合は上書き）
+            if (existing && existing.transcript && existing.transcript.length >= 100) continue;
 
-            // OCRキューの結果から直接分析を保存（ローカルPrisma不要）
-            const analysisId = generateId();
+            const analysisId = existing?.id || generateId();
             saveAnalysis({
               id: analysisId,
               videoId: item.videoId,
@@ -121,19 +123,20 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
               thumbnailUrl: item.thumbnailUrl || "",
               views: item.views || 0,
               transcript: item.transcript || "",
-              analysisResult: null,
+              analysisResult: existing?.analysisResult || null,
               category: "other",
               tags: [],
-              createdAt: new Date().toISOString(),
+              createdAt: existing?.createdAt || new Date().toISOString(),
             });
 
             // プロジェクトの分析IDリストに追加
-            const newAnalyses = [...new Set([...project.analyses, analysisId])];
-            if (newAnalyses.length !== project.analyses.length) {
-              onUpdate({ ...project, analyses: newAnalyses });
+            if (!project.analyses.includes(analysisId)) {
+              onUpdate({ ...project, analyses: [...project.analyses, analysisId] });
             }
+            updated = true;
+            existingAnalyses = getAnalyses();
           }
-          setProgresses(buildProgresses());
+          if (updated) setProgresses(buildProgresses());
         }
       } catch { /* ignore */ }
     };
