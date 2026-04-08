@@ -110,31 +110,36 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
           for (const item of relevantDone) {
             // 既存の分析を探す
             const existing = existingAnalyses.find((a) => a.videoId === item.videoId);
-            // 十分なtranscriptがあればスキップ（短い場合は上書き）
-            if (existing && existing.transcript && existing.transcript.length >= 100) continue;
 
-            const analysisId = existing?.id || generateId();
-            saveAnalysis({
-              id: analysisId,
-              videoId: item.videoId,
-              videoUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
-              videoTitle: item.videoTitle || "",
-              channelName: item.channelName || "",
-              thumbnailUrl: item.thumbnailUrl || "",
-              views: item.views || 0,
-              transcript: item.transcript || "",
-              analysisResult: existing?.analysisResult || null,
-              category: "other",
-              tags: [],
-              createdAt: existing?.createdAt || new Date().toISOString(),
-            });
+            let analysisId: string;
+            if (existing && existing.transcript && existing.transcript.length >= 100) {
+              // 十分な分析がある → 新規保存はスキップだがプロジェクトには紐づける
+              analysisId = existing.id;
+            } else {
+              // 新規保存 or 上書き
+              analysisId = existing?.id || generateId();
+              saveAnalysis({
+                id: analysisId,
+                videoId: item.videoId,
+                videoUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
+                videoTitle: item.videoTitle || "",
+                channelName: item.channelName || "",
+                thumbnailUrl: item.thumbnailUrl || "",
+                views: item.views || 0,
+                transcript: item.transcript || "",
+                analysisResult: existing?.analysisResult || null,
+                category: "other",
+                tags: [],
+                createdAt: existing?.createdAt || new Date().toISOString(),
+              });
+              existingAnalyses = getAnalyses();
+            }
 
-            // プロジェクトの分析IDリストに追加
+            // プロジェクトに紐づけ
             if (!project.analyses.includes(analysisId)) {
               onUpdate({ ...project, analyses: [...project.analyses, analysisId] });
+              updated = true;
             }
-            updated = true;
-            existingAnalyses = getAnalyses();
           }
           if (updated) setProgresses(buildProgresses());
         }
