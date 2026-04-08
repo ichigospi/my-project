@@ -50,8 +50,9 @@ function mergeProfile(local: ChannelProfile, server: ChannelProfile | null): Cha
 
 export async function pullSharedSettings(): Promise<void> {
   try {
+    notifySync("syncing");
     const res = await fetch("/api/shared-settings");
-    if (!res.ok) return;
+    if (!res.ok) { notifySync("error"); return; }
     const data = await res.json();
 
     // APIキー: ローカルが空ならサーバーから、サーバーの方が新しければサーバーから
@@ -116,14 +117,28 @@ export async function pullSharedSettings(): Promise<void> {
       }
     }
 
+    notifySync("synced");
     console.log("[shared-sync] pulled & merged settings from server");
   } catch (e) {
+    notifySync("error");
     console.error("[shared-sync] pull failed:", e);
   }
 }
 
+// 同期ステータス通知
+type SyncListener = (status: "syncing" | "synced" | "error") => void;
+const syncListeners = new Set<SyncListener>();
+export function onSyncStatus(listener: SyncListener): () => void {
+  syncListeners.add(listener);
+  return () => syncListeners.delete(listener);
+}
+function notifySync(status: "syncing" | "synced" | "error") {
+  syncListeners.forEach((l) => l(status));
+}
+
 export async function pushSharedSettings(): Promise<{ ok: boolean; error?: string }> {
   try {
+    notifySync("syncing");
     const res = await fetch("/api/shared-settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -141,12 +156,15 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       }),
     });
     if (!res.ok) {
+      notifySync("error");
       const err = await res.json();
       return { ok: false, error: err.error };
     }
+    notifySync("synced");
     console.log("[shared-sync] pushed settings to server");
     return { ok: true };
   } catch (e) {
+    notifySync("error");
     return { ok: false, error: String(e) };
   }
 }

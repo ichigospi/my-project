@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { getApiKey } from "@/lib/channel-store";
 import { getTaskManager } from "@/lib/analysis-task-manager";
+import { onSyncStatus } from "@/lib/shared-sync";
 
 const navItems = [
   { href: "/workflow", label: "\u5de5\u7a0b\u8868", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" },
@@ -35,6 +36,7 @@ export default function Sidebar() {
   const [aiStatus, setAiStatus] = useState(false);
   const [analysisActive, setAnalysisActive] = useState(0);
   const [analysisProgress, setAnalysisProgress] = useState("");
+  const [syncStatus, setSyncStatus] = useState<"" | "syncing" | "synced" | "error">("");
   const userRole = (session?.user as { role?: string } | undefined)?.role || "";
 
   useEffect(() => {
@@ -55,7 +57,17 @@ export default function Sidebar() {
       setAnalysisProgress(current ? current.progress : "");
     });
 
-    return () => { clearInterval(interval); unsubscribe(); };
+    const unsubscribeSync = onSyncStatus((status) => {
+      setSyncStatus(status);
+      if (status === "synced") {
+        // 同期完了後にAPIキー状態も更新
+        setYtStatus(!!getApiKey("yt_api_key"));
+        setAiStatus(!!getApiKey("ai_api_key"));
+        setTimeout(() => setSyncStatus(""), 3000);
+      }
+    });
+
+    return () => { clearInterval(interval); unsubscribe(); unsubscribeSync(); };
   }, []);
 
   const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
@@ -126,6 +138,20 @@ export default function Sidebar() {
               <span className="text-sidebar-text/60 truncate">分析中({analysisActive}) {analysisProgress}</span>
             </div>
           )}
+          <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+            <span className={`w-2 h-2 rounded-full ${
+              syncStatus === "syncing" ? "bg-blue-400 animate-pulse" :
+              syncStatus === "synced" ? "bg-green-400" :
+              syncStatus === "error" ? "bg-red-400" :
+              "bg-green-400/50"
+            }`} />
+            <span className="text-sidebar-text/60">
+              {syncStatus === "syncing" ? "同期中..." :
+               syncStatus === "synced" ? "同期済み ✓" :
+               syncStatus === "error" ? "同期エラー" :
+               "同期済み"}
+            </span>
+          </div>
         </div>
         {session?.user && (
           <div className="flex items-center justify-between">
