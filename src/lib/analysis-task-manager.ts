@@ -226,7 +226,13 @@ class AnalysisTaskManager {
             body: JSON.stringify({ rawText: transcript, sampleImages: [], aiApiKey }),
           });
           const cleanData = await cleanRes.json();
-          if (cleanData.text?.trim()) transcript = cleanData.text.trim();
+          if (cleanData.text?.trim()) {
+            const cleaned = cleanData.text.trim();
+            // 整理後が元の20%未満に減った場合は整理前を採用
+            if (cleaned.length >= transcript.length * 0.2) {
+              transcript = cleaned;
+            }
+          }
         } catch { /* use raw */ }
       }
 

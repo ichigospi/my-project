@@ -163,8 +163,14 @@ export default function OcrPage() {
             });
             const cleanData = await cleanRes.json();
             if (cleanData.text?.trim()) {
-              addLog(`整理後: ${cleanData.text.trim().length}文字（元: ${transcript.length}文字）`);
-              transcript = cleanData.text.trim();
+              const cleaned = cleanData.text.trim();
+              addLog(`整理後: ${cleaned.length}文字（元: ${transcript.length}文字）`);
+              // 整理後が元の20%未満に減った場合は、整理前のテキストを採用
+              if (cleaned.length >= transcript.length * 0.2) {
+                transcript = cleaned;
+              } else {
+                addLog(`整理で削りすぎ（${Math.round(cleaned.length/transcript.length*100)}%）→ 整理前テキストを採用`);
+              }
             }
           } catch {}
         }
