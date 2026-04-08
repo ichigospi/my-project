@@ -30,6 +30,8 @@ export async function GET() {
       analysisLogs: map["shared_analysis_logs"] ? JSON.parse(map["shared_analysis_logs"]) : [],
       weeklySnapshots: map["shared_weekly_snapshots"] ? JSON.parse(map["shared_weekly_snapshots"]) : [],
       performanceRecords: map["shared_performance_records"] ? JSON.parse(map["shared_performance_records"]) : [],
+      ideas: map["shared_ideas"] ? JSON.parse(map["shared_ideas"]) : [],
+      ideaRules: map["shared_idea_rules"] ? JSON.parse(map["shared_idea_rules"]) : null,
     });
   } catch (e) {
     console.error("GET /api/shared-settings error:", e);
@@ -63,6 +65,8 @@ export async function POST(request: NextRequest) {
     if (body.analysisLogs !== undefined) updates.push({ key: "shared_analysis_logs", value: JSON.stringify(body.analysisLogs) });
     if (body.weeklySnapshots !== undefined) updates.push({ key: "shared_weekly_snapshots", value: JSON.stringify(body.weeklySnapshots) });
     if (body.performanceRecords !== undefined) updates.push({ key: "shared_performance_records", value: JSON.stringify(body.performanceRecords) });
+    if (body.ideas !== undefined) updates.push({ key: "shared_ideas", value: JSON.stringify(body.ideas) });
+    if (body.ideaRules !== undefined) updates.push({ key: "shared_idea_rules", value: JSON.stringify(body.ideaRules) });
 
     for (const { key, value } of updates) {
       const existing = await prisma.appSetting.findUnique({ where: { key } });

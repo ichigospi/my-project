@@ -13,6 +13,7 @@ import {
   type AnalysisLog, type WeeklySnapshot, type PerformanceRecord,
 } from "./project-store";
 import { getWinningPatterns, saveWinningPatterns } from "./winning-patterns-store";
+import { getIdeas, getIdeaRules, saveIdeaRules, type IdeaEntry, type IdeaRules } from "./idea-store";
 import type { RegisteredChannel } from "./channel-store";
 
 // IDベースでマージ（既存を消さない、サーバーにしかないものを追加）
@@ -172,6 +173,19 @@ export async function pullSharedSettings(): Promise<void> {
       }
     }
 
+    // 企画: マージ
+    if (data.ideas?.length > 0) {
+      const local: IdeaEntry[] = JSON.parse(localStorage.getItem("fortune_yt_ideas") || "[]");
+      const merged = mergeById(local, data.ideas);
+      localStorage.setItem("fortune_yt_ideas", JSON.stringify(merged));
+    }
+
+    // 企画ルール: ローカルが空ならサーバーから
+    if (data.ideaRules) {
+      const local = getIdeaRules();
+      if (!local.direction && !local.constraints) saveIdeaRules(data.ideaRules);
+    }
+
     notifySync("synced");
     console.log("[shared-sync] pulled & merged settings from server");
   } catch (e) {
@@ -215,6 +229,8 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         weeklySnapshots: getWeeklySnapshots(),
         performanceRecords: getPerformanceRecords(),
         winningPatterns: getWinningPatterns(),
+        ideas: getIdeas(),
+        ideaRules: getIdeaRules(),
       }),
     });
     if (!res.ok) {
