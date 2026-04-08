@@ -254,7 +254,7 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
       {/* ナビゲーション（常に表示） */}
       <div className="flex gap-3">
         <button onClick={() => onUpdate({ ...project, status: "title" })} className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
-        <button onClick={handleNext} disabled={selectedCount < 2}
+        <button onClick={handleNext} disabled={selectedCount < 1}
           className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
           {selectedCount}本を分析する →
         </button>

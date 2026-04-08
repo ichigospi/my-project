@@ -62,7 +62,12 @@ ${directionNote ? `\n方向性: ${directionNote}` : ""}
       return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
     }
 
-    const candidates = JSON.parse(match[0]);
+    let candidates;
+    try {
+      candidates = JSON.parse(match[0]);
+    } catch {
+      return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
+    }
     return NextResponse.json({ candidates });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "タイトル提案に失敗" }, { status: 500 });

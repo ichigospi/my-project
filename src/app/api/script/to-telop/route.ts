@@ -57,7 +57,12 @@ displaySecondsは文字数に応じて3-6秒で設定。`;
     }
     const match = text.match(/\[[\s\S]*\]/);
     if (!match) return NextResponse.json({ error: "パース失敗" }, { status: 500 });
-    const telops = JSON.parse(match[0]);
+    let telops;
+    try {
+      telops = JSON.parse(match[0]);
+    } catch {
+      return NextResponse.json({ error: "AIの応答をパースできませんでした。再度お試しください。" }, { status: 500 });
+    }
     const totalSeconds = telops.reduce((sum: number, t: { displaySeconds: number }) => sum + t.displaySeconds, 0);
     return NextResponse.json({ telops, totalSeconds, telopCount: telops.length });
   } catch {

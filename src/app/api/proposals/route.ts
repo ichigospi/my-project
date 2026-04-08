@@ -9,6 +9,8 @@ export async function GET() {
     if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const userId = (auth.session.user as { id: string }).id;
 
+    if (!prisma.scriptProposal) return NextResponse.json([]);
+
     const proposals = await prisma.scriptProposal.findMany({
       orderBy: { createdAt: "desc" },
     });

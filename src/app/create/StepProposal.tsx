@@ -290,10 +290,23 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       <div className="flex gap-3">
         <button onClick={() => onUpdate({ ...project, status: "analyzing" })}
           className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
-        {skeleton && (
+        {skeleton ? (
           <button onClick={() => onUpdate({ ...project, status: "script" })}
             className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90">
             この骨組みで台本を作成 →
+          </button>
+        ) : (
+          <button onClick={() => {
+            if (!skeleton) setError("骨組みが生成されていません。生成するか、スキップしてください。");
+          }}
+            className="px-6 py-3 rounded-lg bg-gray-200 text-gray-500 font-medium cursor-not-allowed">
+            この骨組みで台本を作成 →
+          </button>
+        )}
+        {!skeleton && (
+          <button onClick={() => onUpdate({ ...project, status: "script" })}
+            className="px-6 py-3 rounded-lg border border-accent text-accent font-medium hover:bg-accent/5">
+            スキップして台本作成へ →
           </button>
         )}
       </div>

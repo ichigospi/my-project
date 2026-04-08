@@ -19,6 +19,23 @@ interface VideoProgress {
 export default function StepAnalyze({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const mgr = getTaskManager();
 
+  const [ocrDoneVideoIds, setOcrDoneVideoIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetch("/api/ocr-queue")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.queue) return;
+        const doneIds = new Set(
+          (data.queue as { videoId: string; status: string }[])
+            .filter((q) => q.status === "done")
+            .map((q) => q.videoId)
+        );
+        if (doneIds.size > 0) setOcrDoneVideoIds(doneIds);
+      })
+      .catch(() => {});
+  }, []);
+
   const buildProgresses = useCallback((): VideoProgress[] => {
     const existingAnalyses = getAnalyses();
     const analyzedVideoIds = new Set(
@@ -38,8 +55,8 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
           selected: false, taskId: task.id, analysisId: task.analysisId,
         };
       }
-      // 分析済みか
-      if (analyzedVideoIds.has(v.videoId)) {
+      // 分析済みか（ローカルストア or OCRキュー完了）
+      if (analyzedVideoIds.has(v.videoId) || ocrDoneVideoIds.has(v.videoId)) {
         return {
           videoId: v.videoId, title: v.title,
           status: "done" as const, progress: "分析済み",
@@ -52,7 +69,7 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
         selected: true,
       };
     });
-  }, [project, mgr]);
+  }, [project, mgr, ocrDoneVideoIds]);
 
   const [progresses, setProgresses] = useState<VideoProgress[]>(buildProgresses);
   const [error, setError] = useState("");
