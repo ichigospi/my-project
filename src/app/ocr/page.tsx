@@ -169,7 +169,7 @@ export default function OcrPage() {
         body: JSON.stringify({ action: "complete", id: item.id, transcript }),
       });
 
-      setProgress("完了！");
+      setProgress(`完了！（${transcript.length}文字取得）`);
       fetchQueue();
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "読み取り失敗";

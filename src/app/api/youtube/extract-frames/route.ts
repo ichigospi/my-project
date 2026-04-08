@@ -9,6 +9,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { videoId, skipSubtitle } = body;
 
+  console.log(`[extract-frames] videoId=${videoId} skipSubtitle=${!!skipSubtitle}`);
+
   if (!videoId) {
     return NextResponse.json({ error: "videoId が必要です" }, { status: 400 });
   }
@@ -66,13 +68,14 @@ export async function POST(request: NextRequest) {
         const transcriptRes = await fetch(`${request.nextUrl.origin}/api/youtube/transcript?videoId=${videoId}`);
         const transcriptData = await transcriptRes.json();
         if (transcriptData.transcript) {
-          // 非コンテンツ（[Music], [音楽], [拍手] 等）を除去して実質的な文字数をチェック
-          const cleaned = transcriptData.transcript
+          const raw = transcriptData.transcript;
+          const cleaned = raw
             .replace(/\[(?:music|音楽|拍手|笑|applause|laughter)\]/gim, "")
             .replace(/\s+/g, " ")
             .trim();
+          console.log(`[extract-frames] subtitle raw=${raw.length}chars cleaned=${cleaned.length}chars`);
           if (cleaned.length > 100) {
-            // 字幕が取得できた場合はフレーム抽出をスキップして字幕テキストを返す
+            console.log(`[extract-frames] → 字幕採用（${cleaned.length}文字）`);
             return NextResponse.json({
               frames: [],
               frameCount: 0,
@@ -80,8 +83,13 @@ export async function POST(request: NextRequest) {
               method: "subtitle",
             });
           }
+          console.log(`[extract-frames] → 字幕短すぎ、フレーム抽出へ`);
+        } else {
+          console.log(`[extract-frames] → 字幕なし`);
         }
-      } catch { /* 字幕取得失敗は無視してフレーム抽出に進む */ }
+      } catch (e) { console.log(`[extract-frames] subtitle error:`, e); }
+    } else {
+      console.log(`[extract-frames] skipSubtitle=true, 字幕スキップ`);
     }
 
     // 複数のプレイヤークライアントを順番に試す（Cookie有無で順序変更）
@@ -154,6 +162,8 @@ export async function POST(request: NextRequest) {
     });
 
     rmSync(tempDir, { recursive: true, force: true });
+
+    console.log(`[extract-frames] → フレーム${frames.length}枚抽出完了`);
 
     return NextResponse.json({
       frames,
