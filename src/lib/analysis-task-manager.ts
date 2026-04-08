@@ -152,8 +152,11 @@ class AnalysisTaskManager {
 
       let transcript = "";
 
-      // 字幕APIで取得できた場合はOCRスキップ（ただし短すぎる場合はOCRにフォールバック）
-      if (frameData.transcript && frameData.method === "subtitle" && frameData.transcript.length >= 100) {
+      // 字幕APIで取得できた場合はOCRスキップ（ただし実質コンテンツが短すぎる場合はOCRにフォールバック）
+      const cleanedTranscript = frameData.transcript
+        ? frameData.transcript.replace(/\[(?:music|音楽|拍手|笑|applause|laughter)\]/gim, "").replace(/\s+/g, " ").trim()
+        : "";
+      if (frameData.method === "subtitle" && cleanedTranscript.length >= 100) {
         this.updateTask(task.id, { status: "cleanup", progress: "字幕から取得済み（OCRスキップ）" });
         transcript = frameData.transcript;
       } else {

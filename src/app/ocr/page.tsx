@@ -77,8 +77,11 @@ export default function OcrPage() {
 
       let transcript = "";
 
-      if (frameData.transcript && frameData.method === "subtitle" && frameData.transcript.length >= 100) {
-        transcript = frameData.transcript;
+      const cleanedSub = frameData.transcript
+        ? frameData.transcript.replace(/\[(?:music|音楽|拍手|笑|applause|laughter)\]/gim, "").replace(/\s+/g, " ").trim()
+        : "";
+      if (frameData.method === "subtitle" && cleanedSub.length >= 100) {
+        transcript = cleanedSub;
         setProgress("字幕から取得完了");
       } else if (frameData.error) {
         throw new Error(frameData.error);

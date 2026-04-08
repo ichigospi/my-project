@@ -65,14 +65,21 @@ export async function POST(request: NextRequest) {
       try {
         const transcriptRes = await fetch(`${request.nextUrl.origin}/api/youtube/transcript?videoId=${videoId}`);
         const transcriptData = await transcriptRes.json();
-        if (transcriptData.transcript && transcriptData.transcript.length > 100 && !transcriptData.transcript.match(/^\[music\]\s*$/gim)) {
-          // 字幕が取得できた場合はフレーム抽出をスキップして字幕テキストを返す
-          return NextResponse.json({
-            frames: [],
-            frameCount: 0,
-            transcript: transcriptData.transcript,
-            method: "subtitle",
-          });
+        if (transcriptData.transcript) {
+          // 非コンテンツ（[Music], [音楽], [拍手] 等）を除去して実質的な文字数をチェック
+          const cleaned = transcriptData.transcript
+            .replace(/\[(?:music|音楽|拍手|笑|applause|laughter)\]/gim, "")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (cleaned.length > 100) {
+            // 字幕が取得できた場合はフレーム抽出をスキップして字幕テキストを返す
+            return NextResponse.json({
+              frames: [],
+              frameCount: 0,
+              transcript: cleaned,
+              method: "subtitle",
+            });
+          }
         }
       } catch { /* 字幕取得失敗は無視してフレーム抽出に進む */ }
     }
