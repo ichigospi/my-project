@@ -300,16 +300,29 @@ export default function OcrPage() {
         <>
           <h2 className="font-semibold text-sm mb-3">読み取り完了（{doneItems.length}件）</h2>
           <div className="space-y-2">
-            {doneItems.map((item) => (
-              <div key={item.id} className="bg-green-50 rounded-lg p-4 border border-green-100 flex items-center gap-4">
-                <div className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{item.videoTitle}</p>
-                  <p className="text-xs text-green-600">{item.transcript?.length || 0}文字取得済み</p>
+            {doneItems.map((item) => {
+              const tooShort = (item.transcript?.length || 0) < 100;
+              return (
+                <div key={item.id} className={`${tooShort ? "bg-yellow-50 border-yellow-200" : "bg-green-50 border-green-100"} rounded-lg p-4 border flex items-center gap-4`}>
+                  <div className={`w-3 h-3 rounded-full shrink-0 ${tooShort ? "bg-yellow-500" : "bg-green-500"}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{item.videoTitle}</p>
+                    <p className={`text-xs ${tooShort ? "text-yellow-600" : "text-green-600"}`}>
+                      {item.transcript?.length || 0}文字取得済み
+                      {tooShort && " （少なすぎます）"}
+                    </p>
+                  </div>
+                  {tooShort ? (
+                    <button onClick={() => retryOne(item)} disabled={processing}
+                      className="px-3 py-1.5 rounded-lg text-xs bg-yellow-500 text-white hover:bg-yellow-600 disabled:opacity-50 shrink-0">
+                      再読み取り
+                    </button>
+                  ) : (
+                    <span className="text-xs text-green-600 shrink-0">✓ 完了</span>
+                  )}
                 </div>
-                <span className="text-xs text-green-600 shrink-0">✓ 完了</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
