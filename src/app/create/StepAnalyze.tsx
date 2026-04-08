@@ -95,18 +95,44 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
         const data = await res.json();
         if (!data.queue) return;
 
-        const completedItems = (data.queue as { videoId: string; status: string; transcript?: string }[])
+        const completedItems = (data.queue as { id: string; videoId: string; status: string; transcript?: string; videoTitle?: string; channelName?: string; thumbnailUrl?: string; views?: number }[])
           .filter((q) => q.status === "done" && q.transcript);
         if (completedItems.length === 0) return;
 
-        // 完了したOCRアイテムのvideoIdをチェック
         const videoIds = new Set(project.referenceVideos.map((v) => v.videoId));
         const relevantDone = completedItems.filter((q) => videoIds.has(q.videoId));
 
         if (relevantDone.length > 0) {
-          // サーバーから分析ライブラリを同期して最新状態を取得
-          const { syncFromServer } = await import("@/lib/script-analysis-store");
-          await syncFromServer();
+          const { saveAnalysis, generateId, getAnalyses } = await import("@/lib/script-analysis-store");
+          const existingAnalyses = getAnalyses();
+
+          for (const item of relevantDone) {
+            // 既に保存済みならスキップ
+            if (existingAnalyses.some((a) => a.videoId === item.videoId)) continue;
+
+            // OCRキューの結果から直接分析を保存（ローカルPrisma不要）
+            const analysisId = generateId();
+            saveAnalysis({
+              id: analysisId,
+              videoId: item.videoId,
+              videoUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
+              videoTitle: item.videoTitle || "",
+              channelName: item.channelName || "",
+              thumbnailUrl: item.thumbnailUrl || "",
+              views: item.views || 0,
+              transcript: item.transcript || "",
+              analysisResult: null,
+              category: "other",
+              tags: [],
+              createdAt: new Date().toISOString(),
+            });
+
+            // プロジェクトの分析IDリストに追加
+            const newAnalyses = [...new Set([...project.analyses, analysisId])];
+            if (newAnalyses.length !== project.analyses.length) {
+              onUpdate({ ...project, analyses: newAnalyses });
+            }
+          }
           setProgresses(buildProgresses());
         }
       } catch { /* ignore */ }
@@ -115,7 +141,7 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
     pollOcrQueue();
     const interval = setInterval(pollOcrQueue, 15000);
     return () => clearInterval(interval);
-  }, [project.referenceVideos, buildProgresses]);
+  }, [project, onUpdate, buildProgresses]);
 
   const isRunning = mgr.isRunning();
 

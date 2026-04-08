@@ -81,33 +81,31 @@ export async function POST(request: NextRequest) {
         item.completedAt = new Date().toISOString();
         await saveQueue(queue);
 
-        // 分析ライブラリにも自動保存（Railway側で即座に「分析済み」として見える）
-        try {
-          const analysisId = `ocr_${item.videoId}_${Date.now().toString(36)}`;
-          await prisma.scriptAnalysis.upsert({
-            where: { id: analysisId },
-            update: {
-              transcript: body.transcript || "",
-            },
-            create: {
-              id: analysisId,
-              userId: auth.session.user && typeof auth.session.user === "object" && "id" in auth.session.user
-                ? (auth.session.user as { id: string }).id : "system",
-              videoId: item.videoId,
-              videoUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
-              videoTitle: item.videoTitle || "",
-              channelName: item.channelName || "",
-              thumbnailUrl: item.thumbnailUrl || "",
-              views: item.views || 0,
-              transcript: body.transcript || "",
-              analysisResult: null,
-              category: "other",
-              tags: "[]",
-              score: null,
-            },
-          });
-        } catch (e) {
-          console.error("OCR complete: failed to save analysis:", e);
+        // 分析ライブラリにも自動保存（Prismaが使える環境のみ）
+        if (prisma?.scriptAnalysis) {
+          try {
+            const analysisId = `ocr_${item.videoId}_${Date.now().toString(36)}`;
+            await prisma.scriptAnalysis.upsert({
+              where: { id: analysisId },
+              update: { transcript: body.transcript || "" },
+              create: {
+                id: analysisId,
+                userId: auth.session.user && typeof auth.session.user === "object" && "id" in auth.session.user
+                  ? (auth.session.user as { id: string }).id : "system",
+                videoId: item.videoId,
+                videoUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
+                videoTitle: item.videoTitle || "",
+                channelName: item.channelName || "",
+                thumbnailUrl: item.thumbnailUrl || "",
+                views: item.views || 0,
+                transcript: body.transcript || "",
+                analysisResult: null,
+                category: "other",
+                tags: "[]",
+                score: null,
+              },
+            });
+          } catch { /* ローカル環境ではスキップ */ }
         }
       }
       return NextResponse.json({ ok: true });
