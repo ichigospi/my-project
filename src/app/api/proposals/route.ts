@@ -10,7 +10,6 @@ export async function GET() {
     const userId = (auth.session.user as { id: string }).id;
 
     const proposals = await prisma.scriptProposal.findMany({
-      where: { userId },
       orderBy: { createdAt: "desc" },
     });
 
