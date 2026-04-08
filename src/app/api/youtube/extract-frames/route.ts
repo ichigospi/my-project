@@ -92,52 +92,63 @@ export async function POST(request: NextRequest) {
       console.log(`[extract-frames] skipSubtitle=true, 字幕スキップ`);
     }
 
-    // 複数のプレイヤークライアントを順番に試す（Cookie有無で順序変更）
-    const clients = cookiePath ? ["web", "web_creator", "mweb", "tv", "ios"] : ["tv", "ios", "mediaconnect", "web"];
+    // 複数のプレイヤークライアントを順番に試す
+    const clients = ["tv", "ios", "mediaconnect", "web", "web_creator", "mweb"];
+    // ローカル: Cookie無し → 各ブラウザCookieの順で試す
+    // 本番: Cookie有無でクライアント順序変更
+    const cookieStrategies: { label: string; args: string[] }[] = [];
+    if (isLocal) {
+      cookieStrategies.push({ label: "no-cookie", args: [] });
+      cookieStrategies.push({ label: "chrome", args: ["--cookies-from-browser", "chrome"] });
+      cookieStrategies.push({ label: "safari", args: ["--cookies-from-browser", "safari"] });
+      cookieStrategies.push({ label: "firefox", args: ["--cookies-from-browser", "firefox"] });
+    } else if (cookiePath && existsSync(cookiePath)) {
+      cookieStrategies.push({ label: "cookie-file", args: ["--cookies", cookiePath] });
+      cookieStrategies.push({ label: "no-cookie", args: [] });
+    } else {
+      cookieStrategies.push({ label: "no-cookie", args: [] });
+    }
+
     let downloaded = false;
     let lastError = "";
 
-    for (const client of clients) {
-      try {
-        const args: string[] = [];
-        if (isLocal) {
-          // ローカル: ブラウザのCookieを直接参照（最も確実）
-          args.push("--cookies-from-browser", "chrome");
-        } else if (cookiePath && existsSync(cookiePath)) {
-          args.push("--cookies", cookiePath);
-        }
-        args.push(
-          "-f", "bestvideo[height<=480]/best[height<=480]/bestvideo/best",
-          "-o", videoPath,
-          "--no-playlist",
-          "--socket-timeout", "30",
-          "--no-check-certificates",
-          "--geo-bypass",
-          "--extractor-args", `youtube:player_client=${client}`,
-          videoUrl,
-        );
+    for (const strategy of cookieStrategies) {
+      if (downloaded) break;
+      for (const client of clients) {
+        try {
+          const args: string[] = [
+            ...strategy.args,
+            "-f", "bestvideo[height<=480]/best[height<=480]/bestvideo/best",
+            "-o", videoPath,
+            "--no-playlist",
+            "--socket-timeout", "30",
+            "--no-check-certificates",
+            "--geo-bypass",
+            "--extractor-args", `youtube:player_client=${client}`,
+            videoUrl,
+          ];
 
-        execFileSync(ytdlpPath, args, { timeout: 300000, env: execEnv, stdio: "pipe" });
+          console.log(`[extract-frames] trying: ${strategy.label} + ${client}`);
+          execFileSync(ytdlpPath, args, { timeout: 300000, env: execEnv, stdio: "pipe" });
 
-        if (existsSync(videoPath)) {
-          downloaded = true;
-          break;
+          if (existsSync(videoPath)) {
+            console.log(`[extract-frames] download success: ${strategy.label} + ${client}`);
+            downloaded = true;
+            break;
+          }
+        } catch (e) {
+          lastError = e instanceof Error ? e.message : String(e);
+          if ((e as { stderr?: Buffer }).stderr) {
+            lastError = (e as { stderr: Buffer }).stderr.toString().slice(-500);
+          }
+          continue;
         }
-      } catch (e) {
-        lastError = e instanceof Error ? e.message : String(e);
-        if ((e as { stderr?: Buffer }).stderr) {
-          lastError = (e as { stderr: Buffer }).stderr.toString().slice(-500);
-        }
-        continue;
       }
     }
 
     if (!downloaded) {
-      console.error("yt-dlp failed:", lastError);
-      const msg = cookiePath
-        ? `動画のダウンロードに失敗しました。Cookieが期限切れの可能性があります。設定ページからCookieを再アップロードしてください。\n詳細: ${lastError.slice(0, 200)}`
-        : "動画のダウンロードに失敗しました。設定ページからYouTubeのCookieをアップロードしてください。";
-      return NextResponse.json({ error: msg }, { status: 500 });
+      console.error("[extract-frames] all strategies failed:", lastError.slice(0, 300));
+      return NextResponse.json({ error: `動画のダウンロードに全て失敗しました。\n最後のエラー: ${lastError.slice(0, 200)}` }, { status: 500 });
     }
 
     // 3秒間隔でフレーム抽出（重複除去なし＝全フレーム送信）
