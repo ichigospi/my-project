@@ -54,6 +54,7 @@ export default function OcrPage() {
   useEffect(() => { fetchQueue(); }, []);
 
   const pendingItems = queue.filter((q) => q.status === "pending");
+  const errorItems = queue.filter((q) => q.status === "error");
   const doneItems = queue.filter((q) => q.status === "done");
 
   // 1本の動画を読み取り
@@ -72,16 +73,28 @@ export default function OcrPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoId: item.videoId }),
       });
-      const frameData = await frameRes.json();
+      let frameData = await frameRes.json();
 
       let transcript = "";
 
-      if (frameData.transcript && frameData.method === "subtitle") {
+      if (frameData.transcript && frameData.method === "subtitle" && frameData.transcript.length >= 100) {
         transcript = frameData.transcript;
         setProgress("字幕から取得完了");
       } else if (frameData.error) {
         throw new Error(frameData.error);
       } else {
+        // 字幕が短すぎた場合はフレーム抽出をやり直す
+        if (frameData.method === "subtitle" && (!frameData.frames || frameData.frames.length === 0)) {
+          setProgress("字幕が短すぎるため、フレーム抽出でリトライ...");
+          const retryRes = await fetch("/api/youtube/extract-frames", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ videoId: item.videoId, skipSubtitle: true }),
+          });
+          frameData = await retryRes.json();
+          if (frameData.error) throw new Error(frameData.error);
+        }
+
         // Step 2: OCR
         const rawFrames = frameData.frames as string[];
         const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
@@ -164,6 +177,16 @@ export default function OcrPage() {
       setProcessing(false);
       setCurrentVideo("");
     }
+  };
+
+  // エラー動画をリトライ
+  const retryOne = async (item: QueueItem) => {
+    await fetch("/api/ocr-queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "retry", id: item.id }),
+    });
+    await fetchQueue();
   };
 
   // 全件一括処理
@@ -249,6 +272,28 @@ export default function OcrPage() {
           </div>
         ))}
       </div>
+
+      {/* エラー */}
+      {errorItems.length > 0 && (
+        <>
+          <h2 className="font-semibold text-sm mb-3 text-red-600">エラー（{errorItems.length}件）</h2>
+          <div className="space-y-2 mb-8">
+            {errorItems.map((item) => (
+              <div key={item.id} className="bg-red-50 rounded-lg p-4 border border-red-200 flex items-center gap-4">
+                {item.thumbnailUrl && <img src={item.thumbnailUrl} alt="" className="w-24 h-14 rounded object-cover shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{item.videoTitle}</p>
+                  <p className="text-xs text-red-500">{item.error || "読み取り失敗"}</p>
+                </div>
+                <button onClick={() => retryOne(item)} disabled={processing}
+                  className="px-3 py-1.5 rounded-lg text-xs bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 shrink-0">
+                  リトライ
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* 完了済み */}
       {doneItems.length > 0 && (

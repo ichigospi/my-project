@@ -75,10 +75,40 @@ export async function POST(request: NextRequest) {
     if (body.action === "complete") {
       const idx = queue.findIndex((q) => q.id === body.id);
       if (idx >= 0) {
-        queue[idx].status = "done";
-        queue[idx].transcript = body.transcript;
-        queue[idx].completedAt = new Date().toISOString();
+        const item = queue[idx];
+        item.status = "done";
+        item.transcript = body.transcript;
+        item.completedAt = new Date().toISOString();
         await saveQueue(queue);
+
+        // 分析ライブラリにも自動保存（Railway側で即座に「分析済み」として見える）
+        try {
+          const analysisId = `ocr_${item.videoId}_${Date.now().toString(36)}`;
+          await prisma.scriptAnalysis.upsert({
+            where: { id: analysisId },
+            update: {
+              transcript: body.transcript || "",
+            },
+            create: {
+              id: analysisId,
+              userId: auth.session.user && typeof auth.session.user === "object" && "id" in auth.session.user
+                ? (auth.session.user as { id: string }).id : "system",
+              videoId: item.videoId,
+              videoUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
+              videoTitle: item.videoTitle || "",
+              channelName: item.channelName || "",
+              thumbnailUrl: item.thumbnailUrl || "",
+              views: item.views || 0,
+              transcript: body.transcript || "",
+              analysisResult: null,
+              category: "other",
+              tags: "[]",
+              score: null,
+            },
+          });
+        } catch (e) {
+          console.error("OCR complete: failed to save analysis:", e);
+        }
       }
       return NextResponse.json({ ok: true });
     }
@@ -88,6 +118,16 @@ export async function POST(request: NextRequest) {
       if (idx >= 0) {
         queue[idx].status = "error";
         queue[idx].error = body.error;
+        await saveQueue(queue);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "retry") {
+      const idx = queue.findIndex((q) => q.id === body.id);
+      if (idx >= 0) {
+        queue[idx].status = "pending";
+        queue[idx].error = undefined;
         await saveQueue(queue);
       }
       return NextResponse.json({ ok: true });

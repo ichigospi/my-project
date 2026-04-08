@@ -144,7 +144,7 @@ class AnalysisTaskManager {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoId: task.videoId }),
       });
-      const frameData = await frameRes.json();
+      let frameData = await frameRes.json();
       if (frameData.error) {
         this.updateTask(task.id, { status: "error", progress: frameData.error });
         return;
@@ -152,11 +152,27 @@ class AnalysisTaskManager {
 
       let transcript = "";
 
-      // 字幕APIで取得できた場合はOCRスキップ
-      if (frameData.transcript && frameData.method === "subtitle") {
+      // 字幕APIで取得できた場合はOCRスキップ（ただし短すぎる場合はOCRにフォールバック）
+      if (frameData.transcript && frameData.method === "subtitle" && frameData.transcript.length >= 100) {
         this.updateTask(task.id, { status: "cleanup", progress: "字幕から取得済み（OCRスキップ）" });
         transcript = frameData.transcript;
       } else {
+        // 字幕が短すぎた場合はフレーム抽出をやり直す
+        if (frameData.method === "subtitle" && (!frameData.frames || frameData.frames.length === 0)) {
+          this.updateTask(task.id, { status: "extracting", progress: "字幕が短すぎるため、フレーム抽出でリトライ..." });
+          const retryRes = await fetch("/api/youtube/extract-frames", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ videoId: task.videoId, skipSubtitle: true }),
+          });
+          const retryData = await retryRes.json();
+          if (retryData.error) {
+            this.updateTask(task.id, { status: "error", progress: retryData.error });
+            return;
+          }
+          frameData = retryData;
+        }
+
         // Step 2: OCR
         const rawFrames = frameData.frames as string[];
         const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
