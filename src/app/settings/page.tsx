@@ -46,7 +46,7 @@ function SettingsContent() {
   const [copiedToken, setCopiedToken] = useState("");
   const [showYtKey, setShowYtKey] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
-  const [cookieStatus, setCookieStatus] = useState<{ hasCookies: boolean; size: number } | null>(null);
+  const [cookieStatus, setCookieStatus] = useState<{ hasCookies: boolean; size: number; uploadedAt?: string; expiresAt?: string; isExpired?: boolean } | null>(null);
   const [uploadingCookie, setUploadingCookie] = useState(false);
   const [cookieResult, setCookieResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -417,10 +417,21 @@ function SettingsContent() {
           </p>
 
           {cookieStatus?.hasCookies ? (
-            <div className="flex items-center gap-3 mb-3">
-              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-50 text-green-700">
-                <span className="w-2 h-2 rounded-full bg-green-500" /> Cookie設定済み（{Math.round((cookieStatus.size || 0) / 1024)}KB）
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${
+                cookieStatus.isExpired ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${cookieStatus.isExpired ? "bg-red-500" : "bg-green-500"}`} />
+                {cookieStatus.isExpired ? "Cookie期限切れ" : "Cookie設定済み"}（{Math.round((cookieStatus.size || 0) / 1024)}KB）
               </span>
+              {cookieStatus.uploadedAt && (
+                <span className="text-xs text-gray-400">
+                  アップロード: {new Date(cookieStatus.uploadedAt).toLocaleDateString("ja-JP")}
+                </span>
+              )}
+              {cookieStatus.isExpired && (
+                <span className="text-xs text-red-500 font-medium">→ 再アップロードが必要です</span>
+              )}
               {isAdmin && (
                 <button onClick={handleCookieDelete} className="text-sm text-gray-500 hover:text-danger">削除</button>
               )}
@@ -445,15 +456,34 @@ function SettingsContent() {
             </p>
           )}
 
-          <div className="mt-3 p-3 bg-amber-50 rounded-lg">
-            <p className="text-xs text-amber-800"><strong>Cookieの取得方法:</strong></p>
-            <ol className="text-xs text-amber-700 mt-1 space-y-1 list-decimal list-inside">
-              <li>Chromeで <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener noreferrer" className="text-accent underline">Get cookies.txt LOCALLY</a> 拡張機能をインストール</li>
-              <li>YouTubeにログインした状態で <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" className="text-accent underline">youtube.com</a> を開く</li>
-              <li>拡張機能のアイコンをクリック →「Export」でcookies.txtをダウンロード</li>
-              <li>ダウンロードしたファイルを上のボタンからアップロード</li>
+          <div className="mt-3 p-4 bg-amber-50 rounded-lg space-y-3">
+            <div>
+              <p className="text-sm font-bold text-amber-900">Cookieの設定方法（全ユーザー共通）</p>
+              <p className="text-xs text-amber-700 mt-1">動画のフレーム抽出（自動テロップ読み取り）にはYouTubeのCookieが必要です。</p>
+            </div>
+            <ol className="text-sm text-amber-800 space-y-2 list-decimal list-inside">
+              <li>
+                Chromeに <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener noreferrer" className="text-accent underline font-medium">Get cookies.txt LOCALLY</a> をインストール
+              </li>
+              <li>
+                <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" className="text-accent underline">youtube.com</a> にログインした状態で開く
+              </li>
+              <li>
+                右上の拡張機能アイコン → <strong>「Export」</strong> をクリック
+              </li>
+              <li>
+                ダウンロードされた <strong>cookies.txt</strong> を上のボタンからアップロード
+              </li>
             </ol>
-            <p className="text-xs text-amber-600 mt-2">※ Cookieは数週間で期限切れになります。読み取りが失敗したら再アップロードしてください。</p>
+            <div className="bg-amber-100 rounded-lg p-3">
+              <p className="text-xs font-bold text-amber-900">⚠ Cookieの注意点</p>
+              <ul className="text-xs text-amber-800 mt-1 space-y-1">
+                <li>• Cookieは <strong>2-7日程度</strong>で期限切れになります</li>
+                <li>• 「動画のダウンロードに失敗」エラーが出たら再アップロードしてください</li>
+                <li>• 誰か1人がアップロードすれば全ユーザーに適用されます</li>
+                <li>• YouTubeからログアウトするとCookieも無効になります</li>
+              </ul>
+            </div>
           </div>
         </div>
 

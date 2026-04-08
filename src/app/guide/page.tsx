@@ -129,6 +129,59 @@ export default function GuidePage() {
             </div>
           </div>
         )}
+        {/* トラブルシューティング */}
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-semibold text-lg mb-3">よくあるエラーと対処法</h2>
+
+          <div className="space-y-4">
+            <div className="bg-red-50 rounded-lg p-4 border border-red-100">
+              <h3 className="text-sm font-bold text-red-800 mb-2">「Overloaded」エラー</h3>
+              <p className="text-sm text-red-700 mb-2">
+                Claude AIのサーバーが混雑している状態です。自分のAPIキーの問題ではありません。
+              </p>
+              <div className="text-sm text-red-700 space-y-1">
+                <p className="font-medium">対処法:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>リトライボタンを押す</strong> - 多くの場合2-3回で成功します</li>
+                  <li><strong>数分待ってから再試行</strong> - 混雑は通常すぐに解消されます</li>
+                  <li><strong>時間帯を変える</strong> - 日本時間の日中（10-18時）は比較的空いています</li>
+                  <li><strong>一度に大量の分析を避ける</strong> - 1-2本ずつ分析するとエラーが出にくいです</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
+              <h3 className="text-sm font-bold text-amber-800 mb-2">「動画のダウンロードに失敗」/ Cookie期限切れ</h3>
+              <p className="text-sm text-amber-700 mb-2">
+                YouTubeのボット対策により、動画のダウンロードにはCookieが必要です。Cookieは2-7日程度で期限切れになります。
+              </p>
+              <div className="text-sm text-amber-700 space-y-1">
+                <p className="font-medium">対処法:</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Chromeに「Get cookies.txt LOCALLY」拡張機能をインストール</li>
+                  <li>YouTubeにログインした状態でyoutube.comを開く</li>
+                  <li>拡張機能アイコン → Export でcookies.txtをダウンロード</li>
+                  <li><a href="/settings" className="text-accent underline">設定ページ</a>でアップロード</li>
+                </ol>
+                <p className="text-xs mt-2"><strong>ポイント:</strong> 誰か1人がアップロードすれば全ユーザーに適用されます。</p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+              <h3 className="text-sm font-bold text-blue-800 mb-2">「JSON形式が不正です」エラー</h3>
+              <p className="text-sm text-blue-700 mb-2">
+                AIが正しいJSON形式で応答できなかった場合に発生します。通常はリトライで解決します。
+              </p>
+              <div className="text-sm text-blue-700 space-y-1">
+                <p className="font-medium">対処法:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>リトライボタンを押す</strong> - 自動で再試行されます</li>
+                  <li>繰り返し発生する場合は、入力テキストが長すぎる可能性があります</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
