@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getApiKey, getChannels } from "@/lib/channel-store";
+import { getAnalyses } from "@/lib/script-analysis-store";
+import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { GENRE_LABELS } from "@/lib/project-store";
 import type { ScriptProject, ReferenceVideo, Genre } from "@/lib/project-store";
@@ -18,6 +20,12 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fetched, setFetched] = useState(project.referenceVideos.length > 0);
+  const [tab, setTab] = useState<"search" | "analyzed">("search");
+  const [analyzedVideos, setAnalyzedVideos] = useState<ScriptAnalysis[]>([]);
+
+  useEffect(() => {
+    setAnalyzedVideos(getAnalyses());
+  }, []);
 
   const fetchVideos = async () => {
     const ytApiKey = getApiKey("yt_api_key");
@@ -96,6 +104,22 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
     setVideos((prev) => prev.map((v) => v.videoId === videoId ? { ...v, selected: !v.selected } : v));
   };
 
+  const addFromAnalyzed = (analysis: ScriptAnalysis) => {
+    // 既に追加済みならスキップ
+    if (videos.some((v) => v.videoId === analysis.videoId)) return;
+    if (selectedCount >= 3) return;
+    const ref: ReferenceVideo = {
+      videoId: analysis.videoId,
+      title: analysis.videoTitle,
+      channelName: analysis.channelName,
+      views: analysis.views,
+      thumbnailUrl: analysis.thumbnailUrl,
+      selected: true,
+    };
+    setVideos((prev) => [ref, ...prev]);
+    setFetched(true);
+  };
+
   const selectedCount = videos.filter((v) => v.selected).length;
 
   const handleNext = () => {
@@ -105,11 +129,70 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
   return (
     <div>
       <h2 className="text-xl font-bold mb-2">③ 参考動画を選択（2-3本）</h2>
-      <p className="text-sm text-gray-500 mb-6">
-        「{project.title}」 · {GENRE_LABELS[project.genre]}の競合人気動画（直近1ヶ月・長尺のみ）
+      <p className="text-sm text-gray-500 mb-4">
+        「{project.title}」 · {GENRE_LABELS[project.genre]}の競合人気動画
       </p>
 
-      {!fetched && (
+      {/* タブ: 検索 / 分析済みから選ぶ */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200">
+        <button onClick={() => setTab("search")}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px ${tab === "search" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+          競合動画から検索
+        </button>
+        <button onClick={() => setTab("analyzed")}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px ${tab === "analyzed" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+          分析済みから選ぶ（{analyzedVideos.length}件）
+        </button>
+      </div>
+
+      {/* 選択中の表示 */}
+      {selectedCount > 0 && (
+        <div className="bg-accent/5 rounded-lg p-3 mb-4 flex flex-wrap gap-2">
+          {videos.filter((v) => v.selected).map((v) => (
+            <span key={v.videoId} className="text-xs bg-white rounded-full px-3 py-1 border border-accent/20 flex items-center gap-1">
+              {v.title.substring(0, 25)}...
+              <button onClick={() => toggleSelect(v.videoId)} className="text-gray-400 hover:text-red-500">×</button>
+            </span>
+          ))}
+          <span className="text-xs text-gray-500 self-center">{selectedCount}/3</span>
+        </div>
+      )}
+
+      {/* 分析済みタブ */}
+      {tab === "analyzed" && (
+        <div className="space-y-2 mb-6 max-h-[50vh] overflow-y-auto">
+          {analyzedVideos.length === 0 && (
+            <p className="text-center py-8 text-gray-400 text-sm">分析済みの動画がありません。台本分析で動画を分析してください。</p>
+          )}
+          {analyzedVideos.map((a) => {
+            const alreadyAdded = videos.some((v) => v.videoId === a.videoId && v.selected);
+            return (
+              <div key={a.id} className={`flex items-center gap-4 p-3 rounded-lg ${alreadyAdded ? "bg-accent/5 border border-accent/30" : "bg-card-bg border border-gray-100"}`}>
+                {a.thumbnailUrl && <img src={a.thumbnailUrl} alt="" className="w-24 h-14 rounded object-cover shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium line-clamp-1">{a.videoTitle}</p>
+                  <p className="text-xs text-gray-500">{a.channelName} · スコア {a.score?.overall || "?"}/10</p>
+                  {a.analysisResult?.overallPattern && <p className="text-xs text-accent mt-0.5">{a.analysisResult.overallPattern}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-bold">{formatNumber(a.views)}回</p>
+                </div>
+                <button
+                  onClick={() => alreadyAdded ? toggleSelect(a.videoId) : addFromAnalyzed(a)}
+                  disabled={!alreadyAdded && selectedCount >= 3}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium shrink-0 ${
+                    alreadyAdded ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+                  }`}>
+                  {alreadyAdded ? "解除" : "追加"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 検索タブ */}
+      {tab === "search" && !fetched && (
         <div className="text-center py-12">
           <button onClick={fetchVideos} disabled={loading}
             className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
@@ -119,7 +202,7 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
         </div>
       )}
 
-      {fetched && (
+      {tab === "search" && fetched && (
         <>
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm text-gray-500">{videos.length}件（{GENRE_LABELS[project.genre]}優先） | {selectedCount}/3 選択中</span>
@@ -165,15 +248,17 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
             ))}
           </div>
 
-          <div className="flex gap-3">
-            <button onClick={() => onUpdate({ ...project, status: "title" })} className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
-            <button onClick={handleNext} disabled={selectedCount < 2}
-              className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
-              {selectedCount}本を分析する →
-            </button>
-          </div>
         </>
       )}
+
+      {/* ナビゲーション（常に表示） */}
+      <div className="flex gap-3">
+        <button onClick={() => onUpdate({ ...project, status: "title" })} className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
+        <button onClick={handleNext} disabled={selectedCount < 2}
+          className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">
+          {selectedCount}本を分析する →
+        </button>
+      </div>
     </div>
   );
 }
