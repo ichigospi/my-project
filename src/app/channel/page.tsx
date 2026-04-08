@@ -487,30 +487,41 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
         return;
       }
 
-      // Step 2: 各ソースタイトルでYouTube検索
+      // Step 2: YouTube検索
       const allMatched: DiscoveredVideo[] = [];
       const thresholdDecimal = threshold / 100;
 
-      setProgress(`${sourceTitles.length}本のソースタイトルでYouTube検索中...`);
+      // キーワードが指定されている場合は、キーワード直接検索も行う
+      const searchQueries: { query: string; source: string }[] = [];
 
-      for (let i = 0; i < sourceTitles.length; i++) {
-        const title = sourceTitles[i];
-        setProgress(`検索${i + 1}/${sourceTitles.length}: 「${title.substring(0, 25)}...」（${allMatched.length}件ヒット中）`);
+      if (keyword.trim()) {
+        // キーワード直接検索（最優先）
+        searchQueries.push({ query: keyword.trim(), source: `キーワード: ${keyword}` });
+      }
 
-        if (i > 0) await new Promise((r) => setTimeout(r, 1500)); // API負荷軽減
-
-        // タイトルから日本語の助詞・助動詞で分割してキーワード抽出
+      // ソースタイトルから検索クエリを生成
+      for (const title of sourceTitles) {
         const phrases = title
           .replace(/[【】「」『』（）()！？!?。、・｜|\/\s\d]/g, " ")
           .split(/[のはがをにでとへもやかられるたますいうえおした]+/)
           .map((p: string) => p.trim())
           .filter((p: string) => p.length >= 2 && p.length <= 15);
-        // 短いフレーズを複数組み合わせて検索
         const searchQuery = phrases.slice(0, 4).join(" ");
-        if (!searchQuery) continue;
+        if (searchQuery) {
+          searchQueries.push({ query: keyword.trim() ? `${searchQuery} ${keyword}` : searchQuery, source: title });
+        }
+      }
+
+      setProgress(`${searchQueries.length}件のクエリでYouTube検索中...`);
+
+      for (let i = 0; i < searchQueries.length; i++) {
+        const { query, source } = searchQueries[i];
+        setProgress(`検索${i + 1}/${searchQueries.length}: 「${query.substring(0, 30)}...」（${allMatched.length}件ヒット中）`);
+
+        if (i > 0) await new Promise((r) => setTimeout(r, 1500)); // API負荷軽減
 
         try {
-          const searchParams = new URLSearchParams({ q: keyword ? `${searchQuery} ${keyword}` : searchQuery, apiKey: ytApiKey, maxResults: "25" });
+          const searchParams = new URLSearchParams({ q: query, apiKey: ytApiKey, maxResults: "25" });
           if (publishedAfter) searchParams.set("publishedAfter", new Date(publishedAfter).toISOString());
           const searchRes = await fetch(`/api/youtube/search-public?${searchParams}`);
           const searchData = await searchRes.json();
@@ -521,8 +532,8 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
               if (v.views < minViews) continue;
               // 重複動画を除外
               if (allMatched.some((m) => m.id === v.id)) continue;
-              const sim = calcSimilarity(title, v.title);
-              allMatched.push({ ...v, similarity: sim, matchedWith: title });
+              const sim = calcSimilarity(source, v.title);
+              allMatched.push({ ...v, similarity: sim, matchedWith: source });
             }
           }
         } catch { /* skip this search */ }
@@ -598,7 +609,7 @@ function CompetitorDiscovery({ registeredChannelIds, onAddChannel }: { registere
                 {loading ? progress || "検索中..." : results.length > 0 ? "再検索する" : "競合チャンネルを探す"}
               </button>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">キーワード（追加絞り込み）</label>
+                <label className="block text-xs text-gray-500 mb-1">キーワード</label>
                 <input type="text" value={keyword} onChange={(e) => setKeyword(e.target.value)}
                   placeholder="例: 金運 ヒーリング"
                   className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm w-48 focus:border-accent outline-none" />
