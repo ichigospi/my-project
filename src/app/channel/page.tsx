@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getChannels, addChannel, removeChannel, updateChannel, getApiKey } from "@/lib/channel-store";
-import { pushSharedSettings } from "@/lib/shared-sync";
+import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { RegisteredChannel } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
 import { calcSimilarity } from "@/lib/similarity";
@@ -257,7 +257,10 @@ export default function ChannelAnalysisPage() {
   const [fetchingAll, setFetchingAll] = useState(false);
 
   useEffect(() => {
-    setChannels(getChannels());
+    // サーバーから共有設定を取得してからチャンネル一覧を表示
+    pullSharedSettings().then(() => {
+      setChannels(getChannels());
+    });
   }, []);
 
   const handleAdd = () => {

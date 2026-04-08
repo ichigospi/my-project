@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
-import { pushSharedSettings } from "@/lib/shared-sync";
+import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 
 export default function SettingsPage() {
   return (
@@ -67,9 +67,12 @@ function SettingsContent() {
   }, []);
 
   useEffect(() => {
-    setYoutubeApiKey(getApiKey("yt_api_key"));
-    setAiApiKeyState(getApiKey("ai_api_key"));
-    setChannelCount(getChannels().length);
+    // まずサーバーから共有設定を取得してからlocalStorageを読む
+    pullSharedSettings().then(() => {
+      setYoutubeApiKey(getApiKey("yt_api_key"));
+      setAiApiKeyState(getApiKey("ai_api_key"));
+      setChannelCount(getChannels().length);
+    });
     setOauthClientId(localStorage.getItem("oauth_client_id") || "");
     setOauthClientSecret(localStorage.getItem("oauth_client_secret") || "");
     if (localStorage.getItem("oauth_refresh_token")) setOauthStatus("connected");
