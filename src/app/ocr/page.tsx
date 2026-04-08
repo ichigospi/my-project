@@ -57,21 +57,21 @@ export default function OcrPage() {
   const errorItems = queue.filter((q) => q.status === "error");
   const doneItems = queue.filter((q) => q.status === "done");
 
-  // 1本の動画を読み取り
-  const processOne = async (item: QueueItem) => {
+  // 1本の動画を読み取り（skipSubtitle: 字幕APIをスキップしてOCR強制）
+  const processOne = async (item: QueueItem, skipSubtitle = false) => {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
     setProcessing(true);
     setCurrentVideo(item.videoTitle);
-    setProgress("動画DL＆フレーム抽出中...");
+    setProgress(skipSubtitle ? "OCR強制モード：フレーム抽出中..." : "動画DL＆フレーム抽出中...");
 
     try {
       // Step 1: フレーム抽出（ローカルなのでCookie使える）
       const frameRes = await fetch("/api/youtube/extract-frames", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId: item.videoId }),
+        body: JSON.stringify({ videoId: item.videoId, skipSubtitle }),
       });
       let frameData = await frameRes.json();
 
@@ -100,6 +100,10 @@ export default function OcrPage() {
 
         // Step 2: OCR
         const rawFrames = frameData.frames as string[];
+        if (!rawFrames || rawFrames.length === 0) {
+          throw new Error(`フレームが0枚です（method=${frameData.method || "none"}, frameCount=${frameData.frameCount || 0}）`);
+        }
+        setProgress(`${rawFrames.length}枚のフレームをOCR処理中...`);
         const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
         const batchSize = 10;
         const totalBatches = Math.ceil(frames.length / batchSize);
@@ -182,7 +186,7 @@ export default function OcrPage() {
     }
   };
 
-  // エラー動画をリトライ
+  // エラーや短すぎる動画をリトライ（字幕スキップしてOCR強制）
   const retryOne = async (item: QueueItem) => {
     await fetch("/api/ocr-queue", {
       method: "POST",
@@ -190,6 +194,8 @@ export default function OcrPage() {
       body: JSON.stringify({ action: "retry", id: item.id }),
     });
     await fetchQueue();
+    // 自動的にOCR強制モードで再処理開始
+    await processOne({ ...item, status: "pending" }, true);
   };
 
   // 全件一括処理
