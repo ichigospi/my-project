@@ -300,7 +300,12 @@ export const DEFAULT_STEPS: Omit<WorkflowStep, "assignee">[] = [
 ];
 
 // 工程表にタスクを追加（台本作成ウィザードやAI分析から呼び出し）
-export function addTaskFromProject(title: string, genre: Genre, style: Style, projectId: string, sourceVideoUrl?: string): ProductionTask {
+export function addTaskFromProject(title: string, genre: Genre, style: Style, projectId: string, sourceVideoUrl?: string): ProductionTask | null {
+  // 同じプロジェクトIDの工程が既にあればスキップ
+  const existing = getTasks();
+  const dup = existing.find((t) => t.linkedProjectId === projectId);
+  if (dup) return dup;
+
   const members = getMembers();
   const task: ProductionTask = {
     id: genId(), title, genre, style,
