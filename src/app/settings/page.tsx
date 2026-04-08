@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
+import { pushSharedSettings } from "@/lib/shared-sync";
 
 export default function SettingsPage() {
   return (
@@ -220,6 +221,8 @@ function SettingsContent() {
   const handleSave = () => {
     setApiKey("yt_api_key", youtubeApiKey);
     setApiKey("ai_api_key", aiApiKey);
+    // サーバーにも共有設定を保存
+    pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };

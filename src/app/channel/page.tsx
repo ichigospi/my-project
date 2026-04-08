@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getChannels, addChannel, removeChannel, updateChannel, getApiKey } from "@/lib/channel-store";
+import { pushSharedSettings } from "@/lib/shared-sync";
 import type { RegisteredChannel } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
 import { calcSimilarity } from "@/lib/similarity";
@@ -264,11 +265,13 @@ export default function ChannelAnalysisPage() {
     const updated = addChannel(newUrl.trim());
     setChannels(updated);
     setNewUrl("");
+    pushSharedSettings();
   };
 
   const handleRemove = (url: string) => {
     const updated = removeChannel(url);
     setChannels(updated);
+    pushSharedSettings();
   };
 
   const fetchAllChannelData = async () => {
