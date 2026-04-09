@@ -15,6 +15,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status === "loading") return;
 
+    // ローカル環境では認証チェックをスキップ
+    if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      setChecking(false);
+      return;
+    }
+
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
     if (!session && !isPublic) {
@@ -38,6 +44,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   if (status === "loading" || checking) {
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
     if (isPublic) return <>{children}</>;
+    // ローカル環境では読み込み画面をスキップ
+    if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      return <>{children}</>;
+    }
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-gray-400">読み込み中...</div>
