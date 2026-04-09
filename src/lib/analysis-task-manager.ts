@@ -1,7 +1,7 @@
 // バックグラウンド分析タスクマネージャー（シングルトン）
 // コンポーネント外に存在し、画面遷移しても分析が中断されない
 
-import { saveAnalysis, generateId } from "@/lib/script-analysis-store";
+import { saveAnalysis, generateId, getAnalyses } from "@/lib/script-analysis-store";
 import { saveHook, saveCTA, saveThumbnailWord, saveTitle, genId, type Genre, type Style } from "@/lib/project-store";
 
 export interface AnalysisTask {
@@ -137,86 +137,109 @@ class AnalysisTaskManager {
 
   private async processOne(task: AnalysisTask, aiApiKey: string) {
     try {
-      // Step 1: フレーム抽出（字幕APIが使えればそちらを優先）
-      this.updateTask(task.id, { status: "extracting", progress: "字幕取得 or フレーム抽出中..." });
-      const frameRes = await fetch("/api/youtube/extract-frames", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId: task.videoId }),
-      });
-      let frameData = await frameRes.json();
-      if (frameData.error) {
-        this.updateTask(task.id, { status: "error", progress: frameData.error });
-        return;
-      }
-
       let transcript = "";
 
-      // 字幕APIで取得できた場合はOCRスキップ（ただし実質コンテンツが短すぎる場合はOCRにフォールバック）
-      const cleanedTranscript = frameData.transcript
-        ? frameData.transcript.replace(/\[(?:music|音楽|拍手|笑|applause|laughter)\]/gim, "").replace(/\s+/g, " ").trim()
-        : "";
-      if (frameData.method === "subtitle" && cleanedTranscript.length >= 100) {
-        this.updateTask(task.id, { status: "cleanup", progress: "字幕から取得済み（OCRスキップ）" });
-        transcript = frameData.transcript;
+      // まず既存の分析（ローカルOCR等）からtranscriptを探す
+      const existingAnalyses = getAnalyses();
+      const existing = existingAnalyses.find((a) => a.videoId === task.videoId && a.transcript && a.transcript.length >= 100);
+      if (existing) {
+        this.updateTask(task.id, { status: "cleanup", progress: "既存の台本テキストを使用" });
+        transcript = existing.transcript;
       } else {
-        // 字幕が短すぎた場合はフレーム抽出をやり直す
-        if (frameData.method === "subtitle" && (!frameData.frames || frameData.frames.length === 0)) {
-          this.updateTask(task.id, { status: "extracting", progress: "字幕が短すぎるため、フレーム抽出でリトライ..." });
-          const retryRes = await fetch("/api/youtube/extract-frames", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ videoId: task.videoId, skipSubtitle: true }),
-          });
-          const retryData = await retryRes.json();
-          if (retryData.error) {
-            this.updateTask(task.id, { status: "error", progress: retryData.error });
-            return;
+        // OCRキューからも探す
+        try {
+          const queueRes = await fetch("/api/ocr-queue");
+          const queueData = await queueRes.json();
+          const doneItem = queueData.queue?.find((q: { videoId: string; status: string; transcript?: string }) =>
+            q.videoId === task.videoId && q.status === "done" && q.transcript && q.transcript.length >= 100
+          );
+          if (doneItem) {
+            this.updateTask(task.id, { status: "cleanup", progress: "ローカル読み取り結果を使用" });
+            transcript = doneItem.transcript;
           }
-          frameData = retryData;
-        }
-
-        // Step 2: OCR
-        const rawFrames = frameData.frames as string[];
-        const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
-        const batchSize = 10;
-        const totalBatches = Math.ceil(frames.length / batchSize);
-        const ocrTexts: string[] = [];
-
-        for (let i = 0; i < frames.length; i += batchSize) {
-          const batch = frames.slice(i, i + batchSize);
-          const batchNum = Math.floor(i / batchSize) + 1;
-          this.updateTask(task.id, { status: "ocr", progress: `OCR ${batchNum}/${totalBatches}` });
-
-          for (let retry = 0; retry < 5; retry++) {
-            try {
-              const ocrRes = await fetch("/api/script/ocr", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ images: batch, aiApiKey }),
-              });
-              const ocrData = await ocrRes.json();
-              if (ocrData.retryable) {
-                const wait = 15000 * (retry + 1);
-                this.updateTask(task.id, { progress: `OCR ${batchNum}/${totalBatches} API混雑中リトライ${retry + 1}/5` });
-                await new Promise((r) => setTimeout(r, wait));
-                continue;
-              }
-              if (ocrData.text?.trim()) ocrTexts.push(ocrData.text.trim());
-              break;
-            } catch {
-              if (retry < 4) await new Promise((r) => setTimeout(r, 10000));
-            }
-          }
-          if (i + batchSize < frames.length) {
-            await new Promise((r) => setTimeout(r, 3000));
-          }
-        }
-        transcript = ocrTexts.join("\n\n");
+        } catch { /* ignore */ }
       }
 
-      // Step 3: テキスト整理
-      if (transcript.length > 0 && frameData.method !== "subtitle") {
+      // 既存テキストがなければフレーム抽出
+      if (!transcript) {
+        this.updateTask(task.id, { status: "extracting", progress: "字幕取得 or フレーム抽出中..." });
+        const frameRes = await fetch("/api/youtube/extract-frames", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoId: task.videoId }),
+        });
+        let frameData = await frameRes.json();
+        if (frameData.error) {
+          this.updateTask(task.id, { status: "error", progress: frameData.error });
+          return;
+        }
+
+        const cleanedTranscript = frameData.transcript
+          ? frameData.transcript.replace(/\[(?:music|音楽|拍手|笑|applause|laughter)\]/gim, "").replace(/\s+/g, " ").trim()
+          : "";
+        if (frameData.method === "subtitle" && cleanedTranscript.length >= 100) {
+          this.updateTask(task.id, { status: "cleanup", progress: "字幕から取得済み（OCRスキップ）" });
+          transcript = frameData.transcript;
+        } else {
+          // 字幕が短すぎた場合はフレーム抽出をやり直す
+          if (frameData.method === "subtitle" && (!frameData.frames || frameData.frames.length === 0)) {
+            this.updateTask(task.id, { status: "extracting", progress: "字幕が短すぎるため、フレーム抽出でリトライ..." });
+            const retryRes = await fetch("/api/youtube/extract-frames", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ videoId: task.videoId, skipSubtitle: true }),
+            });
+            const retryData = await retryRes.json();
+            if (retryData.error) {
+              this.updateTask(task.id, { status: "error", progress: retryData.error });
+              return;
+            }
+            frameData = retryData;
+          }
+
+          // Step 2: OCR
+          const rawFrames = frameData.frames as string[];
+          const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
+          const batchSize = 10;
+          const totalBatches = Math.ceil(frames.length / batchSize);
+          const ocrTexts: string[] = [];
+
+          for (let i = 0; i < frames.length; i += batchSize) {
+            const batch = frames.slice(i, i + batchSize);
+            const batchNum = Math.floor(i / batchSize) + 1;
+            this.updateTask(task.id, { status: "ocr", progress: `OCR ${batchNum}/${totalBatches}` });
+
+            for (let retry = 0; retry < 5; retry++) {
+              try {
+                const ocrRes = await fetch("/api/script/ocr", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ images: batch, aiApiKey }),
+                });
+                const ocrData = await ocrRes.json();
+                if (ocrData.retryable) {
+                  const wait = 15000 * (retry + 1);
+                  this.updateTask(task.id, { progress: `OCR ${batchNum}/${totalBatches} API混雑中リトライ${retry + 1}/5` });
+                  await new Promise((r) => setTimeout(r, wait));
+                  continue;
+                }
+                if (ocrData.text?.trim()) ocrTexts.push(ocrData.text.trim());
+                break;
+              } catch {
+                if (retry < 4) await new Promise((r) => setTimeout(r, 10000));
+              }
+            }
+            if (i + batchSize < frames.length) {
+              await new Promise((r) => setTimeout(r, 3000));
+            }
+          }
+          transcript = ocrTexts.join("\n\n");
+        }
+      } // end of if (!transcript)
+
+      // Step 3: テキスト整理（既存テキスト利用時はスキップ）
+      const needsCleanup = transcript.length > 0 && !existing && !transcript.includes("\n\n");
+      if (needsCleanup) {
         this.updateTask(task.id, { status: "cleanup", progress: "テキスト整理中..." });
         await new Promise((r) => setTimeout(r, 5000));
         try {
