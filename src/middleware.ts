@@ -6,6 +6,12 @@ const PUBLIC_PATHS = ["/login", "/setup", "/register", "/api/auth", "/api/setup"
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const hostname = req.nextUrl.hostname;
+
+  // ローカル環境では認証をスキップ
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return NextResponse.next();
+  }
 
   // 公開パスはスキップ
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {

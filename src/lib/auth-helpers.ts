@@ -1,11 +1,38 @@
 import { getServerSession } from "next-auth";
+import { headers } from "next/headers";
 import { authOptions, type UserRole } from "./auth";
 
+function isLocalhost(): boolean {
+  try {
+    const headersList = headers();
+    const host = headersList.get("host") || "";
+    return host.startsWith("localhost") || host.startsWith("127.0.0.1");
+  } catch {
+    return false;
+  }
+}
+
+const LOCAL_SESSION = {
+  user: {
+    id: "local",
+    name: "ローカルユーザー",
+    email: "local@localhost",
+    role: "admin" as UserRole,
+  },
+};
+
 export async function getSession() {
+  if (isLocalhost()) {
+    return LOCAL_SESSION;
+  }
   return getServerSession(authOptions);
 }
 
 export async function requireAuth(minRole?: UserRole) {
+  if (isLocalhost()) {
+    return { session: LOCAL_SESSION } as const;
+  }
+
   const session = await getSession();
   if (!session?.user) {
     return { error: "認証が必要です", status: 401 } as const;
