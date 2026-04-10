@@ -25,7 +25,7 @@ export default function RootLayout({
     <html lang="ja" className="h-full antialiased">
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <link rel="apple-touch-icon" href="/icon-192.svg" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body className="min-h-screen flex">
         <script
