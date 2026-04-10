@@ -1,7 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="38.400000000000006" fill="#6366f1"/>
-  <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle"
-    font-family="sans-serif" font-weight="bold" font-size="67.19999999999999" fill="white">占スピ</text>
-  <text x="50%" y="78%" dominant-baseline="middle" text-anchor="middle"
-    font-family="sans-serif" font-size="28.799999999999997" fill="rgba(255,255,255,0.8)">YT</text>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="38" fill="url(#bg)"/>
+  <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle"
+    font-family="sans-serif" font-weight="bold" font-size="88" fill="white" letter-spacing="4">YT</text>
 </svg>
