@@ -18,6 +18,8 @@ const sqls = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "Invite_token_key" ON "Invite"("token")`,
   `CREATE INDEX IF NOT EXISTS "ScriptAnalysis_userId_idx" ON "ScriptAnalysis"("userId")`,
   `CREATE INDEX IF NOT EXISTS "ScriptProposal_userId_idx" ON "ScriptProposal"("userId")`,
+  `CREATE TABLE IF NOT EXISTS "LaunchExample" ("id" TEXT NOT NULL PRIMARY KEY, "type" TEXT NOT NULL, "title" TEXT NOT NULL DEFAULT '', "content" TEXT NOT NULL, "note" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "LaunchExample_type_idx" ON "LaunchExample"("type")`,
 ];
 
 for (const sql of sqls) {

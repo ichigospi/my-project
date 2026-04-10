@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 const CONTENT_TYPES: Record<string, { label: string; instruction: string }> = {
   posts_phase1: {
@@ -91,11 +92,29 @@ export async function POST(request: NextRequest) {
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
 
+  // 学習済み実例をDBから取得（同じtypeのものを最新5件）
+  let examplesText = "";
+  try {
+    const examples = await prisma.launchExample.findMany({
+      where: { type: contentType },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+    if (examples.length > 0) {
+      examplesText = `\n\n## 過去の良い実例（このトーン・構造を参考にしてください）\n\n${examples
+        .map((ex, i) => `### 実例${i + 1}${ex.title ? `: ${ex.title}` : ""}${ex.note ? `\n（メモ: ${ex.note}）` : ""}\n\n${ex.content}`)
+        .join("\n\n---\n\n")}`;
+    }
+  } catch {
+    // DBエラーは無視して続行
+  }
+
   const userPrompt = `## ローンチ設計書
 ${designText}
 
 ## 生成指示
 ${config.instruction}
+${examplesText}
 
 上記の設計書に基づいて、コンテンツを生成してください。
 各投稿/コンテンツには以下を含めてください:

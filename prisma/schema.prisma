@@ -82,3 +82,16 @@ model ScriptProposal {
 
   @@index([userId])
 }
+
+// ===== ローンチツール =====
+model LaunchExample {
+  id        String   @id @default(cuid())
+  // 種類: posts_phase1, posts_phase2, posts_phase3, columns, letter, line
+  type      String
+  title     String   @default("")
+  content   String
+  note      String   @default("") // メモ（なぜ良いのか等）
+  createdAt DateTime @default(now())
+
+  @@index([type])
+}
