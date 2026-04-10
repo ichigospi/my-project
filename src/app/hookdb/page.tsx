@@ -113,10 +113,10 @@ export default function HookDBPage() {
       </div>
 
       {/* タブ */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
+      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto">
         {(["hooks", "ctas", "thumbnails", "titles"] as TabId[]).map((id) => (
           <button key={id} onClick={() => setTab(id)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px ${tab === id ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === id ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
             {tabLabels[id]}（{tabCounts[id]}件）
           </button>
         ))}

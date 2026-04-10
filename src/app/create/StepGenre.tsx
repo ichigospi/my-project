@@ -5,7 +5,7 @@ import type { ScriptProject, Genre, Style } from "@/lib/project-store";
 
 export default function StepGenre({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   return (
-    <div className="max-w-xl">
+    <div className="w-full max-w-xl">
       <h2 className="text-xl font-bold mb-6">① ジャンル & スタイルを選択</h2>
 
       <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 mb-6">

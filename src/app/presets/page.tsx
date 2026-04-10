@@ -55,13 +55,13 @@ export default function PresetsPage() {
       </div>
 
       {/* タブ切り替え */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
+      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto">
         <button onClick={() => { setTab("common"); setEditing(null); }}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px ${tab === "common" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "common" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
           チャンネル共通ルール
         </button>
         <button onClick={() => { setTab("presets"); setEditing(null); }}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px ${tab === "presets" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "presets" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
           カテゴリ別プリセット
         </button>
       </div>

@@ -90,7 +90,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   };
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full max-w-3xl">
       <h2 className="text-xl font-bold mb-2">⑤ 構成提案</h2>
       <p className="text-sm text-gray-500 mb-6">{analyses.length}本の分析を基に台本の骨組みを提案</p>
 
@@ -287,7 +287,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       )}
 
       {/* ナビゲーション */}
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <button onClick={() => onUpdate({ ...project, status: "analyzing" })}
           className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
         {skeleton ? (

@@ -228,19 +228,19 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
               <div>
-                <p className="text-2xl font-bold">{pureChars}</p>
+                <p className="text-xl md:text-2xl font-bold">{pureChars}</p>
                 <p className="text-xs text-gray-500">文字数（本文のみ）</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">約{estimatedMinutes}分</p>
+                <p className="text-xl md:text-2xl font-bold">約{estimatedMinutes}分</p>
                 <p className="text-xs text-gray-500">推定動画尺</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">{sections.length}</p>
+                <p className="text-xl md:text-2xl font-bold">{sections.length}</p>
                 <p className="text-xs text-gray-500">セクション数</p>
               </div>
               <div>
-                <p className={`text-2xl font-bold ${similarities.every((s) => s.rate <= 25) ? "text-green-600" : "text-red-500"}`}>
+                <p className={`text-xl md:text-2xl font-bold ${similarities.every((s) => s.rate <= 25) ? "text-green-600" : "text-red-500"}`}>
                   {similarities.length > 0 ? (similarities.every((s) => s.rate <= 25) ? "安全" : "要確認") : "—"}
                 </p>
                 <p className="text-xs text-gray-500">一致率チェック</p>
@@ -442,7 +442,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         </div>
       )}
 
-      <div className="flex gap-3 mt-6">
+      <div className="flex flex-col sm:flex-row gap-3 mt-6">
         <button onClick={() => onUpdate({ ...project, status: "proposal" })} className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
       </div>
     </div>

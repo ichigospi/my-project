@@ -259,7 +259,7 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
   );
 
   return (
-    <div className="max-w-2xl">
+    <div className="w-full max-w-2xl">
       <h2 className="text-xl font-bold mb-6">④ 参考動画の分析</h2>
 
       {!hasActiveTask && (
@@ -332,7 +332,7 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <button onClick={() => onUpdate({ ...project, status: "references" })}
           className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
         {hasSelected && (

@@ -121,7 +121,7 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
   const displayCandidates = candidates.length > 0 ? candidates : (project.titleCandidates as TitleCandidateEx[]);
 
   return (
-    <div className="max-w-2xl">
+    <div className="w-full max-w-2xl">
       <h2 className="text-xl font-bold mb-2">② 企画タイトル</h2>
       <p className="text-sm text-gray-500 mb-6">
         {GENRE_LABELS[project.genre]} × {STYLE_LABELS[project.style]}
@@ -248,7 +248,7 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
 
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
 
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <button onClick={() => onUpdate({ ...project, status: "genre" })} className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
         <button onClick={() => onUpdate({ ...project, status: "references" })} disabled={!project.title}
           className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50">次へ →</button>

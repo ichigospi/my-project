@@ -623,7 +623,7 @@ export default function PerformancePage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {/* 平均視聴時間 */}
           <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 text-center">
-            <p className="text-2xl font-bold text-accent">
+            <p className="text-xl md:text-2xl font-bold text-accent">
               {kpis.avgViewDuration != null
                 ? formatDuration(Math.round(kpis.avgViewDuration))
                 : "—"}
@@ -634,7 +634,7 @@ export default function PerformancePage() {
 
           {/* 平均維持率 */}
           <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 text-center">
-            <p className="text-2xl font-bold">
+            <p className="text-xl md:text-2xl font-bold">
               {kpis.avgViewPercentage != null
                 ? `${kpis.avgViewPercentage.toFixed(1)}%`
                 : "—"}
@@ -645,14 +645,14 @@ export default function PerformancePage() {
 
           {/* 平均再生数 */}
           <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 text-center">
-            <p className="text-2xl font-bold">{formatNumber(kpis.avgViews)}</p>
+            <p className="text-xl md:text-2xl font-bold">{formatNumber(kpis.avgViews)}</p>
             <p className="text-xs text-gray-500 mt-1">平均再生数</p>
             <p className="text-[10px] text-gray-400 mt-0.5">{myChannel.videos.length}本の動画</p>
           </div>
 
           {/* 登録者転換率 */}
           <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 text-center">
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-xl md:text-2xl font-bold text-green-600">
               {kpis.subConversionRate != null
                 ? `${kpis.subConversionRate.toFixed(2)}%`
                 : "—"}

@@ -8,7 +8,7 @@ import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 
 export default function SettingsPage() {
   return (
-    <Suspense fallback={<div className="p-8">読み込み中...</div>}>
+    <Suspense fallback={<div className="p-4 md:p-8">読み込み中...</div>}>
       <SettingsContent />
     </Suspense>
   );

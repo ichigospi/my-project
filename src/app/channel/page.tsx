@@ -153,7 +153,7 @@ function ChannelDetail({
         チャンネル一覧に戻る
       </button>
 
-      <div className="bg-card-bg rounded-xl p-8 shadow-sm border border-gray-100 mb-6">
+      <div className="bg-card-bg rounded-xl p-4 md:p-8 shadow-sm border border-gray-100 mb-6">
         <div className="flex items-center gap-6 mb-6">
           {channel.thumbnailUrl ? (
             <img src={channel.thumbnailUrl} alt="" className="w-20 h-20 rounded-full object-cover" />
@@ -163,7 +163,7 @@ function ChannelDetail({
             </div>
           )}
           <div>
-            <h2 className="text-2xl font-bold">{channel.name || "不明"}</h2>
+            <h2 className="text-xl md:text-2xl font-bold">{channel.name || "不明"}</h2>
             <p className="text-sm text-gray-500 mt-1">
               {channel.handle ? `@${channel.handle}` : channel.channelId}
             </p>

@@ -165,6 +165,7 @@ export default function WorkflowPage() {
 
       {!mounted ? <div className="text-center py-8 text-gray-400">読み込み中...</div> : (
       <div className="overflow-x-auto">
+        <p className="text-xs text-gray-400 mb-1 sm:hidden">← 横にスクロールできます</p>
         <table className="w-full text-xs border-collapse min-w-[1100px]">
           <thead>
             <tr className="bg-gray-50">
