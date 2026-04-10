@@ -26,6 +26,53 @@ fi
 
 echo "✅ Node.js $(node -v) 検出"
 
+# yt-dlpチェック
+if ! command -v yt-dlp &> /dev/null; then
+    echo "⚠️  yt-dlpがインストールされていません"
+    echo ""
+    echo "以下のコマンドでインストールしてください："
+    echo "  brew install yt-dlp"
+    echo ""
+else
+    echo "✅ yt-dlp 検出"
+fi
+
+# ffmpegチェック
+if ! command -v ffmpeg &> /dev/null; then
+    echo "⚠️  ffmpegがインストールされていません"
+    echo ""
+    echo "以下のコマンドでインストールしてください："
+    echo "  brew install ffmpeg"
+    echo ""
+else
+    echo "✅ ffmpeg 検出"
+fi
+
+# .env.local チェック・作成
+if [ ! -f ".env.local" ]; then
+    echo ""
+    echo "================================"
+    echo "  初回セットアップ"
+    echo "  データベースとAPIキーを設定します"
+    echo "================================"
+    echo ""
+    read -p "データベースURL (TURSO_DATABASE_URL): " DB_URL
+    read -p "データベーストークン (TURSO_AUTH_TOKEN): " DB_TOKEN
+    read -p "AI APIキー (ANTHROPIC_API_KEY): " AI_KEY
+    echo ""
+    echo "設定を .env.local に保存中..."
+    cat > .env.local <<ENVEOF
+TURSO_DATABASE_URL=${DB_URL}
+TURSO_AUTH_TOKEN=${DB_TOKEN}
+ANTHROPIC_API_KEY=${AI_KEY}
+ENVEOF
+    echo "${AI_KEY}" > .ai_api_key
+    echo "✅ 設定を保存しました"
+    echo ""
+else
+    echo "✅ .env.local 検出"
+fi
+
 # 依存関係インストール（初回 or 更新時）
 if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ]; then
     echo "📦 パッケージをインストール中..."
@@ -49,7 +96,7 @@ echo "停止するには Ctrl+C を押してください"
 echo "================================"
 echo ""
 
-# 2秒後にブラウザを自動で開く
+# 3秒後にブラウザを自動で開く
 (sleep 3 && open "http://localhost:3000/ocr") &
 
 npm run dev

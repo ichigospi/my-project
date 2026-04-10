@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getApiKey } from "@/lib/channel-store";
+import { getApiKey, setApiKey } from "@/lib/channel-store";
 import { saveAnalysis, generateId, syncFromServer } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 
@@ -41,6 +41,7 @@ export default function OcrPage() {
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [healthWarnings, setHealthWarnings] = useState<string[]>([]);
 
   const addLog = (msg: string) => {
     setDebugLog((prev) => [...prev, `${new Date().toLocaleTimeString()} ${msg}`]);
@@ -57,6 +58,33 @@ export default function OcrPage() {
   };
 
   useEffect(() => { fetchQueue(); }, []);
+
+  // ヘルスチェック & APIキー自動読み込み
+  useEffect(() => {
+    // ヘルスチェック
+    fetch("/api/health/local")
+      .then((res) => res.json())
+      .then((data: { db: boolean; ytdlp: boolean; ffmpeg: boolean }) => {
+        const warnings: string[] = [];
+        if (!data.db) warnings.push("データベースに接続できません。start-local.bat を再起動してデータベースURLを設定してください");
+        if (!data.ytdlp) warnings.push("yt-dlpがインストールされていません");
+        if (!data.ffmpeg) warnings.push("ffmpegがインストールされていません");
+        setHealthWarnings(warnings);
+      })
+      .catch(() => { /* ヘルスチェック失敗は無視 */ });
+
+    // APIキー自動読み込み（localStorageに未設定の場合のみ）
+    if (!getApiKey("ai_api_key")) {
+      fetch("/api/env-key")
+        .then((res) => res.json())
+        .then((data: { key: string }) => {
+          if (data.key) {
+            setApiKey("ai_api_key", data.key);
+          }
+        })
+        .catch(() => { /* 読み込み失敗は無視 */ });
+    }
+  }, []);
 
   const pendingItems = queue.filter((q) => q.status === "pending");
   const errorItems = queue.filter((q) => q.status === "error");
@@ -247,6 +275,18 @@ export default function OcrPage() {
         <h1 className="text-2xl font-bold">台本読み取り</h1>
         <p className="text-gray-500 mt-1">Railwayから依頼された動画のテロップを読み取り</p>
       </div>
+
+      {/* ヘルスチェック警告 */}
+      {healthWarnings.length > 0 && (
+        <div className="bg-red-50 rounded-xl p-4 border border-red-200 mb-6">
+          <p className="text-sm font-medium text-red-800 mb-2">⚠ セットアップに問題があります</p>
+          <ul className="list-disc list-inside space-y-1">
+            {healthWarnings.map((w, i) => (
+              <li key={i} className="text-sm text-red-700">{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* ステータス */}
       {processing && (

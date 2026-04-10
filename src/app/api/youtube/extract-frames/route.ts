@@ -100,7 +100,9 @@ export async function POST(request: NextRequest) {
     if (isLocal) {
       cookieStrategies.push({ label: "no-cookie", args: [] });
       cookieStrategies.push({ label: "chrome", args: ["--cookies-from-browser", "chrome"] });
-      cookieStrategies.push({ label: "safari", args: ["--cookies-from-browser", "safari"] });
+      if (process.platform === "darwin") {
+        cookieStrategies.push({ label: "safari", args: ["--cookies-from-browser", "safari"] });
+      }
       cookieStrategies.push({ label: "firefox", args: ["--cookies-from-browser", "firefox"] });
     } else if (cookiePath && existsSync(cookiePath)) {
       cookieStrategies.push({ label: "cookie-file", args: ["--cookies", cookiePath] });
