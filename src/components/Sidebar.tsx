@@ -31,7 +31,7 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: "閲覧者",
 };
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [ytStatus, setYtStatus] = useState(false);
@@ -96,6 +96,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavigate}
               className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-sidebar-active text-white"
