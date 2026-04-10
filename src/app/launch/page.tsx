@@ -71,6 +71,32 @@ export default function LaunchDesignPage() {
       </div>
 
       <div className="space-y-6">
+        {/* Guide */}
+        <div className="bg-accent/5 rounded-xl border border-accent/20 p-6">
+          <h2 className="text-base font-bold text-foreground mb-3">このページの使い方</h2>
+          <div className="text-sm text-foreground/80 space-y-3">
+            <p>
+              <strong>ローンチ設計書はこのシステムの心臓部です。</strong>
+              ここに入力した商品情報・教育ロジック・キーワードをもとに、
+              14日間分の投稿（42本）・コラム3本・セールスレター・LINE配信11通が自動生成されます。
+            </p>
+            <div>
+              <p className="font-medium mb-1">ステップ:</p>
+              <ol className="list-decimal list-inside space-y-1 text-foreground/70">
+                <li>下のフォームに商品情報を入力する（各項目に入力例あり）</li>
+                <li>「設計書を保存」ボタンを押す</li>
+                <li>左メニューの「投稿生成」「コラム」等からコンテンツを生成</li>
+                <li>良い結果が出たら「実例集に追加」で学習させる → 次回の生成がさらに良くなる</li>
+              </ol>
+            </div>
+            <div className="bg-white/60 rounded-lg p-3 text-xs text-foreground/60">
+              <p className="font-medium text-foreground/80 mb-1">設計書に含まれるもの:</p>
+              <p>商品概要（名前・価格・限定数・販売方法） / 課題解決ロジック（悩み・原因・解決策・仮想敵・理想の未来） / 刷り込みキーワード5つ+サブKW / フェーズ設計（Phase 1-3のコンセプト）</p>
+              <p className="mt-1">ここをしっかり練ることで、全コンテンツの一貫性が保たれます。ただ埋めるだけでなく、自分の商品のローンチ戦略を作る作業だと思って取り組んでください。</p>
+            </div>
+          </div>
+        </div>
+
         {/* Progress */}
         <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-3">
