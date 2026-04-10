@@ -80,10 +80,10 @@ export default function CreatePage() {
   // プロジェクト一覧
   if (!activeProject) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold">台本作成</h1>
+            <h1 className="text-xl md:text-2xl font-bold">台本作成</h1>
             <p className="text-gray-500 mt-1">ウィザード形式で台本を作成</p>
           </div>
           <button onClick={handleNew} className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
@@ -125,7 +125,7 @@ export default function CreatePage() {
 
   // ウィザードビュー
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <button onClick={handleBack} className="text-accent text-sm font-medium mb-4 flex items-center gap-1 hover:underline">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         プロジェクト一覧

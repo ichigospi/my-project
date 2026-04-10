@@ -325,16 +325,16 @@ export default function ChannelAnalysisPage() {
 
   if (selectedChannel) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <ChannelDetail channel={selectedChannel} onBack={() => setSelectedChannel(null)} />
       </div>
     );
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">チャンネル分析</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">チャンネル分析</h1>
         <p className="text-gray-500 mt-1">競合チャンネルを登録・分析（{channels.length}チャンネル登録中）</p>
       </div>
 

@@ -270,9 +270,9 @@ export default function OcrPage() {
   };
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">台本読み取り</h1>
+        <h1 className="text-xl md:text-2xl font-bold">台本読み取り</h1>
         <p className="text-gray-500 mt-1">Railwayから依頼された動画のテロップを読み取り</p>
       </div>
 

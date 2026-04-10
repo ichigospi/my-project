@@ -131,9 +131,9 @@ export default function IdeasPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">企画出し</h1>
+        <h1 className="text-xl md:text-2xl font-bold">企画出し</h1>
         <p className="text-gray-500 mt-1">競合分析＋AIで動画企画を立案</p>
       </div>
 

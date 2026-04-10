@@ -8,9 +8,9 @@ export default function ThumbnailsPage() {
   );
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">サムネ・タイトル分析</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">サムネ・タイトル分析</h1>
         <p className="text-gray-500 mt-1">再生数を伸ばすタイトルパターンとサムネイル戦略を分析</p>
       </div>
 

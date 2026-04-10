@@ -63,7 +63,7 @@ function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
       </h2>
 
       {/* サマリー */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <div className="bg-red-50 rounded-lg p-3 text-center">
           <p className="text-xl font-bold text-danger">🔥 {urgentCount}</p>
           <p className="text-xs text-gray-500 mt-1">緊急</p>
@@ -235,13 +235,13 @@ function MyChannelSection() {
       <div className="grid grid-cols-2 gap-4 mb-5">
         <div className="bg-sidebar-bg/5 border border-gray-100 rounded-lg p-4">
           <p className="text-xs text-gray-500 mb-1">平均再生数</p>
-          <p className="text-2xl font-bold text-foreground">
+          <p className="text-xl md:text-2xl font-bold text-foreground">
             {formatNumber(avgViews)}
           </p>
         </div>
         <div className="bg-sidebar-bg/5 border border-gray-100 rounded-lg p-4">
           <p className="text-xs text-gray-500 mb-1">登録者転換率（いいね率）</p>
-          <p className="text-2xl font-bold text-foreground">
+          <p className="text-xl md:text-2xl font-bold text-foreground">
             {conversionRate}%
           </p>
         </div>
@@ -295,9 +295,9 @@ function CompetitorSection({ channels }: { channels: RegisteredChannel[] }) {
     <section className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">競合チャンネル概況</h2>
-        <div className="flex gap-3">
-          <Link href="/search" className="text-sm text-accent hover:underline">伸びてる動画を検索 →</Link>
-          <Link href="/channel" className="text-sm text-gray-500 hover:underline">全チャンネル →</Link>
+        <div className="flex gap-3 shrink-0">
+          <Link href="/search" className="text-sm text-accent hover:underline whitespace-nowrap">伸びてる動画を検索 →</Link>
+          <Link href="/channel" className="text-sm text-gray-500 hover:underline whitespace-nowrap hidden sm:inline">全チャンネル →</Link>
         </div>
       </div>
 
@@ -459,9 +459,9 @@ export default function DashboardPage() {
 
   if (!loaded) {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground">ダッシュボード</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">ダッシュボード</h1>
           <p className="text-sm text-gray-400 mt-1">読み込み中...</p>
         </div>
       </div>
@@ -469,9 +469,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       <div className="mb-2">
-        <h1 className="text-2xl font-bold text-foreground">ダッシュボード</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">ダッシュボード</h1>
         <p className="text-sm text-gray-500 mt-1">
           占い・スピリチュアル系YouTube管理ツール
         </p>

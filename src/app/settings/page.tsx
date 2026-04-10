@@ -255,9 +255,9 @@ function SettingsContent() {
   };
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-4 md:p-8 max-w-2xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">設定</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">設定</h1>
         <p className="text-gray-500 mt-1">APIキーや各種設定を管理</p>
       </div>
 

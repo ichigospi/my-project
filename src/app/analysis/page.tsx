@@ -74,7 +74,7 @@ type Tab = "profile" | "analyze" | "library" | "propose";
 
 export default function AnalysisPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-gray-400">読み込み中...</div>}>
+    <Suspense fallback={<div className="p-4 md:p-8 text-gray-400">読み込み中...</div>}>
       <AnalysisContent />
     </Suspense>
   );
@@ -99,17 +99,17 @@ function AnalysisContent() {
   }, [videoFromQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">台本分析</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">台本分析</h1>
         <p className="text-gray-500 mt-1">競合動画の分析 → 構成提案 → 台本作成</p>
       </div>
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
+      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
               tab === t.id
                 ? "border-accent text-accent"
                 : "border-transparent text-gray-500 hover:text-gray-700"
@@ -847,7 +847,7 @@ function AnalysisResultView({ analysis }: { analysis: AnalysisResult & { score?:
         {/* スコアバー */}
         {analysis.score && (
           <div className="p-6 bg-gray-50/50">
-            <div className="grid grid-cols-5 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
               {[
                 { label: "フック力", value: analysis.score.hookStrength, icon: "🎣" },
                 { label: "CTA効果", value: analysis.score.ctaEffectiveness, icon: "📢" },

@@ -7,9 +7,9 @@ export default function GuidePage() {
   const userRole = (session?.user as { role?: string } | undefined)?.role || "";
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">使い方ガイド</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">使い方ガイド</h1>
         <p className="text-gray-500 mt-1">ツールの基本的な使い方と設定方法</p>
       </div>
 

@@ -550,8 +550,8 @@ export default function PerformancePage() {
   // ===== 未登録画面 =====
   if (!myChannel) {
     return (
-      <div className="p-8 max-w-xl">
-        <h1 className="text-2xl font-bold mb-2">パフォーマンス</h1>
+      <div className="p-4 md:p-8 max-w-xl">
+        <h1 className="text-xl md:text-2xl font-bold mb-2">パフォーマンス</h1>
         <p className="text-gray-500 mb-6">
           自チャンネルの動画パフォーマンスを自動トラッキング
         </p>
@@ -585,11 +585,11 @@ export default function PerformancePage() {
   const avgViews = kpis?.avgViews || 0;
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       {/* ===== ヘッダー ===== */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">パフォーマンス</h1>
+          <h1 className="text-xl md:text-2xl font-bold">パフォーマンス</h1>
           <p className="text-gray-500 mt-1">
             {myChannel.channelName} · 最終取得:{" "}
             {new Date(myChannel.lastFetched).toLocaleString("ja-JP")}

@@ -140,9 +140,9 @@ export default function WorkflowPage() {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">工程表</h1>
+        <h1 className="text-xl md:text-2xl font-bold">工程表</h1>
         {!isViewer && (
           <button onClick={handleAddRow}
             className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90">+ 行を追加</button>
