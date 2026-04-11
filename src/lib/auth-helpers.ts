@@ -2,9 +2,9 @@ import { getServerSession } from "next-auth";
 import { headers } from "next/headers";
 import { authOptions, type UserRole } from "./auth";
 
-function isLocalhost(): boolean {
+async function isLocalhost(): Promise<boolean> {
   try {
-    const headersList = headers();
+    const headersList = await headers();
     const host = headersList.get("host") || "";
     return host.startsWith("localhost") || host.startsWith("127.0.0.1");
   } catch {
@@ -22,14 +22,14 @@ const LOCAL_SESSION = {
 };
 
 export async function getSession() {
-  if (isLocalhost()) {
+  if (await isLocalhost()) {
     return LOCAL_SESSION;
   }
   return getServerSession(authOptions);
 }
 
 export async function requireAuth(minRole?: UserRole) {
-  if (isLocalhost()) {
+  if (await isLocalhost()) {
     return { session: LOCAL_SESSION } as const;
   }
 
