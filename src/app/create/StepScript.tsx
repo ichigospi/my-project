@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
 import { getProfile, getAnalyses } from "@/lib/script-analysis-store";
 import { getPresetFor, getPerformanceRecords } from "@/lib/project-store";
+import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import type { ScriptProject, TelopLine, Genre, Style } from "@/lib/project-store";
@@ -48,6 +49,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [revisionSummary, setRevisionSummary] = useState("");
   const [scriptHistory, setScriptHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncDone, setSyncDone] = useState(false);
 
   // 一致率チェック
   const [similarities, setSimilarities] = useState<{ title: string; rate: number }[]>([]);
@@ -187,6 +190,16 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   };
 
   const handleCopy = () => { navigator.clipboard.writeText(project.generatedScript); };
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncDone(false);
+    try {
+      await pushSharedSettings();
+      setSyncDone(true);
+      setTimeout(() => setSyncDone(false), 3000);
+    } catch { /* ignore */ }
+    finally { setSyncing(false); }
+  };
   const handleExport = () => {
     const header = `# ${project.title}\nジャンル: ${project.genre} / スタイル: ${project.style}\n作成日: ${new Date().toLocaleDateString("ja-JP")}\n\n---\n\n`;
     const blob = new Blob([header + project.generatedScript], { type: "text/markdown" });
@@ -305,6 +318,10 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               <div className="flex gap-2">
                 <button onClick={handleCopy} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">コピー</button>
                 <button onClick={handleExport} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">エクスポート</button>
+                <button onClick={handleSync} disabled={syncing}
+                  className={`px-3 py-1.5 rounded-lg text-xs ${syncDone ? "bg-green-500 text-white" : "bg-blue-500 text-white hover:bg-blue-600"} disabled:opacity-50`}>
+                  {syncing ? "同期中..." : syncDone ? "同期済み" : "同期"}
+                </button>
                 <button onClick={handleGenerate} disabled={generating} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">
                   {generating ? "生成中..." : "再生成"}
                 </button>
