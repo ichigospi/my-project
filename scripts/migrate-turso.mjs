@@ -20,6 +20,8 @@ const sqls = [
   `CREATE INDEX IF NOT EXISTS "ScriptProposal_userId_idx" ON "ScriptProposal"("userId")`,
   `CREATE TABLE IF NOT EXISTS "LaunchExample" ("id" TEXT NOT NULL PRIMARY KEY, "type" TEXT NOT NULL, "title" TEXT NOT NULL DEFAULT '', "content" TEXT NOT NULL, "note" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE INDEX IF NOT EXISTS "LaunchExample_type_idx" ON "LaunchExample"("type")`,
+  `CREATE TABLE IF NOT EXISTS "SalesRecord" ("id" TEXT NOT NULL PRIMARY KEY, "date" TEXT NOT NULL, "description" TEXT NOT NULL, "amount" INTEGER NOT NULL, "balance" INTEGER NOT NULL, "category" TEXT NOT NULL DEFAULT 'other', "note" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "SalesRecord_date_idx" ON "SalesRecord"("date")`,
 ];
 
 for (const sql of sqls) {

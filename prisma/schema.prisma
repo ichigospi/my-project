@@ -83,6 +83,21 @@ model ScriptProposal {
   @@index([userId])
 }
 
+// ===== 売上管理 =====
+model SalesRecord {
+  id          String   @id @default(cuid())
+  date        String   // YYYY-MM-DD
+  description String   // 取引名（振込名、支払先など）
+  amount      Int      // 金額（正:入金、負:出金）
+  balance     Int      // 取引後の残高
+  category    String   @default("other") // income, expense, transfer, other
+  note        String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+}
+
 // ===== ローンチツール =====
 model LaunchExample {
   id        String   @id @default(cuid())
