@@ -71,7 +71,7 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
     });
   }, [project, mgr, ocrDoneVideoIds]);
 
-  const [progresses, setProgresses] = useState<VideoProgress[]>(buildProgresses);
+  const [progresses, setProgresses] = useState<VideoProgress[]>(buildProgresses());
   const [error, setError] = useState("");
 
   // taskManagerの更新をリッスン
