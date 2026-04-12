@@ -26,6 +26,23 @@ function mergeById<T extends { id: string }>(local: T[], server: T[]): T[] {
   return Array.from(map.values());
 }
 
+// 更新日時ベースでマージ（新しい方を採用）
+function mergeByUpdatedAt<T extends { id: string; updatedAt?: string; createdAt?: string }>(local: T[], server: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const item of local) map.set(item.id, item);
+  for (const item of server) {
+    const existing = map.get(item.id);
+    if (!existing) {
+      map.set(item.id, item);
+    } else {
+      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      const serverTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+      if (serverTime > existingTime) map.set(item.id, item);
+    }
+  }
+  return Array.from(map.values());
+}
+
 // URLベースでチャンネルをマージ
 function mergeChannels(local: RegisteredChannel[], server: RegisteredChannel[]): RegisteredChannel[] {
   const map = new Map<string, RegisteredChannel>();
@@ -114,17 +131,17 @@ export async function pullSharedSettings(): Promise<void> {
       }
     }
 
-    // プロジェクト（台本作成）: マージ
+    // プロジェクト（台本作成）: 更新日時ベースでマージ
     if (data.projects?.length > 0) {
       const local: ScriptProject[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
-      const merged = mergeById(local, data.projects);
+      const merged = mergeByUpdatedAt(local, data.projects);
       localStorage.setItem("fortune_yt_projects", JSON.stringify(merged));
     }
 
-    // 工程表タスク: マージ
+    // 工程表タスク: 更新日時ベースでマージ
     if (data.tasks?.length > 0) {
       const local: ProductionTask[] = JSON.parse(localStorage.getItem("fortune_yt_tasks") || "[]");
-      const merged = mergeById(local, data.tasks);
+      const merged = mergeByUpdatedAt(local, data.tasks);
       localStorage.setItem("fortune_yt_tasks", JSON.stringify(merged));
     }
 

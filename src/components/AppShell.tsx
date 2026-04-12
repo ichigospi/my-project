@@ -22,6 +22,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [session]);
 
+  // 30秒ごとにサーバーから最新データを取得（他メンバーの更新を反映）
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(() => {
+      pullSharedSettings();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [session]);
+
+  // ページ切り替え時も最新データを取得
+  useEffect(() => {
+    if (session && synced.current) {
+      pullSharedSettings();
+    }
+  }, [pathname, session]);
+
   // ページ遷移時にメニューを閉じる
   useEffect(() => {
     setMobileMenuOpen(false);
