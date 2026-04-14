@@ -99,25 +99,25 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 }
 
 // ===== 通知カード共通スタイル =====
-// 縁の光沢: 左上と右下が強く、右上と左下は光らない（斜め方向の光沢）
+// 枠(border)の光沢: 左上と右下がくっきり光り、右上と左下は暗い（斜め方向）
 const GLASS_STYLE: React.CSSProperties = {
-  border: "1px solid transparent",
+  border: "1.5px solid transparent",
   background: [
     "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.14)) padding-box",
-    "linear-gradient(135deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.55) 100%) border-box",
+    "linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.35) 18%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.35) 82%, rgba(255,255,255,0.85) 100%) border-box",
   ].join(", "),
-  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+  boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
   WebkitBackdropFilter: "blur(40px) saturate(180%)",
   backdropFilter: "blur(40px) saturate(180%)",
 };
 
 const GLASS_STYLE_BEHIND: React.CSSProperties = {
-  border: "1px solid transparent",
+  border: "1.5px solid transparent",
   background: [
     "linear-gradient(rgba(255,255,255,0.09), rgba(255,255,255,0.09)) padding-box",
-    "linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.35) 100%) border-box",
+    "linear-gradient(135deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.2) 18%, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.02) 60%, rgba(255,255,255,0.2) 82%, rgba(255,255,255,0.55) 100%) border-box",
   ].join(", "),
-  boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
   WebkitBackdropFilter: "blur(30px) saturate(160%)",
   backdropFilter: "blur(30px) saturate(160%)",
 };
