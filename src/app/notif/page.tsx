@@ -90,20 +90,19 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 }
 
 // ===== 通知カード共通スタイル =====
+// 背景は均一、光沢は「縁のハイライト」だけで表現（iOS方式）
 const GLASS_STYLE: React.CSSProperties = {
-  background:
-    "linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.11) 100%)",
+  background: "rgba(255,255,255,0.16)",
   boxShadow:
-    "inset 0 1px 0 0 rgba(255,255,255,0.28), inset 0 0 0 0.5px rgba(255,255,255,0.15), 0 1px 3px rgba(0,0,0,0.12)",
+    "inset 0 1px 0 0 rgba(255,255,255,0.4), inset 0 -0.5px 0 0 rgba(255,255,255,0.08), inset 0.5px 0 0 0 rgba(255,255,255,0.18), inset -0.5px 0 0 0 rgba(255,255,255,0.18), 0 1px 3px rgba(0,0,0,0.1)",
   WebkitBackdropFilter: "blur(40px) saturate(180%)",
   backdropFilter: "blur(40px) saturate(180%)",
 };
 
 const GLASS_STYLE_BEHIND: React.CSSProperties = {
-  background:
-    "linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.07) 100%)",
+  background: "rgba(255,255,255,0.10)",
   boxShadow:
-    "inset 0 1px 0 0 rgba(255,255,255,0.18), 0 1px 2px rgba(0,0,0,0.1)",
+    "inset 0 1px 0 0 rgba(255,255,255,0.22), inset 0 0 0 0.5px rgba(255,255,255,0.1), 0 1px 2px rgba(0,0,0,0.08)",
   WebkitBackdropFilter: "blur(30px) saturate(160%)",
   backdropFilter: "blur(30px) saturate(160%)",
 };
