@@ -100,13 +100,13 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 
 // ===== 通知カード共通スタイル =====
 // 外枠（グラデーション光沢のみ）
-// 円錐グラデーション: 右上と左下だけ暗く、それ以外は光る
-// from 135deg を起点に時計回り: 0°=右下, 90°=左下, 180°=左上, 270°=右上, 360°=右下
+// 円錐グラデーション: 右上と左下だけ完全に暗く、それ以外（角・辺）はすべて光る
+// from 135deg を起点に時計回り: 0°=右下, 90°=左下, 180°=左上, 270°=右上
 const BORDER_GRADIENT =
-  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.75) 0deg, rgba(255,255,255,0.5) 45deg, rgba(255,255,255,0.12) 90deg, rgba(255,255,255,0.5) 135deg, rgba(255,255,255,0.75) 180deg, rgba(255,255,255,0.5) 225deg, rgba(255,255,255,0.12) 270deg, rgba(255,255,255,0.5) 315deg, rgba(255,255,255,0.75) 360deg)";
+  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.75) 0deg, rgba(255,255,255,0.5) 30deg, rgba(255,255,255,0.15) 65deg, rgba(255,255,255,0) 90deg, rgba(255,255,255,0.15) 115deg, rgba(255,255,255,0.5) 150deg, rgba(255,255,255,0.75) 180deg, rgba(255,255,255,0.5) 210deg, rgba(255,255,255,0.15) 245deg, rgba(255,255,255,0) 270deg, rgba(255,255,255,0.15) 295deg, rgba(255,255,255,0.5) 330deg, rgba(255,255,255,0.75) 360deg)";
 
 const BORDER_GRADIENT_BEHIND =
-  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.45) 0deg, rgba(255,255,255,0.3) 45deg, rgba(255,255,255,0.07) 90deg, rgba(255,255,255,0.3) 135deg, rgba(255,255,255,0.45) 180deg, rgba(255,255,255,0.3) 225deg, rgba(255,255,255,0.07) 270deg, rgba(255,255,255,0.3) 315deg, rgba(255,255,255,0.45) 360deg)";
+  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.45) 0deg, rgba(255,255,255,0.3) 30deg, rgba(255,255,255,0.08) 65deg, rgba(255,255,255,0) 90deg, rgba(255,255,255,0.08) 115deg, rgba(255,255,255,0.3) 150deg, rgba(255,255,255,0.45) 180deg, rgba(255,255,255,0.3) 210deg, rgba(255,255,255,0.08) 245deg, rgba(255,255,255,0) 270deg, rgba(255,255,255,0.08) 295deg, rgba(255,255,255,0.3) 330deg, rgba(255,255,255,0.45) 360deg)";
 
 // CSSマスクで枠だけ表示（リング状に切り抜く）
 const BORDER_MASK = {
@@ -142,7 +142,7 @@ function NotifCard({
   return (
     <div
       onClick={onClick}
-      className="relative rounded-[22px] cursor-pointer active:brightness-110 transition-all"
+      className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all"
       style={{
         ...CARD_BODY,
         boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
@@ -151,7 +151,7 @@ function NotifCard({
       {/* 枠グラデーション（マスクでリング状に切り抜き） */}
       <div
         aria-hidden
-        className="absolute inset-0 rounded-[22px] pointer-events-none"
+        className="absolute inset-0 rounded-[26px] pointer-events-none"
         style={{
           padding: "0.75px",
           background: BORDER_GRADIENT,
@@ -160,7 +160,7 @@ function NotifCard({
       />
 
       {/* コンテンツ */}
-      <div className="relative px-3.5 py-3.5 flex gap-2.5">
+      <div className="relative px-3.5 py-3.5 flex gap-3.5 items-center">
         <IconView notif={notif} badge={badge} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
@@ -171,7 +171,7 @@ function NotifCard({
               {notif.time}
             </p>
           </div>
-          <p className="text-white text-[15px] leading-[1.25] mt-0.5 line-clamp-4 whitespace-pre-wrap">
+          <p className="text-white text-[15px] leading-[1.15] mt-0.5 line-clamp-4 whitespace-pre-wrap">
             {notif.content}
           </p>
         </div>
@@ -192,7 +192,7 @@ function StackedCard({
 }) {
   const renderBehindCard = (className: string) => (
     <div
-      className={`${className} rounded-[22px]`}
+      className={`${className} rounded-[26px]`}
       style={{
         ...CARD_BODY_BEHIND,
         boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
@@ -200,7 +200,7 @@ function StackedCard({
     >
       <div
         aria-hidden
-        className="absolute inset-0 rounded-[22px] pointer-events-none"
+        className="absolute inset-0 rounded-[26px] pointer-events-none"
         style={{
           padding: "0.75px",
           background: BORDER_GRADIENT_BEHIND,
@@ -220,7 +220,7 @@ function StackedCard({
 
       {/* 最前面のカード */}
       <div
-        className="relative rounded-[22px] cursor-pointer active:brightness-110 transition-all"
+        className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all"
         style={{
           ...CARD_BODY,
           boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
@@ -229,7 +229,7 @@ function StackedCard({
         {/* 枠グラデーション */}
         <div
           aria-hidden
-          className="absolute inset-0 rounded-[22px] pointer-events-none"
+          className="absolute inset-0 rounded-[26px] pointer-events-none"
           style={{
             padding: "0.75px",
             background: BORDER_GRADIENT,
@@ -238,7 +238,7 @@ function StackedCard({
         />
 
         {/* コンテンツ */}
-        <div className="relative px-3.5 py-3.5 flex gap-2.5">
+        <div className="relative px-3.5 py-3.5 flex gap-3.5 items-center">
           <IconView notif={notif} badge={count} />
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline justify-between gap-2">
@@ -249,7 +249,7 @@ function StackedCard({
                 {notif.time}
               </p>
             </div>
-            <p className="text-white text-[15px] leading-[1.25] mt-0.5 line-clamp-4 whitespace-pre-wrap">
+            <p className="text-white text-[15px] leading-[1.15] mt-0.5 line-clamp-4 whitespace-pre-wrap">
               {notif.content}
             </p>
           </div>
