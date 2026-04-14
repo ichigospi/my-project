@@ -104,10 +104,10 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 // 横長カードでも TR/BL の角は常に gradient の 50% 位置に来るので正確
 // 大部分は明るく(0.5以上)、中央の50%だけ急速に暗くして TR/BL にピンポイントで暗を当てる
 const BORDER_GRADIENT =
-  "linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.65) 20%, rgba(255,255,255,0.55) 35%, rgba(255,255,255,0.2) 47%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.2) 53%, rgba(255,255,255,0.55) 65%, rgba(255,255,255,0.65) 80%, rgba(255,255,255,0.8) 100%)";
+  "linear-gradient(135deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.32) 20%, rgba(255,255,255,0.25) 35%, rgba(255,255,255,0.08) 47%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.08) 53%, rgba(255,255,255,0.25) 65%, rgba(255,255,255,0.32) 80%, rgba(255,255,255,0.45) 100%)";
 
 const BORDER_GRADIENT_BEHIND =
-  "linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.4) 20%, rgba(255,255,255,0.32) 35%, rgba(255,255,255,0.1) 47%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.1) 53%, rgba(255,255,255,0.32) 65%, rgba(255,255,255,0.4) 80%, rgba(255,255,255,0.5) 100%)";
+  "linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.2) 20%, rgba(255,255,255,0.15) 35%, rgba(255,255,255,0.05) 47%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 53%, rgba(255,255,255,0.15) 65%, rgba(255,255,255,0.2) 80%, rgba(255,255,255,0.28) 100%)";
 
 // CSSマスクで枠だけ表示（リング状に切り抜く）
 const BORDER_MASK = {
@@ -783,7 +783,7 @@ export default function NotifPage() {
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />
       )}
 
-      <div className="relative max-w-md mx-auto px-3 pt-12 pb-44 min-h-screen flex flex-col">
+      <div className="relative max-w-sm mx-auto px-6 pt-12 pb-44 min-h-screen flex flex-col">
         {/* ステータスバー風 */}
         <div className="flex items-center justify-between text-white px-3 mb-2">
           <p className="text-base font-semibold tabular-nums">{clock}</p>
