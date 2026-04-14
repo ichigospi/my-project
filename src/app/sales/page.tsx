@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import AppTabBar from "@/components/AppTabBar";
 
 // ===== 型定義 =====
 interface SalesRecord {
@@ -539,14 +540,14 @@ export default function SalesPage() {
           </>
         )}
 
-        {/* 下部スペース */}
-        <div className="h-28 md:h-24" />
+        {/* 下部スペース（タブバー＋FAB分） */}
+        <div className="h-40 md:h-32" />
       </div>
 
       {/* ===== 追加ボタン（FAB） ===== */}
       <button
         onClick={() => { setEditingRecord(null); setShowModal(true); }}
-        className="hidden md:flex fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/30 items-center justify-center transition-colors z-40"
+        className="hidden md:flex fixed bottom-24 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/30 items-center justify-center transition-colors z-40"
       >
         <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -555,7 +556,7 @@ export default function SalesPage() {
 
       <button
         onClick={() => { setEditingRecord(null); setShowModal(true); }}
-        className="md:hidden fixed bottom-6 right-4 w-14 h-14 bg-blue-600 active:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/30 flex items-center justify-center z-40"
+        className="md:hidden fixed bottom-20 right-4 w-14 h-14 bg-blue-600 active:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/30 flex items-center justify-center z-40"
       >
         <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -599,6 +600,9 @@ export default function SalesPage() {
           </div>
         </div>
       )}
+
+      {/* ===== ボトムタブバー ===== */}
+      <AppTabBar variant="light" />
     </div>
   );
 }
