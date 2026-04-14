@@ -151,7 +151,7 @@ function NotifCard({
         aria-hidden
         className="absolute inset-0 rounded-[22px] pointer-events-none"
         style={{
-          padding: "1.5px",
+          padding: "0.75px",
           background: BORDER_GRADIENT,
           ...BORDER_MASK,
         }}
@@ -200,7 +200,7 @@ function StackedCard({
         aria-hidden
         className="absolute inset-0 rounded-[22px] pointer-events-none"
         style={{
-          padding: "1.5px",
+          padding: "0.75px",
           background: BORDER_GRADIENT_BEHIND,
           ...BORDER_MASK,
         }}
@@ -229,7 +229,7 @@ function StackedCard({
           aria-hidden
           className="absolute inset-0 rounded-[22px] pointer-events-none"
           style={{
-            padding: "1.5px",
+            padding: "0.75px",
             background: BORDER_GRADIENT,
             ...BORDER_MASK,
           }}
