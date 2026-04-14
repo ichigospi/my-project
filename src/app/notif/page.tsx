@@ -100,11 +100,13 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 
 // ===== 通知カード共通スタイル =====
 // 外枠（グラデーション光沢のみ）
+// 円錐グラデーション: 右上と左下だけ暗く、それ以外は光る
+// from 135deg を起点に時計回り: 0°=右下, 90°=左下, 180°=左上, 270°=右上, 360°=右下
 const BORDER_GRADIENT =
-  "linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.22) 20%, rgba(255,255,255,0.04) 42%, rgba(255,255,255,0.04) 58%, rgba(255,255,255,0.22) 80%, rgba(255,255,255,0.5) 100%)";
+  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.75) 0deg, rgba(255,255,255,0.5) 45deg, rgba(255,255,255,0.12) 90deg, rgba(255,255,255,0.5) 135deg, rgba(255,255,255,0.75) 180deg, rgba(255,255,255,0.5) 225deg, rgba(255,255,255,0.12) 270deg, rgba(255,255,255,0.5) 315deg, rgba(255,255,255,0.75) 360deg)";
 
 const BORDER_GRADIENT_BEHIND =
-  "linear-gradient(135deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.14) 20%, rgba(255,255,255,0.02) 42%, rgba(255,255,255,0.02) 58%, rgba(255,255,255,0.14) 80%, rgba(255,255,255,0.32) 100%)";
+  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.45) 0deg, rgba(255,255,255,0.3) 45deg, rgba(255,255,255,0.07) 90deg, rgba(255,255,255,0.3) 135deg, rgba(255,255,255,0.45) 180deg, rgba(255,255,255,0.3) 225deg, rgba(255,255,255,0.07) 270deg, rgba(255,255,255,0.3) 315deg, rgba(255,255,255,0.45) 360deg)";
 
 // CSSマスクで枠だけ表示（リング状に切り抜く）
 const BORDER_MASK = {
@@ -158,18 +160,18 @@ function NotifCard({
       />
 
       {/* コンテンツ */}
-      <div className="relative px-3.5 py-3 flex gap-2.5">
+      <div className="relative px-3.5 py-3.5 flex gap-2.5">
         <IconView notif={notif} badge={badge} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
+            <p className="text-white text-[15px] font-semibold truncate drop-shadow-sm">
               {notif.sender}
             </p>
-            <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
+            <p className="text-white/75 text-[12px] shrink-0 tabular-nums">
               {notif.time}
             </p>
           </div>
-          <p className="text-white text-[13px] leading-snug mt-0.5 line-clamp-4 whitespace-pre-wrap">
+          <p className="text-white text-[15px] leading-[1.25] mt-0.5 line-clamp-4 whitespace-pre-wrap">
             {notif.content}
           </p>
         </div>
@@ -236,18 +238,18 @@ function StackedCard({
         />
 
         {/* コンテンツ */}
-        <div className="relative px-3.5 py-3 flex gap-2.5">
+        <div className="relative px-3.5 py-3.5 flex gap-2.5">
           <IconView notif={notif} badge={count} />
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline justify-between gap-2">
-              <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
+              <p className="text-white text-[15px] font-semibold truncate drop-shadow-sm">
                 {notif.sender}
               </p>
-              <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
+              <p className="text-white/75 text-[12px] shrink-0 tabular-nums">
                 {notif.time}
               </p>
             </div>
-            <p className="text-white text-[13px] leading-snug mt-0.5 line-clamp-4 whitespace-pre-wrap">
+            <p className="text-white text-[15px] leading-[1.25] mt-0.5 line-clamp-4 whitespace-pre-wrap">
               {notif.content}
             </p>
           </div>
