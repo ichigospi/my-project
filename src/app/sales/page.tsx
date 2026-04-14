@@ -150,7 +150,7 @@ function SwipeableRow({
           <p className={`text-[16px] font-normal tabular-nums tracking-tight ${
             record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
           }`}>
-            {formatAmount(record.amount)} <span className="text-xs font-light">円</span>
+            {formatAmount(record.amount)} <span className="text-[11px] font-light text-gray-900">円</span>
           </p>
           <p className="text-[11px] font-light text-gray-400 mt-1 tabular-nums">
             残高 {formatBalance(record.balance)} 円
@@ -519,7 +519,7 @@ export default function SalesPage() {
                     <p className={`text-[16px] font-normal tabular-nums tracking-tight ${
                       record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
                     }`}>
-                      {formatAmount(record.amount)} <span className="text-xs font-light">円</span>
+                      {formatAmount(record.amount)} <span className="text-[11px] font-light text-gray-900">円</span>
                     </p>
                     <p className="text-[11px] font-light text-gray-400 mt-1 tabular-nums">
                       残高 {formatBalance(record.balance)} 円
