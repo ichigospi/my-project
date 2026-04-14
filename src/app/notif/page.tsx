@@ -89,6 +89,25 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
   );
 }
 
+// ===== 通知カード共通スタイル =====
+const GLASS_STYLE: React.CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.11) 100%)",
+  boxShadow:
+    "inset 0 1px 0 0 rgba(255,255,255,0.28), inset 0 0 0 0.5px rgba(255,255,255,0.15), 0 1px 3px rgba(0,0,0,0.12)",
+  WebkitBackdropFilter: "blur(40px) saturate(180%)",
+  backdropFilter: "blur(40px) saturate(180%)",
+};
+
+const GLASS_STYLE_BEHIND: React.CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.07) 100%)",
+  boxShadow:
+    "inset 0 1px 0 0 rgba(255,255,255,0.18), 0 1px 2px rgba(0,0,0,0.1)",
+  WebkitBackdropFilter: "blur(30px) saturate(160%)",
+  backdropFilter: "blur(30px) saturate(160%)",
+};
+
 // ===== 通知カード（プレビュー） =====
 function NotifCard({
   notif,
@@ -102,14 +121,15 @@ function NotifCard({
   return (
     <div
       onClick={onClick}
-      className="bg-white/[0.14] backdrop-blur-2xl rounded-[22px] px-3.5 py-3 flex gap-2.5 cursor-pointer active:bg-white/[0.22] transition-colors"
+      className="rounded-[22px] px-3.5 py-3 flex gap-2.5 cursor-pointer active:brightness-110 transition-all"
+      style={GLASS_STYLE}
     >
       <IconView notif={notif} badge={badge} />
 
       {/* 本文 */}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-2">
-          <p className="text-white text-[13px] font-semibold truncate">
+          <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
             {notif.sender}
           </p>
           <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
@@ -138,17 +158,26 @@ function StackedCard({
     <div className="relative" onClick={onClick}>
       {/* 後ろのカード（束ね表現） */}
       {count >= 3 && (
-        <div className="absolute left-4 right-4 top-2 bottom-[-9px] bg-white/[0.08] backdrop-blur-md rounded-[22px]" />
+        <div
+          className="absolute left-4 right-4 top-2 bottom-[-9px] rounded-[22px]"
+          style={GLASS_STYLE_BEHIND}
+        />
       )}
       {count >= 2 && (
-        <div className="absolute left-2 right-2 top-1 bottom-[-4px] bg-white/[0.11] backdrop-blur-md rounded-[22px]" />
+        <div
+          className="absolute left-2 right-2 top-1 bottom-[-4px] rounded-[22px]"
+          style={GLASS_STYLE_BEHIND}
+        />
       )}
       {/* 最前面のカード */}
-      <div className="relative bg-white/[0.14] backdrop-blur-2xl rounded-[22px] px-3.5 py-3 flex gap-2.5 cursor-pointer active:bg-white/[0.22] transition-colors">
+      <div
+        className="relative rounded-[22px] px-3.5 py-3 flex gap-2.5 cursor-pointer active:brightness-110 transition-all"
+        style={GLASS_STYLE}
+      >
         <IconView notif={notif} badge={count} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-white text-[13px] font-semibold truncate">
+            <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
               {notif.sender}
             </p>
             <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
