@@ -106,7 +106,15 @@ const BORDER_GRADIENT =
 const BORDER_GRADIENT_BEHIND =
   "linear-gradient(135deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.2) 18%, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.02) 60%, rgba(255,255,255,0.2) 82%, rgba(255,255,255,0.55) 100%)";
 
-// カード本体: 均一な半透明（本体にグラデーションは入れない）
+// CSSマスクで枠だけ表示（リング状に切り抜く）
+const BORDER_MASK = {
+  WebkitMask:
+    "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+  WebkitMaskComposite: "xor",
+  maskComposite: "exclude",
+} as React.CSSProperties;
+
+// カード本体: 均一な半透明
 const CARD_BODY: React.CSSProperties = {
   backgroundColor: "rgba(255,255,255,0.15)",
   WebkitBackdropFilter: "blur(40px) saturate(180%)",
@@ -134,18 +142,24 @@ function NotifCard({
       onClick={onClick}
       className="relative rounded-[22px] cursor-pointer active:brightness-110 transition-all"
       style={{
-        padding: "1.5px",
-        background: BORDER_GRADIENT,
+        ...CARD_BODY,
         boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
       }}
     >
+      {/* 枠グラデーション（マスクでリング状に切り抜き） */}
       <div
-        className="rounded-[20.5px] px-3.5 py-3 flex gap-2.5"
-        style={CARD_BODY}
-      >
-        <IconView notif={notif} badge={badge} />
+        aria-hidden
+        className="absolute inset-0 rounded-[22px] pointer-events-none"
+        style={{
+          padding: "1.5px",
+          background: BORDER_GRADIENT,
+          ...BORDER_MASK,
+        }}
+      />
 
-        {/* 本文 */}
+      {/* コンテンツ */}
+      <div className="relative px-3.5 py-3 flex gap-2.5">
+        <IconView notif={notif} badge={badge} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
@@ -174,44 +188,55 @@ function StackedCard({
   count: number;
   onClick: () => void;
 }) {
-  const behindStyle: React.CSSProperties = {
-    padding: "1.5px",
-    background: BORDER_GRADIENT_BEHIND,
-    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-  };
+  const renderBehindCard = (className: string) => (
+    <div
+      className={`${className} rounded-[22px]`}
+      style={{
+        ...CARD_BODY_BEHIND,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+      }}
+    >
+      <div
+        aria-hidden
+        className="absolute inset-0 rounded-[22px] pointer-events-none"
+        style={{
+          padding: "1.5px",
+          background: BORDER_GRADIENT_BEHIND,
+          ...BORDER_MASK,
+        }}
+      />
+    </div>
+  );
 
   return (
     <div className="relative" onClick={onClick}>
       {/* 後ろのカード（束ね表現） */}
-      {count >= 3 && (
-        <div
-          className="absolute left-4 right-4 top-2 bottom-[-9px] rounded-[22px]"
-          style={behindStyle}
-        >
-          <div className="rounded-[20.5px] w-full h-full" style={CARD_BODY_BEHIND} />
-        </div>
-      )}
-      {count >= 2 && (
-        <div
-          className="absolute left-2 right-2 top-1 bottom-[-4px] rounded-[22px]"
-          style={behindStyle}
-        >
-          <div className="rounded-[20.5px] w-full h-full" style={CARD_BODY_BEHIND} />
-        </div>
-      )}
+      {count >= 3 &&
+        renderBehindCard("absolute left-4 right-4 top-2 bottom-[-9px]")}
+      {count >= 2 &&
+        renderBehindCard("absolute left-2 right-2 top-1 bottom-[-4px]")}
+
       {/* 最前面のカード */}
       <div
         className="relative rounded-[22px] cursor-pointer active:brightness-110 transition-all"
         style={{
-          padding: "1.5px",
-          background: BORDER_GRADIENT,
+          ...CARD_BODY,
           boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
         }}
       >
+        {/* 枠グラデーション */}
         <div
-          className="rounded-[20.5px] px-3.5 py-3 flex gap-2.5"
-          style={CARD_BODY}
-        >
+          aria-hidden
+          className="absolute inset-0 rounded-[22px] pointer-events-none"
+          style={{
+            padding: "1.5px",
+            background: BORDER_GRADIENT,
+            ...BORDER_MASK,
+          }}
+        />
+
+        {/* コンテンツ */}
+        <div className="relative px-3.5 py-3 flex gap-2.5">
           <IconView notif={notif} badge={count} />
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline justify-between gap-2">
