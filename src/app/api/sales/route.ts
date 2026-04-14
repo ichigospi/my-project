@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/auth-helpers";
 
 // 一覧取得（月別フィルタ対応）
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth();
-    if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
-
     const { searchParams } = new URL(request.url);
     const year = searchParams.get("year");
     const month = searchParams.get("month");
@@ -38,9 +34,6 @@ export async function GET(request: NextRequest) {
 // 新規作成
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAuth();
-    if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
-
     const body = await request.json();
     const { date, description, amount, balance, category, note } = body;
 
@@ -69,9 +62,6 @@ export async function POST(request: NextRequest) {
 // 更新
 export async function PUT(request: NextRequest) {
   try {
-    const auth = await requireAuth();
-    if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
-
     const body = await request.json();
     const { id, ...data } = body;
 
@@ -95,9 +85,6 @@ export async function PUT(request: NextRequest) {
 // 削除
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await requireAuth();
-    if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
-
     const { id } = await request.json();
     if (!id) return NextResponse.json({ error: "id は必須です" }, { status: 400 });
 
