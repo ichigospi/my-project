@@ -14,19 +14,28 @@ interface NotifItem {
   content: string;
 }
 
+type BgMode = "solid" | "gradient" | "image";
+type GradientDir = "to bottom" | "to top" | "to right" | "to left" | "to bottom right" | "to bottom left" | "to top right" | "to top left" | "radial";
+
 interface Settings {
-  bgColor: string;
-  bgImage: string; // data URL
-  useImage: boolean;
+  bgMode: BgMode;
+  bgColor: string;      // 単色 or グラデーション1色目
+  bgColor2: string;     // グラデーション2色目
+  bgDirection: GradientDir;
+  bgImage: string;      // data URL
+  // 旧バージョン互換
+  useImage?: boolean;
   notifications: NotifItem[];
 }
 
 const STORAGE_KEY = "notif-kun-settings-v1";
 
 const DEFAULT_SETTINGS: Settings = {
+  bgMode: "solid",
   bgColor: "#6b3a4a",
+  bgColor2: "#3a1f2a",
+  bgDirection: "to bottom",
   bgImage: "",
-  useImage: false,
   notifications: [
     {
       id: "n1",
@@ -90,19 +99,25 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 }
 
 // ===== 通知カード共通スタイル =====
-// 背景は均一、光沢は「縁のハイライト」だけで表現（iOS方式）
+// 縁の光沢: 左上と右下が強く、右上と左下は光らない（斜め方向の光沢）
 const GLASS_STYLE: React.CSSProperties = {
-  background: "rgba(255,255,255,0.16)",
-  boxShadow:
-    "inset 0 1px 0 0 rgba(255,255,255,0.4), inset 0 -0.5px 0 0 rgba(255,255,255,0.08), inset 0.5px 0 0 0 rgba(255,255,255,0.18), inset -0.5px 0 0 0 rgba(255,255,255,0.18), 0 1px 3px rgba(0,0,0,0.1)",
+  border: "1px solid transparent",
+  background: [
+    "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.14)) padding-box",
+    "linear-gradient(135deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.55) 100%) border-box",
+  ].join(", "),
+  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
   WebkitBackdropFilter: "blur(40px) saturate(180%)",
   backdropFilter: "blur(40px) saturate(180%)",
 };
 
 const GLASS_STYLE_BEHIND: React.CSSProperties = {
-  background: "rgba(255,255,255,0.10)",
-  boxShadow:
-    "inset 0 1px 0 0 rgba(255,255,255,0.22), inset 0 0 0 0.5px rgba(255,255,255,0.1), 0 1px 2px rgba(0,0,0,0.08)",
+  border: "1px solid transparent",
+  background: [
+    "linear-gradient(rgba(255,255,255,0.09), rgba(255,255,255,0.09)) padding-box",
+    "linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.35) 100%) border-box",
+  ].join(", "),
+  boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
   WebkitBackdropFilter: "blur(30px) saturate(160%)",
   backdropFilter: "blur(30px) saturate(160%)",
 };
@@ -408,6 +423,82 @@ function EditModal({
   );
 }
 
+// ===== 背景スタイル計算 =====
+function getBgStyle(s: { bgMode: BgMode; bgColor: string; bgColor2: string; bgDirection: GradientDir; bgImage: string }): React.CSSProperties {
+  if (s.bgMode === "image" && s.bgImage) {
+    return { backgroundImage: `url(${s.bgImage})`, backgroundSize: "cover", backgroundPosition: "center" };
+  }
+  if (s.bgMode === "gradient") {
+    if (s.bgDirection === "radial") {
+      return { background: `radial-gradient(circle at center, ${s.bgColor}, ${s.bgColor2})` };
+    }
+    return { background: `linear-gradient(${s.bgDirection}, ${s.bgColor}, ${s.bgColor2})` };
+  }
+  return { backgroundColor: s.bgColor };
+}
+
+const DIRECTION_OPTIONS: { label: string; value: GradientDir; icon: string }[] = [
+  { label: "上→下", value: "to bottom", icon: "↓" },
+  { label: "下→上", value: "to top", icon: "↑" },
+  { label: "左→右", value: "to right", icon: "→" },
+  { label: "右→左", value: "to left", icon: "←" },
+  { label: "左上→右下", value: "to bottom right", icon: "↘" },
+  { label: "右上→左下", value: "to bottom left", icon: "↙" },
+  { label: "左下→右上", value: "to top right", icon: "↗" },
+  { label: "右下→左上", value: "to top left", icon: "↖" },
+  { label: "放射", value: "radial", icon: "◎" },
+];
+
+const PRESET_COLORS = [
+  "#6b3a4a", "#3a1f2a", "#1a1a2e", "#2d3748", "#3b3f5c", "#8b5cf6",
+  "#ec4899", "#f472b6", "#10b981", "#0ea5a5", "#f59e0b", "#ef4444",
+  "#06b6d4", "#3b82f6", "#000000", "#ffffff", "#f5f5f5", "#d4a5a5",
+];
+
+// ===== HEX入力付きカラーピッカー =====
+function ColorPicker({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+}) {
+  const [hex, setHex] = useState(value);
+  useEffect(() => { setHex(value); }, [value]);
+
+  const handleHex = (v: string) => {
+    setHex(v);
+    // 有効なHEX形式ならonChange
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+      onChange(v);
+    }
+  };
+
+  return (
+    <div>
+      {label && <label className="block text-xs font-medium text-gray-500 mb-1.5">{label}</label>}
+      <div className="flex gap-2 items-center">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => { onChange(e.target.value); setHex(e.target.value); }}
+          className="w-14 h-11 rounded-lg border border-gray-200 cursor-pointer shrink-0"
+        />
+        <input
+          type="text"
+          value={hex}
+          onChange={(e) => handleHex(e.target.value)}
+          placeholder="#ffffff"
+          className="flex-1 h-11 rounded-lg border border-gray-200 px-3 text-sm font-mono uppercase"
+          maxLength={7}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ===== 背景設定モーダル =====
 function BgModal({
   settings,
@@ -418,9 +509,11 @@ function BgModal({
   onClose: () => void;
   onSave: (s: Partial<Settings>) => void;
 }) {
+  const [bgMode, setBgMode] = useState<BgMode>(settings.bgMode);
   const [bgColor, setBgColor] = useState(settings.bgColor);
+  const [bgColor2, setBgColor2] = useState(settings.bgColor2);
+  const [bgDirection, setBgDirection] = useState<GradientDir>(settings.bgDirection);
   const [bgImage, setBgImage] = useState(settings.bgImage);
-  const [useImage, setUseImage] = useState(settings.useImage);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -428,8 +521,10 @@ function BgModal({
     if (!file) return;
     const dataUrl = await fileToDataUrl(file);
     setBgImage(dataUrl);
-    setUseImage(true);
+    setBgMode("image");
   };
+
+  const previewStyle = getBgStyle({ bgMode, bgColor, bgColor2, bgDirection, bgImage });
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center">
@@ -443,49 +538,76 @@ function BgModal({
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none p-1">&times;</button>
         </div>
 
+        {/* プレビュー */}
+        <div className="w-full h-20 rounded-xl border border-gray-200" style={previewStyle} />
+
         {/* モード切替 */}
         <div className="flex gap-2">
-          <button
-            onClick={() => setUseImage(false)}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${
-              !useImage ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500"
-            }`}
-          >
-            単色
-          </button>
-          <button
-            onClick={() => setUseImage(true)}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${
-              useImage ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500"
-            }`}
-          >
-            画像
-          </button>
+          {([
+            { mode: "solid" as BgMode, label: "単色" },
+            { mode: "gradient" as BgMode, label: "グラデーション" },
+            { mode: "image" as BgMode, label: "画像" },
+          ]).map(({ mode, label }) => (
+            <button
+              key={mode}
+              onClick={() => setBgMode(mode)}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors ${
+                bgMode === mode ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
-        {!useImage ? (
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-2">背景色</label>
-            <input
-              type="color"
-              value={bgColor}
-              onChange={(e) => setBgColor(e.target.value)}
-              className="w-full h-14 rounded-xl border border-gray-200 cursor-pointer"
-            />
-            <div className="grid grid-cols-6 gap-2 mt-3">
-              {["#6b3a4a", "#1a1a2e", "#2d3748", "#3b3f5c", "#8b5cf6", "#ec4899", "#10b981", "#f59e0b", "#ef4444", "#06b6d4", "#000000", "#f5f5f5"].map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setBgColor(c)}
-                  className="aspect-square rounded-lg border-2"
-                  style={{ backgroundColor: c, borderColor: bgColor === c ? "#2563eb" : "transparent" }}
-                />
-              ))}
+        {/* モード別設定 */}
+        {bgMode === "solid" && (
+          <div className="space-y-3">
+            <ColorPicker value={bgColor} onChange={setBgColor} label="背景色" />
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">プリセット</label>
+              <div className="grid grid-cols-6 gap-2">
+                {PRESET_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setBgColor(c)}
+                    className="aspect-square rounded-lg border-2"
+                    style={{ backgroundColor: c, borderColor: bgColor.toLowerCase() === c.toLowerCase() ? "#2563eb" : "transparent" }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
-        ) : (
+        )}
+
+        {bgMode === "gradient" && (
+          <div className="space-y-3">
+            <ColorPicker value={bgColor} onChange={setBgColor} label="色1（開始色）" />
+            <ColorPicker value={bgColor2} onChange={setBgColor2} label="色2（終了色）" />
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">方向</label>
+              <div className="grid grid-cols-3 gap-2">
+                {DIRECTION_OPTIONS.map((d) => (
+                  <button
+                    key={d.value}
+                    onClick={() => setBgDirection(d.value)}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                      bgDirection === d.value
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    <span className="text-base">{d.icon}</span>
+                    <span className="text-[10px]">{d.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {bgMode === "image" && (
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-2">背景画像</label>
             {bgImage && (
               <div
                 className="w-full h-40 rounded-xl bg-cover bg-center mb-3 border border-gray-200"
@@ -500,7 +622,7 @@ function BgModal({
             </button>
             {bgImage && (
               <button
-                onClick={() => { setBgImage(""); setUseImage(false); }}
+                onClick={() => setBgImage("")}
                 className="w-full mt-2 py-3 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 active:bg-gray-200"
               >
                 画像を削除
@@ -511,7 +633,7 @@ function BgModal({
         )}
 
         <button
-          onClick={() => { onSave({ bgColor, bgImage, useImage }); onClose(); }}
+          onClick={() => { onSave({ bgMode, bgColor, bgColor2, bgDirection, bgImage }); onClose(); }}
           className="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-blue-600 active:bg-blue-700"
         >
           保存
@@ -532,12 +654,20 @@ export default function NotifPage() {
   const [expandedSender, setExpandedSender] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  // 初回読み込み
+  // 初回読み込み（旧フォーマットも互換対応）
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        setSettings(JSON.parse(raw));
+        const parsed = JSON.parse(raw);
+        // 旧フォーマット(useImage)→新フォーマット(bgMode)へ変換
+        const bgMode: BgMode =
+          parsed.bgMode ?? (parsed.useImage ? "image" : "solid");
+        setSettings({
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          bgMode,
+        });
       }
     } catch {
       // ignore
@@ -579,9 +709,7 @@ export default function NotifPage() {
     setEditingNotif(null);
   };
 
-  const bgStyle: React.CSSProperties = settings.useImage && settings.bgImage
-    ? { backgroundImage: `url(${settings.bgImage})`, backgroundSize: "cover", backgroundPosition: "center" }
-    : { backgroundColor: settings.bgColor };
+  const bgStyle = getBgStyle(settings);
 
   // 現在時刻を表示（ロック画面風）
   const [clock, setClock] = useState("");
@@ -598,7 +726,7 @@ export default function NotifPage() {
   return (
     <div className="min-h-screen relative" style={bgStyle}>
       {/* うっすら暗くするオーバーレイ（画像使用時） */}
-      {settings.useImage && settings.bgImage && (
+      {settings.bgMode === "image" && settings.bgImage && (
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />
       )}
 
