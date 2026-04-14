@@ -60,9 +60,11 @@ function getMonthTabs(currentYear: number, currentMonth: number) {
 function SwipeableRow({
   record,
   onDelete,
+  onEdit,
 }: {
   record: SalesRecord;
   onDelete: (id: string) => void;
+  onEdit: (record: SalesRecord) => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const startX = useRef(0);
@@ -103,6 +105,14 @@ function SwipeableRow({
     setShowDelete(false);
   };
 
+  const handleClick = () => {
+    if (showDelete) {
+      resetSwipe();
+    } else if (!swiping.current) {
+      onEdit(record);
+    }
+  };
+
   return (
     <div className="relative overflow-hidden">
       {/* 削除ボタン背景 */}
@@ -118,32 +128,32 @@ function SwipeableRow({
         </button>
       </div>
 
-      {/* メインコンテンツ（スワイプで動く） */}
+      {/* メインコンテンツ（スワイプで動く / タップで編集） */}
       <div
         ref={rowRef}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onClick={() => showDelete && resetSwipe()}
-        className="relative bg-white px-4 py-3.5 flex items-start justify-between gap-3 transition-transform duration-150 ease-out"
+        onClick={handleClick}
+        className="relative bg-white px-4 py-4 flex items-start justify-between gap-3 transition-transform duration-150 ease-out active:bg-gray-50"
         style={{ transform: `translateX(-${offset}px)` }}
       >
         <div className="flex-1 min-w-0">
-          <p className="text-[15px] font-medium text-gray-900 truncate">
+          <p className="text-[15px] font-normal text-gray-900 truncate tracking-wide">
             {record.description}
           </p>
-          <p className="text-[11px] text-gray-400 mt-0.5">
+          <p className="text-[11px] font-light text-gray-400 mt-1">
             {formatDate(record.date)}
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className={`text-[17px] font-bold tabular-nums ${
-            record.amount >= 0 ? "text-emerald-500" : "text-gray-800"
+          <p className={`text-[16px] font-normal tabular-nums tracking-tight ${
+            record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
           }`}>
-            {formatAmount(record.amount)}円
+            {formatAmount(record.amount)} <span className="text-xs font-light">円</span>
           </p>
-          <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">
-            残高 {formatBalance(record.balance)}円
+          <p className="text-[11px] font-light text-gray-400 mt-1 tabular-nums">
+            残高 {formatBalance(record.balance)} 円
           </p>
         </div>
       </div>
@@ -151,30 +161,56 @@ function SwipeableRow({
   );
 }
 
-// ===== 新規登録モーダル =====
-function AddRecordModal({
+// ===== 追加・編集モーダル（両対応） =====
+function RecordModal({
   onClose,
   onSave,
+  onDelete,
   latestBalance,
+  initialRecord,
 }: {
   onClose: () => void;
-  onSave: (record: Omit<SalesRecord, "id">) => void;
+  onSave: (record: Omit<SalesRecord, "id"> & { id?: string }) => void;
+  onDelete?: (id: string) => void;
   latestBalance: number;
+  initialRecord?: SalesRecord | null;
 }) {
+  const isEdit = !!initialRecord;
   const today = new Date().toISOString().split("T")[0];
-  const [date, setDate] = useState(today);
-  const [description, setDescription] = useState("");
-  const [amountStr, setAmountStr] = useState("");
-  const [isIncome, setIsIncome] = useState(true);
-  const [category, setCategory] = useState("income");
-  const [note, setNote] = useState("");
+  const [date, setDate] = useState(initialRecord?.date || today);
+  const [description, setDescription] = useState(initialRecord?.description || "");
+  const [amountStr, setAmountStr] = useState(
+    initialRecord ? String(Math.abs(initialRecord.amount)) : ""
+  );
+  const [isIncome, setIsIncome] = useState(
+    initialRecord ? initialRecord.amount >= 0 : true
+  );
+  const [category, setCategory] = useState(initialRecord?.category || "income");
+  const [note, setNote] = useState(initialRecord?.note || "");
 
   const handleSubmit = () => {
     const amount = Number(amountStr);
     if (!date || !description || !amount) return;
     const signedAmount = isIncome ? Math.abs(amount) : -Math.abs(amount);
-    const balance = latestBalance + signedAmount;
-    onSave({ date, description, amount: signedAmount, balance, category, note });
+
+    // 編集時: 既存の残高差分を考慮しつつ、新しい残高を計算
+    // シンプルに: 新しい残高 = (編集前の残高 - 編集前の金額) + 新しい金額
+    let balance: number;
+    if (isEdit && initialRecord) {
+      balance = initialRecord.balance - initialRecord.amount + signedAmount;
+    } else {
+      balance = latestBalance + signedAmount;
+    }
+
+    onSave({
+      id: initialRecord?.id,
+      date,
+      description,
+      amount: signedAmount,
+      balance,
+      category,
+      note,
+    });
   };
 
   return (
@@ -186,7 +222,9 @@ function AddRecordModal({
         </div>
 
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-900">取引を追加</h3>
+          <h3 className="text-lg font-bold text-gray-900">
+            {isEdit ? "取引を編集" : "取引を追加"}
+          </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none p-1">&times;</button>
         </div>
 
@@ -203,7 +241,7 @@ function AddRecordModal({
           <button
             onClick={() => { setIsIncome(false); setCategory("expense"); }}
             className={`flex-1 py-3 md:py-2.5 rounded-xl md:rounded-lg text-sm font-bold transition-colors ${
-              !isIncome ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-500"
+              !isIncome ? "bg-rose-500 text-white" : "bg-gray-100 text-gray-500"
             }`}
           >
             出金（-）
@@ -248,10 +286,24 @@ function AddRecordModal({
         <button onClick={handleSubmit}
           disabled={!date || !description || !amountStr}
           className="w-full py-3.5 md:py-3 rounded-xl md:rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors">
-          登録する
+          {isEdit ? "更新する" : "登録する"}
         </button>
 
-        {/* モバイル下部余白（safe area） */}
+        {/* 編集時のみ削除ボタン */}
+        {isEdit && initialRecord && onDelete && (
+          <button
+            onClick={() => {
+              if (confirm("この取引を削除しますか？")) {
+                onDelete(initialRecord.id);
+              }
+            }}
+            className="w-full py-3 rounded-xl md:rounded-lg text-sm font-medium text-rose-500 hover:bg-rose-50 active:bg-rose-100 transition-colors"
+          >
+            この取引を削除
+          </button>
+        )}
+
+        {/* モバイル下部余白 */}
         <div className="md:hidden h-4" />
       </div>
     </div>
@@ -266,6 +318,7 @@ export default function SalesPage() {
   const [records, setRecords] = useState<SalesRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<SalesRecord | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const monthTabs = getMonthTabs(year, month);
@@ -288,15 +341,17 @@ export default function SalesPage() {
     fetchRecords();
   }, [fetchRecords]);
 
-  const handleSave = async (record: Omit<SalesRecord, "id">) => {
+  const handleSave = async (record: Omit<SalesRecord, "id"> & { id?: string }) => {
     try {
+      const isEdit = !!record.id;
       const res = await fetch("/api/sales", {
-        method: "POST",
+        method: isEdit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(record),
       });
       if (res.ok) {
         setShowModal(false);
+        setEditingRecord(null);
         fetchRecords();
       }
     } catch (e) {
@@ -313,6 +368,7 @@ export default function SalesPage() {
       });
       if (res.ok) {
         setDeletingId(null);
+        setEditingRecord(null);
         fetchRecords();
       }
     } catch (e) {
@@ -335,7 +391,7 @@ export default function SalesPage() {
         <div className="md:hidden flex items-center justify-between px-4 pt-3 pb-1">
           <div className="w-12" />
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => { setEditingRecord(null); setShowModal(true); }}
             className="text-xs text-blue-300 active:text-blue-400 font-medium py-1"
           >
             + 追加
@@ -346,27 +402,27 @@ export default function SalesPage() {
           {/* タイトル */}
           <div className="text-center">
             <h1 className="text-lg font-bold tracking-wide">売上管理</h1>
-            <p className="text-[10px] md:text-xs text-white/60 mt-0.5">Sales Record</p>
+            <p className="text-[10px] md:text-xs text-white/60 mt-0.5 font-light">Sales Record</p>
           </div>
 
           {/* 残高表示 */}
           <div className="mt-4 md:mt-5 text-center">
-            <p className="text-[10px] md:text-xs text-white/50">現在の残高</p>
+            <p className="text-[10px] md:text-xs text-white/50 font-light">現在の残高</p>
             <p className="text-2xl md:text-3xl font-bold mt-1 tracking-tight">
               {formatBalance(latestBalance)}
-              <span className="text-sm md:text-base font-normal ml-1">円</span>
+              <span className="text-sm md:text-base font-light ml-1">円</span>
             </p>
           </div>
 
           {/* 月間サマリー */}
           <div className="flex gap-2 md:gap-3 mt-3 md:mt-4">
             <div className="flex-1 bg-white/10 rounded-xl p-2.5 md:p-3 text-center">
-              <p className="text-[9px] md:text-[10px] text-white/50">今月の入金</p>
-              <p className="text-emerald-400 font-bold text-xs md:text-sm mt-0.5">+{totalIncome.toLocaleString()}円</p>
+              <p className="text-[9px] md:text-[10px] text-white/50 font-light">今月の入金</p>
+              <p className="text-emerald-400 font-medium text-xs md:text-sm mt-0.5 tabular-nums">+{totalIncome.toLocaleString()} 円</p>
             </div>
             <div className="flex-1 bg-white/10 rounded-xl p-2.5 md:p-3 text-center">
-              <p className="text-[9px] md:text-[10px] text-white/50">今月の出金</p>
-              <p className="text-white/80 font-bold text-xs md:text-sm mt-0.5">-{totalExpense.toLocaleString()}円</p>
+              <p className="text-[9px] md:text-[10px] text-white/50 font-light">今月の出金</p>
+              <p className="text-white/80 font-medium text-xs md:text-sm mt-0.5 tabular-nums">-{totalExpense.toLocaleString()} 円</p>
             </div>
           </div>
         </div>
@@ -374,7 +430,7 @@ export default function SalesPage() {
         {/* 年表示 */}
         <div className="max-w-lg mx-auto px-4">
           <div className="text-center">
-            <p className="text-xs md:text-sm font-medium text-white/70">{year}</p>
+            <p className="text-xs md:text-sm font-light text-white/70">{year}</p>
           </div>
         </div>
 
@@ -387,9 +443,9 @@ export default function SalesPage() {
                 <button
                   key={`${tab.year}-${tab.month}`}
                   onClick={() => { setYear(tab.year); setMonth(tab.month); }}
-                  className={`flex-1 py-2.5 md:py-3 text-xs md:text-sm font-medium transition-colors relative ${
+                  className={`flex-1 py-2.5 md:py-3 text-xs md:text-sm font-light transition-colors relative ${
                     isActive
-                      ? "text-white"
+                      ? "text-white font-medium"
                       : "text-white/40 active:text-white/70 md:hover:text-white/70"
                   }`}
                 >
@@ -406,10 +462,9 @@ export default function SalesPage() {
 
       {/* ===== 取引一覧 ===== */}
       <div className="max-w-lg mx-auto">
-        {/* モバイルのスワイプヒント（初回のみ見せたい場合はlocalStorageで管理可能） */}
         {records.length > 0 && (
-          <p className="md:hidden text-center text-[10px] text-gray-400 py-2">
-            左にスワイプで削除
+          <p className="md:hidden text-center text-[10px] text-gray-400 py-2 font-light">
+            タップで編集 / 左スワイプで削除
           </p>
         )}
 
@@ -422,9 +477,9 @@ export default function SalesPage() {
             <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
-            <p className="text-sm">この月の取引はありません</p>
+            <p className="text-sm font-light">この月の取引はありません</p>
             <button
-              onClick={() => setShowModal(true)}
+              onClick={() => { setEditingRecord(null); setShowModal(true); }}
               className="mt-4 px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:bg-blue-700 md:hover:bg-blue-700 transition-colors"
             >
               最初の取引を追加
@@ -432,45 +487,47 @@ export default function SalesPage() {
           </div>
         ) : (
           <>
-            {/* モバイル: スワイプ削除対応リスト */}
+            {/* モバイル: スワイプ削除 & タップ編集 */}
             <div className="md:hidden divide-y divide-gray-100">
               {records.map((record) => (
                 <SwipeableRow
                   key={record.id}
                   record={record}
                   onDelete={(id) => setDeletingId(id)}
+                  onEdit={(r) => { setEditingRecord(r); setShowModal(true); }}
                 />
               ))}
             </div>
 
-            {/* デスクトップ: ホバー削除リスト */}
+            {/* デスクトップ: クリックで編集、×で削除 */}
             <div className="hidden md:block divide-y divide-gray-100">
               {records.map((record) => (
                 <div
                   key={record.id}
-                  className="bg-white px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50/50 transition-colors relative group"
+                  onClick={() => { setEditingRecord(record); setShowModal(true); }}
+                  className="bg-white px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50 cursor-pointer transition-colors relative group"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-[15px] font-medium text-gray-900 truncate">
+                    <p className="text-[15px] font-normal text-gray-900 truncate tracking-wide">
                       {record.description}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-[11px] font-light text-gray-400 mt-1">
                       {formatDate(record.date)}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className={`text-[17px] font-bold tabular-nums ${
-                      record.amount >= 0 ? "text-emerald-500" : "text-gray-800"
+                    <p className={`text-[16px] font-normal tabular-nums tracking-tight ${
+                      record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
                     }`}>
-                      {formatAmount(record.amount)}円
+                      {formatAmount(record.amount)} <span className="text-xs font-light">円</span>
                     </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5 tabular-nums">
-                      残高 {formatBalance(record.balance)}円
+                    <p className="text-[11px] font-light text-gray-400 mt-1 tabular-nums">
+                      残高 {formatBalance(record.balance)} 円
                     </p>
                   </div>
                   <button
-                    onClick={() => setDeletingId(record.id)}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-400 p-1"
+                    onClick={(e) => { e.stopPropagation(); setDeletingId(record.id); }}
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-rose-500 p-1"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -486,9 +543,9 @@ export default function SalesPage() {
         <div className="h-28 md:h-24" />
       </div>
 
-      {/* ===== 追加ボタン（FAB）- デスクトップのみ / モバイルはヘッダーに「追加」 ===== */}
+      {/* ===== 追加ボタン（FAB） ===== */}
       <button
-        onClick={() => setShowModal(true)}
+        onClick={() => { setEditingRecord(null); setShowModal(true); }}
         className="hidden md:flex fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/30 items-center justify-center transition-colors z-40"
       >
         <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -496,9 +553,8 @@ export default function SalesPage() {
         </svg>
       </button>
 
-      {/* モバイル用フローティング追加ボタン */}
       <button
-        onClick={() => setShowModal(true)}
+        onClick={() => { setEditingRecord(null); setShowModal(true); }}
         className="md:hidden fixed bottom-6 right-4 w-14 h-14 bg-blue-600 active:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/30 flex items-center justify-center z-40"
       >
         <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -506,12 +562,14 @@ export default function SalesPage() {
         </svg>
       </button>
 
-      {/* ===== 新規登録モーダル ===== */}
+      {/* ===== 追加・編集モーダル ===== */}
       {showModal && (
-        <AddRecordModal
-          onClose={() => setShowModal(false)}
+        <RecordModal
+          onClose={() => { setShowModal(false); setEditingRecord(null); }}
           onSave={handleSave}
+          onDelete={handleDelete}
           latestBalance={latestBalance}
+          initialRecord={editingRecord}
         />
       )}
 
@@ -532,7 +590,7 @@ export default function SalesPage() {
               </button>
               <button
                 onClick={() => handleDelete(deletingId)}
-                className="flex-1 py-3 md:py-2.5 rounded-xl md:rounded-lg text-sm font-medium bg-red-500 text-white active:bg-red-600 md:hover:bg-red-600 transition-colors"
+                className="flex-1 py-3 md:py-2.5 rounded-xl md:rounded-lg text-sm font-medium bg-rose-500 text-white active:bg-rose-600 md:hover:bg-rose-600 transition-colors"
               >
                 削除する
               </button>
