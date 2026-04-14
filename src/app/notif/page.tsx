@@ -100,14 +100,18 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 
 // ===== 通知カード共通スタイル =====
 // 外枠（グラデーション光沢のみ）
-// 円錐グラデーション: 右上と左下の角だけ完全に暗く、その他の辺・角はすべて均一に光る
-// 暗ゾーンを狭く(±7°)して、辺は全部しっかり明るく
-// from 135deg を起点に時計回り: 0°=右下, 90°=左下, 180°=左上, 270°=右上
+// 対角線リニアグラデーション: 左上(0%)と右下(100%)が明るく、中間(50%=TR/BL)は暗い
+// 横長カードでも TR/BL の角は常に gradient の 50% 位置に来るので正確
+// 大部分は明るく(0.5以上)、中央の50%だけ急速に暗くして TR/BL にピンポイントで暗を当てる
+// 対角線リニアグラデーション
+// 横長カード(約4:1比率)では 角の位置が gradient 上で以下になる:
+// TL=0%, BL≒18%, TR≒82%, BR=100%
+// よって暗部は 50% ではなく 18% と 82% に配置する
 const BORDER_GRADIENT =
-  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.75) 0deg, rgba(255,255,255,0.55) 45deg, rgba(255,255,255,0.5) 80deg, rgba(255,255,255,0.15) 87deg, rgba(255,255,255,0) 90deg, rgba(255,255,255,0.15) 93deg, rgba(255,255,255,0.5) 100deg, rgba(255,255,255,0.55) 135deg, rgba(255,255,255,0.75) 180deg, rgba(255,255,255,0.55) 225deg, rgba(255,255,255,0.5) 260deg, rgba(255,255,255,0.15) 267deg, rgba(255,255,255,0) 270deg, rgba(255,255,255,0.15) 273deg, rgba(255,255,255,0.5) 280deg, rgba(255,255,255,0.55) 315deg, rgba(255,255,255,0.75) 360deg)";
+  "linear-gradient(135deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.35) 10%, rgba(255,255,255,0.12) 15%, rgba(255,255,255,0) 18%, rgba(255,255,255,0.12) 21%, rgba(255,255,255,0.35) 30%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0.35) 70%, rgba(255,255,255,0.12) 79%, rgba(255,255,255,0) 82%, rgba(255,255,255,0.12) 85%, rgba(255,255,255,0.35) 90%, rgba(255,255,255,0.45) 100%)";
 
 const BORDER_GRADIENT_BEHIND =
-  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.45) 0deg, rgba(255,255,255,0.32) 45deg, rgba(255,255,255,0.3) 80deg, rgba(255,255,255,0.08) 87deg, rgba(255,255,255,0) 90deg, rgba(255,255,255,0.08) 93deg, rgba(255,255,255,0.3) 100deg, rgba(255,255,255,0.32) 135deg, rgba(255,255,255,0.45) 180deg, rgba(255,255,255,0.32) 225deg, rgba(255,255,255,0.3) 260deg, rgba(255,255,255,0.08) 267deg, rgba(255,255,255,0) 270deg, rgba(255,255,255,0.08) 273deg, rgba(255,255,255,0.3) 280deg, rgba(255,255,255,0.32) 315deg, rgba(255,255,255,0.45) 360deg)";
+  "linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.2) 10%, rgba(255,255,255,0.07) 15%, rgba(255,255,255,0) 18%, rgba(255,255,255,0.07) 21%, rgba(255,255,255,0.2) 30%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0.2) 70%, rgba(255,255,255,0.07) 79%, rgba(255,255,255,0) 82%, rgba(255,255,255,0.07) 85%, rgba(255,255,255,0.2) 90%, rgba(255,255,255,0.28) 100%)";
 
 // CSSマスクで枠だけ表示（リング状に切り抜く）
 const BORDER_MASK = {
@@ -783,7 +787,7 @@ export default function NotifPage() {
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />
       )}
 
-      <div className="relative max-w-md mx-auto px-3 pt-12 pb-44 min-h-screen flex flex-col">
+      <div className="relative max-w-md mx-auto px-4 pt-12 pb-44 min-h-screen flex flex-col">
         {/* ステータスバー風 */}
         <div className="flex items-center justify-between text-white px-3 mb-2">
           <p className="text-base font-semibold tabular-nums">{clock}</p>
