@@ -101,10 +101,10 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 // ===== 通知カード共通スタイル =====
 // 外枠（グラデーション光沢のみ）
 const BORDER_GRADIENT =
-  "linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.35) 18%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.35) 82%, rgba(255,255,255,0.85) 100%)";
+  "linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.22) 20%, rgba(255,255,255,0.04) 42%, rgba(255,255,255,0.04) 58%, rgba(255,255,255,0.22) 80%, rgba(255,255,255,0.5) 100%)";
 
 const BORDER_GRADIENT_BEHIND =
-  "linear-gradient(135deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.2) 18%, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.02) 60%, rgba(255,255,255,0.2) 82%, rgba(255,255,255,0.55) 100%)";
+  "linear-gradient(135deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.14) 20%, rgba(255,255,255,0.02) 42%, rgba(255,255,255,0.02) 58%, rgba(255,255,255,0.14) 80%, rgba(255,255,255,0.32) 100%)";
 
 // CSSマスクで枠だけ表示（リング状に切り抜く）
 const BORDER_MASK = {
@@ -151,7 +151,7 @@ function NotifCard({
         aria-hidden
         className="absolute inset-0 rounded-[22px] pointer-events-none"
         style={{
-          padding: "1.5px",
+          padding: "0.75px",
           background: BORDER_GRADIENT,
           ...BORDER_MASK,
         }}
@@ -200,7 +200,7 @@ function StackedCard({
         aria-hidden
         className="absolute inset-0 rounded-[22px] pointer-events-none"
         style={{
-          padding: "1.5px",
+          padding: "0.75px",
           background: BORDER_GRADIENT_BEHIND,
           ...BORDER_MASK,
         }}
@@ -229,7 +229,7 @@ function StackedCard({
           aria-hidden
           className="absolute inset-0 rounded-[22px] pointer-events-none"
           style={{
-            padding: "1.5px",
+            padding: "0.75px",
             background: BORDER_GRADIENT,
             ...BORDER_MASK,
           }}
