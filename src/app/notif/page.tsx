@@ -160,7 +160,7 @@ function NotifCard({
       />
 
       {/* コンテンツ */}
-      <div className="relative px-3.5 py-3 flex gap-2.5">
+      <div className="relative px-3.5 py-3.5 flex gap-2.5">
         <IconView notif={notif} badge={badge} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
@@ -238,7 +238,7 @@ function StackedCard({
         />
 
         {/* コンテンツ */}
-        <div className="relative px-3.5 py-3 flex gap-2.5">
+        <div className="relative px-3.5 py-3.5 flex gap-2.5">
           <IconView notif={notif} badge={count} />
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline justify-between gap-2">
