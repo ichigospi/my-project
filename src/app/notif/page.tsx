@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import AppTabBar from "@/components/AppTabBar";
 
 // ===== 型定義 =====
 interface NotifItem {
@@ -573,7 +574,7 @@ export default function NotifPage() {
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />
       )}
 
-      <div className="relative max-w-md mx-auto px-3 pt-12 pb-32 min-h-screen flex flex-col">
+      <div className="relative max-w-md mx-auto px-3 pt-12 pb-44 min-h-screen flex flex-col">
         {/* ステータスバー風 */}
         <div className="flex items-center justify-between text-white px-3 mb-2">
           <p className="text-base font-semibold tabular-nums">{clock}</p>
@@ -693,7 +694,7 @@ export default function NotifPage() {
 
       <button
         onClick={() => { setEditingNotif(null); setShowEditModal(true); }}
-        className="fixed bottom-6 right-4 md:right-6 w-14 h-14 bg-blue-600 active:bg-blue-700 text-white rounded-full shadow-lg shadow-black/30 flex items-center justify-center z-30"
+        className="fixed bottom-20 right-4 md:right-6 w-14 h-14 bg-blue-600 active:bg-blue-700 text-white rounded-full shadow-lg shadow-black/30 flex items-center justify-center z-30"
       >
         <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
           <path d="M12 4v16m8-8H4" />
@@ -717,6 +718,9 @@ export default function NotifPage() {
           onSave={(s) => setSettings((prev) => ({ ...prev, ...s }))}
         />
       )}
+
+      {/* ===== ボトムタブバー ===== */}
+      <AppTabBar variant="dark" />
     </div>
   );
 }
