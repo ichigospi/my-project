@@ -99,25 +99,22 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 }
 
 // ===== 通知カード共通スタイル =====
-// 枠(border)の光沢: 左上と右下がくっきり光り、右上と左下は暗い（斜め方向）
-const GLASS_STYLE: React.CSSProperties = {
-  border: "1.5px solid transparent",
-  background: [
-    "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.14)) padding-box",
-    "linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.35) 18%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.35) 82%, rgba(255,255,255,0.85) 100%) border-box",
-  ].join(", "),
-  boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+// 外枠（グラデーション光沢のみ）
+const BORDER_GRADIENT =
+  "linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.35) 18%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.35) 82%, rgba(255,255,255,0.85) 100%)";
+
+const BORDER_GRADIENT_BEHIND =
+  "linear-gradient(135deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.2) 18%, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.02) 60%, rgba(255,255,255,0.2) 82%, rgba(255,255,255,0.55) 100%)";
+
+// カード本体: 均一な半透明（本体にグラデーションは入れない）
+const CARD_BODY: React.CSSProperties = {
+  backgroundColor: "rgba(255,255,255,0.15)",
   WebkitBackdropFilter: "blur(40px) saturate(180%)",
   backdropFilter: "blur(40px) saturate(180%)",
 };
 
-const GLASS_STYLE_BEHIND: React.CSSProperties = {
-  border: "1.5px solid transparent",
-  background: [
-    "linear-gradient(rgba(255,255,255,0.09), rgba(255,255,255,0.09)) padding-box",
-    "linear-gradient(135deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.2) 18%, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.02) 60%, rgba(255,255,255,0.2) 82%, rgba(255,255,255,0.55) 100%) border-box",
-  ].join(", "),
-  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+const CARD_BODY_BEHIND: React.CSSProperties = {
+  backgroundColor: "rgba(255,255,255,0.10)",
   WebkitBackdropFilter: "blur(30px) saturate(160%)",
   backdropFilter: "blur(30px) saturate(160%)",
 };
@@ -135,24 +132,33 @@ function NotifCard({
   return (
     <div
       onClick={onClick}
-      className="rounded-[22px] px-3.5 py-3 flex gap-2.5 cursor-pointer active:brightness-110 transition-all"
-      style={GLASS_STYLE}
+      className="relative rounded-[22px] cursor-pointer active:brightness-110 transition-all"
+      style={{
+        padding: "1.5px",
+        background: BORDER_GRADIENT,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+      }}
     >
-      <IconView notif={notif} badge={badge} />
+      <div
+        className="rounded-[20.5px] px-3.5 py-3 flex gap-2.5"
+        style={CARD_BODY}
+      >
+        <IconView notif={notif} badge={badge} />
 
-      {/* 本文 */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
-            {notif.sender}
-          </p>
-          <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
-            {notif.time}
+        {/* 本文 */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
+              {notif.sender}
+            </p>
+            <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
+              {notif.time}
+            </p>
+          </div>
+          <p className="text-white text-[13px] leading-snug mt-0.5 line-clamp-4 whitespace-pre-wrap">
+            {notif.content}
           </p>
         </div>
-        <p className="text-white text-[13px] leading-snug mt-0.5 line-clamp-4 whitespace-pre-wrap">
-          {notif.content}
-        </p>
       </div>
     </div>
   );
@@ -168,39 +174,58 @@ function StackedCard({
   count: number;
   onClick: () => void;
 }) {
+  const behindStyle: React.CSSProperties = {
+    padding: "1.5px",
+    background: BORDER_GRADIENT_BEHIND,
+    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  };
+
   return (
     <div className="relative" onClick={onClick}>
       {/* 後ろのカード（束ね表現） */}
       {count >= 3 && (
         <div
           className="absolute left-4 right-4 top-2 bottom-[-9px] rounded-[22px]"
-          style={GLASS_STYLE_BEHIND}
-        />
+          style={behindStyle}
+        >
+          <div className="rounded-[20.5px] w-full h-full" style={CARD_BODY_BEHIND} />
+        </div>
       )}
       {count >= 2 && (
         <div
           className="absolute left-2 right-2 top-1 bottom-[-4px] rounded-[22px]"
-          style={GLASS_STYLE_BEHIND}
-        />
+          style={behindStyle}
+        >
+          <div className="rounded-[20.5px] w-full h-full" style={CARD_BODY_BEHIND} />
+        </div>
       )}
       {/* 最前面のカード */}
       <div
-        className="relative rounded-[22px] px-3.5 py-3 flex gap-2.5 cursor-pointer active:brightness-110 transition-all"
-        style={GLASS_STYLE}
+        className="relative rounded-[22px] cursor-pointer active:brightness-110 transition-all"
+        style={{
+          padding: "1.5px",
+          background: BORDER_GRADIENT,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+        }}
       >
-        <IconView notif={notif} badge={count} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
-              {notif.sender}
-            </p>
-            <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
-              {notif.time}
+        <div
+          className="rounded-[20.5px] px-3.5 py-3 flex gap-2.5"
+          style={CARD_BODY}
+        >
+          <IconView notif={notif} badge={count} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-white text-[13px] font-semibold truncate drop-shadow-sm">
+                {notif.sender}
+              </p>
+              <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
+                {notif.time}
+              </p>
+            </div>
+            <p className="text-white text-[13px] leading-snug mt-0.5 line-clamp-4 whitespace-pre-wrap">
+              {notif.content}
             </p>
           </div>
-          <p className="text-white text-[13px] leading-snug mt-0.5 line-clamp-4 whitespace-pre-wrap">
-            {notif.content}
-          </p>
         </div>
       </div>
     </div>
