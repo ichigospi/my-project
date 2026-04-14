@@ -69,20 +69,20 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
     <div className="relative shrink-0">
       {notif.iconUrl ? (
         <div
-          className="w-10 h-10 rounded-lg bg-cover bg-center"
+          className="w-[38px] h-[38px] rounded-lg bg-cover bg-center"
           style={{ backgroundImage: `url(${notif.iconUrl})` }}
         />
       ) : (
         <div
-          className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-base"
+          className="w-[38px] h-[38px] rounded-lg flex items-center justify-center text-white font-bold text-base"
           style={{ backgroundColor: notif.iconBg }}
         >
           {notif.iconLetter}
         </div>
       )}
       {badge && badge > 1 && (
-        <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-black/70 backdrop-blur-sm flex items-center justify-center">
-          <span className="text-white text-[10px] font-bold leading-none">{badge}</span>
+        <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.3)] flex items-center justify-center">
+          <span className="text-gray-900 text-[10px] font-bold leading-none tabular-nums">{badge}</span>
         </div>
       )}
     </div>
@@ -102,7 +102,7 @@ function NotifCard({
   return (
     <div
       onClick={onClick}
-      className="bg-white/20 backdrop-blur-xl rounded-2xl px-3 py-3 flex gap-3 cursor-pointer active:bg-white/30 transition-colors"
+      className="bg-white/[0.14] backdrop-blur-2xl rounded-[22px] px-3.5 py-3 flex gap-2.5 cursor-pointer active:bg-white/[0.22] transition-colors"
     >
       <IconView notif={notif} badge={badge} />
 
@@ -112,7 +112,7 @@ function NotifCard({
           <p className="text-white text-[13px] font-semibold truncate">
             {notif.sender}
           </p>
-          <p className="text-white/70 text-[11px] shrink-0 tabular-nums">
+          <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
             {notif.time}
           </p>
         </div>
@@ -138,20 +138,20 @@ function StackedCard({
     <div className="relative" onClick={onClick}>
       {/* 後ろのカード（束ね表現） */}
       {count >= 3 && (
-        <div className="absolute left-4 right-4 top-2.5 bottom-[-10px] bg-white/10 backdrop-blur-md rounded-2xl" />
+        <div className="absolute left-4 right-4 top-2 bottom-[-9px] bg-white/[0.08] backdrop-blur-md rounded-[22px]" />
       )}
       {count >= 2 && (
-        <div className="absolute left-2 right-2 top-1.5 bottom-[-5px] bg-white/15 backdrop-blur-md rounded-2xl" />
+        <div className="absolute left-2 right-2 top-1 bottom-[-4px] bg-white/[0.11] backdrop-blur-md rounded-[22px]" />
       )}
       {/* 最前面のカード */}
-      <div className="relative bg-white/20 backdrop-blur-xl rounded-2xl px-3 py-3 flex gap-3 cursor-pointer active:bg-white/30 transition-colors">
+      <div className="relative bg-white/[0.14] backdrop-blur-2xl rounded-[22px] px-3.5 py-3 flex gap-2.5 cursor-pointer active:bg-white/[0.22] transition-colors">
         <IconView notif={notif} badge={count} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-white text-[13px] font-semibold truncate">
               {notif.sender}
             </p>
-            <p className="text-white/70 text-[11px] shrink-0 tabular-nums">
+            <p className="text-white/75 text-[11px] shrink-0 tabular-nums">
               {notif.time}
             </p>
           </div>
