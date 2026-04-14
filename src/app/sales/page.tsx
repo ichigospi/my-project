@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 
 // ===== 型定義 =====
 interface SalesRecord {
@@ -261,7 +260,6 @@ function AddRecordModal({
 
 // ===== メインページ =====
 export default function SalesPage() {
-  const router = useRouter();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -333,22 +331,14 @@ export default function SalesPage() {
     <div className="min-h-screen bg-[#f0f2f7]">
       {/* ===== ヘッダー ===== */}
       <div className="bg-gradient-to-b from-[#1a2744] to-[#243351] text-white">
-        {/* モバイル: 戻るボタン付きナビバー */}
+        {/* モバイル: トップバー */}
         <div className="md:hidden flex items-center justify-between px-4 pt-3 pb-1">
-          <button
-            onClick={() => router.push("/")}
-            className="flex items-center gap-1 text-white/70 active:text-white py-1 -ml-1"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="text-xs">戻る</span>
-          </button>
+          <div className="w-12" />
           <button
             onClick={() => setShowModal(true)}
             className="text-xs text-blue-300 active:text-blue-400 font-medium py-1"
           >
-            追加
+            + 追加
           </button>
         </div>
 
