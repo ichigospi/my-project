@@ -103,11 +103,15 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 // 対角線リニアグラデーション: 左上(0%)と右下(100%)が明るく、中間(50%=TR/BL)は暗い
 // 横長カードでも TR/BL の角は常に gradient の 50% 位置に来るので正確
 // 大部分は明るく(0.5以上)、中央の50%だけ急速に暗くして TR/BL にピンポイントで暗を当てる
+// 対角線リニアグラデーション
+// 横長カード(約4:1比率)では 角の位置が gradient 上で以下になる:
+// TL=0%, BL≒18%, TR≒82%, BR=100%
+// よって暗部は 50% ではなく 18% と 82% に配置する
 const BORDER_GRADIENT =
-  "linear-gradient(135deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.32) 20%, rgba(255,255,255,0.25) 35%, rgba(255,255,255,0.08) 47%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.08) 53%, rgba(255,255,255,0.25) 65%, rgba(255,255,255,0.32) 80%, rgba(255,255,255,0.45) 100%)";
+  "linear-gradient(135deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.35) 10%, rgba(255,255,255,0.12) 15%, rgba(255,255,255,0) 18%, rgba(255,255,255,0.12) 21%, rgba(255,255,255,0.35) 30%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0.35) 70%, rgba(255,255,255,0.12) 79%, rgba(255,255,255,0) 82%, rgba(255,255,255,0.12) 85%, rgba(255,255,255,0.35) 90%, rgba(255,255,255,0.45) 100%)";
 
 const BORDER_GRADIENT_BEHIND =
-  "linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.2) 20%, rgba(255,255,255,0.15) 35%, rgba(255,255,255,0.05) 47%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 53%, rgba(255,255,255,0.15) 65%, rgba(255,255,255,0.2) 80%, rgba(255,255,255,0.28) 100%)";
+  "linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.2) 10%, rgba(255,255,255,0.07) 15%, rgba(255,255,255,0) 18%, rgba(255,255,255,0.07) 21%, rgba(255,255,255,0.2) 30%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0.2) 70%, rgba(255,255,255,0.07) 79%, rgba(255,255,255,0) 82%, rgba(255,255,255,0.07) 85%, rgba(255,255,255,0.2) 90%, rgba(255,255,255,0.28) 100%)";
 
 // CSSマスクで枠だけ表示（リング状に切り抜く）
 const BORDER_MASK = {
@@ -783,7 +787,7 @@ export default function NotifPage() {
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />
       )}
 
-      <div className="relative max-w-sm mx-auto px-6 pt-12 pb-44 min-h-screen flex flex-col">
+      <div className="relative max-w-md mx-auto px-4 pt-12 pb-44 min-h-screen flex flex-col">
         {/* ステータスバー風 */}
         <div className="flex items-center justify-between text-white px-3 mb-2">
           <p className="text-base font-semibold tabular-nums">{clock}</p>
