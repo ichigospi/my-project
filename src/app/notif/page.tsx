@@ -62,35 +62,48 @@ async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+// ===== アイコン =====
+function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
+  return (
+    <div className="relative shrink-0">
+      {notif.iconUrl ? (
+        <div
+          className="w-10 h-10 rounded-lg bg-cover bg-center"
+          style={{ backgroundImage: `url(${notif.iconUrl})` }}
+        />
+      ) : (
+        <div
+          className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-base"
+          style={{ backgroundColor: notif.iconBg }}
+        >
+          {notif.iconLetter}
+        </div>
+      )}
+      {badge && badge > 1 && (
+        <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-black/70 backdrop-blur-sm flex items-center justify-center">
+          <span className="text-white text-[10px] font-bold leading-none">{badge}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ===== 通知カード（プレビュー） =====
 function NotifCard({
   notif,
   onClick,
+  badge,
 }: {
   notif: NotifItem;
   onClick: () => void;
+  badge?: number;
 }) {
   return (
     <div
       onClick={onClick}
       className="bg-white/20 backdrop-blur-xl rounded-2xl px-3 py-3 flex gap-3 cursor-pointer active:bg-white/30 transition-colors"
     >
-      {/* アイコン */}
-      <div className="shrink-0">
-        {notif.iconUrl ? (
-          <div
-            className="w-10 h-10 rounded-lg bg-cover bg-center"
-            style={{ backgroundImage: `url(${notif.iconUrl})` }}
-          />
-        ) : (
-          <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-base"
-            style={{ backgroundColor: notif.iconBg }}
-          >
-            {notif.iconLetter}
-          </div>
-        )}
-      </div>
+      <IconView notif={notif} badge={badge} />
 
       {/* 本文 */}
       <div className="flex-1 min-w-0">
@@ -105,6 +118,80 @@ function NotifCard({
         <p className="text-white text-[13px] leading-snug mt-0.5 line-clamp-4 whitespace-pre-wrap">
           {notif.content}
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ===== 束ねられたカード（複数通知） =====
+function StackedCard({
+  notif,
+  count,
+  onClick,
+}: {
+  notif: NotifItem;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <div className="relative" onClick={onClick}>
+      {/* 後ろのカード（束ね表現） */}
+      {count >= 3 && (
+        <div className="absolute left-4 right-4 top-2.5 bottom-[-10px] bg-white/10 backdrop-blur-md rounded-2xl" />
+      )}
+      {count >= 2 && (
+        <div className="absolute left-2 right-2 top-1.5 bottom-[-5px] bg-white/15 backdrop-blur-md rounded-2xl" />
+      )}
+      {/* 最前面のカード */}
+      <div className="relative bg-white/20 backdrop-blur-xl rounded-2xl px-3 py-3 flex gap-3 cursor-pointer active:bg-white/30 transition-colors">
+        <IconView notif={notif} badge={count} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-white text-[13px] font-semibold truncate">
+              {notif.sender}
+            </p>
+            <p className="text-white/70 text-[11px] shrink-0 tabular-nums">
+              {notif.time}
+            </p>
+          </div>
+          <p className="text-white text-[13px] leading-snug mt-0.5 line-clamp-4 whitespace-pre-wrap">
+            {notif.content}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== グループ展開時のヘッダー =====
+function GroupHeader({
+  title,
+  onCollapse,
+}: {
+  title: string;
+  onCollapse: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-1 py-1">
+      <p className="text-white text-2xl font-bold">{title}</p>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onCollapse}
+          className="flex items-center gap-1 px-3 h-8 rounded-full bg-black/40 backdrop-blur-md text-white text-[12px] font-medium active:bg-black/60"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path d="M19 9l-7 7-7-7" />
+          </svg>
+          表示を減らす
+        </button>
+        <button
+          onClick={onCollapse}
+          className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center active:bg-black/60"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -413,6 +500,7 @@ export default function NotifPage() {
   const [editingNotif, setEditingNotif] = useState<NotifItem | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showBgModal, setShowBgModal] = useState(false);
+  const [expandedSender, setExpandedSender] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   // 初回読み込み
@@ -500,15 +588,72 @@ export default function NotifPage() {
           </div>
         </div>
 
-        {/* 通知一覧 */}
-        <div className="space-y-1.5 flex-1">
-          {settings.notifications.map((n) => (
-            <NotifCard
-              key={n.id}
-              notif={n}
-              onClick={() => { setEditingNotif(n); setShowEditModal(true); }}
-            />
-          ))}
+        {/* 通知一覧（差出人ごとにグループ化） */}
+        <div className="space-y-2 flex-1">
+          {(() => {
+            // 差出人ごとにグループ化（元の並び順を保持）
+            const groups: { sender: string; items: NotifItem[] }[] = [];
+            const senderIdx = new Map<string, number>();
+            for (const n of settings.notifications) {
+              const i = senderIdx.get(n.sender);
+              if (i === undefined) {
+                senderIdx.set(n.sender, groups.length);
+                groups.push({ sender: n.sender, items: [n] });
+              } else {
+                groups[i].items.push(n);
+              }
+            }
+
+            return groups.map((g) => {
+              const isGrouped = g.items.length >= 2;
+              const isExpanded = expandedSender === g.sender;
+
+              // 展開中のグループ
+              if (isGrouped && isExpanded) {
+                // グループ名: 区切り文字で差出人の前半部分を使用
+                const title = g.sender.split(/[｜|]/)[0].trim();
+                return (
+                  <div key={g.sender} className="space-y-1.5 pt-2">
+                    <GroupHeader
+                      title={title}
+                      onCollapse={() => setExpandedSender(null)}
+                    />
+                    {g.items.map((n) => (
+                      <NotifCard
+                        key={n.id}
+                        notif={n}
+                        onClick={() => { setEditingNotif(n); setShowEditModal(true); }}
+                      />
+                    ))}
+                  </div>
+                );
+              }
+
+              // 束ね表示（2件以上）
+              if (isGrouped) {
+                // 最新の通知を先頭として表示（配列上の最後の要素を最新とみなす）
+                const newest = g.items[g.items.length - 1];
+                return (
+                  <StackedCard
+                    key={g.sender}
+                    notif={newest}
+                    count={g.items.length}
+                    onClick={() => setExpandedSender(g.sender)}
+                  />
+                );
+              }
+
+              // 単体
+              const n = g.items[0];
+              return (
+                <NotifCard
+                  key={n.id}
+                  notif={n}
+                  onClick={() => { setEditingNotif(n); setShowEditModal(true); }}
+                />
+              );
+            });
+          })()}
 
           {settings.notifications.length === 0 && (
             <div className="text-center text-white/70 py-16 text-sm">
