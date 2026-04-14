@@ -147,8 +147,8 @@ function SwipeableRow({
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className={`text-[16px] font-normal tabular-nums tracking-tight ${
-            record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
+          <p className={`text-[16px] font-bold tabular-nums tracking-tight ${
+            record.amount >= 0 ? "text-emerald-700" : "text-gray-900"
           }`}>
             {formatAmount(record.amount)} <span className="text-[11px] font-light text-gray-900">円</span>
           </p>
@@ -418,7 +418,7 @@ export default function SalesPage() {
           <div className="flex gap-2 md:gap-3 mt-3 md:mt-4">
             <div className="flex-1 bg-white/10 rounded-xl p-2.5 md:p-3 text-center">
               <p className="text-[9px] md:text-[10px] text-white/50 font-light">今月の入金</p>
-              <p className="text-emerald-400 font-medium text-xs md:text-sm mt-0.5 tabular-nums">+{totalIncome.toLocaleString()} 円</p>
+              <p className="text-emerald-300 font-semibold text-xs md:text-sm mt-0.5 tabular-nums">+{totalIncome.toLocaleString()} 円</p>
             </div>
             <div className="flex-1 bg-white/10 rounded-xl p-2.5 md:p-3 text-center">
               <p className="text-[9px] md:text-[10px] text-white/50 font-light">今月の出金</p>
@@ -516,8 +516,8 @@ export default function SalesPage() {
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className={`text-[16px] font-normal tabular-nums tracking-tight ${
-                      record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
+                    <p className={`text-[16px] font-bold tabular-nums tracking-tight ${
+                      record.amount >= 0 ? "text-emerald-700" : "text-gray-900"
                     }`}>
                       {formatAmount(record.amount)} <span className="text-[11px] font-light text-gray-900">円</span>
                     </p>
