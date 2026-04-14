@@ -148,7 +148,7 @@ function SwipeableRow({
         </div>
         <div className="text-right shrink-0">
           <p className={`text-[16px] font-bold tabular-nums tracking-tight ${
-            record.amount >= 0 ? "text-emerald-700" : "text-gray-900"
+            record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
           }`}>
             {formatAmount(record.amount)} <span className="text-[11px] font-light text-gray-900">円</span>
           </p>
@@ -517,7 +517,7 @@ export default function SalesPage() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className={`text-[16px] font-bold tabular-nums tracking-tight ${
-                      record.amount >= 0 ? "text-emerald-700" : "text-gray-900"
+                      record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
                     }`}>
                       {formatAmount(record.amount)} <span className="text-[11px] font-light text-gray-900">円</span>
                     </p>
