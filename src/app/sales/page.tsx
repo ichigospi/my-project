@@ -148,7 +148,7 @@ function SwipeableRow({
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className={`text-[17px] font-semibold tabular-nums ${
+          <p className={`text-[17px] font-medium tabular-nums ${
             record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
           }`}>
             <span className="inline-block origin-right tracking-tighter" style={{ transform: "scaleY(1.08) scaleX(1.08)" }}>
@@ -519,7 +519,7 @@ export default function SalesPage() {
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className={`text-[17px] font-semibold tabular-nums ${
+                    <p className={`text-[17px] font-medium tabular-nums ${
                       record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
                     }`}>
                       <span className="inline-block origin-right tracking-tighter" style={{ transform: "scaleY(1.08) scaleX(1.08)" }}>
