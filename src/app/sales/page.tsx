@@ -136,7 +136,7 @@ function SwipeableRow({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onClick={handleClick}
-        className="relative bg-white px-4 py-3 flex items-start justify-between gap-3 transition-transform duration-150 ease-out active:bg-gray-50"
+        className="relative bg-white px-4 py-2.5 flex items-start justify-between gap-3 transition-transform duration-150 ease-out active:bg-gray-50"
         style={{ transform: `translateX(-${offset}px)` }}
       >
         <div className="flex-1 min-w-0">
@@ -508,7 +508,7 @@ export default function SalesPage() {
                 <div
                   key={record.id}
                   onClick={() => { setEditingRecord(record); setShowModal(true); }}
-                  className="bg-white px-5 py-3 flex items-start justify-between gap-3 hover:bg-gray-50 cursor-pointer transition-colors relative group"
+                  className="bg-white px-5 py-2.5 flex items-start justify-between gap-3 hover:bg-gray-50 cursor-pointer transition-colors relative group"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-[16px] font-light text-gray-900 truncate tracking-wide">
