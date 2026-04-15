@@ -140,10 +140,10 @@ function SwipeableRow({
         style={{ transform: `translateX(-${offset}px)` }}
       >
         <div className="flex-1 min-w-0">
-          <p className="text-[15px] font-normal text-gray-900 truncate tracking-wide">
+          <p className="text-[16px] font-normal text-gray-900 truncate tracking-wide">
             {record.description}
           </p>
-          <p className="text-[13px] font-light text-gray-400 mt-1">
+          <p className="text-[14px] font-light text-gray-400 mt-1">
             {formatDate(record.date)}
           </p>
         </div>
@@ -151,7 +151,9 @@ function SwipeableRow({
           <p className={`text-[17px] font-semibold tabular-nums ${
             record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
           }`}>
-            {formatAmount(record.amount)} <span className="text-[13px] font-normal text-gray-900">円</span>
+            <span className="inline-block origin-right" style={{ transform: "scaleY(1.18)" }}>
+              {formatAmount(record.amount)}
+            </span> <span className="text-[13px] font-normal text-gray-900">円</span>
           </p>
           <p className="text-[13px] font-light text-gray-400 mt-1 tabular-nums">
             残高 {formatBalance(record.balance)} 円
@@ -509,10 +511,10 @@ export default function SalesPage() {
                   className="bg-white px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50 cursor-pointer transition-colors relative group"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-[15px] font-normal text-gray-900 truncate tracking-wide">
+                    <p className="text-[16px] font-normal text-gray-900 truncate tracking-wide">
                       {record.description}
                     </p>
-                    <p className="text-[13px] font-light text-gray-400 mt-1">
+                    <p className="text-[14px] font-light text-gray-400 mt-1">
                       {formatDate(record.date)}
                     </p>
                   </div>
@@ -520,7 +522,9 @@ export default function SalesPage() {
                     <p className={`text-[17px] font-semibold tabular-nums ${
                       record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
                     }`}>
-                      {formatAmount(record.amount)} <span className="text-[13px] font-normal text-gray-900">円</span>
+                      <span className="inline-block origin-right" style={{ transform: "scaleY(1.18)" }}>
+                        {formatAmount(record.amount)}
+                      </span> <span className="text-[13px] font-normal text-gray-900">円</span>
                     </p>
                     <p className="text-[13px] font-light text-gray-400 mt-1 tabular-nums">
                       残高 {formatBalance(record.balance)} 円
