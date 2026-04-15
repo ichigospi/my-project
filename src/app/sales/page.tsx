@@ -136,7 +136,7 @@ function SwipeableRow({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onClick={handleClick}
-        className="relative bg-white px-4 py-4 flex items-start justify-between gap-3 transition-transform duration-150 ease-out active:bg-gray-50"
+        className="relative bg-white px-4 py-3 flex items-start justify-between gap-3 transition-transform duration-150 ease-out active:bg-gray-50"
         style={{ transform: `translateX(-${offset}px)` }}
       >
         <div className="flex-1 min-w-0">
@@ -151,7 +151,7 @@ function SwipeableRow({
           <p className={`text-[17px] font-semibold tabular-nums ${
             record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
           }`}>
-            <span className="inline-block origin-right" style={{ transform: "scaleY(1.18)" }}>
+            <span className="inline-block origin-right" style={{ transform: "scaleY(1.08)" }}>
               {formatAmount(record.amount)}
             </span> <span className="text-[13px] font-normal text-gray-900">円</span>
           </p>
@@ -508,7 +508,7 @@ export default function SalesPage() {
                 <div
                   key={record.id}
                   onClick={() => { setEditingRecord(record); setShowModal(true); }}
-                  className="bg-white px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50 cursor-pointer transition-colors relative group"
+                  className="bg-white px-5 py-3 flex items-start justify-between gap-3 hover:bg-gray-50 cursor-pointer transition-colors relative group"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-[16px] font-normal text-gray-900 truncate tracking-wide">
@@ -522,7 +522,7 @@ export default function SalesPage() {
                     <p className={`text-[17px] font-semibold tabular-nums ${
                       record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
                     }`}>
-                      <span className="inline-block origin-right" style={{ transform: "scaleY(1.18)" }}>
+                      <span className="inline-block origin-right" style={{ transform: "scaleY(1.08)" }}>
                         {formatAmount(record.amount)}
                       </span> <span className="text-[13px] font-normal text-gray-900">円</span>
                     </p>
