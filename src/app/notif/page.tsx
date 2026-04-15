@@ -113,28 +113,21 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 const BORDER_COLOR = "rgba(255,255,255,0.45)";
 const BORDER_COLOR_BEHIND = "rgba(255,255,255,0.28)";
 
-// マスクでリング状に切り抜き、かつ TR と BL の角には穴を開ける
-// radialの透明部分 = 最終的に表示されない部分 = 角の欠け
-const BORDER_MASK: React.CSSProperties = {
-  WebkitMask: [
-    "radial-gradient(ellipse 30px 22px at 100% 0%, transparent 0%, transparent 30%, #000 100%)",
-    "radial-gradient(ellipse 30px 22px at 0% 100%, transparent 0%, transparent 30%, #000 100%)",
-    "linear-gradient(#000 0 0) content-box",
-    "linear-gradient(#000 0 0)",
-  ].join(", "),
-  WebkitMaskComposite: "source-in, source-in, xor",
-  maskComposite: "intersect, intersect, exclude",
+// リング状マスク（シンプルな xor のみ）
+const RING_MASK: React.CSSProperties = {
+  WebkitMask:
+    "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+  WebkitMaskComposite: "xor",
+  maskComposite: "exclude",
 };
 
-const BORDER_MASK_BEHIND: React.CSSProperties = {
-  WebkitMask: [
-    "radial-gradient(ellipse 24px 18px at 100% 0%, transparent 0%, transparent 30%, #000 100%)",
-    "radial-gradient(ellipse 24px 18px at 0% 100%, transparent 0%, transparent 30%, #000 100%)",
-    "linear-gradient(#000 0 0) content-box",
-    "linear-gradient(#000 0 0)",
+// 右上と左下の角だけを消す overlay（destination-out で下のリングの当該部分を erase）
+const CORNER_ERASER_STYLE: React.CSSProperties = {
+  background: [
+    "radial-gradient(ellipse 30px 22px at 100% 0%, #000 0%, transparent 70%)",
+    "radial-gradient(ellipse 30px 22px at 0% 100%, #000 0%, transparent 70%)",
   ].join(", "),
-  WebkitMaskComposite: "source-in, source-in, xor",
-  maskComposite: "intersect, intersect, exclude",
+  mixBlendMode: "destination-out",
 };
 
 // カード本体: 均一な半透明
@@ -168,21 +161,27 @@ function NotifCard({
   return (
     <div
       onClick={onClick}
-      className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all"
+      className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all isolate"
       style={{
         ...CARD_BODY,
-        boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
       }}
     >
-      {/* 枠（均一な明るさ、TR/BLだけマスクで穴あき） */}
+      {/* 均一な明るさの枠（リング） */}
       <div
         aria-hidden
         className="absolute inset-0 rounded-[26px] pointer-events-none"
         style={{
           padding: "0.75px",
           background: BORDER_COLOR,
-          ...BORDER_MASK,
+          ...RING_MASK,
         }}
+      />
+      {/* TRとBLだけ枠を消す (destination-outで当該ピクセルを削除) */}
+      <div
+        aria-hidden
+        className="absolute inset-0 rounded-[26px] pointer-events-none"
+        style={CORNER_ERASER_STYLE}
       />
 
       {/* コンテンツ */}
@@ -232,10 +231,10 @@ function StackedCard({
   const timeFontSize = Math.max(10, fontSize - 3);
   const renderBehindCard = (className: string) => (
     <div
-      className={`${className} rounded-[26px]`}
+      className={`${className} rounded-[26px] isolate`}
       style={{
         ...CARD_BODY_BEHIND,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
       }}
     >
       <div
@@ -244,8 +243,13 @@ function StackedCard({
         style={{
           padding: "0.75px",
           background: BORDER_COLOR_BEHIND,
-          ...BORDER_MASK_BEHIND,
+          ...RING_MASK,
         }}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 rounded-[26px] pointer-events-none"
+        style={CORNER_ERASER_STYLE}
       />
     </div>
   );
@@ -260,21 +264,27 @@ function StackedCard({
 
       {/* 最前面のカード */}
       <div
-        className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all"
+        className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all isolate"
         style={{
           ...CARD_BODY,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
         }}
       >
-        {/* 枠 */}
+        {/* 均一な明るさの枠（リング） */}
         <div
           aria-hidden
           className="absolute inset-0 rounded-[26px] pointer-events-none"
           style={{
             padding: "0.75px",
             background: BORDER_COLOR,
-            ...BORDER_MASK,
+            ...RING_MASK,
           }}
+        />
+        {/* TR/BL corner erase */}
+        <div
+          aria-hidden
+          className="absolute inset-0 rounded-[26px] pointer-events-none"
+          style={CORNER_ERASER_STYLE}
         />
 
         {/* コンテンツ */}
