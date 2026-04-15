@@ -115,10 +115,11 @@ const BORDER_COLOR_BEHIND = "rgba(255,255,255,0.28)";
 
 // リング + TR/BL 切り抜きマスク（4層）
 // 辺は完全均一な明るさ、右上と左下の角だけ透明
+// radialはハードエッジで、両方全く同じサイズで対称にする
 const RING_MASK_WITH_CORNERS: React.CSSProperties = {
   WebkitMask: [
-    "radial-gradient(ellipse 30px 22px at 100% 0%, transparent 0%, transparent 40%, #000 85%)",
-    "radial-gradient(ellipse 30px 22px at 0% 100%, transparent 0%, transparent 40%, #000 85%)",
+    "radial-gradient(circle 28px at 100% 0%, transparent 27px, #000 28px)",
+    "radial-gradient(circle 28px at 0% 100%, transparent 27px, #000 28px)",
     "linear-gradient(#000 0 0) content-box",
     "linear-gradient(#000 0 0)",
   ].join(", "),
