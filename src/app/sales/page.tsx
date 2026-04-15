@@ -44,6 +44,19 @@ function formatBalance(balance: number): string {
   return balance.toLocaleString();
 }
 
+// 数字部分は通常の字間で、カンマだけ左右の余白を詰めて表示
+function renderAmountDigits(formatted: string) {
+  return formatted.split("").map((c, i) =>
+    c === "," ? (
+      <span key={i} style={{ margin: "0 -0.1em" }}>
+        ,
+      </span>
+    ) : (
+      c
+    )
+  );
+}
+
 // ===== 月タブ生成 =====
 function getMonthTabs(currentYear: number, currentMonth: number) {
   const tabs = [];
@@ -151,8 +164,8 @@ function SwipeableRow({
           <p className={`text-[17px] font-medium tabular-nums ${
             record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
           }`}>
-            <span className="inline-block origin-right tracking-tighter" style={{ transform: "scaleY(1.08) scaleX(1.08)" }}>
-              {formatAmount(record.amount)}
+            <span className="inline-block origin-right" style={{ transform: "scaleY(1.08) scaleX(1.08)" }}>
+              {renderAmountDigits(formatAmount(record.amount))}
             </span> <span className="text-[13px] font-normal text-gray-900">円</span>
           </p>
           <p className="text-[13px] font-light text-gray-400 mt-1 tabular-nums">
@@ -522,8 +535,8 @@ export default function SalesPage() {
                     <p className={`text-[17px] font-medium tabular-nums ${
                       record.amount >= 0 ? "text-emerald-500" : "text-gray-900"
                     }`}>
-                      <span className="inline-block origin-right tracking-tighter" style={{ transform: "scaleY(1.08) scaleX(1.08)" }}>
-                        {formatAmount(record.amount)}
+                      <span className="inline-block origin-right" style={{ transform: "scaleY(1.08) scaleX(1.08)" }}>
+                        {renderAmountDigits(formatAmount(record.amount))}
                       </span> <span className="text-[13px] font-normal text-gray-900">円</span>
                     </p>
                     <p className="text-[13px] font-light text-gray-400 mt-1 tabular-nums">
