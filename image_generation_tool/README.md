@@ -13,17 +13,41 @@
 
 ## ステータス
 
-⚠️ **設計フェーズ完了 / 実装着手前**
+⚠️ **RunPod 動作確認完了 / Serverless化と実装着手前**
 
 現在の進捗:
 - ✅ 要件・設計確定
 - ✅ DESIGN.md 初版
 - ✅ RunPod アカウント作成・APIキー取得
-- ⬜ クレジットチャージ
-- ⬜ Network Volume 作成
+- ✅ クレジットチャージ($10)
+- ✅ Network Volume 作成(`image-gen-models` / 100GB / EU-RO-1 / ID: `xpsphpa6vo`)
+- ✅ Pod で ComfyUI 起動確認(`runpod/comfyui:latest` テンプレ、RTX PRO 4500)
+- ✅ Civicomfy 経由で WAI-illustrious-SDXL v16.0 を Network Volume に DL(6.46GB)
+- ✅ `extra_model_paths.yaml` で Network Volume を ComfyUI から参照
+- ✅ **テスト生成成功**(832x1216, 28steps, cfg 5.0, euler_ancestral, normal)
 - ⬜ ComfyUI Serverless Endpoint デプロイ
+- ⬜ Pony V6 / VAE / ControlNet / Upscaler 追加DL
 - ⬜ Next.js プロジェクト初期化
 - ⬜ Phase 1 実装
+
+## 動作確認済み環境
+
+- **ベースモデル**: WAI-illustrious-SDXL v16.0(Civitai ID: `827184`)
+- **保存先**: `/runpod-volume/ComfyUI/checkpoints/waiIllustriousSDXL_v160.safetensors`
+- **推奨生成パラメータ**:
+  - Resolution: 832×1216
+  - Steps: 28
+  - CFG: 5.0
+  - Sampler: `euler_ancestral`
+  - Scheduler: `normal`
+
+## 次セッションでやること
+
+1. **Serverless Endpoint 作成**(Network Volume をマウント)
+2. Endpoint ID を `.env.local` の `RUNPOD_ENDPOINT_ID` に記録
+3. 追加モデル DL(Pony V6, ControlNet, Upscaler, IP-Adapter)
+4. Next.js プロジェクト初期化(`image_generation_tool/` 直下)
+5. Phase 1 実装開始
 
 ## ディレクトリ構成(予定)
 
