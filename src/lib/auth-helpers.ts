@@ -6,7 +6,7 @@ async function isLocalhost(): Promise<boolean> {
   try {
     const headersList = await headers();
     const host = headersList.get("host") || "";
-    return host.startsWith("localhost") || host.startsWith("127.0.0.1");
+    return !host.includes("my-project-production-d888.up.railway.app");
   } catch {
     return false;
   }

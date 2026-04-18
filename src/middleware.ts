@@ -4,12 +4,14 @@ import type { NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/setup", "/register", "/api/auth", "/api/setup", "/api/users/register", "/api/health"];
 
+const PRODUCTION_HOST = "my-project-production-d888.up.railway.app";
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hostname = req.nextUrl.hostname;
 
-  // ローカル環境では認証をスキップ
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
+  // 本番（Railway）以外は認証をスキップ（localhost、ngrok等）
+  if (hostname !== PRODUCTION_HOST) {
     return NextResponse.next();
   }
 

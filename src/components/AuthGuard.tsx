@@ -15,8 +15,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status === "loading") return;
 
-    // ローカル環境では認証チェックをスキップ
-    if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+    // 本番（Railway）以外は認証チェックをスキップ
+    if (typeof window !== "undefined" && window.location.hostname !== "my-project-production-d888.up.railway.app") {
       setChecking(false);
       return;
     }
@@ -45,7 +45,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
     if (isPublic) return <>{children}</>;
     // ローカル環境では読み込み画面をスキップ
-    if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+    if (typeof window !== "undefined" && window.location.hostname !== "my-project-production-d888.up.railway.app") {
       return <>{children}</>;
     }
     return (
