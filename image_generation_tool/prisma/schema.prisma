@@ -1,0 +1,39 @@
+// 画像生成ツール DB スキーマ（Phase 1-0: 疎通確認用の最小構成）
+// Phase 1 本番で Character, ArtStyle, Location など追加
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// 生成履歴（全リクエストを記録）
+model Generation {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+
+  // 入力
+  prompt         String
+  negativePrompt String?
+  model          String   // "waiIllustriousSDXL_v160.safetensors" など
+  width          Int      @default(832)
+  height         Int      @default(1216)
+  steps          Int      @default(28)
+  cfg            Float    @default(5.0)
+  sampler        String   @default("euler_ancestral")
+  scheduler      String   @default("normal")
+  seed           BigInt
+
+  // RunPod メタ
+  runpodJobId    String?
+  status         String   @default("pending") // pending/in_queue/in_progress/completed/failed
+  delayTimeMs    Int?
+  executionTimeMs Int?
+  errorMessage   String?
+
+  // 出力
+  imagePath      String?  // storage/images/xxx.png
+}

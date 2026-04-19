@@ -1,0 +1,33 @@
+# 画像生成ツール gitignore
+
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next.js
+.next/
+out/
+
+# production
+build/
+
+# env files
+.env*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Prisma
+/src/generated/prisma
+
+# database
+*.db
+*.db-journal
+
+# storage（生成画像・学習データ）
+storage/
+
+# misc
+.DS_Store
