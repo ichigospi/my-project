@@ -65,6 +65,18 @@ model Character {
   poses           Pose[]
 }
 
+// キャプションテンプレート（Lora 学習用に頻出のタグセットを保存）
+// グローバル共通で、どのキャラの画像にも適用できる。
+model CaptionTemplate {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  label     String   // 表示名（例: "制服・笑顔"）
+  body      String   // タグ本体（カンマ区切り）
+  category  String?  // "outfit" / "pose" / "scene" 等
+  order     Int      @default(0)
+}
+
 // キャラ参照画像（IP-Adapter / 学習素材 兼用）
 model ReferenceImage {
   id          String    @id @default(cuid())

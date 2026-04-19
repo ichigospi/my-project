@@ -502,6 +502,14 @@ export default function CharactersPage() {
   );
 }
 
+interface CaptionTemplateRecord {
+  id: string;
+  label: string;
+  body: string;
+  category: string | null;
+  order: number;
+}
+
 function ReferenceImageSection({
   character,
   images,
@@ -518,6 +526,55 @@ function ReferenceImageSection({
   );
   const [error, setError] = useState<string | null>(null);
   const [editingImage, setEditingImage] = useState<ReferenceImageRecord | null>(null);
+
+  // 複数選択
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+
+  // テンプレ
+  const [templates, setTemplates] = useState<CaptionTemplateRecord[]>([]);
+
+  useEffect(() => {
+    let aborted = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/caption-templates");
+        if (!res.ok) return;
+        const data = (await res.json()) as { items: CaptionTemplateRecord[] };
+        if (!aborted) setTemplates(data.items);
+      } catch {
+        /* silent */
+      }
+    })();
+    return () => {
+      aborted = true;
+    };
+  }, []);
+
+  async function reloadTemplates() {
+    const res = await fetch("/api/caption-templates");
+    if (!res.ok) return;
+    const data = (await res.json()) as { items: CaptionTemplateRecord[] };
+    setTemplates(data.items);
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function selectAll() {
+    setSelectedIds(new Set(images.map((i) => i.id)));
+  }
+  function selectUncaptioned() {
+    setSelectedIds(new Set(images.filter((i) => !i.caption?.trim()).map((i) => i.id)));
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
 
   const captionedCount = images.filter((i) => !!i.caption?.trim()).length;
 
@@ -628,56 +685,118 @@ function ReferenceImageSection({
         </div>
       ) : null}
 
+      {/* 一括操作ツールバー（画像が 1 枚以上ある時のみ） */}
+      {images.length > 0 ? (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-md border border-gray-800 bg-gray-950/50 p-2">
+          <span className="text-[10px] text-gray-400">
+            選択中: <strong className="text-indigo-300">{selectedIds.size}</strong> /{" "}
+            {images.length}
+          </span>
+          <button
+            type="button"
+            onClick={selectAll}
+            className="rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+          >
+            全選択
+          </button>
+          <button
+            type="button"
+            onClick={selectUncaptioned}
+            className="rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+          >
+            未設定のみ選択
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-500 hover:bg-gray-700"
+          >
+            選択クリア
+          </button>
+          <div className="ml-auto flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setBulkOpen(true)}
+              className="rounded bg-indigo-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-indigo-500"
+            >
+              🏷 一括でキャプション適用
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {images.length === 0 ? (
         <p className="rounded-md border border-dashed border-gray-700 p-6 text-center text-[11px] text-gray-500">
           画像はまだありません。登録しておくと、後で Lora 学習や差分ブーストで使えます。
         </p>
       ) : (
         <ul className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
-          {images.map((img) => (
-            <li
-              key={img.id}
-              className="group relative overflow-hidden rounded-md border border-gray-800 bg-gray-900"
-            >
-              <button
-                type="button"
-                onClick={() => setEditingImage(img)}
-                className="block w-full text-left"
-                aria-label="画像を編集"
+          {images.map((img) => {
+            const selected = selectedIds.has(img.id);
+            return (
+              <li
+                key={img.id}
+                className={clsx(
+                  "group relative overflow-hidden rounded-md border bg-gray-900",
+                  selected ? "border-indigo-500 ring-2 ring-indigo-500/40" : "border-gray-800",
+                )}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/api/characters/${characterId}/images/${img.id}`}
-                  alt=""
-                  className="aspect-square w-full object-cover"
-                />
-                <div className="flex items-center justify-between gap-1 p-1.5">
-                  <span className="truncate text-[10px] text-gray-300">
-                    {purposeLabels[img.purpose] ?? img.purpose}
-                  </span>
-                  {img.caption ? (
-                    <span
-                      className="shrink-0 rounded bg-emerald-900/40 px-1 text-[9px] text-emerald-200"
-                      title={img.caption}
-                    >
-                      🏷
+                <button
+                  type="button"
+                  onClick={() => setEditingImage(img)}
+                  className="block w-full text-left"
+                  aria-label="画像を編集"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/characters/${characterId}/images/${img.id}`}
+                    alt=""
+                    className="aspect-square w-full object-cover"
+                  />
+                  <div className="flex items-center justify-between gap-1 p-1.5">
+                    <span className="truncate text-[10px] text-gray-300">
+                      {purposeLabels[img.purpose] ?? img.purpose}
                     </span>
-                  ) : (
-                    <span className="shrink-0 rounded bg-gray-800 px-1 text-[9px] text-gray-500">
-                      —
-                    </span>
+                    {img.caption ? (
+                      <span
+                        className="shrink-0 rounded bg-emerald-900/40 px-1 text-[9px] text-emerald-200"
+                        title={img.caption}
+                      >
+                        🏷
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded bg-gray-800 px-1 text-[9px] text-gray-500">
+                        —
+                      </span>
+                    )}
+                  </div>
+                </button>
+                {/* 選択チェックボックス（左上、常時表示） */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSelect(img.id);
+                  }}
+                  className={clsx(
+                    "absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded border text-[10px] font-bold",
+                    selected
+                      ? "border-indigo-500 bg-indigo-500 text-white"
+                      : "border-gray-600 bg-black/70 text-transparent hover:border-gray-400",
                   )}
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(img)}
-                className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-red-300 opacity-0 transition group-hover:opacity-100"
-              >
-                削除
-              </button>
-            </li>
-          ))}
+                >
+                  {selected ? "✓" : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(img)}
+                  className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-red-300 opacity-0 transition group-hover:opacity-100"
+                >
+                  削除
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -685,9 +804,27 @@ function ReferenceImageSection({
         <CaptionEditorModal
           character={character}
           image={editingImage}
+          templates={templates}
+          onTemplatesChanged={reloadTemplates}
           onClose={() => setEditingImage(null)}
           onSaved={async () => {
             setEditingImage(null);
+            await onChange();
+          }}
+        />
+      ) : null}
+
+      {bulkOpen ? (
+        <BulkCaptionModal
+          characterId={characterId}
+          selectedIds={Array.from(selectedIds)}
+          totalImages={images.length}
+          templates={templates}
+          onTemplatesChanged={reloadTemplates}
+          onClose={() => setBulkOpen(false)}
+          onApplied={async () => {
+            setBulkOpen(false);
+            clearSelection();
             await onChange();
           }}
         />
@@ -711,11 +848,15 @@ const REMOVE_HINT_TAGS = [
 function CaptionEditorModal({
   character,
   image,
+  templates,
+  onTemplatesChanged,
   onClose,
   onSaved,
 }: {
   character: CharacterRecord;
   image: ReferenceImageRecord;
+  templates: CaptionTemplateRecord[];
+  onTemplatesChanged: () => Promise<void> | void;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
@@ -852,7 +993,7 @@ function CaptionEditorModal({
                 onClick={insertTemplate}
                 className="rounded-md bg-indigo-700 px-2.5 py-1 text-[11px] text-white hover:bg-indigo-600"
               >
-                🪄 テンプレを挿入
+                🪄 雛形を挿入
               </button>
               <button
                 type="button"
@@ -862,10 +1003,51 @@ function CaptionEditorModal({
               >
                 {autoLoading ? "解析中…" : "🤖 AI キャプション"}
               </button>
-              <span className="text-[10px] text-gray-500">
-                (AI は Phase 2 で実装。今はテンプレ + 手動編集)
-              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  const label = window.prompt(
+                    "このキャプションをテンプレとして保存します。名前を入れてください:",
+                  );
+                  if (!label?.trim() || !caption.trim()) return;
+                  await fetch("/api/caption-templates", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ label: label.trim(), body: caption.trim() }),
+                  });
+                  await onTemplatesChanged();
+                }}
+                className="rounded-md bg-emerald-700 px-2.5 py-1 text-[11px] text-white hover:bg-emerald-600"
+              >
+                💾 テンプレ保存
+              </button>
             </div>
+
+            {/* 保存済みテンプレ一覧（クリックで挿入） */}
+            {templates.length > 0 ? (
+              <div>
+                <p className="mb-1 text-[10px] text-gray-500">保存済みテンプレ（クリックで追記）</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {templates.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setCaption((prev) => {
+                          const ex = prev.trim();
+                          return ex ? `${ex}, ${t.body}` : t.body;
+                        });
+                        setSource("manual");
+                      }}
+                      title={t.body}
+                      className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] text-gray-200 hover:bg-gray-700"
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {autoError ? (
               <div className="rounded-md border border-red-700 bg-red-950 p-2 text-[11px] text-red-200">
@@ -1254,6 +1436,253 @@ function TrainingSection({
         ) : null}
       </div>
     </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 一括キャプション適用モーダル
+// ─────────────────────────────────────────────────────────────
+function BulkCaptionModal({
+  characterId,
+  selectedIds,
+  totalImages,
+  templates,
+  onTemplatesChanged,
+  onClose,
+  onApplied,
+}: {
+  characterId: string;
+  selectedIds: string[];
+  totalImages: number;
+  templates: CaptionTemplateRecord[];
+  onTemplatesChanged: () => Promise<void> | void;
+  onClose: () => void;
+  onApplied: () => Promise<void> | void;
+}) {
+  type Scope = "selected" | "uncaptioned" | "all";
+  type Mode = "only-empty" | "prepend" | "append" | "replace";
+
+  const [scope, setScope] = useState<Scope>(
+    selectedIds.length > 0 ? "selected" : "uncaptioned",
+  );
+  const [mode, setMode] = useState<Mode>("only-empty");
+  const [caption, setCaption] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [result, setResult] = useState<{ targeted: number; updated: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function apply() {
+    setError(null);
+    setApplying(true);
+    try {
+      let selection: unknown;
+      if (scope === "selected") selection = selectedIds;
+      else if (scope === "uncaptioned") selection = "uncaptioned";
+      else selection = "all";
+
+      const res = await fetch(
+        `/api/characters/${characterId}/images/bulk-caption`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selection, caption, mode }),
+        },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { targeted: number; updated: number };
+      setResult(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  const scopeCountLabel =
+    scope === "selected"
+      ? `${selectedIds.length} 枚（選択中）`
+      : scope === "uncaptioned"
+      ? `未設定のみ（推定）`
+      : `${totalImages} 枚（全部）`;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative mt-10 w-full max-w-2xl rounded-lg border border-gray-800 bg-gray-950 p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 text-xs text-gray-400 hover:text-gray-200"
+        >
+          閉じる ✕
+        </button>
+
+        <h3 className="mb-3 text-sm font-semibold">🏷 一括でキャプション適用</h3>
+
+        {/* 対象範囲 */}
+        <div className="mb-3">
+          <p className="mb-1 text-[11px] text-gray-400">対象</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                { k: "selected", l: `選択中 (${selectedIds.length})`, disabled: selectedIds.length === 0 },
+                { k: "uncaptioned", l: "キャプション未設定のみ" },
+                { k: "all", l: `全画像 (${totalImages})` },
+              ] as Array<{ k: Scope; l: string; disabled?: boolean }>
+            ).map((s) => (
+              <button
+                key={s.k}
+                type="button"
+                onClick={() => !s.disabled && setScope(s.k)}
+                disabled={s.disabled}
+                className={clsx(
+                  "rounded-full px-3 py-1 text-[11px]",
+                  scope === s.k
+                    ? "bg-indigo-500 text-white"
+                    : "bg-gray-800 text-gray-300 hover:bg-gray-700",
+                  s.disabled && "opacity-40",
+                )}
+              >
+                {s.l}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[10px] text-gray-500">対象: {scopeCountLabel}</p>
+        </div>
+
+        {/* モード */}
+        <div className="mb-3">
+          <p className="mb-1 text-[11px] text-gray-400">適用モード</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                { k: "only-empty", l: "空のものだけ書き込む（安全）" },
+                { k: "prepend", l: "既存の先頭に追加" },
+                { k: "append", l: "既存の末尾に追加" },
+                { k: "replace", l: "既存を上書き（要注意）" },
+              ] as Array<{ k: Mode; l: string }>
+            ).map((m) => (
+              <button
+                key={m.k}
+                type="button"
+                onClick={() => setMode(m.k)}
+                className={clsx(
+                  "rounded-full px-3 py-1 text-[11px]",
+                  mode === m.k
+                    ? m.k === "replace"
+                      ? "bg-red-600 text-white"
+                      : "bg-indigo-500 text-white"
+                    : "bg-gray-800 text-gray-300 hover:bg-gray-700",
+                )}
+              >
+                {m.l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 本文 */}
+        <div className="mb-3">
+          <p className="mb-1 text-[11px] text-gray-400">適用するキャプション</p>
+          <textarea
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            rows={4}
+            className="input"
+            placeholder="例: 1girl, 1boy, hetero, sex, missionary, faceless_male, girl on back"
+          />
+        </div>
+
+        {/* テンプレから挿入 */}
+        {templates.length > 0 ? (
+          <div className="mb-3">
+            <p className="mb-1 text-[11px] text-gray-400">
+              保存済みテンプレ（クリックで本文に追記）
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {templates.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() =>
+                    setCaption((prev) => {
+                      const ex = prev.trim();
+                      return ex ? `${ex}, ${t.body}` : t.body;
+                    })
+                  }
+                  title={t.body}
+                  className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] text-gray-200 hover:bg-gray-700"
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={async () => {
+            const label = window.prompt(
+              "この本文をテンプレとして保存します。名前:",
+            );
+            if (!label?.trim() || !caption.trim()) return;
+            await fetch("/api/caption-templates", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ label: label.trim(), body: caption.trim() }),
+            });
+            await onTemplatesChanged();
+          }}
+          className="mb-3 rounded-md bg-emerald-700 px-2.5 py-1 text-[11px] text-white hover:bg-emerald-600"
+        >
+          💾 この本文をテンプレ保存
+        </button>
+
+        {error ? (
+          <div className="mb-3 rounded-md border border-red-700 bg-red-950 p-2 text-[11px] text-red-200">
+            {error}
+          </div>
+        ) : null}
+        {result ? (
+          <div className="mb-3 rounded-md border border-emerald-900/40 bg-emerald-950/30 p-2 text-[11px] text-emerald-200">
+            ✅ 対象 {result.targeted} 枚 / 更新 {result.updated} 枚
+          </div>
+        ) : null}
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void apply()}
+            disabled={applying || !caption.trim()}
+            className="rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:bg-gray-700"
+          >
+            {applying ? "適用中…" : "🏷 適用する"}
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              if (result) {
+                await onApplied();
+              } else {
+                onClose();
+              }
+            }}
+            className="rounded-md px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200"
+          >
+            {result ? "完了して閉じる" : "キャンセル"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
