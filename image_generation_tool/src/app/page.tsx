@@ -185,11 +185,15 @@ export default function HomePage() {
       .join(", ");
 
     // キャラごとの outfit / expression を組み立てる
+    // HMR 等で古い state 形が残る可能性を考えて防御的に読み取る
+    const outfitByChar = sel.outfitByChar ?? {};
+    const expressionIdsByChar = sel.expressionIdsByChar ?? {};
+
     const perCharacter: Record<string, { outfit?: { tags: string; isNude?: boolean }; expressionTags?: string[] }> = {};
     for (const char of chars) {
-      const outfitId = sel.outfitByChar[char.id] ?? char.defaultOutfitId ?? null;
+      const outfitId = outfitByChar[char.id] ?? char.defaultOutfitId ?? null;
       const outfit = outfitId ? byId.outfit.get(outfitId) : undefined;
-      const exprIds = sel.expressionIdsByChar[char.id] ?? [];
+      const exprIds = expressionIdsByChar[char.id] ?? [];
       const expressionTags = exprIds
         .map((id) => byId.expression.get(id)?.tags)
         .filter((t): t is string => !!t && t.length > 0);
@@ -200,9 +204,9 @@ export default function HomePage() {
     }
 
     // キャラ未選択時のグローバル
-    const globalOutfitId = sel.outfitByChar[GLOBAL_SLOT] ?? null;
+    const globalOutfitId = outfitByChar[GLOBAL_SLOT] ?? null;
     const globalOutfit = globalOutfitId ? byId.outfit.get(globalOutfitId) : undefined;
-    const globalExprIds = sel.expressionIdsByChar[GLOBAL_SLOT] ?? [];
+    const globalExprIds = expressionIdsByChar[GLOBAL_SLOT] ?? [];
     const globalExpressionTags = globalExprIds
       .map((id) => byId.expression.get(id)?.tags)
       .filter((t): t is string => !!t && t.length > 0);
@@ -255,35 +259,40 @@ export default function HomePage() {
   const activeSlot =
     sel.characterIds.length === 0
       ? GLOBAL_SLOT
-      : sel.characterIds.includes(sel.activeCharTab)
+      : sel.characterIds.includes(sel.activeCharTab ?? "")
       ? sel.activeCharTab
       : sel.characterIds[0];
 
-  const activeOutfitId = sel.outfitByChar[activeSlot] ?? null;
-  const activeExpressionIds = sel.expressionIdsByChar[activeSlot] ?? [];
+  const activeOutfitId = (sel.outfitByChar ?? {})[activeSlot] ?? null;
+  const activeExpressionIds = (sel.expressionIdsByChar ?? {})[activeSlot] ?? [];
 
   function setActiveOutfit(id: string | null) {
     setSel((prev) => {
-      const current = prev.outfitByChar[activeSlot] ?? null;
+      const outfitByChar = prev.outfitByChar ?? {};
+      const current = outfitByChar[activeSlot] ?? null;
       const next = current === id ? null : id;
-      return { ...prev, outfitByChar: { ...prev.outfitByChar, [activeSlot]: next } };
+      return { ...prev, outfitByChar: { ...outfitByChar, [activeSlot]: next } };
     });
   }
   function toggleActiveExpression(id: string) {
     setSel((prev) => {
-      const current = prev.expressionIdsByChar[activeSlot] ?? [];
+      const expressionIdsByChar = prev.expressionIdsByChar ?? {};
+      const current = expressionIdsByChar[activeSlot] ?? [];
       const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
       return {
         ...prev,
-        expressionIdsByChar: { ...prev.expressionIdsByChar, [activeSlot]: next },
+        expressionIdsByChar: { ...expressionIdsByChar, [activeSlot]: next },
       };
     });
   }
   function clearActiveExpressions() {
-    setSel((prev) => ({
-      ...prev,
-      expressionIdsByChar: { ...prev.expressionIdsByChar, [activeSlot]: [] },
-    }));
+    setSel((prev) => {
+      const expressionIdsByChar = prev.expressionIdsByChar ?? {};
+      return {
+        ...prev,
+        expressionIdsByChar: { ...expressionIdsByChar, [activeSlot]: [] },
+      };
+    });
   }
 
   function resetAll() {
@@ -402,8 +411,8 @@ export default function HomePage() {
     activeExpressionIds.length > 3 ? ` +${activeExpressionIds.length - 3}` : "";
 
   // 全キャラの合計カウント（複数キャラ時のサマリ用）
-  const totalOutfitCount = Object.values(sel.outfitByChar).filter(Boolean).length;
-  const totalExpressionCount = Object.values(sel.expressionIdsByChar).reduce(
+  const totalOutfitCount = Object.values(sel.outfitByChar ?? {}).filter(Boolean).length;
+  const totalExpressionCount = Object.values(sel.expressionIdsByChar ?? {}).reduce(
     (sum, list) => sum + list.length,
     0,
   );
@@ -498,7 +507,7 @@ export default function HomePage() {
             showPerCharTabs && totalOutfitCount > 0
               ? `${selectedChars
                   .map((c) => {
-                    const oid = sel.outfitByChar[c.id] ?? c.defaultOutfitId;
+                    const oid = (sel.outfitByChar ?? {})[c.id] ?? c.defaultOutfitId;
                     const lbl = oid ? byId?.outfit.get(oid)?.label : undefined;
                     return lbl ? `${c.name}:${lbl}` : null;
                   })
@@ -547,7 +556,7 @@ export default function HomePage() {
             showPerCharTabs && totalExpressionCount > 0
               ? `${selectedChars
                   .map((c) => {
-                    const ids = sel.expressionIdsByChar[c.id] ?? [];
+                    const ids = (sel.expressionIdsByChar ?? {})[c.id] ?? [];
                     return ids.length > 0 ? `${c.name}:${ids.length}個` : null;
                   })
                   .filter(Boolean)
