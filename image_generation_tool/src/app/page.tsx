@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import PresetChipGroup, { type ChipItem } from "@/components/PresetChipGroup";
 import SelectorCard from "@/components/SelectorCard";
+import CharTabBar from "@/components/CharTabBar";
 import { clsx } from "@/components/clsx";
 import { buildPrompt, type CharacterLite } from "@/lib/prompt-builder";
 import {
@@ -76,14 +77,20 @@ interface GenerateResult {
   seed: string;
 }
 
+// キャラ未選択時に使うフォールバックのキー
+const GLOBAL_SLOT = "__global__";
+
 interface SelectionState {
   timeId: string | null;
   characterIds: string[];
   locationId: string | null;
-  outfitId: string | null;
+  // 格好 / 表情 はキャラごと（キー = charId or GLOBAL_SLOT）
+  outfitByChar: Record<string, string | null>;
+  expressionIdsByChar: Record<string, string[]>;
+  // 現在編集中のタブ（charId or GLOBAL_SLOT）
+  activeCharTab: string;
   angleId: string | null;
   actionId: string | null;
-  expressionIds: string[];
   condom: CondomState;
   artStyleIds: string[];
   aspectRatioKey: string;
@@ -94,10 +101,11 @@ const initialSelection: SelectionState = {
   timeId: null,
   characterIds: [],
   locationId: null,
-  outfitId: null,
+  outfitByChar: {},
+  expressionIdsByChar: {},
+  activeCharTab: GLOBAL_SLOT,
   angleId: null,
   actionId: null,
-  expressionIds: [],
   condom: "none",
   artStyleIds: [],
   aspectRatioKey: DEFAULT_ASPECT_RATIO_KEY,
@@ -170,53 +178,114 @@ export default function HomePage() {
       .map((id) => byId.character.get(id))
       .filter((c): c is CharacterLite => !!c);
 
-    // 服装は user 指定 > 主体キャラのデフォルト > なし
-    const mainChar = chars[0];
-    const outfitIdEffective =
-      sel.outfitId ?? (mainChar?.defaultOutfitId ? mainChar.defaultOutfitId : null);
-    const outfit = outfitIdEffective ? byId.outfit.get(outfitIdEffective) : undefined;
-
     const action = sel.actionId ? byId.action.get(sel.actionId) : undefined;
     const styleTags = sel.artStyleIds
       .map((id) => byId.artStyle.get(id)?.styleTags)
       .filter((t): t is string => !!t && t.length > 0)
       .join(", ");
 
-    const expressionTags = sel.expressionIds
+    // キャラごとの outfit / expression を組み立てる
+    const perCharacter: Record<string, { outfit?: { tags: string; isNude?: boolean }; expressionTags?: string[] }> = {};
+    for (const char of chars) {
+      const outfitId = sel.outfitByChar[char.id] ?? char.defaultOutfitId ?? null;
+      const outfit = outfitId ? byId.outfit.get(outfitId) : undefined;
+      const exprIds = sel.expressionIdsByChar[char.id] ?? [];
+      const expressionTags = exprIds
+        .map((id) => byId.expression.get(id)?.tags)
+        .filter((t): t is string => !!t && t.length > 0);
+      perCharacter[char.id] = {
+        outfit: outfit ? { tags: outfit.tags, isNude: outfit.isNude } : undefined,
+        expressionTags: expressionTags.length > 0 ? expressionTags : undefined,
+      };
+    }
+
+    // キャラ未選択時のグローバル
+    const globalOutfitId = sel.outfitByChar[GLOBAL_SLOT] ?? null;
+    const globalOutfit = globalOutfitId ? byId.outfit.get(globalOutfitId) : undefined;
+    const globalExprIds = sel.expressionIdsByChar[GLOBAL_SLOT] ?? [];
+    const globalExpressionTags = globalExprIds
       .map((id) => byId.expression.get(id)?.tags)
       .filter((t): t is string => !!t && t.length > 0);
 
     return buildPrompt({
       timeTags: sel.timeId ? byId.time.get(sel.timeId)?.tags : undefined,
       characters: chars,
+      perCharacter,
+      globalOutfit: globalOutfit ? { tags: globalOutfit.tags, isNude: globalOutfit.isNude } : undefined,
+      globalExpressionTags: globalExpressionTags.length > 0 ? globalExpressionTags : undefined,
       location: sel.locationId
         ? { tags: byId.location.get(sel.locationId)?.tags ?? "", name: byId.location.get(sel.locationId)?.name }
         : undefined,
-      outfit: outfit ? { tags: outfit.tags, isNude: outfit.isNude } : undefined,
       angle: sel.angleId ? { tags: byId.angle.get(sel.angleId)?.tags ?? "" } : undefined,
       action: action ? { tags: action.tags, isNSFW: action.isNSFW } : undefined,
-      expressionTags: expressionTags.length > 0 ? expressionTags : undefined,
       condom: sel.condom,
       artStyleTags: styleTags.length > 0 ? styleTags : undefined,
       extraPromptTokens: extraPromptTokens.trim().length > 0 ? extraPromptTokens : undefined,
     });
   }, [byId, presets, sel, extraPromptTokens]);
 
-  function toggleSingle(key: keyof SelectionState, id: string) {
+  function toggleSingle(key: "timeId" | "locationId" | "angleId" | "actionId", id: string) {
     setSel((prev) => {
       const current = prev[key];
       return { ...prev, [key]: current === id ? null : id };
     });
   }
-  function toggleMulti(key: "characterIds" | "artStyleIds" | "expressionIds", id: string) {
+  function toggleMulti(key: "characterIds" | "artStyleIds", id: string) {
     setSel((prev) => {
       const list = prev[key];
+      const newList = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+      // characterIds 変更時に activeCharTab を同期
+      if (key === "characterIds") {
+        const activeIsValid =
+          newList.length === 0
+            ? prev.activeCharTab === GLOBAL_SLOT
+            : newList.includes(prev.activeCharTab);
+        const nextActive = activeIsValid
+          ? prev.activeCharTab
+          : newList.length === 0
+          ? GLOBAL_SLOT
+          : newList[0];
+        return { ...prev, characterIds: newList, activeCharTab: nextActive };
+      }
+      return { ...prev, [key]: newList };
+    });
+  }
+
+  // 現在編集中のスロット（GLOBAL_SLOT or charId）
+  const activeSlot =
+    sel.characterIds.length === 0
+      ? GLOBAL_SLOT
+      : sel.characterIds.includes(sel.activeCharTab)
+      ? sel.activeCharTab
+      : sel.characterIds[0];
+
+  const activeOutfitId = sel.outfitByChar[activeSlot] ?? null;
+  const activeExpressionIds = sel.expressionIdsByChar[activeSlot] ?? [];
+
+  function setActiveOutfit(id: string | null) {
+    setSel((prev) => {
+      const current = prev.outfitByChar[activeSlot] ?? null;
+      const next = current === id ? null : id;
+      return { ...prev, outfitByChar: { ...prev.outfitByChar, [activeSlot]: next } };
+    });
+  }
+  function toggleActiveExpression(id: string) {
+    setSel((prev) => {
+      const current = prev.expressionIdsByChar[activeSlot] ?? [];
+      const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
       return {
         ...prev,
-        [key]: list.includes(id) ? list.filter((x) => x !== id) : [...list, id],
+        expressionIdsByChar: { ...prev.expressionIdsByChar, [activeSlot]: next },
       };
     });
   }
+  function clearActiveExpressions() {
+    setSel((prev) => ({
+      ...prev,
+      expressionIdsByChar: { ...prev.expressionIdsByChar, [activeSlot]: [] },
+    }));
+  }
+
   function resetAll() {
     setSel(initialSelection);
     setExtraPromptTokens("");
@@ -303,25 +372,41 @@ export default function HomePage() {
   const filteredExpressions = presets.expressionCategories.filter((c) =>
     expressionTab === "sfw" ? !c.isNSFW : c.isNSFW,
   );
-  const expressionSummary = sel.expressionIds
+
+  // キャラタブ表示用（2人以上で表示）
+  const selectedChars = sel.characterIds
+    .map((id) => byId?.character.get(id))
+    .filter((c): c is CharacterLite => !!c);
+  const showPerCharTabs = selectedChars.length >= 2;
+
+  // アクティブスロットに紐づく表示用情報
+  const activeChar = activeSlot === GLOBAL_SLOT ? null : byId?.character.get(activeSlot);
+  const activeCharDefaultOutfitId = activeChar?.defaultOutfitId ?? null;
+  const activeOutfitEffectiveId = activeOutfitId ?? activeCharDefaultOutfitId;
+  const activeOutfitEffectiveLabel = activeOutfitEffectiveId
+    ? byId?.outfit.get(activeOutfitEffectiveId)?.label
+    : undefined;
+  const outfitSummary =
+    activeOutfitId != null
+      ? activeOutfitEffectiveLabel
+      : activeOutfitEffectiveLabel
+      ? `${activeOutfitEffectiveLabel}（${activeChar?.name} のデフォ）`
+      : undefined;
+
+  const activeExpressionSummary = activeExpressionIds
     .map((id) => byId?.expression.get(id)?.label)
     .filter(Boolean)
     .slice(0, 3)
     .join(", ");
-  const expressionMore = sel.expressionIds.length > 3 ? ` +${sel.expressionIds.length - 3}` : "";
+  const activeExpressionMore =
+    activeExpressionIds.length > 3 ? ` +${activeExpressionIds.length - 3}` : "";
 
-  const mainChar = sel.characterIds[0] ? byId?.character.get(sel.characterIds[0]) : null;
-  const mainCharDefaultOutfitId = mainChar?.defaultOutfitId ?? null;
-  const outfitEffectiveId = sel.outfitId ?? mainCharDefaultOutfitId;
-  const outfitEffectiveLabel = outfitEffectiveId
-    ? byId?.outfit.get(outfitEffectiveId)?.label
-    : undefined;
-  const outfitSummary =
-    sel.outfitId != null
-      ? outfitEffectiveLabel
-      : outfitEffectiveLabel
-      ? `${outfitEffectiveLabel}（${mainChar?.name} のデフォ）`
-      : undefined;
+  // 全キャラの合計カウント（複数キャラ時のサマリ用）
+  const totalOutfitCount = Object.values(sel.outfitByChar).filter(Boolean).length;
+  const totalExpressionCount = Object.values(sel.expressionIdsByChar).reduce(
+    (sum, list) => sum + list.length,
+    0,
+  );
 
   return (
     <main className="mx-auto max-w-6xl p-6">
@@ -409,19 +494,37 @@ export default function HomePage() {
         <SelectorCard
           icon="👗"
           title="格好"
-          summary={outfitSummary}
+          summary={
+            showPerCharTabs && totalOutfitCount > 0
+              ? `${selectedChars
+                  .map((c) => {
+                    const oid = sel.outfitByChar[c.id] ?? c.defaultOutfitId;
+                    const lbl = oid ? byId?.outfit.get(oid)?.label : undefined;
+                    return lbl ? `${c.name}:${lbl}` : null;
+                  })
+                  .filter(Boolean)
+                  .join(" / ")}`
+              : outfitSummary
+          }
           help={
-            mainChar?.gender === "male"
+            activeChar?.gender === "male"
               ? "男性キャラに適した服装を選んでください。"
-              : mainCharDefaultOutfitId && !sel.outfitId
-              ? "未選択のためキャラのデフォルト服装が使われます。"
+              : activeCharDefaultOutfitId && !activeOutfitId
+              ? `未選択のため「${activeChar?.name}」のデフォルト服装が使われます。`
               : undefined
           }
         >
+          {showPerCharTabs ? (
+            <CharTabBar
+              chars={selectedChars}
+              activeSlot={activeSlot}
+              onSelect={(slot) => setSel((p) => ({ ...p, activeCharTab: slot }))}
+            />
+          ) : null}
           <PresetChipGroup
             items={outfitItems}
-            selectedIds={sel.outfitId ? [sel.outfitId] : []}
-            onToggle={(id) => toggleSingle("outfitId", id)}
+            selectedIds={activeOutfitId ? [activeOutfitId] : []}
+            onToggle={(id) => setActiveOutfit(id)}
           />
         </SelectorCard>
 
@@ -440,9 +543,29 @@ export default function HomePage() {
         <SelectorCard
           icon="😊"
           title="表情"
-          summary={sel.expressionIds.length > 0 ? `${expressionSummary}${expressionMore}` : undefined}
+          summary={
+            showPerCharTabs && totalExpressionCount > 0
+              ? `${selectedChars
+                  .map((c) => {
+                    const ids = sel.expressionIdsByChar[c.id] ?? [];
+                    return ids.length > 0 ? `${c.name}:${ids.length}個` : null;
+                  })
+                  .filter(Boolean)
+                  .join(" / ")}`
+              : activeExpressionIds.length > 0
+              ? `${activeExpressionSummary}${activeExpressionMore}`
+              : undefined
+          }
           help="複数選択可。目+口+赤面など組み合わせるとアヘ顔に。"
         >
+          {showPerCharTabs ? (
+            <CharTabBar
+              chars={selectedChars}
+              activeSlot={activeSlot}
+              onSelect={(slot) => setSel((p) => ({ ...p, activeCharTab: slot }))}
+            />
+          ) : null}
+
           <div className="mb-2 flex gap-1">
             <button
               type="button"
@@ -464,10 +587,10 @@ export default function HomePage() {
             >
               NSFW
             </button>
-            {sel.expressionIds.length > 0 ? (
+            {activeExpressionIds.length > 0 ? (
               <button
                 type="button"
-                onClick={() => setSel((p) => ({ ...p, expressionIds: [] }))}
+                onClick={clearActiveExpressions}
                 className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-gray-500 hover:text-gray-300"
               >
                 クリア
@@ -483,8 +606,8 @@ export default function HomePage() {
                 </p>
                 <PresetChipGroup
                   items={cat.expressions.map((e) => ({ id: e.id, label: e.label }))}
-                  selectedIds={sel.expressionIds}
-                  onToggle={(id) => toggleMulti("expressionIds", id)}
+                  selectedIds={activeExpressionIds}
+                  onToggle={(id) => toggleActiveExpression(id)}
                 />
               </div>
             ))}
