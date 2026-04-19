@@ -531,6 +531,9 @@ function ReferenceImageSection({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
 
+  // 表示フィルタ（未設定のみ表示できる）
+  const [filter, setFilter] = useState<"all" | "uncaptioned">("all");
+
   // AI 一括キャプション
   const [aiBatch, setAiBatch] = useState<
     | {
@@ -662,6 +665,11 @@ function ReferenceImageSection({
   }
 
   const captionedCount = images.filter((i) => !!i.caption?.trim()).length;
+  const uncaptionedCount = images.length - captionedCount;
+  const filteredImages =
+    filter === "uncaptioned"
+      ? images.filter((i) => !i.caption?.trim())
+      : images;
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -773,6 +781,37 @@ function ReferenceImageSection({
       {/* 一括操作ツールバー（画像が 1 枚以上ある時のみ） */}
       {images.length > 0 ? (
         <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-md border border-gray-800 bg-gray-950/50 p-2">
+          {/* 表示フィルタ */}
+          <div className="flex items-center gap-1 rounded bg-gray-900 p-0.5">
+            <button
+              type="button"
+              onClick={() => setFilter("all")}
+              className={clsx(
+                "rounded px-2 py-0.5 text-[10px]",
+                filter === "all"
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-400 hover:bg-gray-800",
+              )}
+            >
+              すべて ({images.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter("uncaptioned")}
+              className={clsx(
+                "rounded px-2 py-0.5 text-[10px]",
+                filter === "uncaptioned"
+                  ? "bg-red-700 text-white"
+                  : uncaptionedCount > 0
+                  ? "text-red-300 hover:bg-gray-800"
+                  : "text-gray-500",
+              )}
+              disabled={uncaptionedCount === 0}
+            >
+              🏷 未設定のみ ({uncaptionedCount})
+            </button>
+          </div>
+
           <span className="text-[10px] text-gray-400">
             選択中: <strong className="text-indigo-300">{selectedIds.size}</strong> /{" "}
             {images.length}
@@ -875,18 +914,33 @@ function ReferenceImageSection({
         <p className="rounded-md border border-dashed border-gray-700 p-6 text-center text-[11px] text-gray-500">
           画像はまだありません。登録しておくと、後で Lora 学習や差分ブーストで使えます。
         </p>
+      ) : filteredImages.length === 0 ? (
+        <p className="rounded-md border border-dashed border-emerald-900 bg-emerald-950/20 p-6 text-center text-[11px] text-emerald-200">
+          ✅ すべての画像にキャプションが設定されています。
+        </p>
       ) : (
         <ul className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
-          {images.map((img) => {
+          {filteredImages.map((img) => {
             const selected = selectedIds.has(img.id);
+            const hasCaption = !!img.caption?.trim();
             return (
               <li
                 key={img.id}
                 className={clsx(
                   "group relative overflow-hidden rounded-md border bg-gray-900",
-                  selected ? "border-indigo-500 ring-2 ring-indigo-500/40" : "border-gray-800",
+                  selected
+                    ? "border-indigo-500 ring-2 ring-indigo-500/40"
+                    : hasCaption
+                    ? "border-gray-800"
+                    : "border-red-600/80 ring-1 ring-red-600/30",
                 )}
               >
+                {/* 未設定の視覚強調: 右上に赤いリボン */}
+                {!hasCaption ? (
+                  <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] bg-red-600/80 py-0.5 text-center text-[9px] font-bold text-white">
+                    🏷 未設定
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setEditingImage(img)}
@@ -897,22 +951,25 @@ function ReferenceImageSection({
                   <img
                     src={`/api/characters/${characterId}/images/${img.id}`}
                     alt=""
-                    className="aspect-square w-full object-cover"
+                    className={clsx(
+                      "aspect-square w-full object-cover",
+                      !hasCaption && "opacity-60",
+                    )}
                   />
                   <div className="flex items-center justify-between gap-1 p-1.5">
                     <span className="truncate text-[10px] text-gray-300">
                       {purposeLabels[img.purpose] ?? img.purpose}
                     </span>
-                    {img.caption ? (
+                    {hasCaption ? (
                       <span
                         className="shrink-0 rounded bg-emerald-900/40 px-1 text-[9px] text-emerald-200"
-                        title={img.caption}
+                        title={img.caption ?? ""}
                       >
-                        🏷
+                        ✓
                       </span>
                     ) : (
-                      <span className="shrink-0 rounded bg-gray-800 px-1 text-[9px] text-gray-500">
-                        —
+                      <span className="shrink-0 rounded bg-red-900/50 px-1 text-[9px] text-red-200">
+                        未設定
                       </span>
                     )}
                   </div>
