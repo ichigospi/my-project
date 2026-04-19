@@ -1,7 +1,7 @@
 # 引き継ぎ書（新セッション用・コピペ対応）
 
 > このファイルは「セッションが途中で止まった時に、新しいセッションへ丸ごと渡すための要約」です。
-> 進捗があるたびに更新されます。**更新日時: 2026-04-19 14:15**
+> 進捗があるたびに更新されます。**更新日時: 2026-04-19 15:10**
 
 ---
 
@@ -255,6 +255,7 @@
   - /api/generate + /api/image/[filename] + 最小 UI
   - tsc / eslint / dev サーバ起動すべて OK
   - ⚠️ 実機（Mac）での生成テストは未実施（Claude Code サンドボックスから外部 HTTP 不可）
+- 🎉 **Mac 実機で疎通テスト成功**（Node v24.15.0 / npm 11.12.1、GitHub から clone、http://localhost:3100 で画像生成成功）
 
 ### Prisma 7 のハマりポイント（追記）
 - `schema.prisma` の `datasource db` から `url` を削除（エラー: `datasource.url is no longer supported`）
@@ -268,11 +269,22 @@
 ## 現在の作業（⚡ここから再開）
 
 ### ブロッカー
-なし。Phase 1-0 実装完了。**ユーザーのローカル実機（Mac）で疎通確認待ち**。
+なし。Phase 1-0 完了（Mac 実機で生成成功）。**Phase 1 本実装へ着手可**。
 
-### 次のアクション
+### Mac 実機環境（確定）
+- MacBook Air（`/Users/kosuke`）/ Node.js v24.15.0 / npm 11.12.1
+- プロジェクト: `~/Documents/my-project/`（GitHub から clone 済み）
+- ブランチ: `claude/affectionate-sagan-dloQU`
+- dev サーバー: `cd image_generation_tool && npm run dev` → http://localhost:3100
 
-**Step 0: ユーザーがローカルで疎通テスト**
+### 次のアクション（Phase 1 本実装）
+1. **DB スキーマ拡充**（DESIGN.md の Character / BodyPart / ArtStyle / ActionPreset / ViewAnglePreset / ClothingPreset / Location / Pose / Asset / Generation を Prisma に落とす）
+2. **6W1H ボタン UI 骨格**（いつ/誰が/誰と/どこで/格好/アングル/何を、＋ ゴム有無トグル）
+3. **プリセット初期データ投入**（アングル12種 / NSFW行為16種）
+4. **キャラ管理画面**（プロフィール登録→性別別項目）
+5. **Lora 学習バックエンド**（kohya_ss on RunPod Serverless）
+
+### 旧: Step 0（疎通テスト手順・参考用）
 ```bash
 cd ~/path/to/my-project
 git pull origin claude/resume-section-work-cN8J2
