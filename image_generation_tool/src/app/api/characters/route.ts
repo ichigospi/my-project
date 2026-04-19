@@ -14,6 +14,7 @@ interface CreateBody {
   memo?: string;
   extraPrompt?: string;
   triggerWord?: string;
+  loraScale?: number;
   defaultOutfitId?: string | null;
   pubicHair?: string | null;
 }
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
       memo: body.memo?.trim() || null,
       extraPrompt: body.extraPrompt?.trim() || null,
       triggerWord: body.triggerWord?.trim() || null,
+      loraScale: typeof body.loraScale === "number" ? body.loraScale : 1.0,
       defaultOutfitId: body.defaultOutfitId || null,
       pubicHair: body.pubicHair || null,
     },

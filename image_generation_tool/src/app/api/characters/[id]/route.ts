@@ -14,6 +14,7 @@ interface UpdateBody {
   memo?: string | null;
   extraPrompt?: string | null;
   triggerWord?: string | null;
+  loraScale?: number;
   defaultOutfitId?: string | null;
   pubicHair?: string | null;
 }
@@ -66,6 +67,13 @@ export async function PATCH(
   if (body.memo !== undefined) data.memo = body.memo?.trim() || null;
   if (body.extraPrompt !== undefined) data.extraPrompt = body.extraPrompt?.trim() || null;
   if (body.triggerWord !== undefined) data.triggerWord = body.triggerWord?.trim() || null;
+  if (body.loraScale !== undefined) {
+    const s = Number(body.loraScale);
+    if (!Number.isFinite(s) || s < 0 || s > 2) {
+      return NextResponse.json({ error: "loraScale must be 0..2" }, { status: 400 });
+    }
+    data.loraScale = s;
+  }
   if (body.defaultOutfitId !== undefined) data.defaultOutfitId = body.defaultOutfitId || null;
   if (body.pubicHair !== undefined) data.pubicHair = body.pubicHair || null;
 

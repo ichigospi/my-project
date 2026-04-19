@@ -29,6 +29,7 @@ interface CharacterRecord {
   memo: string | null;
   extraPrompt: string | null;
   triggerWord: string | null;
+  loraScale: number;
   defaultOutfitId: string | null;
   pubicHair: string | null;
   loraUrl: string | null;
@@ -53,6 +54,7 @@ interface FormState {
   memo: string;
   extraPrompt: string;
   triggerWord: string;
+  loraScale: string; // 入力中は文字列で保持
   defaultOutfitId: string;
   pubicHair: PubicHair;
 }
@@ -64,6 +66,7 @@ const emptyForm: FormState = {
   memo: "",
   extraPrompt: "",
   triggerWord: "",
+  loraScale: "0.8",
   defaultOutfitId: "",
   pubicHair: "",
 };
@@ -122,6 +125,7 @@ export default function CharactersPage() {
       memo: c.memo ?? "",
       extraPrompt: c.extraPrompt ?? "",
       triggerWord: c.triggerWord ?? "",
+      loraScale: String(c.loraScale ?? 0.8),
       defaultOutfitId: c.defaultOutfitId ?? "",
       pubicHair: (c.pubicHair as PubicHair) ?? "",
     });
@@ -154,6 +158,12 @@ export default function CharactersPage() {
       if (!ok) return;
     }
 
+    const loraScale = Number(form.loraScale);
+    if (!Number.isFinite(loraScale) || loraScale < 0 || loraScale > 2) {
+      setFormError("Lora 再現度は 0.0〜2.0 の数値で入力してください");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const body = {
@@ -163,6 +173,7 @@ export default function CharactersPage() {
         memo: form.memo.trim() || null,
         extraPrompt: form.extraPrompt.trim() || null,
         triggerWord: form.triggerWord.trim() || null,
+        loraScale,
         defaultOutfitId: form.defaultOutfitId || null,
         pubicHair: form.pubicHair || null,
       };
@@ -344,6 +355,39 @@ export default function CharactersPage() {
                 className="input"
                 placeholder="例: char_hanako_v1"
               />
+            </LabeledField>
+
+            <LabeledField
+              label={`Lora 再現度 (0.5〜1.2 推奨・弱める場合 0.6〜0.8)`}
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={0}
+                  max={1.5}
+                  step={0.05}
+                  value={form.loraScale}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, loraScale: e.target.value }))
+                  }
+                  className="flex-1"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  value={form.loraScale}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, loraScale: e.target.value }))
+                  }
+                  className="input w-20"
+                />
+              </div>
+              <p className="text-[10px] text-gray-500">
+                低い=Lora 控えめ（ベースモデルが強め）/ 高い=Lora 優勢。
+                絵が過学習気味なら 0.6〜0.8 を試す。
+              </p>
             </LabeledField>
 
             <LabeledField
