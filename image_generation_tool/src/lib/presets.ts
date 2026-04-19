@@ -134,11 +134,11 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
     isNSFW: true,
     order: 30,
     actions: [
-      { key: "handjob", label: "手コキ", tags: "handjob" },
-      { key: "fingering", label: "手マン", tags: "fingering, pussy juice" },
-      { key: "fellatio", label: "フェラ", tags: "fellatio, oral" },
-      { key: "cunnilingus", label: "クンニ", tags: "cunnilingus, oral" },
-      { key: "sixtynine", label: "シックスナイン", tags: "69, sixtynine" },
+      { key: "handjob", label: "手コキ", tags: "handjob, penis grab, stroking" },
+      { key: "fingering", label: "手マン", tags: "fingering, pussy juice, spread pussy" },
+      { key: "fellatio", label: "フェラ", tags: "fellatio, oral sex, penis in mouth" },
+      { key: "cunnilingus", label: "クンニ", tags: "cunnilingus, oral sex, licking pussy" },
+      { key: "sixtynine", label: "シックスナイン", tags: "69, sixtynine, oral sex" },
     ],
   },
   {
@@ -147,14 +147,48 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
     isNSFW: true,
     order: 40,
     actions: [
-      { key: "missionary", label: "正常位", tags: "missionary, sex" },
-      { key: "doggystyle", label: "バック", tags: "doggystyle, from behind, sex" },
-      { key: "standing_sex", label: "立ちバック", tags: "standing sex, from behind" },
-      { key: "mating_press", label: "種付けプレス", tags: "mating press, sex" },
-      { key: "cowgirl", label: "騎乗位", tags: "cowgirl position, girl on top, sex" },
-      { key: "carry_fuck", label: "駅弁", tags: "carry fuck, suspended congress, sex" },
-      { key: "face_to_face", label: "対面座位", tags: "sitting sex, face-to-face, sex" },
-      { key: "kissing_sex", label: "キスハメ", tags: "kissing, sex, french kiss" },
+      {
+        key: "missionary",
+        // 正常位: 女性が仰向けを強制（うつ伏せ誤生成の防止）
+        label: "正常位",
+        tags: "missionary, sex, vaginal, penetration, lying on back, spread legs, face up",
+      },
+      {
+        key: "doggystyle",
+        // バック: 四つん這いを強制
+        label: "バック",
+        tags: "doggystyle, sex from behind, vaginal, penetration, all fours, on all fours",
+      },
+      {
+        key: "standing_sex",
+        label: "立ちバック",
+        tags: "standing sex, sex from behind, bent over, vaginal, penetration",
+      },
+      {
+        key: "mating_press",
+        label: "種付けプレス",
+        tags: "mating press, missionary, sex, vaginal, penetration, legs up, folded legs",
+      },
+      {
+        key: "cowgirl",
+        label: "騎乗位",
+        tags: "cowgirl position, girl on top, straddling, sex, vaginal, penetration",
+      },
+      {
+        key: "carry_fuck",
+        label: "駅弁",
+        tags: "carry fuck, suspended congress, standing, sex, held up, vaginal, penetration",
+      },
+      {
+        key: "face_to_face",
+        label: "対面座位",
+        tags: "sitting sex, face-to-face, sitting on lap, sex, vaginal, penetration",
+      },
+      {
+        key: "kissing_sex",
+        label: "キスハメ",
+        tags: "kissing, sex, french kiss, missionary, face-to-face, vaginal, penetration",
+      },
     ],
   },
   {
@@ -163,7 +197,7 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
     isNSFW: true,
     order: 50,
     actions: [
-      { key: "after_sex", label: "事後", tags: "after sex, afterglow, cum" },
+      { key: "after_sex", label: "事後", tags: "after sex, afterglow, cum, post-sex" },
     ],
   },
 ];

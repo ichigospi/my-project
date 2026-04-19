@@ -29,8 +29,40 @@ export interface PromptSelection {
   includeBodyTagsAlways?: boolean;
 }
 
-const QUALITY_TAGS = "masterpiece, best quality, ultra detailed";
-const DEFAULT_NEGATIVE = "lowres, bad quality, worst quality, bad anatomy, deformed";
+// Illustrious / WAI-illustrious で効きが良い品質タグ
+const QUALITY_TAGS =
+  "masterpiece, best quality, amazing quality, very aesthetic, newest, absurdres, ultra detailed, detailed body, detailed anatomy";
+
+// 解剖学の崩れを強めに抑制するネガティブ。
+// 重み付き `(worst quality:1.3)` は Pony/Illustrious 系で効く。
+const DEFAULT_NEGATIVE = [
+  "(worst quality:1.3)",
+  "(low quality:1.2)",
+  "lowres",
+  "jpeg artifacts",
+  "sketch",
+  "bad anatomy",
+  "bad proportions",
+  "bad hands",
+  "bad feet",
+  "extra fingers",
+  "missing fingers",
+  "fused fingers",
+  "extra limbs",
+  "extra arms",
+  "extra legs",
+  "missing limb",
+  "deformed",
+  "malformed limbs",
+  "mutated hands",
+  "mutated fingers",
+  "disfigured",
+  "poorly drawn face",
+  "poorly drawn hands",
+  "asymmetric eyes",
+  "cross-eyed",
+  "blurry",
+].join(", ");
 
 function push(into: string[], value?: string | null) {
   if (!value) return;
