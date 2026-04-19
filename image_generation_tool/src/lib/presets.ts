@@ -557,6 +557,13 @@ export const QUALITY_PRESETS: QualityPreset[] = [
 export const DEFAULT_QUALITY_KEY = "standard";
 
 // ─────────────────────────────────────────────────────────────
+// バッチ（同時生成枚数）プリセット
+// ─────────────────────────────────────────────────────────────
+
+export const BATCH_SIZE_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const DEFAULT_BATCH_SIZE = 1;
+
+// ─────────────────────────────────────────────────────────────
 // 表情プリセット（複数選択前提・目/口/赤面/幸せイキ/絶頂 等）
 // 出典: meta-camp.net/nsfw-face-expression-prompts/
 // ─────────────────────────────────────────────────────────────

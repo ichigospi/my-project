@@ -16,6 +16,8 @@ import {
   DEFAULT_ASPECT_RATIO_KEY,
   QUALITY_PRESETS,
   DEFAULT_QUALITY_KEY,
+  BATCH_SIZE_OPTIONS,
+  DEFAULT_BATCH_SIZE,
 } from "@/lib/presets";
 
 interface PresetItem {
@@ -68,13 +70,16 @@ interface PresetsResponse {
   artStyles: ArtStyleItem[];
 }
 
-interface GenerateResult {
+interface GenerateResultImage {
   id: string;
   imageUrl: string;
-  imageBase64: string;
+  seed: string;
+}
+
+interface GenerateResult {
+  images: GenerateResultImage[];
   delayTimeMs?: number;
   executionTimeMs?: number;
-  seed: string;
 }
 
 // キャラ未選択時に使うフォールバックのキー
@@ -95,6 +100,7 @@ interface SelectionState {
   artStyleIds: string[];
   aspectRatioKey: string;
   qualityKey: string;
+  batchSize: number;
 }
 
 const initialSelection: SelectionState = {
@@ -110,6 +116,7 @@ const initialSelection: SelectionState = {
   artStyleIds: [],
   aspectRatioKey: DEFAULT_ASPECT_RATIO_KEY,
   qualityKey: DEFAULT_QUALITY_KEY,
+  batchSize: DEFAULT_BATCH_SIZE,
 };
 
 export default function HomePage() {
@@ -328,6 +335,7 @@ export default function HomePage() {
           height: aspect.height,
           steps: quality.steps,
           cfg: quality.cfg,
+          batchSize: sel.batchSize ?? 1,
         }),
       });
 
@@ -422,6 +430,9 @@ export default function HomePage() {
       <header className="mb-5 flex items-baseline justify-between">
         <h1 className="text-xl font-bold">🎨 画像生成ツール</h1>
         <nav className="flex items-center gap-3 text-xs">
+          <a href="/history" className="text-gray-400 hover:text-indigo-300">
+            📸 履歴
+          </a>
           <a href="/characters" className="text-gray-400 hover:text-indigo-300">
             👥 キャラ管理
           </a>
@@ -726,8 +737,8 @@ export default function HomePage() {
         ) : null}
       </section>
 
-      {/* サイズ・画質 */}
-      <section className="mt-4 grid gap-3 rounded-md border border-gray-800 bg-gray-950/60 p-3 md:grid-cols-2">
+      {/* サイズ・画質・枚数 */}
+      <section className="mt-4 grid gap-3 rounded-md border border-gray-800 bg-gray-950/60 p-3 md:grid-cols-3">
         <div>
           <p className="mb-1.5 text-[11px] uppercase tracking-wide text-gray-500">
             📐 サイズ <span className="ml-1 text-gray-600">{aspect.width}×{aspect.height}</span>
@@ -781,6 +792,35 @@ export default function HomePage() {
           </div>
           <p className="mt-1 text-[10px] text-gray-600">{quality.description}</p>
         </div>
+
+        <div>
+          <p className="mb-1.5 text-[11px] uppercase tracking-wide text-gray-500">
+            🔢 枚数 <span className="ml-1 text-gray-600">{sel.batchSize}枚同時</span>
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {BATCH_SIZE_OPTIONS.map((n) => {
+              const active = sel.batchSize === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setSel((p) => ({ ...p, batchSize: n }))}
+                  className={clsx(
+                    "w-9 rounded-full px-0 py-1 text-xs transition",
+                    active
+                      ? "bg-indigo-500 text-white"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700",
+                  )}
+                >
+                  {n}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-[10px] text-gray-600">
+            複数枚にすると所要時間は枚数に比例して増えます
+          </p>
+        </div>
       </section>
 
       {/* 生成ボタン */}
@@ -805,27 +845,50 @@ export default function HomePage() {
       ) : null}
 
       {result ? (
-        <section className="mt-6 grid gap-3">
-          <div className="rounded-md border border-gray-800 bg-gray-900 p-3 text-xs text-gray-400">
-            <div>ID: {result.id}</div>
-            <div>Seed: {result.seed}</div>
+        <section className="mt-6">
+          <div className="mb-2 rounded-md border border-gray-800 bg-gray-900 p-3 text-xs text-gray-400">
+            <div>生成枚数: {result.images.length} 枚</div>
             <div>
-              Delay: {result.delayTimeMs ?? "-"}ms / Execution: {result.executionTimeMs ?? "-"}ms
+              Delay: {result.delayTimeMs ?? "-"}ms / Execution:{" "}
+              {result.executionTimeMs ?? "-"}ms
             </div>
           </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={result.imageUrl}
-            alt="generated"
-            className="max-w-full rounded-md border border-gray-800"
-          />
-          <a
-            href={result.imageUrl}
-            download
-            className="inline-block w-fit rounded-md bg-gray-800 px-4 py-2 text-sm"
+          <div
+            className={clsx(
+              "grid gap-3",
+              result.images.length === 1
+                ? "grid-cols-1"
+                : result.images.length === 2
+                ? "grid-cols-2"
+                : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4",
+            )}
           >
-            画像をダウンロード
-          </a>
+            {result.images.map((img) => (
+              <div
+                key={img.id}
+                className="flex flex-col gap-1 rounded-md border border-gray-800 bg-gray-900 p-2"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={img.imageUrl}
+                  alt="generated"
+                  className="aspect-auto w-full rounded border border-gray-800"
+                />
+                <div className="flex items-center justify-between">
+                  <span className="truncate text-[10px] text-gray-500" title={img.seed}>
+                    seed {img.seed}
+                  </span>
+                  <a
+                    href={img.imageUrl}
+                    download
+                    className="rounded bg-gray-800 px-2 py-0.5 text-[10px] hover:bg-gray-700"
+                  >
+                    DL
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
     </main>

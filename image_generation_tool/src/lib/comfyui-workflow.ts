@@ -13,6 +13,7 @@ export interface BasicT2IParams {
   sampler?: string;
   scheduler?: string;
   seed: number | bigint;
+  batchSize?: number;
 }
 
 const DEFAULT_NEGATIVE = "lowres, bad quality, worst quality, bad anatomy, deformed";
@@ -29,6 +30,7 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
     sampler = "euler_ancestral",
     scheduler = "normal",
     seed,
+    batchSize = 1,
   } = params;
 
   return {
@@ -53,7 +55,7 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
     },
     "5": {
       class_type: "EmptyLatentImage",
-      inputs: { width, height, batch_size: 1 },
+      inputs: { width, height, batch_size: batchSize },
     },
     "6": {
       class_type: "CLIPTextEncode",
