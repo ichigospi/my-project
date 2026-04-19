@@ -221,6 +221,31 @@ model ActionPreset {
   memo         String?
 }
 
+// 表情カテゴリ（目 / 口 / 赤面 / 幸せイキ / 絶頂 / 震え 等）
+model ExpressionCategory {
+  id          String             @id @default(cuid())
+  key         String             @unique
+  label       String
+  isNSFW      Boolean            @default(false)
+  order       Int                @default(0)
+  isBuiltIn   Boolean            @default(false)
+  expressions ExpressionPreset[]
+}
+
+// 表情プリセット（複数選択で組み合わせる想定）
+model ExpressionPreset {
+  id         String             @id @default(cuid())
+  label      String
+  tags       String
+  categoryId String
+  category   ExpressionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  isNSFW     Boolean            @default(false)
+  order      Int                @default(0)
+  isBuiltIn  Boolean            @default(false)
+  thumbnail  String?
+  memo       String?
+}
+
 // ─────────────────────────────────────────────────────────────
 // 場所ライブラリ
 // ─────────────────────────────────────────────────────────────

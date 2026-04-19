@@ -334,6 +334,451 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
   },
 ];
 
+// ─────────────────────────────────────────────────────────────
+// 表情プリセット（複数選択前提・目/口/赤面/幸せイキ/絶頂 等）
+// 出典: meta-camp.net/nsfw-face-expression-prompts/
+// ─────────────────────────────────────────────────────────────
+
+export interface ExpressionCategorySeed {
+  key: string;
+  label: string;
+  isNSFW: boolean;
+  order: number;
+  expressions: ExpressionSeed[];
+}
+
+export interface ExpressionSeed {
+  key: string;
+  label: string;
+  tags: string;
+}
+
+export const EXPRESSION_CATEGORIES: ExpressionCategorySeed[] = [
+  {
+    key: "expr_eyes",
+    label: "目",
+    isNSFW: true,
+    order: 10,
+    expressions: [
+      { key: "glassy_eyes", label: "トロトロ濡れ目", tags: "glassy eyes, watery eyes, wet eyes" },
+      {
+        key: "half_closed_eyes",
+        label: "半開き・重たいまぶた",
+        tags: "half-closed eyes, heavy-lidded eyes",
+      },
+      {
+        key: "rolling_eyes",
+        label: "白目・寄り目",
+        tags: "rolling eyes, cross-eyed, uneven eyes, eyes rolled back",
+      },
+      {
+        key: "dazed_eyes",
+        label: "呆然・虚ろ",
+        tags: "dazed eyes, unfocused eyes, vacant eyes, mindless eyes",
+      },
+      {
+        key: "heart_eyes",
+        label: "ハート瞳・星目",
+        tags: "heart-shaped pupils, starry eyes, sparkling eyes",
+      },
+      {
+        key: "pleading_eyes",
+        label: "懇願目（viewer）",
+        tags: "looking at viewer, pleading eyes, begging eyes",
+      },
+      {
+        key: "tears_open_eyes",
+        label: "涙を流しながら目開き",
+        tags: "tears streaming down face, crying with eyes open",
+      },
+    ],
+  },
+  {
+    key: "expr_mouth",
+    label: "口・舌・よだれ",
+    isNSFW: true,
+    order: 20,
+    expressions: [
+      {
+        key: "open_mouth",
+        label: "口開き",
+        tags: "open mouth, half-open mouth, gaping mouth",
+      },
+      {
+        key: "tongue_out",
+        label: "舌出し",
+        tags: "tongue out, sticking out tongue, tongue hanging out",
+      },
+      {
+        key: "drooling",
+        label: "よだれ",
+        tags: "drooling, saliva, drool on chin, string of saliva, excessive drool",
+      },
+      {
+        key: "panting",
+        label: "荒い息",
+        tags: "heavy breathing, panting, open mouth panting",
+      },
+      {
+        key: "o_mouth",
+        label: "丸い口・トロ顔",
+        tags: "round mouth, o mouth, :o",
+      },
+      {
+        key: "ahegao_base",
+        label: "アヘ顔・トロ顔",
+        tags: "ahegao, torogao, fucked silly face",
+      },
+      {
+        key: "biting_lip",
+        label: "下唇噛み",
+        tags: "upper teeth bite lower lip, biting lip",
+      },
+    ],
+  },
+  {
+    key: "expr_lips_brows",
+    label: "唇・眉",
+    isNSFW: false,
+    order: 30,
+    expressions: [
+      {
+        key: "licking_lips",
+        label: "唇舐め・うるうる唇",
+        tags: "licking lips, glossy lips, plump lips",
+      },
+      {
+        key: "furrowed_brows",
+        label: "眉ひそめ",
+        tags: "furrowed brows, raised eyebrows",
+      },
+    ],
+  },
+  {
+    key: "expr_blush",
+    label: "赤面",
+    isNSFW: false,
+    order: 40,
+    expressions: [
+      {
+        key: "blush_basic",
+        label: "基本赤面",
+        tags: "blush, cheeks flushed, heavy blush",
+      },
+      {
+        key: "blush_full",
+        label: "鼻紅・耳まで・首まで",
+        tags: "nose blush, full blush, from ears to neck",
+      },
+      {
+        key: "blush_puffy_cheeks",
+        label: "頰ぷくぷく",
+        tags: "puffy cheeks, flushed cheeks",
+      },
+      {
+        key: "aroused",
+        label: "性的興奮・発情",
+        tags: "sexual arousal, aroused, in heat, horny",
+      },
+      {
+        key: "ecstasy",
+        label: "恍惚・イキ顔",
+        tags: "ecstasy, pleasure face, orgasm face",
+      },
+    ],
+  },
+  {
+    key: "expr_tears_sweat",
+    label: "涙・汗・体液",
+    isNSFW: true,
+    order: 50,
+    expressions: [
+      {
+        key: "tears",
+        label: "涙・泣き顔",
+        tags: "tears, crying, teary eyes, sobbing",
+      },
+      {
+        key: "sweat",
+        label: "汗だく・テカり",
+        tags: "sweat, sweatdrop, excessive sweat, glistening skin",
+      },
+      {
+        key: "nose_blush_heavy",
+        label: "鼻まで赤い濃い赤面",
+        tags: "nose blush, full-face blush, heavy blush",
+      },
+      {
+        key: "snot",
+        label: "鼻水",
+        tags: "snot, runny nose",
+      },
+      {
+        key: "humiliation",
+        label: "屈辱・恥辱",
+        tags: "humiliation, shame, embarrassed, ashamed",
+      },
+    ],
+  },
+  {
+    key: "expr_nsfw_overall",
+    label: "NSFW 表情総合",
+    isNSFW: true,
+    order: 60,
+    expressions: [
+      {
+        key: "mind_break",
+        label: "アヘ・意識崩壊",
+        tags: "ahegao, ohogao, torogao, fucked silly, mind break",
+      },
+      {
+        key: "afterglow",
+        label: "余韻・ヘロヘロ",
+        tags: "afterglow, post-orgasm, after sex, exhausted",
+      },
+      {
+        key: "pervert_craving",
+        label: "変態・マゾ・渇望",
+        tags: "pervert, masochist, nympho, craving cock",
+      },
+      {
+        key: "frustrated_pleasure",
+        label: "悔しがりながら感じる",
+        tags: "frustrated, regrettable, conflicted pleasure",
+      },
+      {
+        key: "naughty_seductive",
+        label: "いやらしい・誘惑",
+        tags: "naughty face, seductive, lewd smile",
+      },
+      {
+        key: "hearts_tears",
+        label: "ハート目・快楽の涙",
+        tags: "hearts in eyes, heart pupils, pleasure tears",
+      },
+      {
+        key: "trembling",
+        label: "震え・ビクビク",
+        tags: "trembling, shivering, body trembling",
+      },
+      {
+        key: "shy_bashful",
+        label: "恥ずかしがり・照れ",
+        tags: "shy, bashful, embarrassed face",
+      },
+      {
+        key: "looking_away",
+        label: "目を逸らす・顔を覆う",
+        tags: "looking away, hand on mouth, covering face",
+      },
+      {
+        key: "coy_smile",
+        label: "はにかみ笑い",
+        tags: "coy smile, hand on cheek",
+      },
+      {
+        key: "flustered",
+        label: "慌て顔",
+        tags: "sweatdrop, flustered",
+      },
+    ],
+  },
+  {
+    key: "expr_happy_climax",
+    label: "幸せイキ",
+    isNSFW: true,
+    order: 70,
+    expressions: [
+      {
+        key: "smiling_base",
+        label: "満面の笑み",
+        tags: "smiling, grin, beaming smile, joyful smile, happy face",
+      },
+      {
+        key: "laughing",
+        label: "くすくす・にこにこ",
+        tags: "laughing, giggling, chuckle",
+      },
+      {
+        key: "blissful_smile",
+        label: "至福の笑顔",
+        tags: "blissful, ecstasy with smile, rapturous, overjoyed",
+      },
+      {
+        key: "happy_tears",
+        label: "幸せの涙・笑い泣き",
+        tags: "happy tears, tears of joy, crying with smile, smiling through tears",
+      },
+      {
+        key: "joy_euphoric",
+        label: "歓喜・多幸感",
+        tags: "joy, delight, euphoric, in bliss",
+      },
+      {
+        key: "hearts_smile",
+        label: "ハート目＋笑顔",
+        tags: "hearts in eyes, heart pupils with smile",
+      },
+      {
+        key: "joyful_ahegao",
+        label: "幸せアヘ・トロ顔",
+        tags: "joyful ahegao, smiling ahegao, happy ahegao, torogao with smile",
+      },
+      {
+        key: "smile_drool",
+        label: "笑顔でよだれ",
+        tags: "happy tears, drooling, smiling with drool, joyful drooling",
+      },
+      {
+        key: "smile_pleasure_tears",
+        label: "泣き笑い快楽",
+        tags: "tears streaming down smiling face, crying tears of pleasure while smiling",
+      },
+      {
+        key: "drool_grin",
+        label: "にこにこよだれ糸引き",
+        tags: "excessive drool grin, drooling with happy expression, saliva trail from smiling mouth",
+      },
+      {
+        key: "happy_sweat_blush",
+        label: "汗だくの幸せ赤面",
+        tags: "sweat happy blush, glistening sweat on joyful face",
+      },
+      {
+        key: "open_mouth_smiling",
+        label: "笑ったまま口開け",
+        tags: "open mouth smiling, half-open mouth with grin",
+      },
+      {
+        key: "tongue_out_smile",
+        label: "舌出し笑顔",
+        tags: "tongue out with smile, sticking out tongue happily",
+      },
+      {
+        key: "beaming_drool",
+        label: "満面の笑みでよだれ",
+        tags: "drooling heavily while beaming, excessive saliva on joyful face",
+      },
+      {
+        key: "o_mouth_smile",
+        label: "丸口トロ顔+幸せ目",
+        tags: "round mouth smiling, o-shaped mouth with happy eyes",
+      },
+      {
+        key: "happy_nose_blush",
+        label: "鼻まで赤い幸せ赤面",
+        tags: "heavy blush with happy smile, nose blush on joyful face",
+      },
+      {
+        key: "puffy_cheeks_joy_tears",
+        label: "頰ぷくぷく+幸せ涙",
+        tags: "puffy cheeks smiling, flushed cheeks with tears of joy",
+      },
+      {
+        key: "sexual_bliss",
+        label: "発情喜び",
+        tags: "sexual bliss, aroused joy, in heat with smile",
+      },
+      {
+        key: "ecstasy_smile",
+        label: "快楽過多の笑顔",
+        tags: "ecstasy smile, pleasure overload with grin",
+      },
+      {
+        key: "afterglow_smile",
+        label: "絶頂後ニコニコ余韻",
+        tags: "afterglow with happy smile, post-orgasm bliss, satisfied joyful face",
+      },
+      {
+        key: "sparkle_heart_smile",
+        label: "キラキラ+ハート+笑顔",
+        tags: "hearts around face, sparkling eyes with smile",
+      },
+      {
+        key: "craving_joyful",
+        label: "欲情渇望だけど幸せ",
+        tags: "craving with joyful expression, nympho smile",
+      },
+      {
+        key: "mindbreak_smile",
+        label: "意識飛んでもニヤニヤ",
+        tags: "mind break but happy, fucked silly with grin",
+      },
+      {
+        key: "trembling_smile",
+        label: "ビクビクしながら笑顔",
+        tags: "trembling with joy, shivering in pleasure smiling",
+      },
+    ],
+  },
+  {
+    key: "expr_climax",
+    label: "絶頂",
+    isNSFW: true,
+    order: 80,
+    expressions: [
+      {
+        key: "climax_basic",
+        label: "絶頂・クライマックス",
+        tags: "climax, orgasm, orgasm face",
+      },
+      {
+        key: "climax_expression",
+        label: "快楽頂点",
+        tags: "climax expression, peaking pleasure, orgasmic expression",
+      },
+      {
+        key: "multiple_orgasms",
+        label: "連続絶頂",
+        tags: "multiple orgasms, continuous climax",
+      },
+      {
+        key: "forced_orgasm",
+        label: "強制絶頂・強イキ",
+        tags: "forced orgasm, reluctant climax",
+      },
+      {
+        key: "mind_shattering_orgasm",
+        label: "意識飛ぶ絶頂",
+        tags: "mind-shattering orgasm, brain-melting climax",
+      },
+    ],
+  },
+  {
+    key: "expr_trembling",
+    label: "震え・痙攣",
+    isNSFW: true,
+    order: 90,
+    expressions: [
+      {
+        key: "full_body_trembling",
+        label: "全身震え",
+        tags: "trembling, body trembling, full body shiver",
+      },
+      {
+        key: "convulsing",
+        label: "激しい痙攣",
+        tags: "convulsing, muscle spasms, body convulsions",
+      },
+      {
+        key: "quivering",
+        label: "肩震え・微震え",
+        tags: "trembling shoulders, quivering, quivering body",
+      },
+      {
+        key: "weak_knees",
+        label: "膝ガクガク",
+        tags: "weak knees, knees buckling, legs shaking",
+      },
+      {
+        key: "facial_twitching",
+        label: "首振る・顔震え",
+        tags: "head shaking, twitching, facial twitching",
+      },
+    ],
+  },
+];
+
 export interface BodyPartTypeSeed {
   key: string;
   label: string;

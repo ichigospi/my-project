@@ -27,6 +27,14 @@ interface ActionCategoryItem {
   actions: Array<{ id: string; label: string; tags: string; defaultCondom: string | null }>;
 }
 
+interface ExpressionCategoryItem {
+  id: string;
+  key: string;
+  label: string;
+  isNSFW: boolean;
+  expressions: Array<{ id: string; label: string; tags: string }>;
+}
+
 interface LocationItem {
   id: string;
   name: string;
@@ -46,6 +54,7 @@ interface PresetsResponse {
   clothingPresets: PresetItem[];
   hairstylePresets: PresetItem[];
   actionCategories: ActionCategoryItem[];
+  expressionCategories: ExpressionCategoryItem[];
   characters: CharacterLite[];
   locations: LocationItem[];
   artStyles: ArtStyleItem[];
@@ -67,6 +76,7 @@ interface SelectionState {
   outfitId: string | null;
   angleId: string | null;
   actionId: string | null;
+  expressionIds: string[];
   condom: CondomState;
   artStyleIds: string[];
 }
@@ -78,6 +88,7 @@ const initialSelection: SelectionState = {
   outfitId: null,
   angleId: null,
   actionId: null,
+  expressionIds: [],
   condom: "none",
   artStyleIds: [],
 };
@@ -88,6 +99,7 @@ export default function HomePage() {
 
   const [sel, setSel] = useState<SelectionState>(initialSelection);
   const [actionTab, setActionTab] = useState<"sfw" | "nsfw">("sfw");
+  const [expressionTab, setExpressionTab] = useState<"sfw" | "nsfw">("sfw");
   const [extraPromptTokens, setExtraPromptTokens] = useState("");
 
   const [showPromptPreview, setShowPromptPreview] = useState(false);
@@ -124,11 +136,17 @@ export default function HomePage() {
       location: new Map(presets.locations.map((p) => [p.id, p])),
       character: new Map(presets.characters.map((c) => [c.id, c])),
       action: new Map<string, { id: string; label: string; tags: string; isNSFW: boolean }>(),
+      expression: new Map<string, { id: string; label: string; tags: string; isNSFW: boolean }>(),
       artStyle: new Map(presets.artStyles.map((s) => [s.id, s])),
     };
     for (const cat of presets.actionCategories) {
       for (const a of cat.actions) {
         map.action.set(a.id, { ...a, isNSFW: cat.isNSFW });
+      }
+    }
+    for (const cat of presets.expressionCategories) {
+      for (const e of cat.expressions) {
+        map.expression.set(e.id, { ...e, isNSFW: cat.isNSFW });
       }
     }
     return map;
@@ -147,6 +165,10 @@ export default function HomePage() {
       .filter((t): t is string => !!t && t.length > 0)
       .join(", ");
 
+    const expressionTags = sel.expressionIds
+      .map((id) => byId.expression.get(id)?.tags)
+      .filter((t): t is string => !!t && t.length > 0);
+
     return buildPrompt({
       timeTags: sel.timeId ? byId.time.get(sel.timeId)?.tags : undefined,
       characters: chars,
@@ -156,6 +178,7 @@ export default function HomePage() {
       outfit: outfit ? { tags: outfit.tags, isNude: outfit.isNude } : undefined,
       angle: sel.angleId ? { tags: byId.angle.get(sel.angleId)?.tags ?? "" } : undefined,
       action: action ? { tags: action.tags, isNSFW: action.isNSFW } : undefined,
+      expressionTags: expressionTags.length > 0 ? expressionTags : undefined,
       condom: sel.condom,
       artStyleTags: styleTags.length > 0 ? styleTags : undefined,
       extraPromptTokens: extraPromptTokens.trim().length > 0 ? extraPromptTokens : undefined,
@@ -168,7 +191,7 @@ export default function HomePage() {
       return { ...prev, [key]: current === id ? null : id };
     });
   }
-  function toggleMulti(key: "characterIds" | "artStyleIds", id: string) {
+  function toggleMulti(key: "characterIds" | "artStyleIds" | "expressionIds", id: string) {
     setSel((prev) => {
       const list = prev[key];
       return {
@@ -248,6 +271,15 @@ export default function HomePage() {
   const filteredCategories = presets.actionCategories.filter((c) =>
     actionTab === "sfw" ? !c.isNSFW : c.isNSFW,
   );
+  const filteredExpressions = presets.expressionCategories.filter((c) =>
+    expressionTab === "sfw" ? !c.isNSFW : c.isNSFW,
+  );
+  const expressionSummary = sel.expressionIds
+    .map((id) => byId?.expression.get(id)?.label)
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(", ");
+  const expressionMore = sel.expressionIds.length > 3 ? ` +${sel.expressionIds.length - 3}` : "";
 
   const mainChar = sel.characterIds[0] ? byId?.character.get(sel.characterIds[0]) : null;
 
@@ -352,6 +384,60 @@ export default function HomePage() {
             selectedIds={sel.angleId ? [sel.angleId] : []}
             onToggle={(id) => toggleSingle("angleId", id)}
           />
+        </SelectorCard>
+
+        <SelectorCard
+          icon="😊"
+          title="表情"
+          summary={sel.expressionIds.length > 0 ? `${expressionSummary}${expressionMore}` : undefined}
+          help="複数選択可。目+口+赤面など組み合わせるとアヘ顔に。"
+        >
+          <div className="mb-2 flex gap-1">
+            <button
+              type="button"
+              onClick={() => setExpressionTab("sfw")}
+              className={clsx(
+                "rounded-md px-2.5 py-0.5 text-[11px]",
+                expressionTab === "sfw" ? "bg-indigo-500 text-white" : "bg-gray-800 text-gray-400",
+              )}
+            >
+              SFW
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpressionTab("nsfw")}
+              className={clsx(
+                "rounded-md px-2.5 py-0.5 text-[11px]",
+                expressionTab === "nsfw" ? "bg-pink-600 text-white" : "bg-gray-800 text-gray-400",
+              )}
+            >
+              NSFW
+            </button>
+            {sel.expressionIds.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setSel((p) => ({ ...p, expressionIds: [] }))}
+                className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-gray-500 hover:text-gray-300"
+              >
+                クリア
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex max-h-72 flex-col gap-2 overflow-y-auto pr-1">
+            {filteredExpressions.map((cat) => (
+              <div key={cat.id}>
+                <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">
+                  {cat.label}
+                </p>
+                <PresetChipGroup
+                  items={cat.expressions.map((e) => ({ id: e.id, label: e.label }))}
+                  selectedIds={sel.expressionIds}
+                  onToggle={(id) => toggleMulti("expressionIds", id)}
+                />
+              </div>
+            ))}
+          </div>
         </SelectorCard>
 
         <SelectorCard

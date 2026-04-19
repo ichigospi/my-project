@@ -12,6 +12,7 @@ import {
   CLOTHING_PRESETS,
   HAIRSTYLE_PRESETS,
   ACTION_CATEGORIES,
+  EXPRESSION_CATEGORIES,
   BODY_PART_TYPES,
 } from "../src/lib/presets";
 
@@ -123,6 +124,42 @@ async function main() {
       }
     }
     console.log(`  ActionCategory "${cat.label}": ${cat.actions.length} actions`);
+  }
+
+  // ExpressionCategory + ExpressionPreset
+  for (const cat of EXPRESSION_CATEGORIES) {
+    const category = await prisma.expressionCategory.upsert({
+      where: { key: cat.key },
+      update: { label: cat.label, isNSFW: cat.isNSFW, order: cat.order, isBuiltIn: true },
+      create: {
+        key: cat.key,
+        label: cat.label,
+        isNSFW: cat.isNSFW,
+        order: cat.order,
+        isBuiltIn: true,
+      },
+    });
+
+    for (let i = 0; i < cat.expressions.length; i += 1) {
+      const e = cat.expressions[i];
+      const existing = await prisma.expressionPreset.findFirst({
+        where: { label: e.label, categoryId: category.id },
+      });
+      const data = {
+        tags: e.tags,
+        isNSFW: cat.isNSFW,
+        order: i * 10,
+        isBuiltIn: true,
+      };
+      if (existing) {
+        await prisma.expressionPreset.update({ where: { id: existing.id }, data });
+      } else {
+        await prisma.expressionPreset.create({
+          data: { label: e.label, categoryId: category.id, ...data },
+        });
+      }
+    }
+    console.log(`  ExpressionCategory "${cat.label}": ${cat.expressions.length} expressions`);
   }
 
   console.log("Done.");

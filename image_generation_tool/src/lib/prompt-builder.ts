@@ -22,6 +22,7 @@ export interface PromptSelection {
   outfit?: { tags: string; isNude?: boolean };
   angle?: { tags: string };
   action?: { tags: string; isNSFW?: boolean };
+  expressionTags?: string[];             // 表情（複数選択可）
   condom: CondomState;
   artStyleTags?: string;                 // 絵師タグ等
   extraPromptTokens?: string;            // ユーザーが直接足したい追加トークン
@@ -104,10 +105,15 @@ export function buildPrompt(s: PromptSelection): BuiltPrompt {
     push(parts, heightCmToTags(main.heightCm));
   }
 
-  // 3. アングル
+  // 3. 表情（キャラ直後が効きが良い）
+  if (s.expressionTags && s.expressionTags.length > 0) {
+    push(parts, s.expressionTags.join(", "));
+  }
+
+  // 4. アングル
   push(parts, s.angle?.tags);
 
-  // 4. 時間
+  // 5. 時間
   push(parts, s.timeTags);
 
   // 5. 場所
