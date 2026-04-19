@@ -55,6 +55,7 @@ interface ArtStyleItem {
   id: string;
   name: string;
   styleTags: string | null;
+  triggerWords: string | null;
   loraUrl: string | null;
 }
 
@@ -186,10 +187,14 @@ export default function HomePage() {
       .filter((c): c is CharacterLite => !!c);
 
     const action = sel.actionId ? byId.action.get(sel.actionId) : undefined;
-    const styleTags = sel.artStyleIds
-      .map((id) => byId.artStyle.get(id)?.styleTags)
-      .filter((t): t is string => !!t && t.length > 0)
-      .join(", ");
+    // 絵柄: styleTags + triggerWords を両方注入
+    const styleTagParts: string[] = [];
+    for (const id of sel.artStyleIds) {
+      const s = byId.artStyle.get(id);
+      if (s?.styleTags) styleTagParts.push(s.styleTags);
+      if (s?.triggerWords) styleTagParts.push(s.triggerWords);
+    }
+    const styleTags = styleTagParts.join(", ");
 
     // キャラごとの outfit / expression を組み立てる
     // HMR 等で古い state 形が残る可能性を考えて防御的に読み取る
@@ -435,6 +440,9 @@ export default function HomePage() {
           </a>
           <a href="/characters" className="text-gray-400 hover:text-indigo-300">
             👥 キャラ管理
+          </a>
+          <a href="/art-styles" className="text-gray-400 hover:text-indigo-300">
+            🎨 絵柄管理
           </a>
           <button
             type="button"
