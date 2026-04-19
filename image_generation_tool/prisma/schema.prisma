@@ -1,5 +1,10 @@
-// 画像生成ツール DB スキーマ（Phase 1-0: 疎通確認用の最小構成）
-// Phase 1 本番で Character, ArtStyle, Location など追加
+// 画像生成ツール DB スキーマ（Phase 1）
+//
+// 設計原則:
+//   - SQLite は配列未対応のため、小さなリストは JSON 文字列（テキスト）で格納
+//   - 関連が明示的に必要なものは別テーブル化
+//   - プリセット系は isBuiltIn で区別（削除不可、編集のみ）
+//   - ユーザーが独自に項目を追加できるものは BodyPartType 等のマスタを別途持つ
 
 generator client {
   provider = "prisma-client"
@@ -10,7 +15,294 @@ datasource db {
   provider = "sqlite"
 }
 
-// 生成履歴（全リクエストを記録）
+// ─────────────────────────────────────────────────────────────
+// キャラクター
+// ─────────────────────────────────────────────────────────────
+
+// 性別は enum にせず文字列で（SQLite + 拡張性）
+//   "female" / "male" / "other"
+model Character {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  name           String
+  gender         String   // "female" / "male" / "other"
+  heightCm       Int      // 手入力（cm）
+  memo           String?
+
+  // Lora（後から学習して埋める）
+  loraUrl        String?  // RunPod Volume 内のパス or 外部URL
+  loraScale      Float    @default(1.0)
+  triggerWord    String?
+  trainingStatus String   @default("none") // none/preparing/training/ready/failed
+  trainingJobId  String?
+
+  // キャラ専用の追加プロンプト（任意）
+  extraPrompt    String?
+
+  // プロフィール参照（性別で使う項目が変わる）
+  faceId         String?
+  face           BodyPart?       @relation("CharacterFace", fields: [faceId], references: [id])
+  hairstyleId    String?
+  hairstyle      BodyPart?       @relation("CharacterHair", fields: [hairstyleId], references: [id])
+  defaultOutfitId String?
+  defaultOutfit  ClothingPreset? @relation(fields: [defaultOutfitId], references: [id])
+
+  // 女性用
+  breastsId      String?
+  breasts        BodyPart? @relation("CharacterBreasts", fields: [breastsId], references: [id])
+  fGenitalsId    String?
+  fGenitals      BodyPart? @relation("CharacterFGenitals", fields: [fGenitalsId], references: [id])
+  pubicHair      String?   // "none" / "light" / "normal" / "thick"
+  pubicHairShape String?   // "natural" / "trimmed" / "triangle" など
+
+  // 男性用
+  mGenitalsId    String?
+  mGenitals      BodyPart? @relation("CharacterMGenitals", fields: [mGenitalsId], references: [id])
+
+  referenceImages ReferenceImage[]
+  poses           Pose[]
+}
+
+// キャラ参照画像（IP-Adapter / 学習素材 兼用）
+model ReferenceImage {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  path        String    // storage/characters/{id}/xxx.png
+  purpose     String    @default("general") // "general" / "training" / "face" / "boost_source"
+  memo        String?
+}
+
+// ─────────────────────────────────────────────────────────────
+// 身体パーツ記憶（顔・髪・胸・性器・ユーザー追加項目）
+// ─────────────────────────────────────────────────────────────
+
+// パーツ種別マスタ（ユーザーが独自のカテゴリを追加できる）
+// 例: "face" / "hair" / "eyes" / "lips" / "breasts" / "fgenitals" / "mgenitals"
+model BodyPartType {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  isBuiltIn Boolean  @default(false)
+  parts     BodyPart[]
+}
+
+model BodyPart {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  typeKey     String
+  type        BodyPartType @relation(fields: [typeKey], references: [key])
+  name        String   // 表示名（例: 「卵型+切れ長」）
+  tags        String   // プロンプトに注入するタグ（カンマ区切り）
+  imagePath   String?  // 参照画像（任意）
+  memo        String?
+
+  // Character が参照するためのリレーション（逆参照のみ）
+  facesOfCharacter     Character[] @relation("CharacterFace")
+  hairsOfCharacter     Character[] @relation("CharacterHair")
+  breastsOfCharacter   Character[] @relation("CharacterBreasts")
+  fGenitalsOfCharacter Character[] @relation("CharacterFGenitals")
+  mGenitalsOfCharacter Character[] @relation("CharacterMGenitals")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 絵柄（Lora / 絵師タグ / Civitai / IP-Adapter）
+// ─────────────────────────────────────────────────────────────
+
+model ArtStyle {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  name           String
+  source         String   // "civitai" / "uploaded" / "trained" / "tag_only"
+  baseModel      String   @default("illustrious") // "illustrious" / "pony" / "sdxl"
+
+  // Lora系
+  loraUrl        String?
+  loraScale      Float    @default(0.8)
+  triggerWords   String?
+
+  // タグ系
+  styleTags      String?  // artist:xxx, by yyy
+
+  // Civitai 由来のメタ
+  civitaiModelId Int?
+  civitaiVersionId Int?
+
+  // 表示
+  thumbnailsJson String?  // JSON 配列（サンプル画像パスのリスト）
+  memo           String?
+  tagsJson       String?  // JSON 配列（自分で付けるタグ）
+}
+
+// ─────────────────────────────────────────────────────────────
+// プリセット系（ボタンUI）
+// ─────────────────────────────────────────────────────────────
+
+// 服装プリセット（制服/水着/全裸 等）
+model ClothingPreset {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  label      String
+  tags       String   // 生成時に注入するタグ
+  category   String?  // "basic" / "uniform" / "swimwear" / "underwear" / "nude" など
+  order      Int      @default(0)
+  isBuiltIn  Boolean  @default(false)
+  isNude     Boolean  @default(false)  // 裸体系フラグ（体タグ自動付与の制御用）
+  thumbnail  String?
+
+  defaultForCharacters Character[]
+}
+
+// 髪型プリセット
+model HairstylePreset {
+  id        String   @id @default(cuid())
+  label     String
+  tags      String
+  category  String?  // "length" / "style" / "color"
+  order     Int      @default(0)
+  isBuiltIn Boolean  @default(false)
+  thumbnail String?
+}
+
+// アングルプリセット（視点/構図）
+model ViewAnglePreset {
+  id        String   @id @default(cuid())
+  label     String
+  tags      String
+  category  String   @default("angle") // "pov" / "angle" / "shot"
+  order     Int      @default(0)
+  isBuiltIn Boolean  @default(false)
+  thumbnail String?
+}
+
+// 時間・季節プリセット
+model TimePreset {
+  id        String   @id @default(cuid())
+  label     String
+  tags      String
+  category  String   @default("time") // "time" / "season" / "weather"
+  order     Int      @default(0)
+  isBuiltIn Boolean  @default(false)
+  thumbnail String?
+}
+
+// 行為カテゴリ（前戯/オーラル/体位 等）
+model ActionCategory {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  isNSFW    Boolean  @default(false)
+  order     Int      @default(0)
+  isBuiltIn Boolean  @default(false)
+  actions   ActionPreset[]
+}
+
+// 行為プリセット
+model ActionPreset {
+  id           String         @id @default(cuid())
+  label        String
+  tags         String
+  categoryId   String
+  category     ActionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  isNSFW       Boolean        @default(false)
+  // 行為固有のゴムデフォルト ("with"/"without"/"none"/null)
+  defaultCondom String?
+  order        Int            @default(0)
+  isBuiltIn    Boolean        @default(false)
+  thumbnail    String?
+  memo         String?
+}
+
+// ─────────────────────────────────────────────────────────────
+// 場所ライブラリ
+// ─────────────────────────────────────────────────────────────
+
+model Location {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  name            String
+  category        String?  // "indoor" / "outdoor" / "fantasy" など
+  tags            String   // 生成時に注入するタグ
+  referenceImage  String?  // 背景画像パス
+  memo            String?
+  tagsJson        String?  // 自分で付けるタグ（JSON配列）
+}
+
+// ─────────────────────────────────────────────────────────────
+// プロンプトテンプレート
+// ─────────────────────────────────────────────────────────────
+
+model PromptTemplate {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  name      String
+  body      String
+  negative  String?
+  tagsJson  String?  // JSON配列
+  memo      String?
+}
+
+// ─────────────────────────────────────────────────────────────
+// ポーズライブラリ（3Dビューア出力を保存）
+// ─────────────────────────────────────────────────────────────
+
+model Pose {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  name        String
+  characterId String?
+  character   Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  data        String   // 3D 姿勢データ（JSON）
+  preview     String?  // OpenPose 画像のパス
+  memo        String?
+}
+
+// ─────────────────────────────────────────────────────────────
+// アセット（効果音画像・吹き出し・スタンプ）
+// ─────────────────────────────────────────────────────────────
+
+model Asset {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  name      String
+  kind      String   // "speech_bubble" / "sfx" / "stamp" / "other"
+  path      String
+  memo      String?
+  tagsJson  String?
+}
+
+// ─────────────────────────────────────────────────────────────
+// お気に入り組合せ（6W1H + 絵柄をまとめて保存）
+// ─────────────────────────────────────────────────────────────
+
+model FavoriteCombination {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  name       String
+  // 各カテゴリの選択を JSON で（参照ID配列等を格納）
+  dataJson   String   // { timeId, characterIds[], locationId, outfitId, angleId, actionId, condomState, styleIds[], ... }
+  thumbnail  String?
+  memo       String?
+}
+
+// ─────────────────────────────────────────────────────────────
+// 生成履歴
+// ─────────────────────────────────────────────────────────────
+
 model Generation {
   id             String   @id @default(cuid())
   createdAt      DateTime @default(now())
@@ -18,7 +310,7 @@ model Generation {
   // 入力
   prompt         String
   negativePrompt String?
-  model          String   // "waiIllustriousSDXL_v160.safetensors" など
+  model          String
   width          Int      @default(832)
   height         Int      @default(1216)
   steps          Int      @default(28)
@@ -27,13 +319,21 @@ model Generation {
   scheduler      String   @default("normal")
   seed           BigInt
 
+  // 選択状態のスナップショット（後から再現するため JSON で保存）
+  selectionJson  String?
+
+  // 親生成（差分生成の元）
+  parentId       String?
+  parent         Generation?  @relation("GenerationParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children       Generation[] @relation("GenerationParent")
+
   // RunPod メタ
   runpodJobId    String?
-  status         String   @default("pending") // pending/in_queue/in_progress/completed/failed
+  status         String   @default("pending")
   delayTimeMs    Int?
   executionTimeMs Int?
   errorMessage   String?
 
   // 出力
-  imagePath      String?  // storage/images/xxx.png
+  imagePath      String?
 }

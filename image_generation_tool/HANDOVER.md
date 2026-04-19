@@ -1,7 +1,7 @@
 # 引き継ぎ書（新セッション用・コピペ対応）
 
 > このファイルは「セッションが途中で止まった時に、新しいセッションへ丸ごと渡すための要約」です。
-> 進捗があるたびに更新されます。**更新日時: 2026-04-19 15:10**
+> 進捗があるたびに更新されます。**更新日時: 2026-04-19 16:00**
 
 ---
 
@@ -256,6 +256,12 @@
   - tsc / eslint / dev サーバ起動すべて OK
   - ⚠️ 実機（Mac）での生成テストは未実施（Claude Code サンドボックスから外部 HTTP 不可）
 - 🎉 **Mac 実機で疎通テスト成功**（Node v24.15.0 / npm 11.12.1、GitHub から clone、http://localhost:3100 で画像生成成功）
+- ✅ **Phase 1 骨格コミット**（スキーマ拡充 + プリセット 45件 + 6W1H ボタン UI）
+  - スキーマ: Character / BodyPart / BodyPartType / ArtStyle / ClothingPreset / HairstylePreset / ViewAnglePreset / TimePreset / ActionCategory / ActionPreset / Location / Pose / Asset / PromptTemplate / FavoriteCombination / ReferenceImage / Generation（差分元 parentId 含む）
+  - シード: `npm run db:seed` で投入（Angle 12 / Time 9 / Clothing 9 / Hairstyle 8 / Action 26 = SFW 12 + NSFW 14 / BodyPartType 7）
+  - UI: 7 カード（絵柄 / いつ / 誰が誰と / どこで / 格好 / アングル / 何をしてる）+ SFW/NSFW タブ + ゴム3択トグル + プロンプトプレビュー折りたたみ + すべてクリア + 追加タグ入力欄
+  - プロンプト自動合成: `src/lib/prompt-builder.ts`（絵柄→キャラ→身長→アングル→時間→場所→服装→行為→ゴム→品質の順）
+  - tsc/eslint/dev/api 全部 200 OK（サンドボックスで検証済）
 
 ### Prisma 7 のハマりポイント（追記）
 - `schema.prisma` の `datasource db` から `url` を削除（エラー: `datasource.url is no longer supported`）
@@ -269,7 +275,7 @@
 ## 現在の作業（⚡ここから再開）
 
 ### ブロッカー
-なし。Phase 1-0 完了（Mac 実機で生成成功）。**Phase 1 本実装へ着手可**。
+なし。骨格コミット済み。**Mac 側でプル → `db push` → `db:seed` → dev 起動で UI 表示確認**が次の一歩。
 
 ### Mac 実機環境（確定）
 - MacBook Air（`/Users/kosuke`）/ Node.js v24.15.0 / npm 11.12.1
@@ -277,12 +283,25 @@
 - ブランチ: `claude/affectionate-sagan-dloQU`
 - dev サーバー: `cd image_generation_tool && npm run dev` → http://localhost:3100
 
-### 次のアクション（Phase 1 本実装）
-1. **DB スキーマ拡充**（DESIGN.md の Character / BodyPart / ArtStyle / ActionPreset / ViewAnglePreset / ClothingPreset / Location / Pose / Asset / Generation を Prisma に落とす）
-2. **6W1H ボタン UI 骨格**（いつ/誰が/誰と/どこで/格好/アングル/何を、＋ ゴム有無トグル）
-3. **プリセット初期データ投入**（アングル12種 / NSFW行為16種）
-4. **キャラ管理画面**（プロフィール登録→性別別項目）
-5. **Lora 学習バックエンド**（kohya_ss on RunPod Serverless）
+### Mac での更新手順（骨格反映）
+```bash
+cd ~/Documents/my-project
+git pull origin claude/affectionate-sagan-dloQU
+cd image_generation_tool
+npm install                # tsx が追加された
+npx prisma generate
+npx prisma db push         # スキーマ変更を SQLite へ
+npm run db:seed            # プリセット 45 件投入
+npm run dev                # http://localhost:3100
+```
+
+### 次のアクション（Phase 1 続き）
+1. **キャラ管理画面**（性別別プロフィール登録、参照画像、身長 cm、BodyPart 紐付け）
+2. **絵柄管理画面**（Civitai 取込 / タグのみ登録 / 自作 Lora アップロード）
+3. **場所ライブラリ**（生成背景保存 + 3 モード再利用）
+4. **履歴/ギャラリー**（Generation 一覧 + 再生成）
+5. **キャラ Lora 学習**（kohya_ss on RunPod Serverless）
+6. **差分ブースト**（IP-Adapter Face）
 
 ### 旧: Step 0（疎通テスト手順・参考用）
 ```bash
