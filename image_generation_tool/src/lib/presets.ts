@@ -134,11 +134,31 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
     isNSFW: true,
     order: 30,
     actions: [
-      { key: "handjob", label: "手コキ", tags: "handjob, penis grab, stroking" },
-      { key: "fingering", label: "手マン", tags: "fingering, pussy juice, spread pussy" },
-      { key: "fellatio", label: "フェラ", tags: "fellatio, oral sex, penis in mouth" },
-      { key: "cunnilingus", label: "クンニ", tags: "cunnilingus, oral sex, licking pussy" },
-      { key: "sixtynine", label: "シックスナイン", tags: "69, sixtynine, oral sex" },
+      {
+        key: "handjob",
+        label: "手コキ",
+        tags: "handjob, hetero, girl holding penis, stroking, erect penis",
+      },
+      {
+        key: "fingering",
+        label: "手マン",
+        tags: "fingering, fingers in pussy, spread pussy, pussy juice",
+      },
+      {
+        key: "fellatio",
+        label: "フェラ",
+        tags: "fellatio, oral sex, hetero, penis in mouth, girl sucking penis",
+      },
+      {
+        key: "cunnilingus",
+        label: "クンニ",
+        tags: "cunnilingus, oral sex, hetero, man licking pussy, spread legs",
+      },
+      {
+        key: "sixtynine",
+        label: "シックスナイン",
+        tags: "69, sixtynine, oral sex, hetero, mutual oral",
+      },
     ],
   },
   {
@@ -149,45 +169,51 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
     actions: [
       {
         key: "missionary",
-        // 正常位: 女性が仰向けを強制（うつ伏せ誤生成の防止）
+        // 正常位: 女=仰向け / 男=上に覆い被さる
         label: "正常位",
-        tags: "missionary, sex, vaginal, penetration, lying on back, spread legs, face up",
+        tags: "missionary, hetero, sex, vaginal, penetration, girl on back, spread legs, face up, man on top, between her legs, face-to-face",
       },
       {
         key: "doggystyle",
-        // バック: 四つん這いを強制
+        // バック: 女=四つん這い / 男=後ろから
         label: "バック",
-        tags: "doggystyle, sex from behind, vaginal, penetration, all fours, on all fours",
+        tags: "doggystyle, hetero, sex from behind, vaginal, penetration, girl on all fours, bent over, man behind, kneeling behind",
       },
       {
         key: "standing_sex",
+        // 立ちバック: 女=立ち姿で前屈 / 男=立って後ろから
         label: "立ちバック",
-        tags: "standing sex, sex from behind, bent over, vaginal, penetration",
+        tags: "standing sex, sex from behind, hetero, vaginal, penetration, girl bent over, standing, man standing behind",
       },
       {
         key: "mating_press",
+        // 種付けプレス: 女=脚を折り畳まれ仰向け / 男=上から押さえ込み
         label: "種付けプレス",
-        tags: "mating press, missionary, sex, vaginal, penetration, legs up, folded legs",
+        tags: "mating press, missionary, hetero, sex, vaginal, penetration, girl on back, legs up, folded legs, man on top, leaning forward",
       },
       {
         key: "cowgirl",
+        // 騎乗位: 女=上に跨がる / 男=仰向け
         label: "騎乗位",
-        tags: "cowgirl position, girl on top, straddling, sex, vaginal, penetration",
+        tags: "cowgirl position, girl on top, straddling, hetero, sex, vaginal, penetration, man lying on back, face-to-face",
       },
       {
         key: "carry_fuck",
+        // 駅弁: 女=抱き上げられる / 男=立って抱える
         label: "駅弁",
-        tags: "carry fuck, suspended congress, standing, sex, held up, vaginal, penetration",
+        tags: "carry fuck, suspended congress, hetero, sex, vaginal, penetration, girl held up, legs around waist, man standing, carrying",
       },
       {
         key: "face_to_face",
+        // 対面座位: 女=膝の上 / 男=座って下
         label: "対面座位",
-        tags: "sitting sex, face-to-face, sitting on lap, sex, vaginal, penetration",
+        tags: "sitting sex, face-to-face, hetero, sex, vaginal, penetration, girl on lap, girl facing him, man sitting",
       },
       {
         key: "kissing_sex",
+        // キスハメ: キスしながら正常位
         label: "キスハメ",
-        tags: "kissing, sex, french kiss, missionary, face-to-face, vaginal, penetration",
+        tags: "kissing, french kiss, hetero, sex, vaginal, penetration, missionary, face-to-face, girl on back, man on top",
       },
     ],
   },
@@ -197,7 +223,11 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
     isNSFW: true,
     order: 50,
     actions: [
-      { key: "after_sex", label: "事後", tags: "after sex, afterglow, cum, post-sex" },
+      {
+        key: "after_sex",
+        label: "事後",
+        tags: "after sex, afterglow, cum, post-sex, satisfied expression",
+      },
     ],
   },
 ];
