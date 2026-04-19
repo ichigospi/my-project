@@ -157,7 +157,12 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
       {
         key: "sixtynine",
         label: "シックスナイン",
-        tags: "69, sixtynine, oral sex, hetero, mutual oral",
+        tags: "69, sixtynine, mutual oral, hetero, fellatio, cunnilingus, upside down, penis in mouth, tongue out",
+      },
+      {
+        key: "standing_69",
+        label: "立ち69",
+        tags: "69, standing 69, mutual oral, hetero, fellatio, cunnilingus, upside down, carried, penis in mouth, tongue out, legs wrapped",
       },
     ],
   },
@@ -167,53 +172,150 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
     isNSFW: true,
     order: 40,
     actions: [
+      // ─── 正常位系 ───
       {
         key: "missionary",
-        // 正常位: 女=仰向け / 男=上に覆い被さる
         label: "正常位",
-        tags: "missionary, hetero, sex, vaginal, penetration, girl on back, spread legs, face up, man on top, between her legs, face-to-face",
+        tags: "missionary, hetero, vaginal, penis in pussy, lying on back, spread legs, face up, girl on back, man on top, between her legs, face-to-face",
       },
       {
-        key: "doggystyle",
-        // バック: 女=四つん這い / 男=後ろから
-        label: "バック",
-        tags: "doggystyle, hetero, sex from behind, vaginal, penetration, girl on all fours, bent over, man behind, kneeling behind",
+        key: "missionary_deep",
+        label: "正常位（深め）",
+        tags: "missionary, deep penetration, hetero, vaginal, penis in pussy, legs on shoulders, folded, blush, open mouth, girl on back, man on top",
       },
       {
-        key: "standing_sex",
-        // 立ちバック: 女=立ち姿で前屈 / 男=立って後ろから
-        label: "立ちバック",
-        tags: "standing sex, sex from behind, hetero, vaginal, penetration, girl bent over, standing, man standing behind",
+        key: "missionary_leg_lock",
+        label: "正常位（脚ロック）",
+        tags: "missionary, leg lock, hetero, vaginal, penis in pussy, lying on back, arms around neck, hug, deep penetration, girl on back, man on top",
       },
       {
         key: "mating_press",
-        // 種付けプレス: 女=脚を折り畳まれ仰向け / 男=上から押さえ込み
         label: "種付けプレス",
-        tags: "mating press, missionary, hetero, sex, vaginal, penetration, girl on back, legs up, folded legs, man on top, leaning forward",
+        tags: "missionary, mating press, folded, legs up, hetero, vaginal, deep penetration, penis in pussy, blush, open mouth, sweat, girl on back, man on top, leaning forward",
       },
       {
-        key: "cowgirl",
-        // 騎乗位: 女=上に跨がる / 男=仰向け
-        label: "騎乗位",
-        tags: "cowgirl position, girl on top, straddling, hetero, sex, vaginal, penetration, man lying on back, face-to-face",
+        key: "standing_missionary",
+        label: "立ち正常位",
+        tags: "standing missionary, standing sex, face to face, hetero, vaginal, legs wrapped around waist, deep penetration, penis in pussy, wall, lifted, girl lifted, man standing",
       },
       {
-        key: "carry_fuck",
-        // 駅弁: 女=抱き上げられる / 男=立って抱える
-        label: "駅弁",
-        tags: "carry fuck, suspended congress, hetero, sex, vaginal, penetration, girl held up, legs around waist, man standing, carrying",
-      },
-      {
-        key: "face_to_face",
-        // 対面座位: 女=膝の上 / 男=座って下
-        label: "対面座位",
-        tags: "sitting sex, face-to-face, hetero, sex, vaginal, penetration, girl on lap, girl facing him, man sitting",
+        key: "desk_missionary",
+        label: "机の上正常位",
+        tags: "missionary, on table, lying on back, legs spread, hetero, vaginal, penis in pussy, desk sex, girl on back, man standing",
       },
       {
         key: "kissing_sex",
-        // キスハメ: キスしながら正常位
         label: "キスハメ",
-        tags: "kissing, french kiss, hetero, sex, vaginal, penetration, missionary, face-to-face, girl on back, man on top",
+        tags: "kissing, french kiss, hetero, sex, vaginal, penis in pussy, missionary, face-to-face, girl on back, man on top",
+      },
+
+      // ─── バック系 ───
+      {
+        key: "doggystyle",
+        label: "バック",
+        tags: "doggystyle, sex from behind, hetero, vaginal, bent over, ass up, penis in pussy, arched back, girl on all fours, man behind, kneeling behind",
+      },
+      {
+        key: "doggystyle_high",
+        label: "バック（尻高め）",
+        tags: "doggystyle, sex from behind, hetero, vaginal, ass up high, arched back, penis in pussy, bent over, from behind, ass focus, girl on all fours, man behind",
+      },
+      {
+        key: "standing_sex",
+        label: "立ちバック",
+        tags: "standing doggystyle, standing sex, from behind, hetero, vaginal, bent over, wall, penis in pussy, girl bent over, man standing behind",
+      },
+      {
+        key: "prone_bone",
+        label: "寝バック（うつ伏せ）",
+        tags: "prone bone, prone position, sex from behind, hetero, vaginal, lying face down, ass up, penis in pussy, girl lying face down, man on top behind",
+      },
+
+      // ─── 騎乗位系 ───
+      {
+        key: "cowgirl",
+        label: "騎乗位",
+        tags: "cowgirl position, girl on top, hetero, vaginal, straddling, bouncing, penis in pussy, man lying on back, face-to-face",
+      },
+      {
+        key: "cowgirl_intense",
+        label: "騎乗位（激しい）",
+        tags: "cowgirl position, squatting cowgirl, hetero, vaginal, bouncing breasts, intense, sweat, penis in pussy, girl on top, man lying on back",
+      },
+      {
+        key: "cowgirl_ahegao",
+        label: "騎乗位（アヘ顔）",
+        tags: "cowgirl position, girl on top, hetero, vaginal, straddling, bouncing breasts, ahegao, tongue out, rolling eyes, sweat, intense, penis in pussy, man lying on back",
+      },
+      {
+        key: "reverse_cowgirl",
+        label: "背面騎乗位",
+        tags: "reverse cowgirl, girl on top, hetero, vaginal, facing away, ass focus, penis in pussy, bouncing, man lying on back",
+      },
+
+      // ─── 座位系 ───
+      {
+        key: "face_to_face",
+        label: "対面座位",
+        tags: "lotus position, sitting, face to face, hetero, vaginal, straddling, hug, penis in pussy, arms around neck, legs wrapped around waist, girl on lap, man sitting, kiss",
+      },
+      {
+        key: "reverse_sitting",
+        label: "背面座位",
+        tags: "reverse upright straddle, reverse cowgirl, sitting, facing away, hetero, vaginal, ass focus, penis in pussy, bouncing breasts, arched back, girl on lap, man sitting",
+      },
+
+      // ─── 抱き上げ系 ───
+      {
+        key: "carry_fuck",
+        label: "駅弁",
+        tags: "suspended congress, standing missionary, held up, carrying, hetero, vaginal, legs wrapped around waist, deep penetration, penis in pussy, arms around neck, girl held up, man standing",
+      },
+      {
+        key: "reverse_carry",
+        label: "背面駅弁",
+        tags: "reverse suspended congress, hetero, vaginal, standing, deep penetration, pussy focus, bouncing breasts, holding legs, m legs, back carry, girl held up, man standing behind",
+      },
+
+      // ─── 横向き系 ───
+      {
+        key: "spooning",
+        label: "スプーン（横寝バック）",
+        tags: "spooning, lying on side, sex from behind, hetero, vaginal, penis in pussy, hug, from side, leg up, intimate",
+      },
+      {
+        key: "sideways_missionary",
+        label: "松葉崩し（横）",
+        tags: "sideways missionary, spooning, hetero, vaginal, lying on side, penis in pussy, leg up, from side",
+      },
+
+      // ─── アクロバティック系 ───
+      {
+        key: "piledriver",
+        label: "パイルドライバー",
+        tags: "piledriver position, upside down, legs up, hetero, vaginal, deep penetration, penis in pussy, flexible, girl upside down, man on top",
+      },
+      {
+        key: "piledriver_deep",
+        label: "パイルドライバー（逆さ深め）",
+        tags: "piledriver position, upside down, legs folded back, hetero, vaginal, deep penetration, penis in pussy, flexible, blush, ahegao, girl upside down",
+      },
+      {
+        key: "full_nelson",
+        label: "フルネルソン",
+        tags: "full nelson, held up, from behind, hetero, vaginal, arms held, legs spread, penis in pussy, girl restrained, man behind",
+      },
+
+      // ─── その他 ───
+      {
+        key: "penetration_closeup",
+        label: "挿入クローズアップ",
+        tags: "close-up, penis in pussy, vaginal, hetero, penetration, pussy juice, cum, detailed pussy, spread legs",
+      },
+      {
+        key: "anal_doggy",
+        label: "アナル（バック）",
+        tags: "doggystyle, anal, sex from behind, hetero, penis in anus, ass focus, arched back, bent over, anal penetration, girl on all fours, man behind",
       },
     ],
   },
