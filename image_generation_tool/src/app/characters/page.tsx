@@ -395,15 +395,26 @@ export default function CharactersPage() {
 
           {/* 参照画像アップロード（編集モード限定・新規作成時は先にキャラ登録が必要） */}
           {mode !== "create" && editing ? (
-            <ReferenceImageSection
-              character={editing}
-              images={editing.referenceImages ?? []}
-              onChange={async () => {
-                const listRes = await fetch("/api/characters");
-                const listJson = (await listRes.json()) as { characters: CharacterRecord[] };
-                setCharacters(listJson.characters);
-              }}
-            />
+            <>
+              <ReferenceImageSection
+                character={editing}
+                images={editing.referenceImages ?? []}
+                onChange={async () => {
+                  const listRes = await fetch("/api/characters");
+                  const listJson = (await listRes.json()) as { characters: CharacterRecord[] };
+                  setCharacters(listJson.characters);
+                }}
+              />
+              <TrainingSection
+                character={editing}
+                images={editing.referenceImages ?? []}
+                onChange={async () => {
+                  const listRes = await fetch("/api/characters");
+                  const listJson = (await listRes.json()) as { characters: CharacterRecord[] };
+                  setCharacters(listJson.characters);
+                }}
+              />
+            </>
           ) : mode === "create" ? (
             <p className="mt-4 rounded-md border border-dashed border-gray-700 p-3 text-[11px] text-gray-500">
               💡 参照画像のアップロードはキャラ登録後に表示されます。
@@ -952,6 +963,297 @@ function CaptionEditorModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Lora 学習セクション
+// ─────────────────────────────────────────────────────────────
+
+type TrainingStatus = "none" | "preparing" | "training" | "ready" | "failed";
+
+interface PrepareResult {
+  ok: boolean;
+  issues: string[];
+  warnings: string[];
+  stats: {
+    totalImages: number;
+    captioned: number;
+    triggerWord: string;
+    outputName: string;
+    recommendedRepeats: number;
+    recommendedEpochs: number;
+    estimatedSteps: number;
+    estimatedMinutes: number;
+  };
+}
+
+function TrainingSection({
+  character,
+  images,
+  onChange,
+}: {
+  character: CharacterRecord;
+  images: ReferenceImageRecord[];
+  onChange: () => Promise<void> | void;
+}) {
+  const characterId = character.id;
+  const status = (character.trainingStatus as TrainingStatus) ?? "none";
+  const captionedCount = images.filter((i) => !!i.caption?.trim()).length;
+
+  const [prepare, setPrepare] = useState<PrepareResult | null>(null);
+  const [prepareError, setPrepareError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  async function handlePrepare() {
+    setRunning(true);
+    setPrepareError(null);
+    try {
+      const res = await fetch(`/api/characters/${characterId}/train/prepare`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as PrepareResult & { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setPrepare(data);
+      await onChange();
+    } catch (e) {
+      setPrepareError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/characters/${characterId}/train/dataset`);
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const filename =
+        (prepare?.stats.triggerWord ?? "dataset") + "-dataset.zip";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      await onChange();
+    } catch (e) {
+      setPrepareError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function setStatus(next: TrainingStatus, loraUrl?: string) {
+    await fetch(`/api/characters/${characterId}/train/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next, loraUrl }),
+    });
+    await onChange();
+  }
+
+  const statusLabel: Record<TrainingStatus, string> = {
+    none: "未着手",
+    preparing: "準備中（データセット書き出し済）",
+    training: "Pod で学習実行中",
+    ready: "学習完了",
+    failed: "失敗",
+  };
+  const statusColor: Record<TrainingStatus, string> = {
+    none: "bg-gray-800 text-gray-300",
+    preparing: "bg-amber-900/50 text-amber-200",
+    training: "bg-sky-900/50 text-sky-200",
+    ready: "bg-emerald-900/50 text-emerald-200",
+    failed: "bg-red-900/50 text-red-200",
+  };
+
+  return (
+    <section className="mt-5 border-t border-gray-800 pt-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">🎓 Lora 学習</h3>
+        <span
+          className={clsx(
+            "rounded px-2 py-0.5 text-[10px]",
+            statusColor[status] ?? statusColor.none,
+          )}
+        >
+          {statusLabel[status] ?? status}
+        </span>
+      </div>
+
+      <p className="mb-3 text-[10px] text-gray-500">
+        キャラの顔・体型・絵柄を記憶させる Lora を学習します。
+        髪/服/表情はキャプションに書けば可変のまま。
+      </p>
+
+      {/* Step 1: 準備チェック */}
+      <div className="mb-3 rounded-md border border-gray-800 bg-gray-900/40 p-3">
+        <p className="mb-2 text-[11px] font-semibold text-gray-200">
+          Step 1: 準備チェック
+        </p>
+        <p className="text-[10px] text-gray-500">
+          参照画像: {images.length} 枚 / キャプション済: {captionedCount} 枚
+          （最低 3 枚・推奨 10 枚以上）
+        </p>
+        <button
+          type="button"
+          onClick={() => void handlePrepare()}
+          disabled={running}
+          className="mt-2 rounded-md bg-indigo-600 px-3 py-1 text-[11px] text-white hover:bg-indigo-500 disabled:bg-gray-700"
+        >
+          {running ? "チェック中…" : "🔍 チェック実行"}
+        </button>
+
+        {prepareError ? (
+          <div className="mt-2 rounded border border-red-700 bg-red-950 p-2 text-[10px] text-red-200">
+            {prepareError}
+          </div>
+        ) : null}
+
+        {prepare ? (
+          <div className="mt-2 space-y-1.5 text-[11px]">
+            {prepare.issues.length > 0 ? (
+              <ul className="rounded border border-red-700 bg-red-950 p-2">
+                {prepare.issues.map((i) => (
+                  <li key={i} className="text-red-200">
+                    ❌ {i}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {prepare.warnings.length > 0 ? (
+              <ul className="rounded border border-amber-900/40 bg-amber-950/20 p-2">
+                {prepare.warnings.map((w) => (
+                  <li key={w} className="text-amber-200">
+                    ⚠ {w}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="rounded bg-gray-950 p-2 text-gray-300">
+              <p>
+                trigger: <code className="text-indigo-300">{prepare.stats.triggerWord}</code>
+              </p>
+              <p>
+                推定ステップ: {prepare.stats.estimatedSteps} steps / 推定時間
+                ≈ {prepare.stats.estimatedMinutes} 分（RTX 4090 目安）
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Step 2: データセット書き出し */}
+      <div className="mb-3 rounded-md border border-gray-800 bg-gray-900/40 p-3">
+        <p className="mb-2 text-[11px] font-semibold text-gray-200">
+          Step 2: データセットを書き出し
+        </p>
+        <p className="mb-2 text-[10px] text-gray-500">
+          kohya_ss 形式の zip（画像 + キャプション + 設定 + 実行スクリプト）
+          をダウンロードします。
+        </p>
+        <button
+          type="button"
+          onClick={() => void handleDownload()}
+          disabled={downloading || captionedCount < 3}
+          className="rounded-md bg-indigo-600 px-3 py-1 text-[11px] text-white hover:bg-indigo-500 disabled:bg-gray-700"
+        >
+          {downloading ? "書き出し中…" : "📦 データセット zip をダウンロード"}
+        </button>
+      </div>
+
+      {/* Step 3: Pod で学習 */}
+      <div className="mb-3 rounded-md border border-gray-800 bg-gray-900/40 p-3">
+        <p className="mb-2 text-[11px] font-semibold text-gray-200">
+          Step 3: RunPod Pod で学習実行
+        </p>
+        <ol className="ml-4 list-decimal space-y-1 text-[10px] text-gray-400">
+          <li>Pod 起動（RTX 4090 / RTX PRO 4500、Network Volume マウント必須）</li>
+          <li>JupyterLab で zip をアップロード → 展開</li>
+          <li>（初回のみ）kohya_ss をインストール（zip 内 README に手順）</li>
+          <li>Terminal で <code>./train.sh</code> 実行 → 約 20〜40 分</li>
+          <li>
+            <code>/workspace/models/loras/</code> に{" "}
+            <code className="text-indigo-300">
+              {character.triggerWord || "triggerWord"}.safetensors
+            </code>{" "}
+            が生成される
+          </li>
+          <li>Pod を Terminate（忘れずに）</li>
+        </ol>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void setStatus("training")}
+            disabled={status === "training"}
+            className="rounded-md bg-sky-700 px-3 py-1 text-[11px] text-white hover:bg-sky-600 disabled:bg-gray-700"
+          >
+            🔄 Pod で学習中
+          </button>
+          <button
+            type="button"
+            onClick={() => void setStatus("failed")}
+            className="rounded-md bg-red-900/60 px-3 py-1 text-[11px] text-red-200 hover:bg-red-900"
+          >
+            ⚠ 学習失敗
+          </button>
+        </div>
+      </div>
+
+      {/* Step 4: 完了マーク */}
+      <div className="rounded-md border border-gray-800 bg-gray-900/40 p-3">
+        <p className="mb-2 text-[11px] font-semibold text-gray-200">
+          Step 4: 学習完了をマーク
+        </p>
+        <p className="mb-2 text-[10px] text-gray-500">
+          RunPod Volume に .safetensors が配置されたらこのボタンで完了をマーク。
+          以降、生成画面でこのキャラを選ぶと Lora が自動適用されます。
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            defaultValue={
+              character.loraUrl ??
+              (character.triggerWord ? `${character.triggerWord}.safetensors` : "")
+            }
+            onBlur={(e) => {
+              if (e.target.value.trim() && status === "ready") {
+                void setStatus("ready", e.target.value.trim());
+              }
+            }}
+            placeholder="例: char_hanako_v1.safetensors"
+            className="input max-w-xs"
+          />
+          <button
+            type="button"
+            onClick={(e) => {
+              const input = (e.currentTarget.parentElement?.querySelector(
+                "input",
+              ) as HTMLInputElement | null)?.value?.trim();
+              void setStatus("ready", input || undefined);
+            }}
+            className="rounded-md bg-emerald-700 px-3 py-1 text-[11px] text-white hover:bg-emerald-600"
+          >
+            ✅ 学習完了をマーク
+          </button>
+        </div>
+        {status === "ready" && character.loraUrl ? (
+          <p className="mt-2 text-[10px] text-emerald-300">
+            ✅ 適用中: /workspace/models/loras/{character.loraUrl}
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

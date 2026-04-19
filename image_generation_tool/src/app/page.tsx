@@ -330,11 +330,17 @@ export default function HomePage() {
       setElapsed(Math.floor((Date.now() - start) / 1000));
     }, 500);
 
-    // 選択中の絵柄から Lora を集める（loraUrl がある絵柄だけ）
-    const loras = sel.artStyleIds
+    // 選択中のキャラ＋絵柄から Lora を集める（loraUrl がある分だけ）
+    // キャラ Lora → 絵柄 Lora の順で注入（キャラが主体）
+    const characterLoras = sel.characterIds
+      .map((id) => byId?.character.get(id))
+      .filter((c): c is CharacterLite => !!c && !!c.loraUrl)
+      .map((c) => ({ name: c.loraUrl as string, strength: c.loraScale ?? 1.0 }));
+    const styleLoras = sel.artStyleIds
       .map((id) => byId?.artStyle.get(id))
       .filter((s): s is ArtStyleItem => !!s && !!s.loraUrl)
       .map((s) => ({ name: s.loraUrl as string, strength: s.loraScale ?? 0.8 }));
+    const loras = [...characterLoras, ...styleLoras];
 
     try {
       const res = await fetch("/api/generate", {
