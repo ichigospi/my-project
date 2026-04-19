@@ -41,14 +41,33 @@ export interface TrainingParams {
 export function defaultTrainingParams(
   partial: Pick<TrainingParams, "characterName" | "triggerWord" | "images" | "outputName">,
 ): TrainingParams {
+  // 画像枚数に応じて repeats / epochs を自動調整
+  // 目標: 総ステップ数 1000〜2500 程度（過学習を避けつつ十分な学習量）
+  const count = partial.images.length;
+  let repeatsPerImage: number;
+  let maxEpochs: number;
+  if (count < 10) {
+    repeatsPerImage = 10;
+    maxEpochs = 10; // 少枚数は繰り返しを多く
+  } else if (count < 30) {
+    repeatsPerImage = 6;
+    maxEpochs = 8;
+  } else if (count < 60) {
+    repeatsPerImage = 4;
+    maxEpochs = 6;
+  } else {
+    repeatsPerImage = 3;
+    maxEpochs = 5; // 多枚数は繰り返し控えめ
+  }
+
   return {
     ...partial,
-    repeatsPerImage: 10,
+    repeatsPerImage,
     baseModelPath:
       "/workspace/models/checkpoints/waiIllustriousSDXL_v160.safetensors",
     networkDim: 32,
     networkAlpha: 16,
-    maxEpochs: 10,
+    maxEpochs,
     resolution: 1024,
     learningRate: 1e-4,
   };
@@ -77,6 +96,9 @@ batch_size = 1
 }
 
 function renderTrainShell(params: TrainingParams): string {
+  // save_every_n_epochs: 中間保存の間隔。短い学習では最後にだけ保存するよう
+  // maxEpochs に合わせる。
+  const saveEvery = Math.max(1, params.maxEpochs);
   // kohya_ss (sd-scripts) の sdxl_train_network.py を想定
   return `#!/bin/bash
 # ${params.characterName} の Lora 学習スクリプト
@@ -118,7 +140,7 @@ accelerate launch --num_cpu_threads_per_process 1 \\
   --unet_lr=${params.learningRate} \\
   --text_encoder_lr=${params.learningRate * 0.5} \\
   --max_train_epochs=${params.maxEpochs} \\
-  --save_every_n_epochs=5 \\
+  --save_every_n_epochs=${saveEvery} \\
   --train_batch_size=1 \\
   --optimizer_type="AdamW8bit" \\
   --mixed_precision="bf16" \\

@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import path from "path";
 import { prisma } from "@/lib/prisma";
+import { defaultTrainingParams, type TrainingImage } from "@/lib/training-dataset";
 
 export const runtime = "nodejs";
 
@@ -63,7 +64,7 @@ export async function POST(
   const outputName = triggerWord;
 
   // 画像パスを解決（キャプションあるものだけ）
-  const trainingImages = captioned.map((img, i) => {
+  const trainingImages: TrainingImage[] = captioned.map((img, i) => {
     const ext = path.extname(img.path).replace(/^\./, "").toLowerCase() || "png";
     return {
       filename: `img_${String(i + 1).padStart(3, "0")}.${ext}`,
@@ -71,6 +72,16 @@ export async function POST(
       caption: img.caption ?? "",
     };
   });
+
+  const trainParams = defaultTrainingParams({
+    characterName: character.name,
+    triggerWord,
+    outputName,
+    images: trainingImages,
+  });
+
+  const estimatedSteps =
+    trainingImages.length * trainParams.repeatsPerImage * trainParams.maxEpochs;
 
   return NextResponse.json({
     ok: issues.length === 0,
@@ -81,10 +92,11 @@ export async function POST(
       captioned: captioned.length,
       triggerWord,
       outputName,
-      recommendedRepeats: 10,
-      recommendedEpochs: 10,
-      estimatedSteps: trainingImages.length * 10 * 10,
-      estimatedMinutes: Math.ceil((trainingImages.length * 10 * 10) / 100),
+      recommendedRepeats: trainParams.repeatsPerImage,
+      recommendedEpochs: trainParams.maxEpochs,
+      estimatedSteps,
+      // RTX 4090 で概ね 100〜120 steps/分を目安
+      estimatedMinutes: Math.ceil(estimatedSteps / 100),
     },
   });
 }
