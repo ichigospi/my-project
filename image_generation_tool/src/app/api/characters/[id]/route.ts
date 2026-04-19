@@ -1,6 +1,8 @@
 // キャラクター個別取得・更新・削除。
 
 import { NextResponse } from "next/server";
+import { rm } from "fs/promises";
+import path from "path";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -82,8 +84,16 @@ export async function DELETE(
   const { id } = await params;
   try {
     await prisma.character.delete({ where: { id } });
-    return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+  // DB 側のカスケードで ReferenceImage レコードは消えるが、
+  // ディスクのディレクトリを明示的に削除する。
+  const dir = path.join(process.cwd(), "storage", "characters", id);
+  try {
+    await rm(dir, { recursive: true, force: true });
+  } catch {
+    /* 存在しなくても OK */
+  }
+  return NextResponse.json({ ok: true });
 }

@@ -11,6 +11,14 @@ import { useEffect, useMemo, useState } from "react";
 import { clsx } from "@/components/clsx";
 import { heightCmToTags } from "@/lib/presets";
 
+interface ReferenceImageRecord {
+  id: string;
+  path: string;
+  purpose: string;
+  memo: string | null;
+  createdAt: string;
+}
+
 interface CharacterRecord {
   id: string;
   name: string;
@@ -24,6 +32,7 @@ interface CharacterRecord {
   loraUrl: string | null;
   trainingStatus: string;
   createdAt: string;
+  referenceImages?: ReferenceImageRecord[];
 }
 
 interface ClothingPreset {
@@ -381,6 +390,23 @@ export default function CharactersPage() {
               キャンセル
             </button>
           </div>
+
+          {/* 参照画像アップロード（編集モード限定・新規作成時は先にキャラ登録が必要） */}
+          {mode !== "create" && editing ? (
+            <ReferenceImageSection
+              characterId={editing.id}
+              images={editing.referenceImages ?? []}
+              onChange={async () => {
+                const listRes = await fetch("/api/characters");
+                const listJson = (await listRes.json()) as { characters: CharacterRecord[] };
+                setCharacters(listJson.characters);
+              }}
+            />
+          ) : mode === "create" ? (
+            <p className="mt-4 rounded-md border border-dashed border-gray-700 p-3 text-[11px] text-gray-500">
+              💡 参照画像のアップロードはキャラ登録後に表示されます。
+            </p>
+          ) : null}
         </section>
       ) : null}
 
@@ -432,6 +458,9 @@ export default function CharactersPage() {
                     ) : null}
                     <p className="mt-0.5 text-[10px] text-gray-600">
                       Lora: {c.trainingStatus === "ready" ? "学習済" : "未学習"}
+                      {c.referenceImages && c.referenceImages.length > 0
+                        ? ` / 参照画像 ${c.referenceImages.length}`
+                        : ""}
                     </p>
                   </div>
                   <div className="ml-3 flex shrink-0 flex-col gap-1">
@@ -457,6 +486,158 @@ export default function CharactersPage() {
         )}
       </section>
     </main>
+  );
+}
+
+function ReferenceImageSection({
+  characterId,
+  images,
+  onChange,
+}: {
+  characterId: string;
+  images: ReferenceImageRecord[];
+  onChange: () => Promise<void> | void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [purpose, setPurpose] = useState<"general" | "training" | "face" | "boost_source">(
+    "general",
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("purpose", purpose);
+        const res = await fetch(`/api/characters/${characterId}/images`, {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) {
+          const err = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as {
+            error?: string;
+          };
+          throw new Error(err.error ?? `HTTP ${res.status}`);
+        }
+      }
+      await onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDelete(img: ReferenceImageRecord) {
+    if (!window.confirm("この画像を削除しますか？")) return;
+    const res = await fetch(`/api/characters/${characterId}/images/${img.id}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      await onChange();
+    } else {
+      alert("削除に失敗しました");
+    }
+  }
+
+  const purposeLabels: Record<string, string> = {
+    general: "一般（参考）",
+    training: "Lora 学習用",
+    face: "顔参照（IP-Adapter）",
+    boost_source: "差分ブースト元",
+  };
+
+  return (
+    <section className="mt-5 border-t border-gray-800 pt-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold">📷 参照画像 ({images.length})</h3>
+        <p className="text-[10px] text-gray-500">
+          Lora 学習・IP-Adapter・差分ブーストで使用（今は保存のみ）
+        </p>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <label className="text-[11px] text-gray-400">用途:</label>
+        <select
+          value={purpose}
+          onChange={(e) => setPurpose(e.target.value as typeof purpose)}
+          className="input max-w-xs"
+        >
+          <option value="general">一般（参考）</option>
+          <option value="training">Lora 学習用</option>
+          <option value="face">顔参照（IP-Adapter）</option>
+          <option value="boost_source">差分ブースト元</option>
+        </select>
+
+        <label
+          className={clsx(
+            "cursor-pointer rounded-md px-4 py-2 text-xs",
+            uploading
+              ? "bg-gray-700 text-gray-400"
+              : "bg-indigo-600 text-white hover:bg-indigo-500",
+          )}
+        >
+          {uploading ? "アップロード中…" : "＋ 画像を追加"}
+          <input
+            type="file"
+            multiple
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            disabled={uploading}
+            onChange={(e) => {
+              void handleFiles(e.target.files);
+              e.target.value = ""; // 同じファイルを再選択できるようにリセット
+            }}
+          />
+        </label>
+
+        <span className="text-[10px] text-gray-600">JPG / PNG / WebP・20MB まで</span>
+      </div>
+
+      {error ? (
+        <div className="mb-3 rounded-md border border-red-700 bg-red-950 p-2 text-[11px] text-red-200">
+          {error}
+        </div>
+      ) : null}
+
+      {images.length === 0 ? (
+        <p className="rounded-md border border-dashed border-gray-700 p-6 text-center text-[11px] text-gray-500">
+          画像はまだありません。登録しておくと、後で Lora 学習や差分ブーストで使えます。
+        </p>
+      ) : (
+        <ul className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
+          {images.map((img) => (
+            <li
+              key={img.id}
+              className="group relative overflow-hidden rounded-md border border-gray-800 bg-gray-900"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/characters/${characterId}/images/${img.id}`}
+                alt=""
+                className="aspect-square w-full object-cover"
+              />
+              <div className="p-1.5">
+                <p className="truncate text-[10px] text-gray-300">
+                  {purposeLabels[img.purpose] ?? img.purpose}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDelete(img)}
+                className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-red-300 opacity-0 transition group-hover:opacity-100"
+              >
+                削除
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

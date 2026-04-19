@@ -25,6 +25,7 @@ function validateGender(g: unknown): g is "female" | "male" | "other" {
 export async function GET() {
   const characters = await prisma.character.findMany({
     orderBy: { createdAt: "desc" },
+    include: { referenceImages: { orderBy: { createdAt: "desc" } } },
   });
   return NextResponse.json({ characters });
 }
