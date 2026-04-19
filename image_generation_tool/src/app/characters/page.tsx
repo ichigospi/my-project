@@ -1070,6 +1070,40 @@ function CaptionEditorModal({
   const [autoError, setAutoError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // 日本語 → タグ英訳
+  const [jpInput, setJpInput] = useState("");
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+
+  async function handleTranslate() {
+    if (!jpInput.trim()) return;
+    setTranslateError(null);
+    setTranslating(true);
+    try {
+      const res = await fetch("/api/translate-to-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: jpInput }),
+      });
+      const data = (await res.json()) as { tags?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      if (data.tags) {
+        setCaption((prev) => {
+          const ex = prev.trim();
+          return ex ? `${ex}, ${data.tags}` : data.tags!;
+        });
+        setSource("manual");
+        setJpInput("");
+      }
+    } catch (e) {
+      setTranslateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   function insertTemplate() {
     const parts: string[] = [];
     if (character.triggerWord) parts.push(character.triggerWord);
@@ -1268,6 +1302,40 @@ function CaptionEditorModal({
                 {autoError}
               </div>
             ) : null}
+
+            {/* 日本語 → 英語タグ翻訳 */}
+            <details className="rounded-md border border-sky-900/40 bg-sky-950/20 p-2 text-[11px]">
+              <summary className="cursor-pointer text-sky-200">
+                🇯🇵 日本語で入力して自動で英訳
+              </summary>
+              <div className="mt-2 flex flex-col gap-1.5">
+                <textarea
+                  value={jpInput}
+                  onChange={(e) => setJpInput(e.target.value)}
+                  rows={2}
+                  className="input"
+                  placeholder="例: 制服でポニーテール、教室で笑顔、座ってる"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleTranslate()}
+                    disabled={translating || !jpInput.trim()}
+                    className="rounded-md bg-sky-600 px-2.5 py-1 text-[11px] text-white hover:bg-sky-500 disabled:bg-gray-700"
+                  >
+                    {translating ? "翻訳中…" : "🇬🇧 英訳してキャプションに追記"}
+                  </button>
+                  <span className="text-[10px] text-gray-500">
+                    キャプション末尾に追記されます
+                  </span>
+                </div>
+                {translateError ? (
+                  <div className="rounded-md border border-red-700 bg-red-950 p-1.5 text-[10px] text-red-200">
+                    {translateError}
+                  </div>
+                ) : null}
+              </div>
+            </details>
 
             <label className="flex flex-col gap-1">
               <span className="text-[11px] text-gray-400">
@@ -1685,6 +1753,39 @@ function BulkCaptionModal({
   const [result, setResult] = useState<{ targeted: number; updated: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // 日本語 → タグ英訳
+  const [jpInput, setJpInput] = useState("");
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+
+  async function handleTranslate() {
+    if (!jpInput.trim()) return;
+    setTranslateError(null);
+    setTranslating(true);
+    try {
+      const res = await fetch("/api/translate-to-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: jpInput }),
+      });
+      const data = (await res.json()) as { tags?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      if (data.tags) {
+        setCaption((prev) => {
+          const ex = prev.trim();
+          return ex ? `${ex}, ${data.tags}` : data.tags!;
+        });
+        setJpInput("");
+      }
+    } catch (e) {
+      setTranslateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   async function apply() {
     setError(null);
     setApplying(true);
@@ -1802,6 +1903,40 @@ function BulkCaptionModal({
             ))}
           </div>
         </div>
+
+        {/* 日本語 → 英語タグ翻訳 */}
+        <details className="mb-3 rounded-md border border-sky-900/40 bg-sky-950/20 p-2 text-[11px]">
+          <summary className="cursor-pointer text-sky-200">
+            🇯🇵 日本語で入力して自動で英訳（Claude）
+          </summary>
+          <div className="mt-2 flex flex-col gap-1.5">
+            <textarea
+              value={jpInput}
+              onChange={(e) => setJpInput(e.target.value)}
+              rows={2}
+              className="input"
+              placeholder="例: 制服でポニーテール、教室で笑顔"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleTranslate()}
+                disabled={translating || !jpInput.trim()}
+                className="rounded-md bg-sky-600 px-2.5 py-1 text-[11px] text-white hover:bg-sky-500 disabled:bg-gray-700"
+              >
+                {translating ? "翻訳中…" : "🇬🇧 英訳して本文に追記"}
+              </button>
+              <span className="text-[10px] text-gray-500">
+                下の「適用するキャプション」に追記されます
+              </span>
+            </div>
+            {translateError ? (
+              <div className="rounded-md border border-red-700 bg-red-950 p-1.5 text-[10px] text-red-200">
+                {translateError}
+              </div>
+            ) : null}
+          </div>
+        </details>
 
         {/* 本文 */}
         <div className="mb-3">
