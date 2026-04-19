@@ -1,7 +1,7 @@
 # 引き継ぎ書（新セッション用・コピペ対応）
 
 > このファイルは「セッションが途中で止まった時に、新しいセッションへ丸ごと渡すための要約」です。
-> 進捗があるたびに更新されます。**更新日時: 2026-04-19 13:40**
+> 進捗があるたびに更新されます。**更新日時: 2026-04-19 14:15**
 
 ---
 
@@ -249,15 +249,47 @@
 - ✅ Pod Terminate（課金停止、残高 $19.10）
 - 🎉 **Serverless 本番テスト成功**（Req `15a1d947-...e1`, delay 6.35s + exec 35.23s = Completed）
 - ✅ Civitai API Key 保存（`.env.local`）※チャット履歴漏洩あり、後で再発行
+- ✅ **Phase 1-0 実装コミット**（`168588f`）
+  - Next.js 16.2.1 + React 19.2.4 + Prisma 7.7 + Tailwind v4
+  - 独立サブフォルダ（port 3100）
+  - /api/generate + /api/image/[filename] + 最小 UI
+  - tsc / eslint / dev サーバ起動すべて OK
+  - ⚠️ 実機（Mac）での生成テストは未実施（Claude Code サンドボックスから外部 HTTP 不可）
+
+### Prisma 7 のハマりポイント（追記）
+- `schema.prisma` の `datasource db` から `url` を削除（エラー: `datasource.url is no longer supported`）
+- `generator client` は `"prisma-client"`（`"prisma-client-js"` ではない）
+- `prisma.config.ts` に `datasource.url` を記述（CLI用）
+- ランタイムは `@prisma/adapter-libsql` の `PrismaLibSql`（大文字 SQL ではない）を PrismaClient に渡す
+- `prisma db push` 時は `datasource.url` が必須
 
 ---
 
 ## 現在の作業（⚡ここから再開）
 
 ### ブロッカー
-なし。インフラ（RunPod Serverless + Network Volume + WAI モデル）完成。**次は Next.js Phase 1 実装**。
+なし。Phase 1-0 実装完了。**ユーザーのローカル実機（Mac）で疎通確認待ち**。
 
 ### 次のアクション
+
+**Step 0: ユーザーがローカルで疎通テスト**
+```bash
+cd ~/path/to/my-project
+git pull origin claude/resume-section-work-cN8J2
+cd image_generation_tool
+cp .env.example .env.local  # （必要なら手動で値を入れる。コミット済みの .env.local は gitignore なので手元にはない）
+# 以下を .env.local に記入:
+#   RUNPOD_API_KEY=rpa_...
+#   RUNPOD_ENDPOINT_ID=onlq54amynaf6v
+#   CIVITAI_API_KEY=...
+#   DATABASE_URL="file:./dev.db"
+npm install
+npx prisma generate
+npx prisma db push
+npm run dev
+```
+→ ブラウザで http://localhost:3100 → プロンプト入力 → 「生成する」
+→ 30〜60秒待つと画像が出る（Serverless Cold Start 含む）
 
 **Step 1: 追加モデル DL の判断**
 Phase 1 MVP に必要な残りモデルを DL するか決める:
