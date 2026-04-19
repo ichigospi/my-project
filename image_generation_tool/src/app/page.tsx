@@ -310,13 +310,18 @@ export default function HomePage() {
     <main className="mx-auto max-w-6xl p-6">
       <header className="mb-5 flex items-baseline justify-between">
         <h1 className="text-xl font-bold">🎨 画像生成ツール</h1>
-        <button
-          type="button"
-          onClick={resetAll}
-          className="text-xs text-gray-400 hover:text-gray-200"
-        >
-          すべてクリア
-        </button>
+        <nav className="flex items-center gap-3 text-xs">
+          <a href="/characters" className="text-gray-400 hover:text-indigo-300">
+            👥 キャラ管理
+          </a>
+          <button
+            type="button"
+            onClick={resetAll}
+            className="text-gray-400 hover:text-gray-200"
+          >
+            すべてクリア
+          </button>
+        </nav>
       </header>
 
       <p className="mb-4 text-xs text-gray-400">

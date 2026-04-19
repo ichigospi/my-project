@@ -9,3 +9,20 @@ body {
   background: #0b0b0f;
   color: #e5e7eb;
 }
+
+/* フォーム入力の共通スタイル（キャラ管理画面等） */
+.input {
+  display: block;
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid #374151;
+  background-color: #0f172a;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: #e5e7eb;
+}
+.input:focus {
+  outline: 2px solid #6366f1;
+  outline-offset: -1px;
+}
