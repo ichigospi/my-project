@@ -510,6 +510,53 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────
+// アスペクト比プリセット（SDXL 推奨サイズ）
+// SDXL は学習時のバケット解像度に合わせるのが綺麗: 総ピクセル ≒ 1024²
+// ─────────────────────────────────────────────────────────────
+
+export interface AspectRatioPreset {
+  key: string;
+  label: string;
+  ratioLabel: string; // "2:3" 等
+  width: number;
+  height: number;
+  orientation: "square" | "portrait" | "landscape";
+}
+
+export const ASPECT_RATIO_PRESETS: AspectRatioPreset[] = [
+  { key: "square", label: "正方形", ratioLabel: "1:1", width: 1024, height: 1024, orientation: "square" },
+  { key: "portrait_3_4", label: "縦 3:4", ratioLabel: "3:4", width: 896, height: 1152, orientation: "portrait" },
+  { key: "portrait_2_3", label: "縦 2:3", ratioLabel: "2:3", width: 832, height: 1216, orientation: "portrait" },
+  { key: "portrait_9_16", label: "縦 9:16", ratioLabel: "9:16", width: 768, height: 1344, orientation: "portrait" },
+  { key: "landscape_4_3", label: "横 4:3", ratioLabel: "4:3", width: 1152, height: 896, orientation: "landscape" },
+  { key: "landscape_3_2", label: "横 3:2", ratioLabel: "3:2", width: 1216, height: 832, orientation: "landscape" },
+  { key: "landscape_16_9", label: "横 16:9", ratioLabel: "16:9", width: 1344, height: 768, orientation: "landscape" },
+];
+
+export const DEFAULT_ASPECT_RATIO_KEY = "portrait_2_3";
+
+// ─────────────────────────────────────────────────────────────
+// 画質プリセット（steps / cfg の組合せ）
+// ─────────────────────────────────────────────────────────────
+
+export interface QualityPreset {
+  key: string;
+  label: string;
+  steps: number;
+  cfg: number;
+  description: string;
+}
+
+export const QUALITY_PRESETS: QualityPreset[] = [
+  { key: "fast", label: "速い", steps: 20, cfg: 5.0, description: "試し生成・短時間（~15s）" },
+  { key: "standard", label: "標準", steps: 28, cfg: 5.0, description: "日常的な生成・バランス（~25s）" },
+  { key: "high", label: "高品質", steps: 40, cfg: 5.5, description: "当たりカット用・遅め（~35s）" },
+  { key: "ultra", label: "最高品質", steps: 60, cfg: 6.0, description: "納品・決めカット用（~55s）" },
+];
+
+export const DEFAULT_QUALITY_KEY = "standard";
+
+// ─────────────────────────────────────────────────────────────
 // 表情プリセット（複数選択前提・目/口/赤面/幸せイキ/絶頂 等）
 // 出典: meta-camp.net/nsfw-face-expression-prompts/
 // ─────────────────────────────────────────────────────────────

@@ -8,7 +8,14 @@ import PresetChipGroup, { type ChipItem } from "@/components/PresetChipGroup";
 import SelectorCard from "@/components/SelectorCard";
 import { clsx } from "@/components/clsx";
 import { buildPrompt, type CharacterLite } from "@/lib/prompt-builder";
-import { CONDOM_OPTIONS, type CondomState } from "@/lib/presets";
+import {
+  CONDOM_OPTIONS,
+  type CondomState,
+  ASPECT_RATIO_PRESETS,
+  DEFAULT_ASPECT_RATIO_KEY,
+  QUALITY_PRESETS,
+  DEFAULT_QUALITY_KEY,
+} from "@/lib/presets";
 
 interface PresetItem {
   id: string;
@@ -79,6 +86,8 @@ interface SelectionState {
   expressionIds: string[];
   condom: CondomState;
   artStyleIds: string[];
+  aspectRatioKey: string;
+  qualityKey: string;
 }
 
 const initialSelection: SelectionState = {
@@ -91,6 +100,8 @@ const initialSelection: SelectionState = {
   expressionIds: [],
   condom: "none",
   artStyleIds: [],
+  aspectRatioKey: DEFAULT_ASPECT_RATIO_KEY,
+  qualityKey: DEFAULT_QUALITY_KEY,
 };
 
 export default function HomePage() {
@@ -205,6 +216,11 @@ export default function HomePage() {
     setExtraPromptTokens("");
   }
 
+  const aspect =
+    ASPECT_RATIO_PRESETS.find((a) => a.key === sel.aspectRatioKey) ?? ASPECT_RATIO_PRESETS[0];
+  const quality =
+    QUALITY_PRESETS.find((q) => q.key === sel.qualityKey) ?? QUALITY_PRESETS[1];
+
   async function handleGenerate() {
     if (!built) return;
     setLoading(true);
@@ -221,7 +237,14 @@ export default function HomePage() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: built.prompt, negativePrompt: built.negativePrompt }),
+        body: JSON.stringify({
+          prompt: built.prompt,
+          negativePrompt: built.negativePrompt,
+          width: aspect.width,
+          height: aspect.height,
+          steps: quality.steps,
+          cfg: quality.cfg,
+        }),
       });
 
       if (!res.ok) {
@@ -543,6 +566,63 @@ export default function HomePage() {
         ) : null}
       </section>
 
+      {/* サイズ・画質 */}
+      <section className="mt-4 grid gap-3 rounded-md border border-gray-800 bg-gray-950/60 p-3 md:grid-cols-2">
+        <div>
+          <p className="mb-1.5 text-[11px] uppercase tracking-wide text-gray-500">
+            📐 サイズ <span className="ml-1 text-gray-600">{aspect.width}×{aspect.height}</span>
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {ASPECT_RATIO_PRESETS.map((a) => {
+              const active = sel.aspectRatioKey === a.key;
+              return (
+                <button
+                  key={a.key}
+                  type="button"
+                  onClick={() => setSel((p) => ({ ...p, aspectRatioKey: a.key }))}
+                  className={clsx(
+                    "rounded-full px-3 py-1 text-xs transition",
+                    active ? "bg-indigo-500 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700",
+                  )}
+                  title={`${a.width} × ${a.height}`}
+                >
+                  {a.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-[11px] uppercase tracking-wide text-gray-500">
+            ⚙ 画質{" "}
+            <span className="ml-1 text-gray-600">
+              steps {quality.steps} / cfg {quality.cfg}
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {QUALITY_PRESETS.map((q) => {
+              const active = sel.qualityKey === q.key;
+              return (
+                <button
+                  key={q.key}
+                  type="button"
+                  onClick={() => setSel((p) => ({ ...p, qualityKey: q.key }))}
+                  className={clsx(
+                    "rounded-full px-3 py-1 text-xs transition",
+                    active ? "bg-indigo-500 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700",
+                  )}
+                  title={q.description}
+                >
+                  {q.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-[10px] text-gray-600">{quality.description}</p>
+        </div>
+      </section>
+
       {/* 生成ボタン */}
       <section className="mt-5 flex items-center gap-3">
         <button
@@ -553,7 +633,9 @@ export default function HomePage() {
         >
           {loading ? `生成中… ${elapsed}s` : "🎨 生成する"}
         </button>
-        <span className="text-[11px] text-gray-500">Cold Start 含め 30〜60 秒</span>
+        <span className="text-[11px] text-gray-500">
+          Cold Start 含め 30〜60 秒（画質「最高品質」は +20〜30 秒）
+        </span>
       </section>
 
       {error ? (
