@@ -134,6 +134,7 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
     isNSFW: true,
     order: 30,
     actions: [
+      // ─── 基本 6（手コキ / 手マン / フェラ / クンニ / パイズリ / オナニー）───
       {
         key: "handjob",
         label: "手コキ",
@@ -154,6 +155,180 @@ export const ACTION_CATEGORIES: ActionCategorySeed[] = [
         label: "クンニ",
         tags: "cunnilingus, oral sex, hetero, man licking pussy, spread legs",
       },
+      {
+        key: "paizuri",
+        label: "パイズリ",
+        tags: "paizuri, titfuck, hetero, breasts, penis between breasts",
+      },
+      {
+        key: "masturbation",
+        label: "オナニー",
+        tags: "masturbation, solo, female masturbation",
+      },
+
+      // ─── フェラ応用 5 ───
+      {
+        key: "fellatio_deepthroat",
+        label: "フェラ（喉奥）",
+        tags: "fellatio, deepthroat, saliva, tongue out, looking at viewer, pov, hetero",
+      },
+      {
+        key: "fellatio_licking",
+        label: "フェラ（ねっとり舐め）",
+        tags: "fellatio, licking penis, tongue, saliva trail, glossy lips, hetero",
+      },
+      {
+        key: "fellatio_irrumatio",
+        label: "フェラ（イラマチオ）",
+        tags: "fellatio, irrumatio, deepthroat, tears, rough sex, hetero",
+      },
+      {
+        key: "fellatio_multiple",
+        label: "フェラ（複数相手）",
+        tags: "fellatio, multiple penises, 2boys, cum on face",
+      },
+      {
+        key: "fellatio_paizuri",
+        label: "フェラ+パイズリ",
+        tags: "fellatio, paizuri, titfuck, cum on breasts, pov, hetero",
+      },
+
+      // ─── クンニ応用 5 ───
+      {
+        key: "cunnilingus_strong",
+        label: "クンニ（しっかり）",
+        tags: "cunnilingus, pussy, tongue, wet, pov, spread legs, hetero",
+      },
+      {
+        key: "cunnilingus_clitoris",
+        label: "クンニ（クリ重点）",
+        tags: "cunnilingus, clitoris, sucking, trembling, ahegao, hetero",
+      },
+      {
+        key: "cunnilingus_onback",
+        label: "クンニ（仰向け）",
+        tags: "cunnilingus, lying on back, legs up, pussy juice, hetero",
+      },
+      {
+        key: "cunnilingus_gentle",
+        label: "クンニ（優しく）",
+        tags: "cunnilingus, gentle, blushing, hetero",
+      },
+      {
+        key: "cunnilingus_forced",
+        label: "クンニ（無理やり）",
+        tags: "cunnilingus, forced, tears, restrained, hetero",
+      },
+
+      // ─── パイズリ応用 5 ───
+      {
+        key: "paizuri_strong",
+        label: "パイズリ（強化）",
+        tags: "paizuri, titfuck, breasts, cleavage, penis between breasts, pov, hetero",
+      },
+      {
+        key: "reverse_paizuri",
+        label: "逆パイズリ",
+        tags: "reverse paizuri, looking back, ass visible, hetero",
+      },
+      {
+        key: "paizuri_cum",
+        label: "パイズリ（激しめ）",
+        tags: "paizuri, cum on breasts, cumdrip, excessive cum, hetero",
+      },
+      {
+        key: "naizuri",
+        label: "ナイズリ（貧乳）",
+        tags: "naizuri, flat chest, small breasts, penis on stomach, hetero",
+      },
+      {
+        key: "paizuri_fellatio_combo",
+        label: "パイズリ+フェラ同時",
+        tags: "paizuri, fellatio, simultaneous paizuri fellatio, cum in mouth and on breasts, hetero",
+      },
+
+      // ─── 手コキ応用 5 ───
+      {
+        key: "handjob_strong",
+        label: "手コキ（強化）",
+        tags: "handjob, penis, hand on penis, precum, looking at viewer, hetero",
+      },
+      {
+        key: "double_handjob",
+        label: "両手コキ",
+        tags: "double handjob, two hands on penis, hetero",
+      },
+      {
+        key: "handjob_oiled",
+        label: "ねっとり手コキ",
+        tags: "handjob, oiled, glossy, slow, teasing, hetero",
+      },
+      {
+        key: "handjob_fellatio_combo",
+        label: "手コキ+フェラ",
+        tags: "handjob, fellatio, blowjob and handjob, saliva, cum on hands, hetero",
+      },
+      {
+        key: "footjob_handjob",
+        label: "足コキ+手コキ",
+        tags: "footjob, handjob, multiple penises",
+      },
+
+      // ─── 手マン応用 5 ───
+      {
+        key: "fingering_strong",
+        label: "手マン（強化）",
+        tags: "fingering, pussy, vaginal, two fingers, pussy juice, wet",
+      },
+      {
+        key: "fingering_gspot",
+        label: "手マン（激しめ・潮吹き）",
+        tags: "fingering, g-spot, squirting, ahegao, trembling",
+      },
+      {
+        key: "fingering_behind",
+        label: "後ろから手マン",
+        tags: "fingering, from behind, ass grab, bent over",
+      },
+      {
+        key: "fingering_cunnilingus_combo",
+        label: "クンニ+手マン",
+        tags: "fingering, cunnilingus, oral and fingering, 69 position",
+      },
+      {
+        key: "fingering_clit",
+        label: "クリ+中を同時",
+        tags: "fingering, clitoris, rubbing clitoris, double stimulation",
+      },
+
+      // ─── オナニー応用 5 ───
+      {
+        key: "masturbation_panties",
+        label: "オナニー（パンティ越し）",
+        tags: "masturbation, hand in panties, blush, looking at viewer, pov",
+      },
+      {
+        key: "masturbation_vibrator",
+        label: "オナニー（クリバイブ）",
+        tags: "masturbation, vibrator, sex toy, clitoris, trembling, ahegao",
+      },
+      {
+        key: "masturbation_dildo",
+        label: "オナニー（ディルド）",
+        tags: "masturbation, dildo, insertion, vaginal, pussy juice, spread legs",
+      },
+      {
+        key: "masturbation_onback",
+        label: "オナニー（仰向け2本指）",
+        tags: "masturbation, fingering, two fingers, lying on back, legs up, drooling",
+      },
+      {
+        key: "masturbation_breast",
+        label: "おっぱいオナニー",
+        tags: "masturbation, breast grab, nipple tweak, self grope, moaning",
+      },
+
+      // ─── 69 系（末尾に置く） ───
       {
         key: "sixtynine",
         label: "シックスナイン",
