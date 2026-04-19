@@ -13,7 +13,17 @@ export interface CharacterLite {
   loraUrl: string | null;
   loraScale: number;
   extraPrompt: string | null;
+  defaultOutfitId: string | null;
+  pubicHair: string | null; // "none" | "light" | "normal" | "thick" | null
 }
+
+// 陰毛の状態 → プロンプトタグ変換
+const PUBIC_HAIR_TAGS: Record<string, string> = {
+  none: "shaved, no pubic hair",
+  light: "sparse pubic hair, thin pubic hair",
+  normal: "pubic hair, trimmed pubic hair",
+  thick: "thick pubic hair, bushy pubic hair",
+};
 
 export interface PromptSelection {
   timeTags?: string;
@@ -121,6 +131,13 @@ export function buildPrompt(s: PromptSelection): BuiltPrompt {
 
   // 6. 服装
   push(parts, s.outfit?.tags);
+
+  // 6b. 陰毛（主体キャラに設定があれば注入）
+  const mainChar = s.characters[0];
+  if (mainChar?.pubicHair) {
+    const pubicTag = PUBIC_HAIR_TAGS[mainChar.pubicHair];
+    if (pubicTag) push(parts, pubicTag);
+  }
 
   // 7. 行為
   push(parts, s.action?.tags);

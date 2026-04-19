@@ -169,7 +169,13 @@ export default function HomePage() {
     const chars = sel.characterIds
       .map((id) => byId.character.get(id))
       .filter((c): c is CharacterLite => !!c);
-    const outfit = sel.outfitId ? byId.outfit.get(sel.outfitId) : undefined;
+
+    // 服装は user 指定 > 主体キャラのデフォルト > なし
+    const mainChar = chars[0];
+    const outfitIdEffective =
+      sel.outfitId ?? (mainChar?.defaultOutfitId ? mainChar.defaultOutfitId : null);
+    const outfit = outfitIdEffective ? byId.outfit.get(outfitIdEffective) : undefined;
+
     const action = sel.actionId ? byId.action.get(sel.actionId) : undefined;
     const styleTags = sel.artStyleIds
       .map((id) => byId.artStyle.get(id)?.styleTags)
@@ -305,6 +311,17 @@ export default function HomePage() {
   const expressionMore = sel.expressionIds.length > 3 ? ` +${sel.expressionIds.length - 3}` : "";
 
   const mainChar = sel.characterIds[0] ? byId?.character.get(sel.characterIds[0]) : null;
+  const mainCharDefaultOutfitId = mainChar?.defaultOutfitId ?? null;
+  const outfitEffectiveId = sel.outfitId ?? mainCharDefaultOutfitId;
+  const outfitEffectiveLabel = outfitEffectiveId
+    ? byId?.outfit.get(outfitEffectiveId)?.label
+    : undefined;
+  const outfitSummary =
+    sel.outfitId != null
+      ? outfitEffectiveLabel
+      : outfitEffectiveLabel
+      ? `${outfitEffectiveLabel}（${mainChar?.name} のデフォ）`
+      : undefined;
 
   return (
     <main className="mx-auto max-w-6xl p-6">
@@ -392,8 +409,14 @@ export default function HomePage() {
         <SelectorCard
           icon="👗"
           title="格好"
-          summary={sel.outfitId ? byId?.outfit.get(sel.outfitId)?.label : undefined}
-          help={mainChar?.gender === "male" ? "男性キャラに適した服装を選んでください。" : undefined}
+          summary={outfitSummary}
+          help={
+            mainChar?.gender === "male"
+              ? "男性キャラに適した服装を選んでください。"
+              : mainCharDefaultOutfitId && !sel.outfitId
+              ? "未選択のためキャラのデフォルト服装が使われます。"
+              : undefined
+          }
         >
           <PresetChipGroup
             items={outfitItems}
