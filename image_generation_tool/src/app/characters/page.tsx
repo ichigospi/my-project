@@ -7,7 +7,7 @@
 //   Phase 1 は「ベースプロンプト＋身長＋服装デフォルト」で実用レベル
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "@/components/clsx";
 import { heightCmToTags } from "@/lib/presets";
 
@@ -531,6 +531,91 @@ function ReferenceImageSection({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
 
+  // AI 一括キャプション
+  const [aiBatch, setAiBatch] = useState<
+    | {
+        processing: number; // 現在処理中のインデックス（1-based）
+        total: number;
+        succeeded: number;
+        refused: number;
+        failed: number;
+        currentLabel: string;
+      }
+    | null
+  >(null);
+  const aiAbortRef = useRef(false);
+
+  async function handleBatchAutoCaption() {
+    const targets = images.filter((i) => !i.caption?.trim());
+    if (targets.length === 0) {
+      alert("キャプション未設定の画像がありません");
+      return;
+    }
+    const ok = window.confirm(
+      `${targets.length} 枚を AI でキャプション解析します。\n` +
+        `モデルは Claude Haiku 4.5 を使用。\n` +
+        `NSFW 画像は拒否される場合があります（拒否時は未設定のまま）。\n` +
+        `続けますか？`,
+    );
+    if (!ok) return;
+
+    aiAbortRef.current = false;
+    let succeeded = 0;
+    let refused = 0;
+    let failed = 0;
+
+    for (let i = 0; i < targets.length; i += 1) {
+      if (aiAbortRef.current) break;
+      const img = targets[i];
+      setAiBatch({
+        processing: i + 1,
+        total: targets.length,
+        succeeded,
+        refused,
+        failed,
+        currentLabel: img.id.slice(-6),
+      });
+      try {
+        const res = await fetch(
+          `/api/characters/${characterId}/images/${img.id}/auto-caption`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ save: true }),
+          },
+        );
+        const data = (await res.json().catch(() => ({}))) as {
+          caption?: string;
+          refused?: boolean;
+          error?: string;
+        };
+        if (!res.ok) {
+          failed += 1;
+        } else if (data.refused) {
+          refused += 1;
+        } else {
+          succeeded += 1;
+        }
+      } catch {
+        failed += 1;
+      }
+    }
+
+    setAiBatch({
+      processing: targets.length,
+      total: targets.length,
+      succeeded,
+      refused,
+      failed,
+      currentLabel: "完了",
+    });
+    await onChange();
+  }
+
+  function cancelAiBatch() {
+    aiAbortRef.current = true;
+  }
+
   // テンプレ
   const [templates, setTemplates] = useState<CaptionTemplateRecord[]>([]);
 
@@ -716,12 +801,73 @@ function ReferenceImageSection({
           <div className="ml-auto flex gap-1.5">
             <button
               type="button"
+              onClick={() => void handleBatchAutoCaption()}
+              disabled={aiBatch !== null && aiBatch.currentLabel !== "完了"}
+              className="rounded bg-pink-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-pink-500 disabled:bg-gray-700"
+              title="Claude Vision で未設定画像を一括解析"
+            >
+              🤖 未設定を AI でキャプション
+            </button>
+            <button
+              type="button"
               onClick={() => setBulkOpen(true)}
               className="rounded bg-indigo-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-indigo-500"
             >
               🏷 一括でキャプション適用
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {/* AI バッチ進捗表示 */}
+      {aiBatch ? (
+        <div className="mb-3 rounded-md border border-pink-900/40 bg-pink-950/20 p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="text-[11px] text-pink-200">
+              🤖 AI キャプション処理中:{" "}
+              <strong>
+                {aiBatch.processing} / {aiBatch.total}
+              </strong>
+            </p>
+            {aiBatch.currentLabel !== "完了" ? (
+              <button
+                type="button"
+                onClick={cancelAiBatch}
+                className="rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+              >
+                停止
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAiBatch(null)}
+                className="rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+              >
+                閉じる
+              </button>
+            )}
+          </div>
+          <div className="mb-1.5 h-2 overflow-hidden rounded bg-gray-800">
+            <div
+              className="h-full bg-pink-500 transition-all"
+              style={{
+                width: `${Math.min(100, (aiBatch.processing / aiBatch.total) * 100)}%`,
+              }}
+            />
+          </div>
+          <p className="text-[10px] text-pink-300">
+            ✅ 成功 {aiBatch.succeeded} / ⚠ 拒否 {aiBatch.refused} / ❌ 失敗{" "}
+            {aiBatch.failed}
+            {aiBatch.currentLabel !== "完了"
+              ? `（現在: …${aiBatch.currentLabel}）`
+              : ""}
+          </p>
+          {aiBatch.refused > 0 && aiBatch.currentLabel === "完了" ? (
+            <p className="mt-1 text-[10px] text-amber-200">
+              💡 拒否された画像は NSFW 扱いで AI が応答しませんでした。
+              そのままキャプション未設定として残ります。一括編集か個別編集で手書きしてください。
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -900,18 +1046,28 @@ function CaptionEditorModal({
     try {
       const res = await fetch(
         `/api/characters/${character.id}/images/${image.id}/auto-caption`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ save: false }),
+        },
       );
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         caption?: string;
+        refused?: boolean;
+        reason?: string;
       };
       if (!res.ok) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
+      if (data.refused) {
+        setAutoError(data.reason ?? "AI が応答を拒否しました");
+        return;
+      }
       if (data.caption) {
         setCaption(data.caption);
-        setSource("auto_wd14");
+        setSource("auto_claude");
       }
     } catch (e) {
       setAutoError(e instanceof Error ? e.message : String(e));
@@ -999,6 +1155,7 @@ function CaptionEditorModal({
                 type="button"
                 onClick={() => void handleAutoCaption()}
                 disabled={autoLoading}
+                title="Claude Vision で画像を解析してタグ化します"
                 className="rounded-md bg-pink-700 px-2.5 py-1 text-[11px] text-white hover:bg-pink-600 disabled:bg-gray-700"
               >
                 {autoLoading ? "解析中…" : "🤖 AI キャプション"}
