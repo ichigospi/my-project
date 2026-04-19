@@ -87,6 +87,17 @@ export default function ArtStylesPage() {
   const [civitaiLoading, setCivitaiLoading] = useState(false);
   const [civitaiError, setCivitaiError] = useState<string | null>(null);
 
+  // Lora 直 DL の状態（per-item）
+  const [downloading, setDownloading] = useState<string | null>(null); // art style id
+  const [downloadResult, setDownloadResult] = useState<{
+    id: string;
+    filename: string;
+    sizeMB: number;
+    podCommand: string;
+    skipped?: boolean;
+  } | null>(null);
+  const [downloadError, setDownloadError] = useState<{ id: string; message: string } | null>(null);
+
   useEffect(() => {
     let aborted = false;
     void (async () => {
@@ -255,6 +266,44 @@ export default function ArtStylesPage() {
       setFormError(e instanceof Error ? e.message : String(e));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleDownload(it: ArtStyleRecord) {
+    setDownloading(it.id);
+    setDownloadError(null);
+    setDownloadResult(null);
+    try {
+      const res = await fetch(`/api/art-styles/${it.id}/download`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        filename?: string;
+        sizeMB?: number;
+        podCommand?: string;
+        skipped?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setDownloadResult({
+        id: it.id,
+        filename: data.filename ?? "",
+        sizeMB: data.sizeMB ?? 0,
+        podCommand: data.podCommand ?? "",
+        skipped: data.skipped,
+      });
+      // 一覧を更新（loraUrl が入る）
+      const listRes = await fetch("/api/art-styles");
+      const listJson = (await listRes.json()) as { items: ArtStyleRecord[] };
+      setItems(listJson.items);
+    } catch (e) {
+      setDownloadError({
+        id: it.id,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setDownloading(null);
     }
   }
 
@@ -624,7 +673,7 @@ export default function ArtStylesPage() {
                         Lora: {it.loraUrl || "未設定"} / scale {it.loraScale}
                       </p>
                     ) : null}
-                    <div className="mt-2 flex gap-1">
+                    <div className="mt-2 flex flex-wrap gap-1">
                       <button
                         type="button"
                         onClick={() => startEdit(it)}
@@ -632,6 +681,27 @@ export default function ArtStylesPage() {
                       >
                         編集
                       </button>
+                      {it.source === "civitai" && it.civitaiVersionId ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleDownload(it)}
+                          disabled={downloading === it.id}
+                          className={clsx(
+                            "rounded px-2 py-1 text-[11px]",
+                            downloading === it.id
+                              ? "bg-gray-700 text-gray-400"
+                              : it.loraUrl
+                              ? "bg-emerald-900/40 text-emerald-200 hover:bg-emerald-900/70"
+                              : "bg-pink-700 text-white hover:bg-pink-600",
+                          )}
+                        >
+                          {downloading === it.id
+                            ? "📥 DL中…"
+                            : it.loraUrl
+                            ? "📥 再DL"
+                            : "📥 ローカルにDL"}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => handleDelete(it)}
@@ -640,6 +710,40 @@ export default function ArtStylesPage() {
                         削除
                       </button>
                     </div>
+
+                    {downloadError && downloadError.id === it.id ? (
+                      <p className="mt-2 rounded border border-red-700 bg-red-950 p-2 text-[11px] text-red-200">
+                        {downloadError.message}
+                      </p>
+                    ) : null}
+
+                    {downloadResult && downloadResult.id === it.id ? (
+                      <div className="mt-2 rounded border border-emerald-900/40 bg-emerald-950/30 p-2 text-[11px] text-emerald-200">
+                        <p>
+                          ✅ {downloadResult.skipped ? "既に存在" : "DL完了"}:{" "}
+                          {downloadResult.filename} ({downloadResult.sizeMB} MB)
+                        </p>
+                        <details className="mt-1.5">
+                          <summary className="cursor-pointer text-[10px] text-emerald-300/80 hover:text-emerald-200">
+                            ▶ RunPod の Pod に配置するコマンド（Pod の Terminal で実行）
+                          </summary>
+                          <pre className="mt-1 overflow-x-auto rounded bg-black/40 p-2 text-[10px] text-gray-200">
+                            {downloadResult.podCommand}
+                          </pre>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(
+                                downloadResult.podCommand,
+                              );
+                            }}
+                            className="mt-1 rounded bg-gray-800 px-2 py-0.5 text-[10px] hover:bg-gray-700"
+                          >
+                            コマンドをコピー
+                          </button>
+                        </details>
+                      </div>
+                    ) : null}
                   </div>
                 </li>
               );

@@ -79,3 +79,27 @@ export function normalizeBaseModel(bm: string | null | undefined): string {
   if (lower.includes("sdxl")) return "sdxl";
   return "sdxl";
 }
+
+/** バージョンID から直接バージョン情報を取得。 */
+export async function fetchCivitaiVersion(
+  versionId: number,
+): Promise<CivitaiModelVersion | null> {
+  const res = await fetch(`${CIVITAI_API_BASE}/model-versions/${versionId}`, {
+    headers: { Accept: "application/json", ...authHeader() },
+    cache: "no-store",
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Civitai API ${res.status}: ${await res.text().catch(() => "")}`);
+  }
+  return (await res.json()) as CivitaiModelVersion;
+}
+
+/** API key 付きの DL URL（NSFW モデルでも認可が通る形）。 */
+export function withDownloadAuth(url: string): string {
+  const key = process.env.CIVITAI_API_KEY;
+  if (!key) return url;
+  // ?token= or &token= で API キーを付与
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}token=${encodeURIComponent(key)}`;
+}
