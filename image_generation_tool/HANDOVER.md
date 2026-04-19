@@ -270,6 +270,12 @@
 - ランタイムは `@prisma/adapter-libsql` の `PrismaLibSql`（大文字 SQL ではない）を PrismaClient に渡す
 - `prisma db push` 時は `datasource.url` が必須
 
+### Next.js dev サーバーと Prisma の関係（重要）
+- `prisma generate` や `prisma db push` を実行しても、**起動中の dev サーバーには反映されない**
+- Turbopack は自動生成ファイルを HMR で再ロードしないため、新モデル（例: `prisma.expressionCategory`）が undefined になり API が 500 エラーを返す
+- **ルール**: スキーマを変えたら必ず dev サーバー再起動（Ctrl+C → `npm run dev`）
+- シード（`npm run db:seed`）だけなら再起動不要（ブラウザ Cmd+R で取り直せる）
+
 ---
 
 ## 現在の作業（⚡ここから再開）
