@@ -1,7 +1,7 @@
 # 引き継ぎ書（新セッション用・コピペ対応）
 
 > このファイルは「セッションが途中で止まった時に、新しいセッションへ丸ごと渡すための要約」です。
-> 進捗があるたびに更新されます。**更新日時: 2026-04-19**
+> 進捗があるたびに更新されます。**更新日時: 2026-04-19 13:40**
 
 ---
 
@@ -158,10 +158,19 @@
 | 対応GPU（Serverless） | 24GB PRO / 32GB PRO / 48GB |
 | Pod 用 GPU（検証済） | RTX PRO 4500（$0.64/hr） |
 
-**ダウンロード済モデル:**
-- `waiIllustriousSDXL_v160.safetensors`（6.46GB）※ Network Volume 上
+**ダウンロード済モデル（Network Volume `/workspace/models/` 配下）:**
 
-**未DLモデル（Phase 1 で追加予定）:**
+| ファイル | サイズ | パス | 用途 |
+|---|---|---|---|
+| `waiIllustriousSDXL_v160.safetensors` | 6.46GB | `checkpoints/` | メインモデル（NSFW アニメ SDXL） |
+| `sd_xl_base_1.0.safetensors` | 6.46GB | `checkpoints/` | 汎用 SDXL（テスト用） |
+| `sdxl_vae.safetensors` | 334MB | `vae/` | SDXL VAE |
+| `t2i-adapter_diffusers_xl_openpose.safetensors` | 158MB | `controlnet/` | OpenPose（SDXL用） |
+| `diffusers_xl_canny_mid.safetensors` | 545MB | `controlnet/` | Canny（SDXL用） |
+
+※ VAE / ControlNet はテンプレ付属で既に Network Volume にあった資産を `cp` で配置
+
+**未DLモデル（Phase 1 以降で追加予定）:**
 - Pony Diffusion V6 XL
 - SDXL VAE
 - ControlNet（OpenPose, Canny, Depth）
@@ -231,99 +240,70 @@
 - ❌ Serverless 初回テスト失敗: `ckpt_name not in ['flux1-dev-fp8.safetensors']` エラー
   - 原因: Civicomfy が `/runpod-volume/ComfyUI/checkpoints/` に保存していた
   - 期待: worker-comfyui は `/runpod-volume/models/checkpoints/` を見る
-- 🔄 Pod 再起動してファイル移動作業中
 - ✅ 前セッション作業（DESIGN.md / README.md）を `claude/resume-section-work-cN8J2` にマージ
-- ✅ HANDOVER.md 作成（このファイル）
+- ✅ HANDOVER.md 作成
+- 🔍 Pod 再起動して調査 → **旧 WAI モデルは消失していた**（最初の Pod では `/runpod-volume/` がコンテナ側ディスクだったため Terminate で消失。Network Volume には壊れた symlink のみ残存）
+- ✅ Network Volume に **テンプレ付属の SDXL 資産発見**（SDXL base / VAE / ControlNet 各種）→ 正しい場所へ `cp`
+- ✅ Civicomfy Global Download Root を `/workspace` に変更
+- ✅ WAI-illustrious v16.0 を再DL（`/workspace/checkpoints/` → `/workspace/models/checkpoints/` に移動）
+- ✅ Pod Terminate（課金停止、残高 $19.10）
+- 🎉 **Serverless 本番テスト成功**（Req `15a1d947-...e1`, delay 6.35s + exec 35.23s = Completed）
+- ✅ Civitai API Key 保存（`.env.local`）※チャット履歴漏洩あり、後で再発行
 
 ---
 
 ## 現在の作業（⚡ここから再開）
 
 ### ブロッカー
-Serverless Endpoint がモデルを見つけられない。Pod でファイル移動して解決する必要あり。
+なし。インフラ（RunPod Serverless + Network Volume + WAI モデル）完成。**次は Next.js Phase 1 実装**。
 
 ### 次のアクション
 
-**Step 1: Pod 状況の確認**
-ユーザーに聞く: 「いま Pod は起動してますか？停止/未起動ですか？」
+**Step 1: 追加モデル DL の判断**
+Phase 1 MVP に必要な残りモデルを DL するか決める:
 
-**Step 2（Pod 起動中の場合）: Terminal で以下を実行**
-```bash
-mkdir -p /workspace/models/checkpoints /workspace/models/loras /workspace/models/vae /workspace/models/controlnet /workspace/models/upscale_models /workspace/models/embeddings /workspace/models/clip /workspace/models/clip_vision /workspace/models/ipadapter && mv /workspace/runpod-slim/ComfyUI/models/checkpoints/*.safetensors /workspace/models/checkpoints/ 2>/dev/null; ls -la /workspace/models/checkpoints/
+| モデル | 必須度 | サイズ | 用途 |
+|---|---|---|---|
+| Pony Diffusion V6 XL | 中 | 7GB | サブモデル（Pony系Lora互換） |
+| IP-Adapter Plus Face SDXL | 高 | 1GB | キャラ差分ブースト |
+| RMBG-2.0 | 高 | 170MB | 背景透過 |
+| 4x-UltraSharp / Real-ESRGAN | 中 | 60MB | アップスケール |
+
+→ Phase 1 MVP は **WAI-illustrious + 既存の VAE/ControlNet だけでも開始可能**。MVP が動いた後で順次追加するのが効率的。
+
+**Step 2（推奨）: Next.js プロジェクト初期化**
+`image_generation_tool/` 配下に独立 Next.js アプリを作成:
+- package.json（親と別）
+- Prisma + SQLite
+- RunPod Serverless 呼び出しモジュール（既に動作確認済のエンドポイントへ）
+- 最小UI（プロンプト入力 → 画像生成 → 表示）で疎通確認
+
+**Step 3: DB スキーマ定義**
+DESIGN.md のデータモデルを Prisma に落とす:
+- Character / BodyPart / ArtStyle / Location / Generation など
+
+**Step 4: 6W1H UI の骨格**
+
+**テスト済みの Serverless リクエスト形式**（Phase 1 実装のリファレンス）:
+```
+POST https://api.runpod.ai/v2/onlq54amynaf6v/run
+Authorization: Bearer $RUNPOD_API_KEY
+Content-Type: application/json
+
+{ "input": { "workflow": {...ComfyUI workflow JSON...} } }
 ```
 
-期待結果: `waiIllustriousSDXL_v160.safetensors`(約6.9GB) が `/workspace/models/checkpoints/` に表示される
-
-**Step 2の結果がテキストで返ってきたら → Step 3**
-
-**Step 3: Pod を即 Terminate（コスト防止）**
-
-**Step 4: Serverless Endpoint で再テスト**
-RunPod Serverless → Endpoint `image-gen-comfyui` → Requests タブで以下の JSON 投入:
-
-```json
-{
-  "input": {
-    "workflow": {
-      "3": {
-        "class_type": "KSampler",
-        "inputs": {
-          "seed": 12345, "steps": 28, "cfg": 5.0,
-          "sampler_name": "euler_ancestral", "scheduler": "normal",
-          "denoise": 1.0,
-          "model": ["4", 0], "positive": ["6", 0],
-          "negative": ["7", 0], "latent_image": ["5", 0]
-        }
-      },
-      "4": {
-        "class_type": "CheckpointLoaderSimple",
-        "inputs": {"ckpt_name": "waiIllustriousSDXL_v160.safetensors"}
-      },
-      "5": {
-        "class_type": "EmptyLatentImage",
-        "inputs": {"width": 832, "height": 1216, "batch_size": 1}
-      },
-      "6": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {
-          "text": "masterpiece, best quality, 1girl, school uniform, smile, cherry blossoms",
-          "clip": ["4", 1]
-        }
-      },
-      "7": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {
-          "text": "lowres, bad quality, worst quality, bad anatomy",
-          "clip": ["4", 1]
-        }
-      },
-      "8": {
-        "class_type": "VAEDecode",
-        "inputs": {"samples": ["3", 0], "vae": ["4", 2]}
-      },
-      "9": {
-        "class_type": "SaveImage",
-        "inputs": {"filename_prefix": "api_test", "images": ["8", 0]}
-      }
-    }
-  }
-}
-```
-
-**Step 5: 成功したら次フェーズ**
-- 追加モデル DL（Pony V6, ControlNet, VAE, Upscaler, IP-Adapter, RMBG）
-- `image_generation_tool/` の Next.js 初期化（Phase 1 実装開始）
+レスポンスは `{ "id": "...", "status": "IN_QUEUE" }` → ポーリング `/status/{id}` → `{ "status": "COMPLETED", "output": { "images": [{"data": "base64..."}] } }`
 
 ---
 
 ## 未解決/要確認事項
 
-- [ ] 漏洩した API Key の無効化＆再作成（セキュリティ）
-- [ ] Civicomfy の Global Download Root を `/workspace` に変更（次回DL用、Pod から）
-- [ ] Serverless 用の `extra_model_paths.yaml` 同梱有無（worker-comfyui の仕様次第）
+- [ ] **API Key 再発行**（RunPod と Civitai 両方がチャット履歴に漏洩、Phase 1 完成後に一括ローテーション）
 - [ ] Phase 1 タスク分解の詳細化
 - [ ] Next.js プロジェクト構造（app/ の階層設計）
 - [ ] 画像生成ツール用の package.json を my-project ルートと別にするか、monorepo 的に統合するか
+- [ ] 追加モデル DL（IP-Adapter, RMBG, Upscaler）のタイミング（Phase 1 動作後でOK）
 
 ---
 
