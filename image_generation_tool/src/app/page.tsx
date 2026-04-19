@@ -57,6 +57,7 @@ interface ArtStyleItem {
   styleTags: string | null;
   triggerWords: string | null;
   loraUrl: string | null;
+  loraScale: number;
 }
 
 interface PresetsResponse {
@@ -329,6 +330,12 @@ export default function HomePage() {
       setElapsed(Math.floor((Date.now() - start) / 1000));
     }, 500);
 
+    // 選択中の絵柄から Lora を集める（loraUrl がある絵柄だけ）
+    const loras = sel.artStyleIds
+      .map((id) => byId?.artStyle.get(id))
+      .filter((s): s is ArtStyleItem => !!s && !!s.loraUrl)
+      .map((s) => ({ name: s.loraUrl as string, strength: s.loraScale ?? 0.8 }));
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -341,6 +348,7 @@ export default function HomePage() {
           steps: quality.steps,
           cfg: quality.cfg,
           batchSize: sel.batchSize ?? 1,
+          loras,
         }),
       });
 
@@ -462,14 +470,21 @@ export default function HomePage() {
       <SelectorCard
         icon="🎨"
         title="絵柄"
-        summary={sel.artStyleIds.map((id) => byId?.artStyle.get(id)?.name).join(" × ")}
-        help="複数選択可。Civitai 取込/自作 Lora を管理画面（未実装）から追加予定。"
+        summary={sel.artStyleIds
+          .map((id) => {
+            const s = byId?.artStyle.get(id);
+            if (!s) return null;
+            return s.loraUrl ? `${s.name} (Lora)` : s.name;
+          })
+          .filter(Boolean)
+          .join(" × ")}
+        help="複数選択可。Lora 付き絵柄は workflow に LoraLoader として注入されます（要 RunPod 同期）。"
       >
         <PresetChipGroup
           items={styleItems}
           selectedIds={sel.artStyleIds}
           onToggle={(id) => toggleMulti("artStyleIds", id)}
-          emptyHint="絵柄未登録（後で Civitai 取込 UI から追加）"
+          emptyHint="絵柄未登録（🎨 絵柄管理から追加）"
         />
       </SelectorCard>
 

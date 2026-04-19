@@ -16,6 +16,11 @@ import { buildBasicT2IWorkflow } from "@/lib/comfyui-workflow";
 export const runtime = "nodejs";
 export const maxDuration = 900;
 
+interface LoraInput {
+  name?: string;
+  strength?: number;
+}
+
 interface GenerateRequestBody {
   prompt: string;
   negativePrompt?: string;
@@ -25,6 +30,7 @@ interface GenerateRequestBody {
   cfg?: number;
   seed?: number | string;
   batchSize?: number;
+  loras?: LoraInput[];
 }
 
 const STORAGE_DIR = path.join(process.cwd(), "storage", "images");
@@ -51,6 +57,16 @@ export async function POST(req: Request) {
   const steps = body.steps ?? 28;
   const cfg = body.cfg ?? 5.0;
   const batchSize = Math.max(1, Math.min(MAX_BATCH_SIZE, Number(body.batchSize) || 1));
+
+  // Lora 配列の正規化（空名は除外、強度は 0.0..2.0 にクランプ）
+  const loras = Array.isArray(body.loras)
+    ? body.loras
+        .map((l) => ({
+          name: typeof l.name === "string" ? l.name.trim() : "",
+          strength: Math.max(0, Math.min(2, Number(l.strength ?? 0.8))),
+        }))
+        .filter((l) => l.name.length > 0)
+    : [];
 
   // バッチ枚数分あらかじめ Generation レコードを作っておく
   // seed は先頭から +1 ずつ（ComfyUI KSampler のバッチ挙動に合わせる）
@@ -84,6 +100,7 @@ export async function POST(req: Request) {
       cfg,
       seed,
       batchSize,
+      loras,
     });
 
     await Promise.all(
