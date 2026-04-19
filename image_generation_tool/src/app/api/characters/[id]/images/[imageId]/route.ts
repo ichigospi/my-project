@@ -42,6 +42,45 @@ export async function GET(
   }
 }
 
+interface PatchBody {
+  caption?: string | null;
+  captionSource?: string | null;
+  purpose?: string;
+  memo?: string | null;
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string; imageId: string }> },
+) {
+  const { id, imageId } = await params;
+
+  const image = await prisma.referenceImage.findFirst({
+    where: { id: imageId, characterId: id },
+  });
+  if (!image) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  let body: PatchBody;
+  try {
+    body = (await req.json()) as PatchBody;
+  } catch {
+    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+  }
+
+  const data: Record<string, unknown> = {};
+  if (body.caption !== undefined) data.caption = body.caption?.trim() || null;
+  if (body.captionSource !== undefined) data.captionSource = body.captionSource || null;
+  if (body.purpose !== undefined) data.purpose = body.purpose;
+  if (body.memo !== undefined) data.memo = body.memo?.trim() || null;
+
+  const updated = await prisma.referenceImage.update({
+    where: { id: imageId },
+    data,
+  });
+
+  return NextResponse.json({ image: updated });
+}
+
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string; imageId: string }> },

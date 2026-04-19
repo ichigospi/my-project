@@ -69,11 +69,15 @@ model Character {
 model ReferenceImage {
   id          String    @id @default(cuid())
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   characterId String
   character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
   path        String    // storage/characters/{id}/xxx.png
   purpose     String    @default("general") // "general" / "training" / "face" / "boost_source"
   memo        String?
+  // Lora 学習用のキャプション（カンマ区切りの Danbooru タグ想定）
+  caption       String?
+  captionSource String? // "manual" / "auto_wd14" / "auto_claude" / null
 }
 
 // ─────────────────────────────────────────────────────────────

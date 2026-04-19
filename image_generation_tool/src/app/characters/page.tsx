@@ -17,6 +17,8 @@ interface ReferenceImageRecord {
   purpose: string;
   memo: string | null;
   createdAt: string;
+  caption: string | null;
+  captionSource: string | null;
 }
 
 interface CharacterRecord {
@@ -394,7 +396,7 @@ export default function CharactersPage() {
           {/* 参照画像アップロード（編集モード限定・新規作成時は先にキャラ登録が必要） */}
           {mode !== "create" && editing ? (
             <ReferenceImageSection
-              characterId={editing.id}
+              character={editing}
               images={editing.referenceImages ?? []}
               onChange={async () => {
                 const listRes = await fetch("/api/characters");
@@ -490,19 +492,23 @@ export default function CharactersPage() {
 }
 
 function ReferenceImageSection({
-  characterId,
+  character,
   images,
   onChange,
 }: {
-  characterId: string;
+  character: CharacterRecord;
   images: ReferenceImageRecord[];
   onChange: () => Promise<void> | void;
 }) {
+  const characterId = character.id;
   const [uploading, setUploading] = useState(false);
   const [purpose, setPurpose] = useState<"general" | "training" | "face" | "boost_source">(
-    "general",
+    "training",
   );
   const [error, setError] = useState<string | null>(null);
+  const [editingImage, setEditingImage] = useState<ReferenceImageRecord | null>(null);
+
+  const captionedCount = images.filter((i) => !!i.caption?.trim()).length;
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -553,12 +559,19 @@ function ReferenceImageSection({
 
   return (
     <section className="mt-5 border-t border-gray-800 pt-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">📷 参照画像 ({images.length})</h3>
-        <p className="text-[10px] text-gray-500">
-          Lora 学習・IP-Adapter・差分ブーストで使用（今は保存のみ）
-        </p>
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-gray-900 px-2 py-0.5 text-[10px] text-gray-400">
+            Lora 学習準備: {captionedCount}/{images.length} キャプション済
+          </span>
+        </div>
       </div>
+
+      <p className="mb-3 text-[10px] text-gray-500">
+        画像をクリックしてキャプションを編集できます。Lora 学習時は
+        「髪・服装・表情」をタグ化（可変）、「顔の特徴」は書かない（固定）が鉄則。
+      </p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <label className="text-[11px] text-gray-400">用途:</label>
@@ -615,17 +628,36 @@ function ReferenceImageSection({
               key={img.id}
               className="group relative overflow-hidden rounded-md border border-gray-800 bg-gray-900"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/api/characters/${characterId}/images/${img.id}`}
-                alt=""
-                className="aspect-square w-full object-cover"
-              />
-              <div className="p-1.5">
-                <p className="truncate text-[10px] text-gray-300">
-                  {purposeLabels[img.purpose] ?? img.purpose}
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setEditingImage(img)}
+                className="block w-full text-left"
+                aria-label="画像を編集"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/characters/${characterId}/images/${img.id}`}
+                  alt=""
+                  className="aspect-square w-full object-cover"
+                />
+                <div className="flex items-center justify-between gap-1 p-1.5">
+                  <span className="truncate text-[10px] text-gray-300">
+                    {purposeLabels[img.purpose] ?? img.purpose}
+                  </span>
+                  {img.caption ? (
+                    <span
+                      className="shrink-0 rounded bg-emerald-900/40 px-1 text-[9px] text-emerald-200"
+                      title={img.caption}
+                    >
+                      🏷
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded bg-gray-800 px-1 text-[9px] text-gray-500">
+                      —
+                    </span>
+                  )}
+                </div>
+              </button>
               <button
                 type="button"
                 onClick={() => handleDelete(img)}
@@ -637,7 +669,289 @@ function ReferenceImageSection({
           ))}
         </ul>
       )}
+
+      {editingImage ? (
+        <CaptionEditorModal
+          character={character}
+          image={editingImage}
+          onClose={() => setEditingImage(null)}
+          onSaved={async () => {
+            setEditingImage(null);
+            await onChange();
+          }}
+        />
+      ) : null}
     </section>
+  );
+}
+
+// 「これは残す（可変）」「これは消す（固定 = 顔特徴）」のガイド
+const KEEP_HINT_TAGS = [
+  { group: "髪", tags: ["long hair", "short hair", "ponytail", "twintails", "bob cut", "brown hair", "black hair", "blonde hair", "red hair", "silver hair"] },
+  { group: "服", tags: ["school uniform", "casual clothes", "dress", "swimsuit", "bikini", "underwear", "naked", "topless", "suit"] },
+  { group: "表情", tags: ["smile", "blush", "open mouth", "closed eyes", "serious", "tongue out"] },
+  { group: "ポーズ / 背景", tags: ["standing", "sitting", "lying", "from side", "from behind", "outdoors", "indoors", "bedroom", "classroom"] },
+];
+const REMOVE_HINT_TAGS = [
+  "pretty", "cute", "beautiful", "detailed face", "face focus",
+  "good anatomy", "masterpiece", "best quality",
+];
+
+function CaptionEditorModal({
+  character,
+  image,
+  onClose,
+  onSaved,
+}: {
+  character: CharacterRecord;
+  image: ReferenceImageRecord;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [caption, setCaption] = useState(image.caption ?? "");
+  const [source, setSource] = useState<string | null>(image.captionSource);
+  const [saving, setSaving] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoError, setAutoError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function insertTemplate() {
+    const parts: string[] = [];
+    if (character.triggerWord) parts.push(character.triggerWord);
+    parts.push(character.gender === "male" ? "1boy" : character.gender === "female" ? "1girl" : "1person");
+    // プレースホルダ風に書く（ユーザーが埋める）
+    parts.push("[hair color] [hair style]");
+    parts.push("[outfit]");
+    parts.push("[expression]");
+    parts.push("[pose / background]");
+    setCaption((prev) => {
+      const base = prev.trim();
+      const template = parts.join(", ");
+      return base ? `${template}, ${base}` : template;
+    });
+    setSource("manual");
+  }
+
+  function appendTag(tag: string) {
+    setCaption((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) return tag;
+      if (trimmed.split(",").map((t) => t.trim()).includes(tag)) return prev;
+      return `${trimmed}, ${tag}`;
+    });
+    setSource("manual");
+  }
+
+  async function handleAutoCaption() {
+    setAutoError(null);
+    setAutoLoading(true);
+    try {
+      const res = await fetch(
+        `/api/characters/${character.id}/images/${image.id}/auto-caption`,
+        { method: "POST" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        caption?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      if (data.caption) {
+        setCaption(data.caption);
+        setSource("auto_wd14");
+      }
+    } catch (e) {
+      setAutoError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAutoLoading(false);
+    }
+  }
+
+  async function handleSave() {
+    setError(null);
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/characters/${character.id}/images/${image.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            caption: caption.trim() || null,
+            captionSource: caption.trim() ? source ?? "manual" : null,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative mt-6 w-full max-w-5xl rounded-lg border border-gray-800 bg-gray-950 p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 text-xs text-gray-400 hover:text-gray-200"
+        >
+          閉じる ✕
+        </button>
+
+        <h3 className="mb-3 text-sm font-semibold">
+          📝 キャプション編集 —{" "}
+          <span className="text-gray-400">{character.name}</span>
+        </h3>
+
+        <div className="grid gap-4 md:grid-cols-[1fr_1fr]">
+          {/* 左: 画像 */}
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/characters/${character.id}/images/${image.id}`}
+              alt=""
+              className="max-h-[60vh] w-full rounded-md border border-gray-800 object-contain"
+            />
+          </div>
+
+          {/* 右: 編集 */}
+          <div className="flex flex-col gap-3">
+            <div className="rounded-md border border-amber-900/40 bg-amber-950/20 p-2 text-[10px] text-amber-200">
+              💡 <strong>タグ化の鉄則</strong>: 可変にしたい要素（髪・服・表情・背景）は書く。
+              固定したい顔の特徴は <strong>書かない</strong>。
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={insertTemplate}
+                className="rounded-md bg-indigo-700 px-2.5 py-1 text-[11px] text-white hover:bg-indigo-600"
+              >
+                🪄 テンプレを挿入
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAutoCaption()}
+                disabled={autoLoading}
+                className="rounded-md bg-pink-700 px-2.5 py-1 text-[11px] text-white hover:bg-pink-600 disabled:bg-gray-700"
+              >
+                {autoLoading ? "解析中…" : "🤖 AI キャプション"}
+              </button>
+              <span className="text-[10px] text-gray-500">
+                (AI は Phase 2 で実装。今はテンプレ + 手動編集)
+              </span>
+            </div>
+
+            {autoError ? (
+              <div className="rounded-md border border-red-700 bg-red-950 p-2 text-[11px] text-red-200">
+                {autoError}
+              </div>
+            ) : null}
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-gray-400">
+                キャプション（英語タグ, カンマ区切り）
+              </span>
+              <textarea
+                value={caption}
+                onChange={(e) => {
+                  setCaption(e.target.value);
+                  setSource("manual");
+                }}
+                rows={6}
+                className="input"
+                placeholder="例: char_hanako_v1, 1girl, brown hair, ponytail, school uniform, blazer, smile, classroom"
+              />
+            </label>
+
+            <details className="rounded-md border border-gray-800 bg-gray-900/50 p-2 text-[11px]">
+              <summary className="cursor-pointer text-gray-400">
+                ▶ タグ候補（クリックで追加）
+              </summary>
+              <div className="mt-2 flex flex-col gap-2">
+                {KEEP_HINT_TAGS.map((g) => (
+                  <div key={g.group}>
+                    <p className="mb-1 text-[10px] text-emerald-300">
+                      ✅ 可変 — {g.group}
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {g.tags.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => appendTag(t)}
+                          className="rounded-full bg-emerald-900/30 px-2 py-0.5 text-[10px] text-emerald-200 hover:bg-emerald-900/60"
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div>
+                  <p className="mb-1 text-[10px] text-red-300">
+                    ❌ 使わない推奨（顔を固定したいのでタグ化しない）
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {REMOVE_HINT_TAGS.map((t) => (
+                      <span
+                        key={t}
+                        className="rounded-full bg-red-900/30 px-2 py-0.5 text-[10px] text-red-200 line-through"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            {error ? (
+              <div className="rounded-md border border-red-700 bg-red-950 p-2 text-[11px] text-red-200">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={saving}
+                className="rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:bg-gray-700"
+              >
+                {saving ? "保存中…" : "保存"}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200"
+              >
+                キャンセル
+              </button>
+              {source ? (
+                <span className="ml-auto text-[10px] text-gray-500">
+                  source: {source === "manual" ? "手動" : source === "auto_wd14" ? "AI (WD14)" : source}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
