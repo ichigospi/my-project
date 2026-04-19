@@ -9,7 +9,8 @@
 - 差分出力・背景透過・モザイク除去・3D ポーズ指定
 - NSFW 対応(Illustrious / Pony)
 
-詳細仕様は [DESIGN.md](./DESIGN.md) を参照。
+- 詳細仕様: [DESIGN.md](./DESIGN.md)
+- **セッション引き継ぎ用**: [HANDOVER.md](./HANDOVER.md) ← 中断時はこれを新セッションに貼る
 
 ## ステータス
 
