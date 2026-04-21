@@ -16,6 +16,10 @@ import {
   DEFAULT_ASPECT_RATIO_KEY,
   QUALITY_PRESETS,
   DEFAULT_QUALITY_KEY,
+  CFG_DEFAULT,
+  CFG_MAX,
+  CFG_MIN,
+  CFG_PRESETS,
   BATCH_SIZE_OPTIONS,
   DEFAULT_BATCH_SIZE,
 } from "@/lib/presets";
@@ -102,6 +106,8 @@ interface SelectionState {
   artStyleIds: string[];
   aspectRatioKey: string;
   qualityKey: string;
+  /** プロンプト忠実度 (Classifier-Free Guidance)。1.0〜12.0 を想定、既定 5.0。 */
+  cfg: number;
   batchSize: number;
   // 顔参照画像があるキャラが選ばれているとき、IP-Adapter を有効化するか
   useFaceRef: boolean;
@@ -125,6 +131,7 @@ const initialSelection: SelectionState = {
   artStyleIds: [],
   aspectRatioKey: DEFAULT_ASPECT_RATIO_KEY,
   qualityKey: DEFAULT_QUALITY_KEY,
+  cfg: CFG_DEFAULT,
   batchSize: DEFAULT_BATCH_SIZE,
   useFaceRef: true,
   faceRefStrength: 0.6,
@@ -327,6 +334,11 @@ export default function HomePage() {
     ASPECT_RATIO_PRESETS.find((a) => a.key === sel.aspectRatioKey) ?? ASPECT_RATIO_PRESETS[0];
   const quality =
     QUALITY_PRESETS.find((q) => q.key === sel.qualityKey) ?? QUALITY_PRESETS[1];
+  // SDXL は 8px 単位。解像度プリセットで aspect ratio の基準サイズを拡縮して丸める。
+  const roundTo8 = (n: number) => Math.max(8, Math.round(n / 8) * 8);
+  const outWidth = roundTo8(aspect.width * quality.scale);
+  const outHeight = roundTo8(aspect.height * quality.scale);
+  const cfgValue = Number.isFinite(sel.cfg) ? sel.cfg : CFG_DEFAULT;
 
   async function handleGenerate() {
     if (!built) return;
@@ -367,10 +379,10 @@ export default function HomePage() {
         body: JSON.stringify({
           prompt: built.prompt,
           negativePrompt: built.negativePrompt,
-          width: aspect.width,
-          height: aspect.height,
+          width: outWidth,
+          height: outHeight,
           steps: quality.steps,
-          cfg: quality.cfg,
+          cfg: cfgValue,
           batchSize: sel.batchSize ?? 1,
           loras,
           characterIds: sel.characterIds,
@@ -817,9 +829,9 @@ export default function HomePage() {
 
         <div>
           <p className="mb-1.5 text-[11px] uppercase tracking-wide text-gray-500">
-            ⚙ 画質{" "}
+            🖼 解像度{" "}
             <span className="ml-1 text-gray-600">
-              steps {quality.steps} / cfg {quality.cfg}
+              {outWidth} × {outHeight} / steps {quality.steps}
             </span>
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -842,6 +854,51 @@ export default function HomePage() {
             })}
           </div>
           <p className="mt-1 text-[10px] text-gray-600">{quality.description}</p>
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-[11px] uppercase tracking-wide text-gray-500">
+            🎯 CFG（プロンプト忠実度）{" "}
+            <span className="ml-1 text-gray-600">{cfgValue.toFixed(1)}</span>
+          </p>
+          <div className="mb-1.5 flex flex-wrap gap-1.5">
+            {CFG_PRESETS.map((p) => {
+              const active = Math.abs(cfgValue - p.value) < 0.05;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => setSel((prev) => ({ ...prev, cfg: p.value }))}
+                  className={clsx(
+                    "rounded-full px-3 py-1 text-xs transition",
+                    active ? "bg-indigo-500 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700",
+                  )}
+                  title={p.description}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={CFG_MIN}
+              max={CFG_MAX}
+              step={0.1}
+              value={cfgValue}
+              onChange={(e) =>
+                setSel((p) => ({ ...p, cfg: Number(e.target.value) }))
+              }
+              className="flex-1 accent-indigo-500"
+            />
+            <span className="w-12 text-right text-[10px] text-gray-300">
+              {cfgValue.toFixed(1)}
+            </span>
+          </div>
+          <p className="mt-1 text-[10px] text-gray-600">
+            低いほど崩れにくく自由。高いほどプロンプト厳守（上げすぎは焼き付き注意）。
+          </p>
         </div>
 
         <div>

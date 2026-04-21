@@ -539,22 +539,44 @@ export const DEFAULT_ASPECT_RATIO_KEY = "portrait_2_3";
 // 画質プリセット（steps / cfg の組合せ）
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// 解像度プリセット（アスペクト比で決まった幅×高さに倍率をかける）
+//   - scale は SDXL のバケット外に大きく逸脱しない範囲で設定
+//   - cfg は独立スライダーで決めるのでここでは持たない
+// ─────────────────────────────────────────────────────────────
+
 export interface QualityPreset {
   key: string;
   label: string;
   steps: number;
-  cfg: number;
+  /** アスペクト比プリセットの幅・高さに掛ける倍率（1.0 = SDXL ネイティブ）。 */
+  scale: number;
   description: string;
 }
 
 export const QUALITY_PRESETS: QualityPreset[] = [
-  { key: "fast", label: "速い", steps: 20, cfg: 5.0, description: "試し生成・短時間（~15s）" },
-  { key: "standard", label: "標準", steps: 28, cfg: 5.0, description: "日常的な生成・バランス（~25s）" },
-  { key: "high", label: "高品質", steps: 40, cfg: 5.5, description: "当たりカット用・遅め（~35s）" },
-  { key: "ultra", label: "最高品質", steps: 60, cfg: 6.0, description: "納品・決めカット用（~55s）" },
+  { key: "fast", label: "低（下書き）", steps: 20, scale: 0.75, description: "試し生成・高速（~15s / サイズ 75%）" },
+  { key: "standard", label: "標準", steps: 28, scale: 1.0, description: "SDXL ネイティブサイズ（~25s / 100%）" },
+  { key: "high", label: "高", steps: 40, scale: 1.15, description: "当たりカット・やや遅い（~45s / 115%）" },
+  { key: "ultra", label: "最高", steps: 60, scale: 1.3, description: "決めカット・重い（~80s / 130%・構図崩れ注意）" },
 ];
 
 export const DEFAULT_QUALITY_KEY = "standard";
+
+// ─────────────────────────────────────────────────────────────
+// CFG（プロンプト忠実度）プリセット＋スライダー値
+//   - 低め = 崩れにくい・自由度高い
+//   - 高め = プロンプト厳守・焼き付きリスク
+// ─────────────────────────────────────────────────────────────
+
+export const CFG_MIN = 1;
+export const CFG_MAX = 12;
+export const CFG_DEFAULT = 5;
+export const CFG_PRESETS: Array<{ key: string; label: string; value: number; description: string }> = [
+  { key: "low", label: "低 (3.5)", value: 3.5, description: "崩れにくい・自由度高い" },
+  { key: "mid", label: "標準 (5)", value: 5, description: "推奨バランス" },
+  { key: "high", label: "高 (7)", value: 7, description: "プロンプト厳守・ディテール強調" },
+];
 
 // ─────────────────────────────────────────────────────────────
 // バッチ（同時生成枚数）プリセット
