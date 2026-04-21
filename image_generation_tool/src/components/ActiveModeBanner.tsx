@@ -24,6 +24,7 @@ const STORAGE_KEYS = {
 const USD_PER_SECOND = 0.00031;
 const NOTIFY_INTERVAL_MS = 30 * 60 * 1000; // 30 分ごとに再通知
 const IDLE_WARN_MS = 20 * 60 * 1000; // 最後の生成から 20 分でモーダル警告
+const IDLE_SNOOZE_MS = 10 * 60 * 1000; // 「まだ使う」で閉じたあと 10 分は再表示しない
 const RUNPOD_CONSOLE_URL = "https://console.runpod.io/serverless/";
 
 function formatElapsed(ms: number): string {
@@ -86,6 +87,8 @@ export default function ActiveModeBanner() {
   const [idleModalOpen, setIdleModalOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const lastNotifyRef = useRef<number>(0);
+  // 「まだ使う」で閉じた時刻。IDLE_SNOOZE_MS の間は再表示しない。
+  const idleSnoozedUntilRef = useRef<number>(0);
 
   // 生成イベント → 最終活動時刻を更新
   useEffect(() => {
@@ -116,7 +119,12 @@ export default function ActiveModeBanner() {
         }
       }
 
-      if (lastActivity && t - lastActivity >= IDLE_WARN_MS) {
+      // スヌーズ期間中はモーダル出さない
+      if (
+        lastActivity &&
+        t - lastActivity >= IDLE_WARN_MS &&
+        t >= idleSnoozedUntilRef.current
+      ) {
         setIdleModalOpen(true);
       }
     }, 1000);
@@ -256,7 +264,10 @@ export default function ActiveModeBanner() {
       {idleModalOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setIdleModalOpen(false)}
+          onClick={() => {
+            idleSnoozedUntilRef.current = Date.now() + IDLE_SNOOZE_MS;
+            setIdleModalOpen(false);
+          }}
         >
           <div
             className="max-w-md rounded-lg border-2 border-red-600 bg-red-950 p-5 text-sm text-red-100 shadow-2xl"
@@ -278,17 +289,23 @@ export default function ActiveModeBanner() {
                 href={RUNPOD_CONSOLE_URL}
                 target="_blank"
                 rel="noreferrer"
-                onClick={() => setIdleModalOpen(false)}
+                onClick={() => {
+                  idleSnoozedUntilRef.current = Date.now() + IDLE_SNOOZE_MS;
+                  setIdleModalOpen(false);
+                }}
                 className="rounded bg-red-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-red-500"
               >
                 🛑 RunPod を開いて OFF にする
               </a>
               <button
                 type="button"
-                onClick={() => setIdleModalOpen(false)}
+                onClick={() => {
+                  idleSnoozedUntilRef.current = Date.now() + IDLE_SNOOZE_MS;
+                  setIdleModalOpen(false);
+                }}
                 className="rounded border border-red-400/40 bg-red-900/40 px-3 py-1.5 text-[12px] text-red-100 hover:bg-red-900/70"
               >
-                まだ使う（警告を閉じる）
+                まだ使う（10 分スヌーズ）
               </button>
             </div>
           </div>
