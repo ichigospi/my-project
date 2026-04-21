@@ -1,7 +1,7 @@
 # 引き継ぎ書（新セッション用・コピペ対応）
 
 > このファイルは「セッションが途中で止まった時に、新しいセッションへ丸ごと渡すための要約」です。
-> 進捗があるたびに更新されます。**更新日時: 2026-04-21 15:30**
+> 進捗があるたびに更新されます。**更新日時: 2026-04-21 21:15**
 
 ---
 
@@ -279,6 +279,34 @@
 ---
 
 ## 現在の作業（⚡ここから再開）
+
+### ControlNet Union 動作未確認 (2026-04-21 夜)
+
+**実装完了** (コミット `23fd89f` 等):
+- Dockerfile に `ComfyUI_ControlNet_Aux` 追加（DWPose / DepthAnything / Canny 等 preprocessor）
+- `comfyui-workflow.ts` に ControlNet チェーン (LoadImage → Preprocessor → ControlNetLoader → SetUnionControlNetType → ControlNetApplyAdvanced)
+- `/api/generate` が poseRefImage (base64) + controlnetType/Strength/EndAt を受ける
+- UI に「🧘 ポーズ参照 (ControlNet Union)」セクション（5 タイプ切替、各推奨値自動設定）
+
+**モデル準備完了**:
+- `/runpod-volume/models/controlnet/xinsir-union-sdxl.safetensors` (2.5GB, Xinsir Union promax)
+- Docker image `zonosuke/image-gen-worker:ipadapter` は Build #8 で symlink + ControlNet_Aux 入り
+
+**未検証（次回最優先）**:
+- ❌ EU-RO-1 GPU 混雑で 3〜4 回 throttled → 20 分タイムアウト繰り返しで実動作未確認
+- ❌ 初回は Scribble で試したがワーカーがハング（preprocessor モデル DL で止まった可能性）
+
+**次回再開時の推奨手順**:
+1. RunPod Serverless → `image-gen-ipadapter` で Active Workers を 0 → 1 （混雑してない時間帯: JST 3〜9 時 推奨）
+2. 古いワーカーがあれば Purge
+3. 新ワーカーが idle 状態になるまで待つ
+4. **初回テストは絶対 Canny から** (Canny preprocessor は軽量で初回 DL なし)
+5. Canny で動作確認できたら Depth → OpenPose の順で検証
+6. 全部終わったら Active Workers=0 に戻す (切り忘れ防止バナーあり)
+
+**トラブルシュート参考**:
+- throttled = EU-RO-1 の GPU 空きなし。時間帯変えるか GPU 選択肢に 80GB 追加（済）
+- 「IPAdapter model not found」系 → Dockerfile の symlink スクリプトが効いてるか確認 (`/comfyui/models/ipadapter` が symlink になってるか)
 
 ### IP-Adapter Face 対応 (2026-04-21)
 
