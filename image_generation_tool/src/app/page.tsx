@@ -105,8 +105,11 @@ interface SelectionState {
   batchSize: number;
   // 顔参照画像があるキャラが選ばれているとき、IP-Adapter を有効化するか
   useFaceRef: boolean;
-  // IP-Adapter の強度（0.0〜1.5）
+  // IP-Adapter の強度（0.0〜1.5、0.6 推奨）
   faceRefStrength: number;
+  // IP-Adapter を効かせる denoise の終端 (0..1、0.6 推奨)。
+  // 早く切るほど絵柄 Lora と構図プロンプトが効く余地が残る。
+  faceRefEndAt: number;
 }
 
 const initialSelection: SelectionState = {
@@ -124,7 +127,8 @@ const initialSelection: SelectionState = {
   qualityKey: DEFAULT_QUALITY_KEY,
   batchSize: DEFAULT_BATCH_SIZE,
   useFaceRef: true,
-  faceRefStrength: 0.75,
+  faceRefStrength: 0.6,
+  faceRefEndAt: 0.6,
 };
 
 export default function HomePage() {
@@ -372,6 +376,7 @@ export default function HomePage() {
           characterIds: sel.characterIds,
           useFaceRef: effectiveUseFaceRef,
           faceRefStrength: sel.faceRefStrength,
+          faceRefEndAt: sel.faceRefEndAt,
         }),
       });
 
@@ -903,33 +908,89 @@ export default function HomePage() {
               </span>
             </div>
             {sel.useFaceRef ? (
-              <div className="flex items-center gap-2">
-                <label className="text-[10px] text-pink-300">強度</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={1.5}
-                  step={0.05}
-                  value={sel.faceRefStrength}
-                  onChange={(e) =>
-                    setSel((p) => ({
-                      ...p,
-                      faceRefStrength: Number(e.target.value),
-                    }))
-                  }
-                  className="flex-1 accent-pink-500"
-                />
-                <span className="w-12 text-right text-[10px] text-pink-200">
-                  {sel.faceRefStrength.toFixed(2)}
-                </span>
-              </div>
+              <>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <label className="w-20 shrink-0 text-[10px] text-pink-300">強度</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1.5}
+                    step={0.05}
+                    value={sel.faceRefStrength}
+                    onChange={(e) =>
+                      setSel((p) => ({
+                        ...p,
+                        faceRefStrength: Number(e.target.value),
+                      }))
+                    }
+                    className="flex-1 accent-pink-500"
+                  />
+                  <span className="w-12 text-right text-[10px] text-pink-200">
+                    {sel.faceRefStrength.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="w-20 shrink-0 text-[10px] text-pink-300">
+                    効く範囲
+                  </label>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={1}
+                    step={0.05}
+                    value={sel.faceRefEndAt}
+                    onChange={(e) =>
+                      setSel((p) => ({
+                        ...p,
+                        faceRefEndAt: Number(e.target.value),
+                      }))
+                    }
+                    className="flex-1 accent-pink-500"
+                  />
+                  <span className="w-12 text-right text-[10px] text-pink-200">
+                    0→{sel.faceRefEndAt.toFixed(2)}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  <span className="text-[10px] text-pink-300/60">プリセット:</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSel((p) => ({ ...p, faceRefStrength: 0.4, faceRefEndAt: 0.5 }))
+                    }
+                    className="rounded bg-pink-950/60 px-1.5 py-0.5 text-[10px] text-pink-200 hover:bg-pink-900/60"
+                  >
+                    弱（絵柄重視）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSel((p) => ({ ...p, faceRefStrength: 0.6, faceRefEndAt: 0.6 }))
+                    }
+                    className="rounded bg-pink-950/60 px-1.5 py-0.5 text-[10px] text-pink-200 hover:bg-pink-900/60"
+                  >
+                    標準
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSel((p) => ({ ...p, faceRefStrength: 0.85, faceRefEndAt: 0.8 }))
+                    }
+                    className="rounded bg-pink-950/60 px-1.5 py-0.5 text-[10px] text-pink-200 hover:bg-pink-900/60"
+                  >
+                    強（顔固定優先）
+                  </button>
+                </div>
+              </>
             ) : (
               <p className="text-[10px] text-gray-500">
                 OFF にすると通常の endpoint（Lora のみ）で生成します。
               </p>
             )}
             <p className="mt-1 text-[10px] text-pink-300/70">
-              強度 0.6〜0.9 が推奨。上げすぎると構図が硬直し、下げすぎると顔がブレます。
+              IP-Adapter Face は顔だけでなく絵柄・構図も引っ張ってきます。
+              <strong className="text-pink-200">絵柄 Lora や行為プロンプトが効かない時は「効く範囲」を短くする</strong>
+              （0.4〜0.6）と改善します。強度は 0.5〜0.8 が実用域。
             </p>
           </section>
         );

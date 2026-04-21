@@ -41,8 +41,10 @@ interface GenerateRequestBody {
   characterIds?: string[];
   /** 明示的に顔参照を OFF にしたいとき false を送る。未指定時は faceRef 画像が見つかれば自動 ON。 */
   useFaceRef?: boolean;
-  /** IP-Adapter の強度。未指定時は 0.75。 */
+  /** IP-Adapter の強度。未指定時は 0.6。 */
   faceRefStrength?: number;
+  /** IP-Adapter を効かせる denoise 終端 (0..1)。未指定時は 0.6。 */
+  faceRefEndAt?: number;
 }
 
 const STORAGE_DIR = path.join(process.cwd(), "storage", "images");
@@ -128,7 +130,11 @@ export async function POST(req: Request) {
   const faceRefStrength =
     typeof body.faceRefStrength === "number"
       ? Math.max(0, Math.min(1.5, body.faceRefStrength))
-      : 0.75;
+      : 0.6;
+  const faceRefEndAt =
+    typeof body.faceRefEndAt === "number"
+      ? Math.max(0, Math.min(1, body.faceRefEndAt))
+      : 0.6;
 
   // バッチ枚数分あらかじめ Generation レコードを作っておく
   // seed は先頭から +1 ずつ（ComfyUI KSampler のバッチ挙動に合わせる）
@@ -165,6 +171,7 @@ export async function POST(req: Request) {
       loras,
       faceRefImageNames: faceRefImages.map((f) => f.name),
       faceRefStrength,
+      faceRefEndAt,
     });
 
     await Promise.all(

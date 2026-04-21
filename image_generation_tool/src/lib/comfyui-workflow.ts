@@ -56,8 +56,8 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
     batchSize = 1,
     loras = [],
     faceRefImageNames = [],
-    faceRefStrength = 0.75,
-    faceRefEndAt = 0.9,
+    faceRefStrength = 0.6,
+    faceRefEndAt = 0.6,
   } = params;
 
   // ファイル名が無い Lora は無視（誤発注防止）
