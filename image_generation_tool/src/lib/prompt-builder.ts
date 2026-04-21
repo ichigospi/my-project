@@ -59,35 +59,118 @@ export interface PromptSelection {
 const QUALITY_TAGS =
   "masterpiece, best quality, amazing quality, very aesthetic, newest, absurdres, ultra detailed, detailed body, detailed anatomy";
 
-// 解剖学の崩れを強めに抑制するネガティブ。
-// 重み付き `(worst quality:1.3)` は Pony/Illustrious 系で効く。
+// 崩壊対策を全面強化したデフォルトネガティブ（Illustrious / WAI-illustrious 想定）。
+// Pony/Illustrious 系は重み付き `(xxx:1.2)` と category 毎の列挙が効く。
+// 分類:
+//   1. 画質全般
+//   2. 人体全体の破綻
+//   3. 手指・四肢・足
+//   4. 顔・目
+//   5. 胸・乳首
+//   6. 性器（NSFW 用途で崩壊しやすい）
+//   7. 重複・分裂
+//   8. 画像のアーティファクト（透かし・テキスト等）
+//   9. 未完成・簡素化（SDXL が手抜きしないように）
 const DEFAULT_NEGATIVE = [
-  "(worst quality:1.3)",
-  "(low quality:1.2)",
-  "lowres",
+  // 画質全般
+  "(worst quality:1.4)",
+  "(low quality:1.3)",
+  "(lowres:1.1)",
+  "normal quality",
   "jpeg artifacts",
-  "sketch",
+  "compression artifacts",
+  "blurry",
+  "out of focus",
+  "depth of field",
+  "chromatic aberration",
+  "noise",
+  "grainy",
+  // 人体全体
   "bad anatomy",
-  "bad proportions",
+  "(bad proportions:1.2)",
+  "wrong proportions",
+  "distorted body",
+  "twisted body",
+  "unnatural body",
+  "bad perspective",
+  "(deformed:1.1)",
+  "(malformed:1.1)",
+  "mutated",
+  "disfigured",
+  "(malformed limbs:1.2)",
+  // 手・指・四肢・足
   "bad hands",
-  "bad feet",
-  "extra fingers",
+  "(fused fingers:1.3)",
+  "(extra fingers:1.3)",
   "missing fingers",
-  "fused fingers",
-  "extra limbs",
+  "too many fingers",
+  "too few fingers",
+  "(mutated hands:1.2)",
+  "mutated fingers",
+  "poorly drawn hands",
+  "bad feet",
+  "deformed feet",
+  "extra toes",
+  "missing toes",
+  "fused toes",
+  "(extra limbs:1.2)",
   "extra arms",
   "extra legs",
   "missing limb",
-  "deformed",
-  "malformed limbs",
-  "mutated hands",
-  "mutated fingers",
-  "disfigured",
+  "fused limbs",
+  "disconnected limbs",
+  // 顔・目
+  "bad face",
   "poorly drawn face",
-  "poorly drawn hands",
-  "asymmetric eyes",
+  "ugly face",
+  "asymmetric face",
+  "(asymmetric eyes:1.1)",
   "cross-eyed",
-  "blurry",
+  "(extra eyes:1.2)",
+  "missing eyes",
+  "misaligned eyes",
+  "bad mouth",
+  "bad teeth",
+  "extra teeth",
+  "fused teeth",
+  // 胸・乳首
+  "extra breasts",
+  "asymmetric breasts",
+  "fused breasts",
+  "deformed breasts",
+  "extra nipples",
+  "missing nipples",
+  // 性器（NSFW 時に崩れやすい）
+  "(deformed genitals:1.2)",
+  "(bad genitals:1.2)",
+  "fused genitals",
+  "multiple genitals",
+  "malformed pussy",
+  "malformed penis",
+  // 重複・分裂
+  "duplicate",
+  "cloned face",
+  "doubled body",
+  "twins",
+  "mirrored",
+  // 画像アーティファクト
+  "watermark",
+  "signature",
+  "username",
+  "artist name",
+  "logo",
+  "text",
+  "error",
+  "cropped",
+  "border",
+  "frame",
+  // 未完成・簡素化
+  "sketch",
+  "unfinished",
+  "lineart only",
+  "monochrome",
+  "greyscale",
+  "simple background",
 ].join(", ");
 
 function push(into: string[], value?: string | null) {
