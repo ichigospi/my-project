@@ -6,65 +6,64 @@ RunPod Serverless 用のカスタム ComfyUI ワーカーイメージ。
 
 Lora と併用して「顔の一貫性」を大幅に上げるのが目的。
 
-## ビルド & push 手順（Mac / Docker Desktop）
+## ビルド方針: GitHub Actions
 
-### 前提
-- Docker Desktop が起動している（メニューバーの 🐳 が Running）
-- Docker Hub アカウント作成済み
-- Docker Hub で Personal Access Token を作成済み
-  - https://hub.docker.com/settings/personal-access-tokens
-  - Permissions: **Read, Write, Delete**
+Mac で Docker Desktop が使えない（macOS バージョン非対応）ため、
+GitHub Actions 上で build + Docker Hub push する。
+ワークフロー定義: `.github/workflows/build-worker.yml`
 
-### 1. Docker Hub にログイン
+### 初回セットアップ
 
-Mac ターミナルで:
+#### 1. Docker Hub で Personal Access Token 作成
 
-```bash
-docker login -u YOUR_DOCKERHUB_USERNAME
-```
+1. https://hub.docker.com/settings/personal-access-tokens にアクセス
+2. **「Generate new access token」**
+3. Description: `github-actions`（任意）
+4. Permissions: **Read, Write, Delete**
+5. 生成されたトークンをコピー（**1 度しか見えない**）
 
-パスワード聞かれたら **Access Token を貼る**（通常のパスワードではなく）。
-`Login Succeeded` と出れば OK。
+#### 2. GitHub リポジトリに Secrets を追加
 
-### 2. イメージ build（Apple Silicon → amd64 で出力）
+https://github.com/ichigospi/my-project/settings/secrets/actions
 
-RunPod は **linux/amd64** を要求するので、Apple Silicon Mac は
-クロスビルドが必要。`buildx` を使う:
+「New repository secret」で 2 つ追加:
 
-```bash
-cd ~/Documents/my-project/image_generation_tool/docker
+| Name | Value |
+|---|---|
+| `DOCKERHUB_USERNAME` | 自分の Docker Hub ユーザー名（例: `ichigospi`） |
+| `DOCKERHUB_TOKEN` | 上で作った Personal Access Token |
 
-# buildx で amd64 向けにビルド + push を一発
-docker buildx build \
-  --platform linux/amd64 \
-  --tag YOUR_DOCKERHUB_USERNAME/image-gen-worker:ipadapter \
-  --push \
-  .
-```
+### ビルドを実行する
 
-所要 10〜20 分（ベース image の pull + 拡張インストール + push）。
-`YOUR_DOCKERHUB_USERNAME` は自分のユーザー名に置換。
+#### 方法 A: 手動トリガー（推奨）
 
-### 3. Serverless Endpoint を作成（RunPod Console）
+1. https://github.com/ichigospi/my-project/actions
+2. 左サイドバーで **「Build ComfyUI IP-Adapter worker」**
+3. 右上の **「Run workflow」** ボタン → ブランチ選択 → Run
+4. 5〜15 分で完了、ログ見守り可能
 
-- https://www.runpod.io/console/serverless
-- Endpoint の Docker Image URL に
-  `docker.io/YOUR_DOCKERHUB_USERNAME/image-gen-worker:ipadapter`
-- Network Volume: **image-gen-models**（必須）
-- GPU: 24GB VRAM 以上
-- Container disk: 15GB（モデルは Network Volume 側なので小さめで OK）
+#### 方法 B: Dockerfile を更新して push
 
-### 4. 動作確認
+Dockerfile を変更してコミット・push すれば自動で build が走る。
 
-Requests タブから test workflow を投げて、IPAdapter ノードで
-エラーが出ないか確認。ログで `IPAdapterUnifiedLoader` が認識
-されていれば成功。
+### 完了するとどうなる
 
-## 既存の Serverless Endpoint を残す設計
+Docker Hub に以下の 2 つのタグで push される:
+- `YOUR_USERNAME/image-gen-worker:ipadapter` （最新を指す）
+- `YOUR_USERNAME/image-gen-worker:ipadapter-<commit-sha>` （固定版）
 
-新 IP-Adapter 対応 endpoint は**別 endpoint として作成**する想定。
-ツール側は「顔参照画像があるとき」だけ新 endpoint に振り分け、
-通常生成は既存 endpoint を使う。
+Serverless endpoint 作成時にこのイメージ URL を指定する。
+
+## Serverless Endpoint の作成
+
+1. https://www.runpod.io/console/serverless
+2. **「+ New Endpoint」**
+3. **Custom Docker Image** タブ（テンプレではない方）
+4. **Container Image**: `docker.io/YOUR_USERNAME/image-gen-worker:ipadapter`
+5. **Network Volume**: `image-gen-models`（必須）
+6. **GPU**: 24GB VRAM 以上（RTX 4090 / RTX 5090 / RTX PRO 4500 等）
+7. **Container disk**: 15GB（モデルは Network Volume 側なので小さめで OK）
+8. **Active workers**: 0 / **Max workers**: 1 / **Flash Boot**: ON
 
 ## モデル配置（Network Volume 側、既に配置済み）
 
@@ -85,3 +84,9 @@ Requests タブから test workflow を投げて、IPAdapter ノードで
 
 Serverless では `/runpod-volume/` にマウントされる点に注意。
 `extra_model_paths.yaml` で自動解決される想定。
+
+## 既存の Serverless Endpoint を残す設計
+
+新 IP-Adapter 対応 endpoint は**別 endpoint として作成**する想定。
+ツール側は「顔参照画像があるとき」だけ新 endpoint に振り分け、
+通常生成は既存 endpoint を使う。

@@ -1,0 +1,44 @@
+name: Build ComfyUI IP-Adapter worker
+
+# Mac で Docker Desktop が使えないため、GitHub Actions 上で
+# linux/amd64 向けイメージをビルドして Docker Hub に push する。
+
+on:
+  # GitHub UI から手動実行可能
+  workflow_dispatch:
+  # Dockerfile か本 workflow を変更した push で自動実行
+  push:
+    paths:
+      - 'image_generation_tool/docker/Dockerfile'
+      - '.github/workflows/build-worker.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: image_generation_tool/docker
+          file: image_generation_tool/docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/image-gen-worker:ipadapter
+            ${{ secrets.DOCKERHUB_USERNAME }}/image-gen-worker:ipadapter-${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/image-gen-worker:ipadapter-cache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/image-gen-worker:ipadapter-cache,mode=max
