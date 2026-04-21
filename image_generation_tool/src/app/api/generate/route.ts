@@ -20,7 +20,8 @@ import { runJobToCompletion, type ComfyUIInputImage, type RunPodEndpointKind } f
 import { buildBasicT2IWorkflow } from "@/lib/comfyui-workflow";
 
 export const runtime = "nodejs";
-export const maxDuration = 900;
+// 高解像度 + IP-Adapter + バッチだと 15 分超えるケースがあるので 20 分に
+export const maxDuration = 1200;
 
 interface LoraInput {
   name?: string;

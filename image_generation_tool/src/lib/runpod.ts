@@ -102,7 +102,9 @@ export async function runJobToCompletion(
   workflow: ComfyUIWorkflow,
   options: SubmitOptions & { pollIntervalMs?: number; timeoutMs?: number } = {},
 ): Promise<RunPodJobResponse> {
-  const { pollIntervalMs = 2000, timeoutMs = 600_000, kind = "default", images } = options;
+  // 高解像度 + 顔参照 + バッチでは cold start 含めて 10〜15 分かかることがあるため、
+  // タイムアウトは 20 分に設定。
+  const { pollIntervalMs = 2000, timeoutMs = 1_200_000, kind = "default", images } = options;
 
   const start = Date.now();
   const submitted = await submitJob(workflow, { kind, images });

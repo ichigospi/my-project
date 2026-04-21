@@ -1064,7 +1064,7 @@ export default function HomePage() {
           {loading ? `生成中… ${elapsed}s` : "🎨 生成する"}
         </button>
         <span className="text-[11px] text-gray-500">
-          Cold Start 含め 30〜60 秒（画質「最高品質」は +20〜30 秒）
+          Warm: 30〜60 秒 / Cold Start 時: +2〜3 分 / 解像度「高」以上は +1〜3 分 / 顔固定 ON は +30〜60 秒
         </span>
       </section>
 
