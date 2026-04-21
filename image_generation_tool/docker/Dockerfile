@@ -34,9 +34,7 @@ RUN pip install --no-cache-dir \
       insightface \
       onnxruntime-gpu
 
-# worker-comfyui 標準の extra_model_paths.yaml には ipadapter / insightface の
-# エントリが無いため、Network Volume 上のモデルを見つけられるように上書きする。
-# （base_path=/runpod-volume/ + 各サブパスで ComfyUI が解決する）
+# worker-comfyui 標準の extra_model_paths.yaml に ipadapter / insightface を追加
 RUN cat > /comfyui/extra_model_paths.yaml <<'YAML'
 runpod-worker-comfy:
   base_path: /runpod-volume/
@@ -54,6 +52,36 @@ runpod-worker-comfy:
   ipadapter: models/ipadapter/
   insightface: models/insightface/
 YAML
+
+# ランタイムで /runpod-volume 配下のモデル群を /comfyui/models/ に symlink。
+# worker-comfyui 側が独自に extra_model_paths.yaml を書き換えるケースや、
+# カスタムノードが folder_paths 経由ではなく /comfyui/models 直叩きする
+# ケースにも対応できる（yaml 単独だと読まれないケースでこけていた）。
+RUN cat > /usr/local/bin/link-extra-models.sh <<'SH'
+#!/bin/bash
+set -e
+mkdir -p /comfyui/models
+for d in ipadapter insightface clip_vision; do
+  src="/runpod-volume/models/$d"
+  dst="/comfyui/models/$d"
+  if [ -d "$src" ]; then
+    # 既存があって symlink 先が違う場合も貼り直す
+    if [ -L "$dst" ] || [ ! -e "$dst" ]; then
+      ln -sfn "$src" "$dst"
+      echo "[link-extra-models] Linked $dst -> $src"
+    else
+      echo "[link-extra-models] $dst already exists (not a symlink), skipping"
+    fi
+  else
+    echo "[link-extra-models] $src not found, skipping"
+  fi
+done
+SH
+RUN chmod +x /usr/local/bin/link-extra-models.sh
+
+# 既存イメージの CMD は /start.sh を呼んでいる前提（worker-comfyui 5.x 標準）。
+# 先に symlink を貼ってから本来の start.sh を exec する。
+CMD ["/bin/bash", "-lc", "/usr/local/bin/link-extra-models.sh && exec /start.sh"]
 
 # 起動時に読み込ませたいノード情報を一度 import して warm-up（失敗しても起動は続ける）
 RUN python -c "import insightface; print('insightface ok', insightface.__version__)" || true
