@@ -916,7 +916,7 @@ export default function HomePage() {
                     min={0}
                     max={1.5}
                     step={0.05}
-                    value={sel.faceRefStrength}
+                    value={sel.faceRefStrength ?? 0.6}
                     onChange={(e) =>
                       setSel((p) => ({
                         ...p,
@@ -926,7 +926,7 @@ export default function HomePage() {
                     className="flex-1 accent-pink-500"
                   />
                   <span className="w-12 text-right text-[10px] text-pink-200">
-                    {sel.faceRefStrength.toFixed(2)}
+                    {(sel.faceRefStrength ?? 0.6).toFixed(2)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -938,7 +938,7 @@ export default function HomePage() {
                     min={0.1}
                     max={1}
                     step={0.05}
-                    value={sel.faceRefEndAt}
+                    value={sel.faceRefEndAt ?? 0.6}
                     onChange={(e) =>
                       setSel((p) => ({
                         ...p,
@@ -948,7 +948,7 @@ export default function HomePage() {
                     className="flex-1 accent-pink-500"
                   />
                   <span className="w-12 text-right text-[10px] text-pink-200">
-                    0→{sel.faceRefEndAt.toFixed(2)}
+                    0→{(sel.faceRefEndAt ?? 0.6).toFixed(2)}
                   </span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1">
