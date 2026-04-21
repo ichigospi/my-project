@@ -15,6 +15,8 @@ export interface LoraSpec {
   strength: number;
 }
 
+export type ControlNetType = "openpose" | "depth" | "canny" | "lineart" | "scribble";
+
 export interface BasicT2IParams {
   prompt: string;
   negativePrompt?: string;
@@ -37,6 +39,16 @@ export interface BasicT2IParams {
   faceRefStrength?: number;
   /** IP-Adapter を効かせる denoise 終端 (0.0〜1.0)。後半も効かせすぎると構図が固まりすぎる。 */
   faceRefEndAt?: number;
+  /** ControlNet ポーズ参照画像ファイル名（worker-comfyui input.images で渡した名前）。 */
+  poseRefImageName?: string;
+  /** ControlNet タイプ（Union モデルで切替）。 */
+  controlnetType?: ControlNetType;
+  /** ControlNet 強度 (0.0〜1.5、推奨 0.6〜0.8)。 */
+  controlnetStrength?: number;
+  /** ControlNet を効かせる denoise 終端 (0〜1、推奨 0.7〜0.9)。 */
+  controlnetEndAt?: number;
+  /** ControlNet モデルファイル名（Network Volume /models/controlnet/ 下の名前）。 */
+  controlnetModelName?: string;
 }
 
 const DEFAULT_NEGATIVE = "lowres, bad quality, worst quality, bad anatomy, deformed";
@@ -58,6 +70,11 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
     faceRefImageNames = [],
     faceRefStrength = 0.6,
     faceRefEndAt = 0.6,
+    poseRefImageName,
+    controlnetType = "openpose",
+    controlnetStrength = 0.7,
+    controlnetEndAt = 0.8,
+    controlnetModelName = "xinsir-union-sdxl.safetensors",
   } = params;
 
   // ファイル名が無い Lora は無視（誤発注防止）
@@ -162,6 +179,114 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
     class_type: "CLIPTextEncode",
     inputs: { text: negativePrompt, clip: clipSrc },
   };
+
+  // ControlNet チェーン（poseRefImageName がある時だけ）
+  //   LoadImage → 各 preprocessor → ControlNetLoader → SetUnionControlNetType
+  //   → ControlNetApplyAdvanced → (positive, negative) を書き換えて KSampler へ
+  //
+  // Union モデル使用前提。type (openpose/depth/canny/...) で preprocessor を分岐。
+  // 参照画像を加工せず直接 ControlNet に食わせたい時は preprocess="none" 相当だが、
+  // ここでは精度重視で常に preprocessor をかける設計。
+  let positiveSrc: [string, number] = ["6", 0];
+  let negativeSrc: [string, number] = ["7", 0];
+
+  if (poseRefImageName && poseRefImageName.trim().length > 0) {
+    // 1. 画像ロード
+    wf["300"] = {
+      class_type: "LoadImage",
+      inputs: { image: poseRefImageName },
+    };
+
+    // 2. type に応じた preprocessor
+    let preprocessorSrc: [string, number] = ["300", 0];
+    if (controlnetType === "openpose") {
+      wf["310"] = {
+        class_type: "DWPreprocessor",
+        inputs: {
+          image: ["300", 0],
+          detect_hand: "enable",
+          detect_body: "enable",
+          detect_face: "enable",
+          resolution: 1024,
+          bbox_detector: "yolox_l.onnx",
+          pose_estimator: "dw-ll_ucoco_384_bs5.torchscript.pt",
+        },
+      };
+      preprocessorSrc = ["310", 0];
+    } else if (controlnetType === "depth") {
+      wf["310"] = {
+        class_type: "DepthAnythingV2Preprocessor",
+        inputs: {
+          image: ["300", 0],
+          ckpt_name: "depth_anything_v2_vitl_fp32.safetensors",
+          resolution: 1024,
+        },
+      };
+      preprocessorSrc = ["310", 0];
+    } else if (controlnetType === "canny") {
+      wf["310"] = {
+        class_type: "CannyEdgePreprocessor",
+        inputs: {
+          image: ["300", 0],
+          low_threshold: 100,
+          high_threshold: 200,
+          resolution: 1024,
+        },
+      };
+      preprocessorSrc = ["310", 0];
+    } else if (controlnetType === "lineart") {
+      wf["310"] = {
+        class_type: "LineArtPreprocessor",
+        inputs: {
+          image: ["300", 0],
+          coarse: "disable",
+          resolution: 1024,
+        },
+      };
+      preprocessorSrc = ["310", 0];
+    } else if (controlnetType === "scribble") {
+      wf["310"] = {
+        class_type: "ScribblePreprocessor",
+        inputs: {
+          image: ["300", 0],
+          resolution: 1024,
+        },
+      };
+      preprocessorSrc = ["310", 0];
+    }
+
+    // 3. ControlNet モデルをロード
+    wf["320"] = {
+      class_type: "ControlNetLoader",
+      inputs: { control_net_name: controlnetModelName },
+    };
+
+    // 4. Union モデルのタイプを指定
+    wf["330"] = {
+      class_type: "SetUnionControlNetType",
+      inputs: {
+        control_net: ["320", 0],
+        type: controlnetType,
+      },
+    };
+
+    // 5. conditioning に ControlNet を適用
+    wf["340"] = {
+      class_type: "ControlNetApplyAdvanced",
+      inputs: {
+        positive: ["6", 0],
+        negative: ["7", 0],
+        control_net: ["330", 0],
+        image: preprocessorSrc,
+        strength: controlnetStrength,
+        start_percent: 0.0,
+        end_percent: controlnetEndAt,
+      },
+    };
+    positiveSrc = ["340", 0];
+    negativeSrc = ["340", 1];
+  }
+
   wf["3"] = {
     class_type: "KSampler",
     inputs: {
@@ -172,8 +297,8 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
       scheduler,
       denoise: 1.0,
       model: modelSrc,
-      positive: ["6", 0],
-      negative: ["7", 0],
+      positive: positiveSrc,
+      negative: negativeSrc,
       latent_image: ["5", 0],
     },
   };

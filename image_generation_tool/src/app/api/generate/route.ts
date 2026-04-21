@@ -46,6 +46,14 @@ interface GenerateRequestBody {
   faceRefStrength?: number;
   /** IP-Adapter を効かせる denoise 終端 (0..1)。未指定時は 0.6。 */
   faceRefEndAt?: number;
+  /** ControlNet ポーズ参照画像の base64（data: プレフィクス付き or 裸 base64）。 */
+  poseRefImage?: string;
+  /** ControlNet タイプ。 */
+  controlnetType?: "openpose" | "depth" | "canny" | "lineart" | "scribble";
+  /** ControlNet 強度 (0〜1.5)。未指定時は 0.7。 */
+  controlnetStrength?: number;
+  /** ControlNet を効かせる denoise 終端 (0〜1)。未指定時は 0.8。 */
+  controlnetEndAt?: number;
 }
 
 const STORAGE_DIR = path.join(process.cwd(), "storage", "images");
@@ -57,6 +65,9 @@ const MAX_FACE_REF_IMAGES = 6;
 // ため、これ以上の解像度は無意味で帯域を食うだけ）。
 const FACE_REF_MAX_EDGE = 768;
 const FACE_REF_JPEG_QUALITY = 85;
+// ControlNet の参照画像は preprocessor が高解像度を欲しがるので、顔参照より少し大きめに。
+const POSE_REF_MAX_EDGE = 1024;
+const POSE_REF_JPEG_QUALITY = 90;
 
 export async function POST(req: Request) {
   let body: GenerateRequestBody;
@@ -127,7 +138,45 @@ export async function POST(req: Request) {
     }
   }
 
-  const endpointKind: RunPodEndpointKind = faceRefImages.length > 0 ? "ipadapter" : "default";
+  // ControlNet ポーズ参照画像（base64 で受け取って resize + JPEG 化して送る）
+  let poseRefImage: ComfyUIInputImage | null = null;
+  if (body.poseRefImage && typeof body.poseRefImage === "string") {
+    try {
+      const b64 = body.poseRefImage.includes(",")
+        ? body.poseRefImage.split(",")[1]
+        : body.poseRefImage;
+      const raw = Buffer.from(b64, "base64");
+      const resized = await sharp(raw)
+        .rotate()
+        .resize(POSE_REF_MAX_EDGE, POSE_REF_MAX_EDGE, {
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: POSE_REF_JPEG_QUALITY })
+        .toBuffer();
+      poseRefImage = {
+        name: "pose_ref.jpg",
+        image: resized.toString("base64"),
+      };
+    } catch {
+      // デコード失敗は無視（ControlNet なしで続行）
+    }
+  }
+
+  const controlnetType = body.controlnetType ?? "openpose";
+  const controlnetStrength =
+    typeof body.controlnetStrength === "number"
+      ? Math.max(0, Math.min(1.5, body.controlnetStrength))
+      : 0.7;
+  const controlnetEndAt =
+    typeof body.controlnetEndAt === "number"
+      ? Math.max(0, Math.min(1, body.controlnetEndAt))
+      : 0.8;
+
+  // 顔参照 or ポーズ参照どちらかがあれば IP-Adapter 対応 endpoint
+  // （ControlNet_Aux も IP-Adapter と同じカスタムイメージに入れてあるため）
+  const endpointKind: RunPodEndpointKind =
+    faceRefImages.length > 0 || poseRefImage ? "ipadapter" : "default";
   const faceRefStrength =
     typeof body.faceRefStrength === "number"
       ? Math.max(0, Math.min(1.5, body.faceRefStrength))
@@ -173,6 +222,10 @@ export async function POST(req: Request) {
       faceRefImageNames: faceRefImages.map((f) => f.name),
       faceRefStrength,
       faceRefEndAt,
+      poseRefImageName: poseRefImage?.name,
+      controlnetType,
+      controlnetStrength,
+      controlnetEndAt,
     });
 
     await Promise.all(
@@ -184,9 +237,13 @@ export async function POST(req: Request) {
       ),
     );
 
+    // 顔参照 + ポーズ参照を 1 本の input.images に合流して送信
+    const allInputImages: ComfyUIInputImage[] = [...faceRefImages];
+    if (poseRefImage) allInputImages.push(poseRefImage);
+
     const result = await runJobToCompletion(workflow, {
       kind: endpointKind,
-      images: faceRefImages.length > 0 ? faceRefImages : undefined,
+      images: allInputImages.length > 0 ? allInputImages : undefined,
     });
 
     if (result.status !== "COMPLETED") {
@@ -291,6 +348,8 @@ export async function POST(req: Request) {
       executionTimeMs: result.executionTime,
       endpointKind,
       faceRefCount: faceRefImages.length,
+      poseRefUsed: !!poseRefImage,
+      controlnetType: poseRefImage ? controlnetType : null,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

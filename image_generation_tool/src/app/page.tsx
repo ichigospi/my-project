@@ -116,6 +116,13 @@ interface SelectionState {
   // IP-Adapter を効かせる denoise の終端 (0..1、0.6 推奨)。
   // 早く切るほど絵柄 Lora と構図プロンプトが効く余地が残る。
   faceRefEndAt: number;
+  // ControlNet ポーズ参照（base64、data:image/... プレフィクス込み）
+  poseRefImageDataUrl: string | null;
+  // プレビュー用ファイル名（UI 表示のみ）
+  poseRefImageFileName: string | null;
+  controlnetType: ControlNetType;
+  controlnetStrength: number;
+  controlnetEndAt: number;
 }
 
 const initialSelection: SelectionState = {
@@ -136,7 +143,65 @@ const initialSelection: SelectionState = {
   useFaceRef: true,
   faceRefStrength: 0.6,
   faceRefEndAt: 0.6,
+  poseRefImageDataUrl: null,
+  poseRefImageFileName: null,
+  controlnetType: "depth",
+  controlnetStrength: 0.7,
+  controlnetEndAt: 0.85,
 };
+
+// ControlNet の種類ごとの推奨値 & ユーザー向け説明
+type ControlNetType = "openpose" | "depth" | "canny" | "lineart" | "scribble";
+interface ControlNetTypeInfo {
+  key: ControlNetType;
+  label: string;
+  description: string;
+  strength: number;
+  endAt: number;
+  bestFor: string;
+}
+const CONTROLNET_TYPES: ControlNetTypeInfo[] = [
+  {
+    key: "openpose",
+    label: "OpenPose（骨格）",
+    description: "参照画像から棒人間の骨格を抽出して、その姿勢を忠実に再現します。",
+    strength: 0.8,
+    endAt: 0.9,
+    bestFor: "単体ポーズ、キャラの立ちポーズ、指の形まで。絡み合いポーズは検出失敗することあり",
+  },
+  {
+    key: "depth",
+    label: "Depth（深度）",
+    description: "画像の奥行き（前後関係）を解析して、その立体構造に沿って再生成します。",
+    strength: 0.7,
+    endAt: 0.85,
+    bestFor: "複雑な体位 (69・絡み合い)、背景込みの構図維持、人体の重なりが多いシーン",
+  },
+  {
+    key: "canny",
+    label: "Canny（輪郭）",
+    description: "参照画像の輪郭線を抽出し、そのシルエットに合わせて再生成します。",
+    strength: 0.6,
+    endAt: 0.75,
+    bestFor: "元画像の輪郭を守りたい時、2D イラスト→別絵柄への描き直し、構図をガチガチに固定",
+  },
+  {
+    key: "lineart",
+    label: "Lineart（線画）",
+    description: "綺麗な線画を抽出。アニメ絵との相性が特に良いです。",
+    strength: 0.7,
+    endAt: 0.8,
+    bestFor: "アニメ調の参照画像、すでに線画がある時、細部のディテールを保ちたい時",
+  },
+  {
+    key: "scribble",
+    label: "Scribble（落書き）",
+    description: "ラフな線だけ抽出。自由度高く、大まかな配置だけ守りたい時に。",
+    strength: 0.5,
+    endAt: 0.7,
+    bestFor: "大まかな構図だけ指定したい、手描きラフから生成、細かい所はモデルに任せる",
+  },
+];
 
 export default function HomePage() {
   const [presets, setPresets] = useState<PresetsResponse | null>(null);
@@ -389,6 +454,10 @@ export default function HomePage() {
           useFaceRef: effectiveUseFaceRef,
           faceRefStrength: sel.faceRefStrength,
           faceRefEndAt: sel.faceRefEndAt,
+          poseRefImage: sel.poseRefImageDataUrl,
+          controlnetType: sel.controlnetType,
+          controlnetStrength: sel.controlnetStrength,
+          controlnetEndAt: sel.controlnetEndAt,
         }),
       });
 
@@ -1054,6 +1123,162 @@ export default function HomePage() {
           </section>
         );
       })()}
+
+      {/* ポーズ参照 (ControlNet) */}
+      <section className="mt-4 rounded-md border border-teal-900/40 bg-teal-950/10 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold text-teal-200">
+            🧘 ポーズ参照 (ControlNet Union)
+          </p>
+          {sel.poseRefImageDataUrl ? (
+            <button
+              type="button"
+              onClick={() =>
+                setSel((p) => ({
+                  ...p,
+                  poseRefImageDataUrl: null,
+                  poseRefImageFileName: null,
+                }))
+              }
+              className="rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+            >
+              画像を外す
+            </button>
+          ) : null}
+        </div>
+
+        {sel.poseRefImageDataUrl ? (
+          <div className="flex gap-3">
+            {/* プレビュー */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={sel.poseRefImageDataUrl}
+              alt={sel.poseRefImageFileName ?? "pose ref"}
+              className="h-28 w-28 rounded object-cover"
+            />
+            <div className="flex-1">
+              {/* タイプ選択 */}
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {CONTROLNET_TYPES.map((t) => {
+                  const active = sel.controlnetType === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() =>
+                        setSel((p) => ({
+                          ...p,
+                          controlnetType: t.key,
+                          controlnetStrength: t.strength,
+                          controlnetEndAt: t.endAt,
+                        }))
+                      }
+                      className={clsx(
+                        "rounded-full px-2.5 py-0.5 text-[10px] transition",
+                        active
+                          ? "bg-teal-500 text-white"
+                          : "bg-gray-800 text-gray-300 hover:bg-gray-700",
+                      )}
+                      title={t.description}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 選択中タイプの説明 */}
+              {(() => {
+                const info = CONTROLNET_TYPES.find(
+                  (t) => t.key === sel.controlnetType,
+                );
+                if (!info) return null;
+                return (
+                  <div className="mb-2 rounded bg-teal-950/40 p-2 text-[10px] text-teal-200">
+                    <p>{info.description}</p>
+                    <p className="mt-0.5 text-teal-300/70">
+                      💡 向いてる用途: {info.bestFor}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* 強度 + 効く範囲 */}
+              <div className="mb-1 flex items-center gap-2">
+                <label className="w-20 shrink-0 text-[10px] text-teal-300">強度</label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1.5}
+                  step={0.05}
+                  value={sel.controlnetStrength}
+                  onChange={(e) =>
+                    setSel((p) => ({
+                      ...p,
+                      controlnetStrength: Number(e.target.value),
+                    }))
+                  }
+                  className="flex-1 accent-teal-500"
+                />
+                <span className="w-12 text-right text-[10px] text-teal-200">
+                  {sel.controlnetStrength.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="w-20 shrink-0 text-[10px] text-teal-300">
+                  効く範囲
+                </label>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  value={sel.controlnetEndAt}
+                  onChange={(e) =>
+                    setSel((p) => ({
+                      ...p,
+                      controlnetEndAt: Number(e.target.value),
+                    }))
+                  }
+                  className="flex-1 accent-teal-500"
+                />
+                <span className="w-12 text-right text-[10px] text-teal-200">
+                  0→{sel.controlnetEndAt.toFixed(2)}
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] text-teal-300/70">
+                強度は 0.5〜0.9、効く範囲は 0.7〜0.9 が実用域。強すぎると姿勢は忠実だが絵柄・表情が固まります。
+              </p>
+            </div>
+          </div>
+        ) : (
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-teal-600/50 bg-teal-950/30 py-6 text-[11px] text-teal-200 hover:bg-teal-950/50">
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const dataUrl = String(reader.result ?? "");
+                  setSel((p) => ({
+                    ...p,
+                    poseRefImageDataUrl: dataUrl,
+                    poseRefImageFileName: file.name,
+                  }));
+                };
+                reader.readAsDataURL(file);
+              }}
+            />
+            📷 ポーズ参照画像をアップロード（クリック or ドロップ）
+            <span className="text-[10px] text-teal-400/70">
+              69 等の複雑なポーズや構図を参考画像から借りて崩壊を減らせます
+            </span>
+          </label>
+        )}
+      </section>
 
       {/* 生成ボタン */}
       <section className="mt-5 flex items-center gap-3">

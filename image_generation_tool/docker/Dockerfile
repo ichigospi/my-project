@@ -29,6 +29,16 @@ RUN set -eux; \
     cd /comfyui/custom_nodes && \
     git clone --depth 1 https://github.com/cubiq/ComfyUI_IPAdapter_plus.git
 
+# ComfyUI_ControlNet_Aux: ControlNet 用の preprocessor 群
+#   - DWPose (openpose 抽出)
+#   - DepthAnything V2 (depth 抽出)
+#   - Canny / Lineart / Scribble 等
+RUN set -eux; \
+    cd /comfyui/custom_nodes && \
+    git clone --depth 1 https://github.com/Fannovel16/comfyui_controlnet_aux.git && \
+    cd comfyui_controlnet_aux && \
+    pip install --no-cache-dir -r requirements.txt || true
+
 # InsightFace（顔検出 + 顔埋め込み）
 RUN pip install --no-cache-dir \
       insightface \
