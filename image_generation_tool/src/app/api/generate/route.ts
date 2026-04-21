@@ -3,14 +3,19 @@
 // 1 回のジョブで複数枚生成し、返ってきた画像ごとに Generation レコードを作る。
 // 同じ runpodJobId を全レコードが共有するので、履歴画面で「同じバッチ」の
 // グループ化も後から可能。
+//
+// 顔参照（IP-Adapter）モード:
+//   - `useFaceRef: true` かつ `characterIds` に紐づく ReferenceImage.isFaceRef=true の
+//     画像が 1 枚以上ある場合、IP-Adapter 対応の別 endpoint にルーティングする。
+//   - 画像はディスクから読み込んで base64 で RunPod に送信。
 
 import { NextResponse } from "next/server";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 
 import { prisma } from "@/lib/prisma";
-import { runJobToCompletion } from "@/lib/runpod";
+import { runJobToCompletion, type ComfyUIInputImage, type RunPodEndpointKind } from "@/lib/runpod";
 import { buildBasicT2IWorkflow } from "@/lib/comfyui-workflow";
 
 export const runtime = "nodejs";
@@ -31,10 +36,17 @@ interface GenerateRequestBody {
   seed?: number | string;
   batchSize?: number;
   loras?: LoraInput[];
+  /** 顔参照（IP-Adapter）で固定したいキャラの ID 群。 */
+  characterIds?: string[];
+  /** 明示的に顔参照を OFF にしたいとき false を送る。未指定時は faceRef 画像が見つかれば自動 ON。 */
+  useFaceRef?: boolean;
+  /** IP-Adapter の強度。未指定時は 0.75。 */
+  faceRefStrength?: number;
 }
 
 const STORAGE_DIR = path.join(process.cwd(), "storage", "images");
 const MAX_BATCH_SIZE = 8;
+const MAX_FACE_REF_IMAGES = 6;
 
 export async function POST(req: Request) {
   let body: GenerateRequestBody;
@@ -67,6 +79,41 @@ export async function POST(req: Request) {
         }))
         .filter((l) => l.name.length > 0)
     : [];
+
+  // 顔参照画像の収集。useFaceRef === false なら強制 OFF、
+  // 未指定 / true なら DB を見て isFaceRef=true が見つかれば自動的に使う。
+  const characterIds = Array.isArray(body.characterIds) ? body.characterIds : [];
+  const faceRefWanted = body.useFaceRef !== false;
+  const faceRefRecords =
+    faceRefWanted && characterIds.length > 0
+      ? await prisma.referenceImage.findMany({
+          where: { characterId: { in: characterIds }, isFaceRef: true },
+          orderBy: { createdAt: "asc" },
+          take: MAX_FACE_REF_IMAGES,
+        })
+      : [];
+
+  const faceRefImages: ComfyUIInputImage[] = [];
+  for (let i = 0; i < faceRefRecords.length; i += 1) {
+    const rec = faceRefRecords[i];
+    const abs = path.join(process.cwd(), rec.path);
+    try {
+      const buf = await readFile(abs);
+      const ext = path.extname(abs).toLowerCase() || ".png";
+      faceRefImages.push({
+        name: `face_${i}${ext}`,
+        image: buf.toString("base64"),
+      });
+    } catch {
+      // ディスクから消えてる画像は無視して続行
+    }
+  }
+
+  const endpointKind: RunPodEndpointKind = faceRefImages.length > 0 ? "ipadapter" : "default";
+  const faceRefStrength =
+    typeof body.faceRefStrength === "number"
+      ? Math.max(0, Math.min(1.5, body.faceRefStrength))
+      : 0.75;
 
   // バッチ枚数分あらかじめ Generation レコードを作っておく
   // seed は先頭から +1 ずつ（ComfyUI KSampler のバッチ挙動に合わせる）
@@ -101,6 +148,8 @@ export async function POST(req: Request) {
       seed,
       batchSize,
       loras,
+      faceRefImageNames: faceRefImages.map((f) => f.name),
+      faceRefStrength,
     });
 
     await Promise.all(
@@ -112,7 +161,10 @@ export async function POST(req: Request) {
       ),
     );
 
-    const result = await runJobToCompletion(workflow);
+    const result = await runJobToCompletion(workflow, {
+      kind: endpointKind,
+      images: faceRefImages.length > 0 ? faceRefImages : undefined,
+    });
 
     if (result.status !== "COMPLETED") {
       await Promise.all(
@@ -200,6 +252,8 @@ export async function POST(req: Request) {
       images: responseItems,
       delayTimeMs: result.delayTime,
       executionTimeMs: result.executionTime,
+      endpointKind,
+      faceRefCount: faceRefImages.length,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

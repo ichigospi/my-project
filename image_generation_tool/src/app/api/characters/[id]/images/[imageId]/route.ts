@@ -47,6 +47,7 @@ interface PatchBody {
   captionSource?: string | null;
   purpose?: string;
   memo?: string | null;
+  isFaceRef?: boolean;
 }
 
 export async function PATCH(
@@ -72,6 +73,7 @@ export async function PATCH(
   if (body.captionSource !== undefined) data.captionSource = body.captionSource || null;
   if (body.purpose !== undefined) data.purpose = body.purpose;
   if (body.memo !== undefined) data.memo = body.memo?.trim() || null;
+  if (body.isFaceRef !== undefined) data.isFaceRef = !!body.isFaceRef;
 
   const updated = await prisma.referenceImage.update({
     where: { id: imageId },

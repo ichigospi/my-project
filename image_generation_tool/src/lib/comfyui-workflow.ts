@@ -28,6 +28,15 @@ export interface BasicT2IParams {
   seed: number | bigint;
   batchSize?: number;
   loras?: LoraSpec[];
+  /**
+   * IP-Adapter の顔参照画像ファイル名（RunPod worker-comfyui の input.images で渡した名前）。
+   * 空配列 or undefined だと IP-Adapter ノードは挿入されない。
+   */
+  faceRefImageNames?: string[];
+  /** IP-Adapter の適用強度 (0.0〜1.5 推奨 0.75)。 */
+  faceRefStrength?: number;
+  /** IP-Adapter を効かせる denoise 終端 (0.0〜1.0)。後半も効かせすぎると構図が固まりすぎる。 */
+  faceRefEndAt?: number;
 }
 
 const DEFAULT_NEGATIVE = "lowres, bad quality, worst quality, bad anatomy, deformed";
@@ -46,6 +55,9 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
     seed,
     batchSize = 1,
     loras = [],
+    faceRefImageNames = [],
+    faceRefStrength = 0.75,
+    faceRefEndAt = 0.9,
   } = params;
 
   // ファイル名が無い Lora は無視（誤発注防止）
@@ -84,6 +96,63 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
     modelSrc = [id, 0];
     clipSrc = [id, 1];
   });
+
+  // IP-Adapter（顔参照）チェーン構築。
+  //   Lora チェーン後の MODEL に対して IPAdapterUnifiedLoader → IPAdapterAdvanced
+  //   を挟む。複数画像は ImageBatch で左畳み込みして 1 本の IMAGE に統合、
+  //   IPAdapterAdvanced 側の combine_embeds="average" で平均顔を作る。
+  const validFaces = faceRefImageNames.filter(
+    (n) => typeof n === "string" && n.length > 0,
+  );
+  if (validFaces.length > 0) {
+    const loaderId = "200";
+    wf[loaderId] = {
+      class_type: "IPAdapterUnifiedLoader",
+      inputs: {
+        model: modelSrc,
+        preset: "PLUS FACE (portraits)",
+      },
+    };
+
+    const loadIds: string[] = [];
+    validFaces.forEach((name, i) => {
+      const id = String(210 + i);
+      wf[id] = {
+        class_type: "LoadImage",
+        inputs: { image: name },
+      };
+      loadIds.push(id);
+    });
+
+    let imageSrc: [string, number] = [loadIds[0], 0];
+    for (let i = 1; i < loadIds.length; i += 1) {
+      const batchId = String(250 + i);
+      wf[batchId] = {
+        class_type: "ImageBatch",
+        inputs: {
+          image1: imageSrc,
+          image2: [loadIds[i], 0],
+        },
+      };
+      imageSrc = [batchId, 0];
+    }
+
+    wf["280"] = {
+      class_type: "IPAdapterAdvanced",
+      inputs: {
+        model: [loaderId, 0],
+        ipadapter: [loaderId, 1],
+        image: imageSrc,
+        weight: faceRefStrength,
+        weight_type: "linear",
+        combine_embeds: "average",
+        start_at: 0.0,
+        end_at: faceRefEndAt,
+        embeds_scaling: "V only",
+      },
+    };
+    modelSrc = ["280", 0];
+  }
 
   wf["6"] = {
     class_type: "CLIPTextEncode",

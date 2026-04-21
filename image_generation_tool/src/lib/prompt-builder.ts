@@ -19,6 +19,8 @@ export interface CharacterLite {
   extraPrompt: string | null;
   defaultOutfitId: string | null;
   pubicHair: string | null; // "none" | "light" | "normal" | "thick" | null
+  /** IP-Adapter の顔参照としてマークされている ReferenceImage の枚数。0 の場合は顔参照できない。 */
+  faceRefCount?: number;
 }
 
 // 陰毛の状態 → プロンプトタグ変換

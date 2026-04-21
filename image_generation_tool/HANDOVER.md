@@ -1,7 +1,7 @@
 # 引き継ぎ書（新セッション用・コピペ対応）
 
 > このファイルは「セッションが途中で止まった時に、新しいセッションへ丸ごと渡すための要約」です。
-> 進捗があるたびに更新されます。**更新日時: 2026-04-19 16:00**
+> 進捗があるたびに更新されます。**更新日時: 2026-04-21 15:30**
 
 ---
 
@@ -279,6 +279,52 @@
 ---
 
 ## 現在の作業（⚡ここから再開）
+
+### IP-Adapter Face 対応 (2026-04-21)
+
+**完了**:
+- ✅ カスタム Docker イメージ (ComfyUI_IPAdapter_plus + insightface 同梱) を GitHub Actions でビルド → `zonosuke/image-gen-worker:ipadapter` として Docker Hub へ push
+- ✅ RunPod Serverless endpoint 作成: `image-gen-ipadapter` (ID: **`6s67hj4pagm3ve`**)
+  - Data Center: EU-RO-1 / Network Volume: `image-gen-models` / GPU: 24GB+32GB
+- ✅ Prisma schema に `ReferenceImage.isFaceRef: Boolean` 追加
+- ✅ 画像 PATCH API (`/api/characters/[id]/images/[imageId]`) が `isFaceRef` を受理
+- ✅ キャラ詳細画面: 各参照画像カードに 👤 トグルボタン、顔参照カウントバッジ
+- ✅ `comfyui-workflow.ts` に IPAdapter チェーン構築ロジック (IPAdapterUnifiedLoader "PLUS FACE" → ImageBatch 左畳み込み → IPAdapterAdvanced)
+- ✅ `runpod.ts` を default / ipadapter の 2 endpoint 切替対応、base64 画像添付対応
+- ✅ `/api/generate` で `characterIds` の顔参照画像を DB から取得 → base64 化 → IP-Adapter endpoint にルーティング
+- ✅ 生成画面: 顔参照を持つキャラ選択時にだけ「👤 顔固定」トグル + 強度スライダー(0-1.5、デフォ 0.75) が出現
+
+**Mac 側でやる必要があること**:
+
+```bash
+cd ~/Documents/my-project
+git pull origin claude/affectionate-sagan-dloQU
+cd image_generation_tool
+
+# .env.local に追記
+echo 'RUNPOD_IPADAPTER_ENDPOINT_ID=6s67hj4pagm3ve' >> .env.local
+
+npm install         # 変更なしだが念のため
+npx prisma generate # isFaceRef 型を反映
+npx prisma db push  # SQLite に isFaceRef カラム追加
+
+# dev サーバー再起動必須（HMR はスキーマ変更を拾わない）
+# 既存の dev サーバーを Ctrl+C で止めてから
+npm run dev
+```
+
+**動作確認の流れ**:
+1. http://localhost:3100/characters → 任意キャラ → 参照画像の右上 👤 ボタンを押して 1〜複数枚マーク
+2. トップ画面でそのキャラを選択 → 「👤 顔固定」セクションが出現することを確認
+3. 通常通り生成 → IP-Adapter endpoint にルーティングされ、レスポンスに `endpointKind: "ipadapter"`, `faceRefCount: N` が含まれる
+4. 顔の一貫性が Lora 単体より大幅に安定するはず
+
+**既知の注意**:
+- IP-Adapter endpoint はコールドスタートに 60〜120 秒かかる（モデル読み込みが重いため）。Flash Boot は ON にしてある
+- 強度 0.6〜0.9 が実用域。1.0 超だと構図が硬直し、0.4 以下だと顔がブレる
+- 顔参照 OFF もしくは登録無しの場合は既存の `RUNPOD_ENDPOINT_ID` (`onlq54amynaf6v`) に自動フォールバック
+
+---
 
 ### ブロッカー
 なし。骨格コミット済み。**Mac 側でプル → `db push` → `db:seed` → dev 起動で UI 表示確認**が次の一歩。

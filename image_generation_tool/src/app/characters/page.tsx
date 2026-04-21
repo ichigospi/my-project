@@ -19,6 +19,7 @@ interface ReferenceImageRecord {
   createdAt: string;
   caption: string | null;
   captionSource: string | null;
+  isFaceRef: boolean;
 }
 
 interface CharacterRecord {
@@ -518,6 +519,9 @@ export default function CharactersPage() {
                       {c.referenceImages && c.referenceImages.length > 0
                         ? ` / 参照画像 ${c.referenceImages.length}`
                         : ""}
+                      {c.referenceImages && c.referenceImages.some((i) => i.isFaceRef)
+                        ? ` / 👤 顔参照 ${c.referenceImages.filter((i) => i.isFaceRef).length}`
+                        : ""}
                     </p>
                   </div>
                   <div className="ml-3 flex shrink-0 flex-col gap-1">
@@ -755,6 +759,22 @@ function ReferenceImageSection({
     }
   }
 
+  async function toggleFaceRef(img: ReferenceImageRecord) {
+    const next = !img.isFaceRef;
+    const res = await fetch(`/api/characters/${characterId}/images/${img.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isFaceRef: next }),
+    });
+    if (res.ok) {
+      await onChange();
+    } else {
+      alert("顔参照の切替に失敗しました");
+    }
+  }
+
+  const faceRefCount = images.filter((i) => i.isFaceRef).length;
+
   const purposeLabels: Record<string, string> = {
     general: "一般（参考）",
     training: "Lora 学習用",
@@ -770,12 +790,24 @@ function ReferenceImageSection({
           <span className="rounded bg-gray-900 px-2 py-0.5 text-[10px] text-gray-400">
             Lora 学習準備: {captionedCount}/{images.length} キャプション済
           </span>
+          <span
+            className={clsx(
+              "rounded px-2 py-0.5 text-[10px]",
+              faceRefCount > 0
+                ? "bg-pink-900/40 text-pink-200"
+                : "bg-gray-900 text-gray-500",
+            )}
+            title="IP-Adapter の顔参照として使う画像の数"
+          >
+            👤 顔参照: {faceRefCount} 枚
+          </span>
         </div>
       </div>
 
       <p className="mb-3 text-[10px] text-gray-500">
         画像をクリックしてキャプションを編集できます。Lora 学習時は
         「髪・服装・表情」をタグ化（可変）、「顔の特徴」は書かない（固定）が鉄則。
+        右上の 👤 ボタンで「顔参照」マークを付けると、生成時に IP-Adapter で顔を固定できます（複数選択可）。
       </p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -974,6 +1006,8 @@ function ReferenceImageSection({
                   "group relative overflow-hidden rounded-md border bg-gray-900",
                   selected
                     ? "border-indigo-500 ring-2 ring-indigo-500/40"
+                    : img.isFaceRef
+                    ? "border-pink-500/80 ring-1 ring-pink-500/40"
                     : hasCaption
                     ? "border-gray-800"
                     : "border-red-600/80 ring-1 ring-red-600/30",
@@ -983,6 +1017,11 @@ function ReferenceImageSection({
                 {!hasCaption ? (
                   <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] bg-red-600/80 py-0.5 text-center text-[9px] font-bold text-white">
                     🏷 未設定
+                  </div>
+                ) : null}
+                {img.isFaceRef ? (
+                  <div className="pointer-events-none absolute right-1 bottom-8 z-[1] rounded bg-pink-600/90 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    👤 顔参照
                   </div>
                 ) : null}
                 <button
@@ -1036,8 +1075,24 @@ function ReferenceImageSection({
                 </button>
                 <button
                   type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void toggleFaceRef(img);
+                  }}
+                  title={img.isFaceRef ? "顔参照を外す" : "IP-Adapter の顔参照として使う"}
+                  className={clsx(
+                    "absolute right-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-bold transition",
+                    img.isFaceRef
+                      ? "bg-pink-600/90 text-white"
+                      : "bg-black/70 text-gray-300 opacity-0 group-hover:opacity-100 hover:text-pink-300",
+                  )}
+                >
+                  👤
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleDelete(img)}
-                  className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-red-300 opacity-0 transition group-hover:opacity-100"
+                  className="absolute right-8 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-red-300 opacity-0 transition group-hover:opacity-100"
                 >
                   削除
                 </button>

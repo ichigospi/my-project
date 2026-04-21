@@ -90,6 +90,8 @@ model ReferenceImage {
   // Lora 学習用のキャプション（カンマ区切りの Danbooru タグ想定）
   caption       String?
   captionSource String? // "manual" / "auto_wd14" / "auto_claude" / null
+  // IP-Adapter の顔参照として使うフラグ（キャラにつき複数マーク可）
+  isFaceRef     Boolean @default(false)
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -30,10 +30,23 @@ export async function GET() {
       orderBy: { order: "asc" },
       include: { expressions: { orderBy: { order: "asc" } } },
     }),
-    prisma.character.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.character.findMany({
+      orderBy: { createdAt: "asc" },
+      include: {
+        _count: { select: { referenceImages: { where: { isFaceRef: true } } } },
+      },
+    }),
     prisma.location.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.artStyle.findMany({ orderBy: { createdAt: "asc" } }),
   ]);
+
+  // Character の _count を faceRefCount としてフラットに返す
+  const charactersWithFaceRef = characters.map((c) => {
+    const count = (c as { _count?: { referenceImages?: number } })._count?.referenceImages ?? 0;
+    const { _count: _omit, ...rest } = c as typeof c & { _count?: unknown };
+    void _omit;
+    return { ...rest, faceRefCount: count };
+  });
 
   return NextResponse.json({
     timePresets,
@@ -42,7 +55,7 @@ export async function GET() {
     hairstylePresets,
     actionCategories,
     expressionCategories,
-    characters,
+    characters: charactersWithFaceRef,
     locations,
     artStyles,
   });

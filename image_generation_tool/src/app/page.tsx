@@ -103,6 +103,10 @@ interface SelectionState {
   aspectRatioKey: string;
   qualityKey: string;
   batchSize: number;
+  // 顔参照画像があるキャラが選ばれているとき、IP-Adapter を有効化するか
+  useFaceRef: boolean;
+  // IP-Adapter の強度（0.0〜1.5）
+  faceRefStrength: number;
 }
 
 const initialSelection: SelectionState = {
@@ -119,6 +123,8 @@ const initialSelection: SelectionState = {
   aspectRatioKey: DEFAULT_ASPECT_RATIO_KEY,
   qualityKey: DEFAULT_QUALITY_KEY,
   batchSize: DEFAULT_BATCH_SIZE,
+  useFaceRef: true,
+  faceRefStrength: 0.75,
 };
 
 export default function HomePage() {
@@ -342,6 +348,14 @@ export default function HomePage() {
       .map((s) => ({ name: s.loraUrl as string, strength: s.loraScale ?? 0.8 }));
     const loras = [...characterLoras, ...styleLoras];
 
+    // 顔参照画像を持つキャラが1人でも居れば IP-Adapter 対象。
+    // ユーザーがトグルで OFF にしていればサーバー側で弾くので useFaceRef=false を送る。
+    const hasAnyFaceRef = sel.characterIds.some((id) => {
+      const c = byId?.character.get(id);
+      return !!c && (c.faceRefCount ?? 0) > 0;
+    });
+    const effectiveUseFaceRef = hasAnyFaceRef && sel.useFaceRef;
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -355,6 +369,9 @@ export default function HomePage() {
           cfg: quality.cfg,
           batchSize: sel.batchSize ?? 1,
           loras,
+          characterIds: sel.characterIds,
+          useFaceRef: effectiveUseFaceRef,
+          faceRefStrength: sel.faceRefStrength,
         }),
       });
 
@@ -851,6 +868,72 @@ export default function HomePage() {
           </p>
         </div>
       </section>
+
+      {/* 顔固定（IP-Adapter） */}
+      {(() => {
+        const faceRefChars = sel.characterIds
+          .map((id) => byId?.character.get(id))
+          .filter((c): c is CharacterLite => !!c && (c.faceRefCount ?? 0) > 0);
+        if (faceRefChars.length === 0) return null;
+        const totalFaceRefs = faceRefChars.reduce(
+          (sum, c) => sum + (c.faceRefCount ?? 0),
+          0,
+        );
+        return (
+          <section className="mt-4 rounded-md border border-pink-900/40 bg-pink-950/10 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-pink-200">
+                <input
+                  type="checkbox"
+                  checked={sel.useFaceRef}
+                  onChange={(e) =>
+                    setSel((p) => ({ ...p, useFaceRef: e.target.checked }))
+                  }
+                  className="h-4 w-4 accent-pink-500"
+                />
+                <span className="font-semibold">
+                  👤 顔固定 (IP-Adapter)
+                </span>
+                <span className="text-[10px] text-pink-400">
+                  — {faceRefChars.map((c) => `${c.name} (${c.faceRefCount ?? 0})`).join(", ")}
+                </span>
+              </label>
+              <span className="text-[10px] text-pink-400">
+                合計 {totalFaceRefs} 枚を使用
+              </span>
+            </div>
+            {sel.useFaceRef ? (
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-pink-300">強度</label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1.5}
+                  step={0.05}
+                  value={sel.faceRefStrength}
+                  onChange={(e) =>
+                    setSel((p) => ({
+                      ...p,
+                      faceRefStrength: Number(e.target.value),
+                    }))
+                  }
+                  className="flex-1 accent-pink-500"
+                />
+                <span className="w-12 text-right text-[10px] text-pink-200">
+                  {sel.faceRefStrength.toFixed(2)}
+                </span>
+              </div>
+            ) : (
+              <p className="text-[10px] text-gray-500">
+                OFF にすると通常の endpoint（Lora のみ）で生成します。
+              </p>
+            )}
+            <p className="mt-1 text-[10px] text-pink-300/70">
+              強度 0.6〜0.9 が推奨。上げすぎると構図が硬直し、下げすぎると顔がブレます。
+            </p>
+          </section>
+        );
+      })()}
 
       {/* 生成ボタン */}
       <section className="mt-5 flex items-center gap-3">
