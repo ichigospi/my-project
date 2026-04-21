@@ -182,6 +182,15 @@ export async function POST(req: Request) {
     });
 
     if (result.status !== "COMPLETED") {
+      // RunPod が返した生のエラー内容を server log に吐いておく（画面では畳まれるので後追い困難）
+      console.error("[generate] RunPod job not completed", {
+        jobId: result.id,
+        status: result.status,
+        error: result.error,
+        output: result.output,
+        endpointKind,
+        faceRefCount: faceRefImages.length,
+      });
       await Promise.all(
         records.map((r) =>
           prisma.generation.update({
@@ -195,7 +204,12 @@ export async function POST(req: Request) {
         ),
       );
       return NextResponse.json(
-        { error: "generation failed", status: result.status, detail: result.error },
+        {
+          error: "generation failed",
+          status: result.status,
+          detail: result.error,
+          output: result.output,
+        },
         { status: 502 },
       );
     }
