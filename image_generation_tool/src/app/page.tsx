@@ -401,6 +401,8 @@ export default function HomePage() {
 
       const data = (await res.json()) as GenerateResult;
       setResult(data);
+      // ActiveModeBanner の「最後の活動」を更新（課金継続中の idle 警告タイマー用）
+      window.dispatchEvent(new Event("imgtool-generated"));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ActiveModeBanner from "@/components/ActiveModeBanner";
 
 export const metadata: Metadata = {
   title: "画像生成ツール",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen">
+        <ActiveModeBanner />
+        {children}
+      </body>
     </html>
   );
 }
