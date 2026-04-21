@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
+import sharp from "sharp";
 
 import { prisma } from "@/lib/prisma";
 import { runJobToCompletion, type ComfyUIInputImage, type RunPodEndpointKind } from "@/lib/runpod";
@@ -47,6 +48,12 @@ interface GenerateRequestBody {
 const STORAGE_DIR = path.join(process.cwd(), "storage", "images");
 const MAX_BATCH_SIZE = 8;
 const MAX_FACE_REF_IMAGES = 6;
+// RunPod Serverless の /run エンドポイントはリクエスト body 10MiB 上限がある。
+// 顔参照画像をそのまま base64 で送ると簡単に超えるので、長辺 768px・JPEG 85% に
+// リサイズしてから送る（IP-Adapter は内部で 224×224 に畳んで CLIP Vision に食わせる
+// ため、これ以上の解像度は無意味で帯域を食うだけ）。
+const FACE_REF_MAX_EDGE = 768;
+const FACE_REF_JPEG_QUALITY = 85;
 
 export async function POST(req: Request) {
   let body: GenerateRequestBody;
@@ -99,13 +106,21 @@ export async function POST(req: Request) {
     const abs = path.join(process.cwd(), rec.path);
     try {
       const buf = await readFile(abs);
-      const ext = path.extname(abs).toLowerCase() || ".png";
+      // 長辺 FACE_REF_MAX_EDGE 以内に縮小 + JPEG 化して payload を絞る
+      const resized = await sharp(buf)
+        .rotate() // EXIF 方向を正す
+        .resize(FACE_REF_MAX_EDGE, FACE_REF_MAX_EDGE, {
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: FACE_REF_JPEG_QUALITY })
+        .toBuffer();
       faceRefImages.push({
-        name: `face_${i}${ext}`,
-        image: buf.toString("base64"),
+        name: `face_${i}.jpg`,
+        image: resized.toString("base64"),
       });
     } catch {
-      // ディスクから消えてる画像は無視して続行
+      // ディスクから消えてる / デコード失敗の画像は無視して続行
     }
   }
 
