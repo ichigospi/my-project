@@ -1,9 +1,21 @@
 // 6W1H の選択状態からプロンプト文字列を組み立てる。
-// プロンプトの語順は HANDOVER.md「プロンプト組み立て順序」に従う。
+//
+// SDXL / Illustrious は先頭トークンほど強く効くので、
+//   1. キャラ Lora のトリガーワード群（char_xxx_v1 等）← 最重要
+//   2. 絵柄 Lora のトリガーワード群 + スタイル形容詞
+//   3. アングル・時間・場所（画面のマクロ要素）
+//   4. キャラ情報（身長・服装・表情・陰毛・キャラ固有追加）
+//   5. 行為（動詞的タグ群）
+//   6. ゴム・ユーザー追加・品質タグ
+// の順で並べる。
 //
 // 2 人以上キャラが選択された場合は BREAK 区切りで各キャラのブロックに
 // 服装・表情・追加プロンプトを分離する（Regional Prompter 未対応のため
 // 完全な属性分離はできないが、単一プロンプト連結よりは混線が減る）。
+//
+// 重複タグ除去: セクション内で完全一致するタグを後勝ちで削除。
+// プリセット同士や extraPrompt とのかぶりで「同じタグが何度も出る」
+// 現象を防ぐ（モデルの注意を無駄に割かせないため）。
 
 import { heightCmToTags, type CondomState, CONDOM_OPTIONS } from "./presets";
 
@@ -67,7 +79,7 @@ const QUALITY_TAGS =
 //   3. 手指・四肢・足
 //   4. 顔・目
 //   5. 胸・乳首
-//   6. 性器（NSFW 用途で崩壊しやすい）
+//   6. 性器（NSFW 用途で崩れやすい）
 //   7. 重複・分裂
 //   8. 画像のアーティファクト（透かし・テキスト等）
 //   9. 未完成・簡素化（SDXL が手抜きしないように）
@@ -180,20 +192,52 @@ function push(into: string[], value?: string | null) {
   into.push(trimmed.replace(/,\s*$/, ""));
 }
 
+/**
+ * タグ重複除去。セクション（カンマ区切り 1 本）内で後続の完全一致を落とす。
+ * 大文字小文字・前後空白は無視して判定。重み付きタグ `(foo:1.2)` は
+ * `(foo:1.2)` と `foo` は別物として扱う（重み調整と無指定は意図が違うため）。
+ */
+function dedupSection(sectionText: string): string {
+  const parts = sectionText
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tag of parts) {
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+  }
+  return out.join(", ");
+}
+
+/**
+ * 最終プロンプトを BREAK 区切りで分割してから各セクション単位で dedup。
+ * BREAK を跨いだ dedup はしない（多人数時に同じ outfit タグが両方必要な
+ * ケースがあるため）。
+ */
+function dedupAcrossSections(prompt: string): string {
+  return prompt
+    .split(/\nBREAK\n/)
+    .map((section) => dedupSection(section))
+    .join("\nBREAK\n");
+}
+
 export interface BuiltPrompt {
   prompt: string;
   negativePrompt: string;
 }
 
-// 1 キャラ分のブロックを構築（トリガー、性別カウント、身長、服装、表情、陰毛、追加プロンプト）
+// 1 キャラ分のブロックを構築。
+//   triggerWord は先頭グループ（triggerWords）で扱うのでここでは出力しない。
 function buildCharacterBlock(
   char: CharacterLite,
   selection: CharacterSelection | undefined,
   options: { includeGenderCount: boolean; isMain: boolean },
 ): string[] {
   const parts: string[] = [];
-
-  if (char.triggerWord) push(parts, char.triggerWord);
 
   if (options.includeGenderCount) {
     const g = char.gender;
@@ -226,9 +270,16 @@ function buildCharacterBlock(
 }
 
 export function buildPrompt(s: PromptSelection): BuiltPrompt {
+  // 0. 先頭グループ: キャラ triggerWord を全部集めて最前列に置く。
+  //    SDXL は先頭トークンの重みが最大なので、Lora 発動の確実性が上がる。
+  const triggerWords: string[] = [];
+  for (const char of s.characters) {
+    if (char.triggerWord) push(triggerWords, char.triggerWord);
+  }
+
   const globalPrefix: string[] = [];
 
-  // 1. 絵柄タグ
+  // 1. 絵柄タグ（style trigger + style tags が既に結合されて渡ってくる）
   push(globalPrefix, s.artStyleTags);
 
   // 2. アングル・時間・場所（全体共通）
@@ -284,6 +335,7 @@ export function buildPrompt(s: PromptSelection): BuiltPrompt {
 
   // 最終プロンプト組み立て
   const sections: string[] = [];
+  if (triggerWords.length > 0) sections.push(triggerWords.join(", "));
   if (globalPrefix.length > 0) sections.push(globalPrefix.join(", "));
   if (chars.length >= 2) {
     // BREAK でキャラ間を分離
@@ -293,11 +345,14 @@ export function buildPrompt(s: PromptSelection): BuiltPrompt {
   }
   if (globalSuffix.length > 0) sections.push(globalSuffix.join(", "));
 
-  const prompt = sections.filter((s) => s.length > 0).join(", ");
+  const rawPrompt = sections.filter((s) => s.length > 0).join(", ");
+  // BREAK 区切りごとに dedup（BREAK を跨いだ重複は許容 = 多人数の同 outfit 対応）
+  const prompt = dedupAcrossSections(rawPrompt);
 
-  // ネガティブ
+  // ネガティブ（重複はしないので dedup 不要だが、一応 pass）
   const negativeParts: string[] = [DEFAULT_NEGATIVE];
   if (condom?.negative) push(negativeParts, condom.negative);
+  const negativePrompt = dedupSection(negativeParts.join(", "));
 
-  return { prompt, negativePrompt: negativeParts.join(", ") };
+  return { prompt, negativePrompt };
 }
