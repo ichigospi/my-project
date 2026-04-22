@@ -261,12 +261,23 @@ export function buildBasicT2IWorkflow(params: BasicT2IParams): ComfyUIWorkflow {
       inputs: { control_net_name: controlnetModelName },
     };
 
-    // 4. Union モデルのタイプを指定
+    // 4. Union モデルのタイプを指定。
+    //    Xinsir Union は似た性質の preprocessor を 1 つの enum にまとめている:
+    //      - canny / lineart / anime_lineart / mlsd → "canny/lineart/anime_lineart/mlsd"
+    //      - hed / pidi / scribble / ted          → "hed/pidi/scribble/ted"
+    //    ここでツール側の論理的な type を Union のグループ名に変換する。
+    const unionTypeMap: Record<ControlNetType, string> = {
+      openpose: "openpose",
+      depth: "depth",
+      canny: "canny/lineart/anime_lineart/mlsd",
+      lineart: "canny/lineart/anime_lineart/mlsd",
+      scribble: "hed/pidi/scribble/ted",
+    };
     wf["330"] = {
       class_type: "SetUnionControlNetType",
       inputs: {
         control_net: ["320", 0],
-        type: controlnetType,
+        type: unionTypeMap[controlnetType],
       },
     };
 
