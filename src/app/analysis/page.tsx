@@ -340,6 +340,7 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [ocrProgress, setOcrProgress] = useState("");
+  const [sentToLocal, setSentToLocal] = useState(false);
 
   const handleReset = () => {
     resetVideoUrl(); resetTranscript(); resetVideoInfo(); resetAnalysis(); resetCategory();
@@ -730,8 +731,27 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
             className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
             {extracting ? ocrProgress || "処理中..." : "自動で画面読み取り"}
           </button>
+          <button onClick={async () => {
+            const videoId = extractVideoId(videoUrl);
+            if (!videoId) { setError("先に動画URLを入力してください"); return; }
+            await fetch("/api/ocr-queue", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "add", videoId,
+                videoTitle: videoInfo?.title || "",
+                channelName: videoInfo?.channelTitle || "",
+                thumbnailUrl: videoInfo?.thumbnailUrl || "",
+                views: videoInfo?.views || 0,
+              }),
+            });
+            setSentToLocal(true);
+          }} disabled={sentToLocal || !videoUrl}
+            className={`px-5 py-2.5 rounded-lg text-sm font-medium ${sentToLocal ? "bg-blue-100 text-blue-500" : "border border-blue-400 text-blue-600 hover:bg-blue-50"} disabled:opacity-50`}>
+            {sentToLocal ? "ローカルに送信済み" : "ローカルで読み取り"}
+          </button>
           <span className="text-xs text-gray-400 self-center">
-            ※ 失敗する場合はスクリーンショットを貼り付けてください
+            ※ 失敗する場合はスクリーンショットを貼り付けるか、ローカルで読み取りしてください
           </span>
         </div>
 
