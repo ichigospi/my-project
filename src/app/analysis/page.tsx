@@ -342,6 +342,32 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
   const [ocrProgress, setOcrProgress] = useState("");
   const [sentToLocal, setSentToLocal] = useState(false);
 
+  // ローカル読み取り完了をポーリングで検知 → 台本を自動反映
+  useEffect(() => {
+    if (!sentToLocal) return;
+    const videoId = extractVideoId(videoUrl);
+    if (!videoId) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/ocr-queue");
+        const data = await res.json();
+        const done = data.queue?.find((q: { videoId: string; status: string; transcript?: string }) =>
+          q.videoId === videoId && q.status === "done" && q.transcript && q.transcript.length >= 100
+        );
+        if (done) {
+          setTranscript(done.transcript);
+          setSentToLocal(false);
+          setOcrProgress("ローカル読み取り結果を反映しました");
+        }
+      } catch { /* ignore */ }
+    };
+
+    poll();
+    const interval = setInterval(poll, 10000);
+    return () => clearInterval(interval);
+  }, [sentToLocal, videoUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleReset = () => {
     resetVideoUrl(); resetTranscript(); resetVideoInfo(); resetAnalysis(); resetCategory();
     setScreenshots([]); setError(""); setOcrProgress("");
