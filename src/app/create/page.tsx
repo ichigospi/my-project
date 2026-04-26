@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus } from "@/lib/project-store";
+import { getProjectsByChannel, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus } from "@/lib/project-store";
 import type { ScriptProject, Genre, Style } from "@/lib/project-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
+import { useChannel } from "@/lib/channel-context";
 import StepGenre from "./StepGenre";
 import StepTitle from "./StepTitle";
 import StepReferences from "./StepReferences";
@@ -21,17 +22,18 @@ const STEPS = [
 ];
 
 export default function CreatePage() {
+  const { activeChannel } = useChannel();
   const [projects, setProjects] = useState<ScriptProject[]>([]);
   const [activeProject, setActiveProject] = useState<ScriptProject | null>(null);
 
-  useEffect(() => { pullSharedSettings().then(() => setProjects(getProjects())); }, []);
+  useEffect(() => { pullSharedSettings().then(() => setProjects(getProjectsByChannel(activeChannel?.id || ""))); }, [activeChannel]);
 
   const handleNew = () => {
-    const p = createProject("love", "healing");
+    const p = createProject("love", "healing", activeChannel?.id);
     p.status = "genre";
     saveProject(p);
     setActiveProject(p);
-    setProjects(getProjects());
+    setProjects(getProjectsByChannel(activeChannel?.id || ""));
     pushSharedSettings();
   };
 
@@ -39,7 +41,7 @@ export default function CreatePage() {
 
   const handleDelete = (id: string) => {
     deleteProject(id);
-    setProjects(getProjects());
+    setProjects(getProjectsByChannel(activeChannel?.id || ""));
     pushSharedSettings();
   };
 
@@ -47,7 +49,7 @@ export default function CreatePage() {
     const prev = activeProject;
     saveProject(updated);
     setActiveProject(updated);
-    setProjects(getProjects());
+    setProjects(getProjectsByChannel(activeChannel?.id || ""));
     pushSharedSettings();
 
     // 工程表との自動連動
@@ -66,7 +68,7 @@ export default function CreatePage() {
     }
   };
 
-  const handleBack = () => { setActiveProject(null); setProjects(getProjects()); };
+  const handleBack = () => { setActiveProject(null); setProjects(getProjectsByChannel(activeChannel?.id || "")); };
 
   const stepIndex = activeProject ? STEPS.findIndex((s) => s.id === activeProject.status) : -1;
   // completedの場合は最後のステップ扱い

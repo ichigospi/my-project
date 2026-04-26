@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { getPresets, savePreset, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
-import { getProfile, saveProfile, getAnalyses } from "@/lib/script-analysis-store";
+import { getProfileByChannel, saveProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { ScriptRulePreset, Genre, Style } from "@/lib/project-store";
 import type { ChannelProfile, ScriptAnalysis } from "@/lib/script-analysis-store";
+import { useChannel } from "@/lib/channel-context";
 
 export default function PresetsPage() {
+  const { activeChannel } = useChannel();
   const [presets, setPresets] = useState<ScriptRulePreset[]>([]);
   const [editing, setEditing] = useState<ScriptRulePreset | null>(null);
   const [saved, setSaved] = useState(false);
@@ -18,10 +20,10 @@ export default function PresetsPage() {
   useEffect(() => {
     pullSharedSettings().then(() => {
       setPresets(getPresets());
-      setProfileState(getProfile());
+      setProfileState(getProfileByChannel(activeChannel?.id || ""));
       setAnalysesState(getAnalyses());
     });
-  }, []);
+  }, [activeChannel]);
 
   const handleSavePreset = () => {
     if (!editing) return;
@@ -34,7 +36,7 @@ export default function PresetsPage() {
 
   const handleSaveProfile = () => {
     if (!profile) return;
-    saveProfile(profile);
+    saveProfileByChannel({ ...profile, channelId: activeChannel?.id || "" });
     pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);

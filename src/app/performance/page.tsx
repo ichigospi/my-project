@@ -6,6 +6,7 @@ import { getApiKey } from "@/lib/channel-store";
 import { getWinningPatterns, saveWinningPatterns, type WinningPatterns } from "@/lib/winning-patterns-store";
 import { getAnalyses } from "@/lib/script-analysis-store";
 import { getMyChannel, saveMyChannel, detectGenre, GENRE_LABELS, genId, getAnalysisLogs, saveAnalysisLog, getWeeklySnapshots, saveWeeklySnapshot } from "@/lib/project-store";
+import { useChannel } from "@/lib/channel-context";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { MyChannelData, MyChannelVideo, Genre, AnalysisLog, WeeklySnapshot } from "@/lib/project-store";
 import { formatNumber } from "@/lib/mock-data";
@@ -59,6 +60,7 @@ function renderMd(md: string) {
 
 export default function PerformancePage() {
   const router = useRouter();
+  const { activeChannel } = useChannel();
   const [myChannel, setMyChannel] = useState<MyChannelData | null>(null);
   const [channelStats, setChannelStats] = useState<ChannelStats | null>(null);
   const [analyticsMap, setAnalyticsMap] = useState<Record<string, VideoAnalyticsData>>({});

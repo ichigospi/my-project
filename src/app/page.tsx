@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { pullSharedSettings } from "@/lib/shared-sync";
-import { getTasks, getMyChannel } from "@/lib/project-store";
+import { getTasksByChannel, getMyChannel } from "@/lib/project-store";
 import type { ProductionTask, MyChannelData } from "@/lib/project-store";
 import { getChannels } from "@/lib/channel-store";
 import type { RegisteredChannel } from "@/lib/channel-store";
+import { useChannel } from "@/lib/channel-context";
 import { formatNumber } from "@/lib/mock-data";
 
 // ===== 工程名定数 =====
@@ -447,15 +448,16 @@ function QuickActionsSection() {
 
 // ===== メインページ =====
 export default function DashboardPage() {
+  const { activeChannel } = useChannel();
   const [tasks, setTasks] = useState<ProductionTask[]>([]);
   const [channels, setChannels] = useState<RegisteredChannel[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    setTasks(getTasks());
+    setTasks(getTasksByChannel(activeChannel?.id || ""));
     setChannels(getChannels());
     setLoaded(true);
-  }, []);
+  }, [activeChannel]);
 
   if (!loaded) {
     return (

@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import {
-  getTasks, saveTask, deleteTask,
+  getTasks, getTasksByChannel, saveTask, deleteTask,
   genId, DEFAULT_STEPS, GENRE_LABELS, TASK_STATUS_LABELS,
 } from "@/lib/project-store";
 import type { ProductionTask, TaskStatus } from "@/lib/project-store";
+import { useChannel } from "@/lib/channel-context";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   not_started: "bg-gray-100 text-gray-500",
@@ -24,6 +25,7 @@ interface UserInfo { id: string; name: string; email: string; role: string }
 export default function WorkflowPage() {
   const router = useRouter();
   const { data: session } = useSession();
+  const { activeChannel } = useChannel();
   const userRole = (session?.user as { role?: string } | undefined)?.role || "";
   const isViewer = userRole === "viewer";
   const [tasks, setTasks] = useState<ProductionTask[]>([]);
@@ -40,7 +42,7 @@ export default function WorkflowPage() {
   };
 
   useEffect(() => {
-    pullSharedSettings().then(() => setTasks(getTasks()));
+    pullSharedSettings().then(() => setTasks(getTasksByChannel(activeChannel?.id || "")));
     // DBからユーザー一覧を取得して担当者リストに使う
     fetch("/api/users")
       .then((r) => r.json())
@@ -51,13 +53,14 @@ export default function WorkflowPage() {
       })
       .catch(() => setMembersState(["自分"]));
     setMounted(true);
-  }, []);
+  }, [activeChannel]);
 
   const handleAddRow = () => {
     const task: ProductionTask = {
       id: genId(), title: "", genre: "love", style: "healing",
       steps: DEFAULT_STEPS.map((s) => ({ ...s, assignee: members[0] || "自分" })),
       deadline: "", publishUrl: "", linkedProjectId: "", sourceVideoUrl: "", urgent: false,
+      channelId: activeChannel?.id || "",
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
     saveAndSync(task);
@@ -258,7 +261,7 @@ export default function WorkflowPage() {
                     )}
                   </td>
                   <td className="border border-gray-200 px-1 py-0.5 text-center">
-                    <button onClick={() => { deleteTask(task.id); setTasks(getTasks()); pushSharedSettings(); }} className="text-gray-300 hover:text-red-500">×</button>
+                    <button onClick={() => { deleteTask(task.id); setTasks(getTasksByChannel(activeChannel?.id || "")); pushSharedSettings(); }} className="text-gray-300 hover:text-red-500">×</button>
                   </td>
                 </tr>
               );

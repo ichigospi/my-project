@@ -3,16 +3,18 @@
 import { useState, useEffect } from "react";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import {
-  getHooks, getCTAs, getThumbnailWords, getTitles,
+  getHooksByChannel, getCTAsByChannel, getThumbnailWordsByChannel, getTitlesByChannel,
   saveHook, saveCTA, saveThumbnailWord, saveTitle,
   deleteHook, deleteCTA, deleteThumbnailWord, deleteTitle,
   genId, GENRE_LABELS, STYLE_LABELS,
 } from "@/lib/project-store";
 import type { HookEntry, CTAEntry, ThumbnailWordEntry, TitleEntry, Genre, Style } from "@/lib/project-store";
+import { useChannel } from "@/lib/channel-context";
 
 type TabId = "hooks" | "ctas" | "thumbnails" | "titles";
 
 export default function HookDBPage() {
+  const { activeChannel } = useChannel();
   const [tab, setTab] = useState<TabId>("hooks");
   const [hooks, setHooks] = useState<HookEntry[]>([]);
   const [ctas, setCtas] = useState<CTAEntry[]>([]);
@@ -24,12 +26,13 @@ export default function HookDBPage() {
 
   useEffect(() => {
     pullSharedSettings().then(() => {
-      setHooks(getHooks());
-      setCtas(getCTAs());
-      setThumbnails(getThumbnailWords());
-      setTitles(getTitles());
+      const chId = activeChannel?.id || "";
+      setHooks(getHooksByChannel(chId));
+      setCtas(getCTAsByChannel(chId));
+      setThumbnails(getThumbnailWordsByChannel(chId));
+      setTitles(getTitlesByChannel(chId));
     });
-  }, []);
+  }, [activeChannel]);
 
   const [newText, setNewText] = useState("");
   const [newGenre, setNewGenre] = useState<Genre>("love");
@@ -40,28 +43,30 @@ export default function HookDBPage() {
   const handleAdd = () => {
     if (!newText.trim()) return;
     const now = new Date().toISOString();
+    const chId = activeChannel?.id || "";
     if (tab === "hooks") {
-      saveHook({ id: genId(), text: newText.trim(), genre: newGenre, style: newStyle, score: newScore, sourceVideo: newSource, sourceChannel: "", tags: [], createdAt: now });
-      setHooks(getHooks());
+      saveHook({ id: genId(), text: newText.trim(), genre: newGenre, style: newStyle, score: newScore, sourceVideo: newSource, sourceChannel: "", tags: [], channelId: chId, createdAt: now });
+      setHooks(getHooksByChannel(chId));
     } else if (tab === "ctas") {
-      saveCTA({ id: genId(), text: newText.trim(), genre: newGenre, style: newStyle, score: newScore, sourceVideo: newSource, sourceChannel: "", tags: [], createdAt: now });
-      setCtas(getCTAs());
+      saveCTA({ id: genId(), text: newText.trim(), genre: newGenre, style: newStyle, score: newScore, sourceVideo: newSource, sourceChannel: "", tags: [], channelId: chId, createdAt: now });
+      setCtas(getCTAsByChannel(chId));
     } else if (tab === "thumbnails") {
-      saveThumbnailWord({ id: genId(), word: newText.trim(), genre: newGenre, style: newStyle, score: newScore, sourceVideo: newSource, sourceChannel: "", createdAt: now });
-      setThumbnails(getThumbnailWords());
+      saveThumbnailWord({ id: genId(), word: newText.trim(), genre: newGenre, style: newStyle, score: newScore, sourceVideo: newSource, sourceChannel: "", channelId: chId, createdAt: now });
+      setThumbnails(getThumbnailWordsByChannel(chId));
     } else {
-      saveTitle({ id: genId(), title: newText.trim(), genre: newGenre, style: newStyle, score: newScore, sourceVideo: newSource, sourceChannel: "", createdAt: now });
-      setTitles(getTitles());
+      saveTitle({ id: genId(), title: newText.trim(), genre: newGenre, style: newStyle, score: newScore, sourceVideo: newSource, sourceChannel: "", channelId: chId, createdAt: now });
+      setTitles(getTitlesByChannel(chId));
     }
     setNewText(""); setNewSource("");
     pushSharedSettings();
   };
 
   const handleDelete = (id: string) => {
-    if (tab === "hooks") { deleteHook(id); setHooks(getHooks()); }
-    else if (tab === "ctas") { deleteCTA(id); setCtas(getCTAs()); }
-    else if (tab === "thumbnails") { deleteThumbnailWord(id); setThumbnails(getThumbnailWords()); }
-    else { deleteTitle(id); setTitles(getTitles()); }
+    const chId = activeChannel?.id || "";
+    if (tab === "hooks") { deleteHook(id); setHooks(getHooksByChannel(chId)); }
+    else if (tab === "ctas") { deleteCTA(id); setCtas(getCTAsByChannel(chId)); }
+    else if (tab === "thumbnails") { deleteThumbnailWord(id); setThumbnails(getThumbnailWordsByChannel(chId)); }
+    else { deleteTitle(id); setTitles(getTitlesByChannel(chId)); }
     pushSharedSettings();
   };
 

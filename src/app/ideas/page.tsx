@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getApiKey, getChannels } from "@/lib/channel-store";
-import { getIdeas, saveIdea, deleteIdea, getIdeaRules, saveIdeaRules, IDEA_STATUS_LABELS, type IdeaEntry, type IdeaRules, type IdeaStatus } from "@/lib/idea-store";
+import { getIdeasByChannel, saveIdea, deleteIdea, getIdeaRules, saveIdeaRules, IDEA_STATUS_LABELS, type IdeaEntry, type IdeaRules, type IdeaStatus } from "@/lib/idea-store";
 import { getHooksFor, getPerformanceRecords, GENRE_LABELS, STYLE_LABELS, genId, createProject, saveProject } from "@/lib/project-store";
+import { useChannel } from "@/lib/channel-context";
 import type { Genre, Style } from "@/lib/project-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import { getWinningPatterns } from "@/lib/winning-patterns-store";
@@ -12,6 +13,7 @@ import { formatNumber } from "@/lib/mock-data";
 
 export default function IdeasPage() {
   const router = useRouter();
+  const { activeChannel } = useChannel();
   const [tab, setTab] = useState<"list" | "suggest" | "rules">("list");
   const [ideas, setIdeas] = useState<IdeaEntry[]>([]);
   const [rules, setRulesState] = useState<IdeaRules>({ direction: "", constraints: "", priority: "", thumbnailPolicy: "", ngThemes: "" });
@@ -29,10 +31,10 @@ export default function IdeasPage() {
 
   useEffect(() => {
     pullSharedSettings().then(() => {
-      setIdeas(getIdeas());
+      setIdeas(getIdeasByChannel(activeChannel?.id || ""));
       setRulesState(getIdeaRules());
     });
-  }, []);
+  }, [activeChannel]);
 
   // === 企画一覧 ===
   const filtered = ideas
@@ -52,7 +54,7 @@ export default function IdeasPage() {
   };
 
   const handleCreateProject = (idea: IdeaEntry) => {
-    const p = createProject(idea.genre, idea.style);
+    const p = createProject(idea.genre, idea.style, activeChannel?.id);
     p.title = idea.title;
     p.status = "references";
     saveProject(p);
@@ -116,6 +118,7 @@ export default function IdeasPage() {
       sourceAnalysisIds: [], suggestedHooks: suggested.hooks || [],
       suggestedThumbnailWords: suggested.thumbnailWords || [],
       notes: `狙う感情: ${suggested.targetEmotion}\n理由: ${suggested.reason}`,
+      channelId: activeChannel?.id || "",
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
     setIdeas(saveIdea(idea));

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
+import { useChannel } from "@/lib/channel-context";
 
 export default function SettingsPage() {
   return (
@@ -21,6 +22,7 @@ const ROLE_LABELS: Record<string, string> = { owner: "オーナー", admin: "管
 
 function SettingsContent() {
   const { data: session } = useSession();
+  const { activeChannel } = useChannel();
   const userRole = (session?.user as { role?: string } | undefined)?.role || "";
   const isAdmin = userRole === "owner" || userRole === "admin";
 
