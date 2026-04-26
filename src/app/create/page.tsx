@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getProjectsByChannel, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus } from "@/lib/project-store";
-import type { ScriptProject, Genre, Style } from "@/lib/project-store";
+import type { ScriptProject, Genre, Style, ReviewStatus } from "@/lib/project-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
 import StepGenre from "./StepGenre";
@@ -102,22 +102,66 @@ export default function CreatePage() {
 
         <div className="space-y-3">
           {projects.map((p) => (
-            <div key={p.id} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 flex items-center gap-4">
-              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleResume(p)}>
-                <p className="font-semibold text-sm">{p.title || "（タイトル未定）"}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">{GENRE_LABELS[p.genre]}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{STYLE_LABELS[p.style]}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                    {STEPS.find((s) => s.id === p.status)?.label || p.status}
-                  </span>
-                  <span className="text-xs text-gray-400">{new Date(p.updatedAt).toLocaleDateString("ja-JP")}</span>
+            <div key={p.id} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-4">
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleResume(p)}>
+                  <p className="font-semibold text-sm">{p.title || "（タイトル未定）"}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">{GENRE_LABELS[p.genre]}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{STYLE_LABELS[p.style]}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                      {STEPS.find((s) => s.id === p.status)?.label || p.status}
+                    </span>
+                    <span className="text-xs text-gray-400">{new Date(p.updatedAt).toLocaleDateString("ja-JP")}</span>
+                  </div>
                 </div>
+                <button onClick={() => handleResume(p)} className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors shrink-0">再開</button>
+                <button onClick={() => handleDelete(p.id)} className="text-gray-300 hover:text-danger shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
-              <button onClick={() => handleResume(p)} className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors">再開</button>
-              <button onClick={() => handleDelete(p.id)} className="text-gray-300 hover:text-danger">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              {/* 企画チェック */}
+              <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                {(!p.reviewStatus || p.reviewStatus === "none") && (
+                  <button onClick={() => { saveProject({ ...p, reviewStatus: "pending" }); setProjects(getProjectsByChannel(activeChannel?.id || "")); pushSharedSettings(); }}
+                    className="px-3 py-1.5 rounded-lg text-xs border border-orange-300 text-orange-600 hover:bg-orange-50">
+                    企画チェック依頼
+                  </button>
+                )}
+                {p.reviewStatus === "pending" && (
+                  <>
+                    <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-medium">チェック待ち</span>
+                    <select
+                      value="pending"
+                      onChange={(e) => {
+                        const val = e.target.value as ReviewStatus;
+                        const note = val === "rejected" ? prompt("差し戻し理由:") || "" : "";
+                        saveProject({ ...p, reviewStatus: val, reviewNote: note });
+                        setProjects(getProjectsByChannel(activeChannel?.id || ""));
+                        pushSharedSettings();
+                      }}
+                      className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                    >
+                      <option value="pending">チェック待ち</option>
+                      <option value="approved">承認</option>
+                      <option value="rejected">差し戻し</option>
+                    </select>
+                  </>
+                )}
+                {p.reviewStatus === "approved" && (
+                  <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">承認済み</span>
+                )}
+                {p.reviewStatus === "rejected" && (
+                  <>
+                    <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">差し戻し</span>
+                    {p.reviewNote && <span className="text-xs text-red-500">{p.reviewNote}</span>}
+                    <button onClick={() => { saveProject({ ...p, reviewStatus: "pending", reviewNote: "" }); setProjects(getProjectsByChannel(activeChannel?.id || "")); pushSharedSettings(); }}
+                      className="px-2 py-1 rounded text-xs border border-orange-300 text-orange-600 hover:bg-orange-50">
+                      再依頼
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>

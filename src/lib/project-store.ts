@@ -16,6 +16,8 @@ export const STYLE_LABELS: Record<Style, string> = {
 };
 
 // ===== 台本プロジェクト =====
+export type ReviewStatus = "none" | "pending" | "approved" | "rejected";
+
 export interface ScriptProject {
   id: string;
   genre: Genre;
@@ -30,6 +32,8 @@ export interface ScriptProject {
   thumbnailTexts: string[];
   status: "genre" | "title" | "references" | "analyzing" | "proposal" | "script" | "completed";
   channelId?: string;
+  reviewStatus?: ReviewStatus;
+  reviewNote?: string;
   createdAt: string;
   updatedAt: string;
 }
