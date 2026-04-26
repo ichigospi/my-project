@@ -145,11 +145,16 @@ export default function CreatePage() {
                       <option value="pending">チェック待ち</option>
                       <option value="approved">承認</option>
                       <option value="rejected">差し戻し</option>
+                      <option value="none">取り消し</option>
                     </select>
                   </>
                 )}
                 {p.reviewStatus === "approved" && (
-                  <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">承認済み</span>
+                  <>
+                    <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">承認済み</span>
+                    <button onClick={() => { saveProject({ ...p, reviewStatus: "none", reviewNote: "" }); setProjects(getProjectsByChannel(activeChannel?.id || "")); pushSharedSettings(); }}
+                      className="text-xs text-gray-400 hover:text-gray-600">リセット</button>
+                  </>
                 )}
                 {p.reviewStatus === "rejected" && (
                   <>
