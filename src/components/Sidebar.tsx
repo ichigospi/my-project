@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react";
 import { getApiKey } from "@/lib/channel-store";
 import { getTaskManager } from "@/lib/analysis-task-manager";
 import { onSyncStatus } from "@/lib/shared-sync";
+import { useChannel } from "@/lib/channel-context";
 
 const navItems = [
   { href: "/workflow", label: "\u5de5\u7a0b\u8868", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01", local: false },
@@ -34,6 +35,7 @@ const ROLE_LABELS: Record<string, string> = {
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { channels, activeChannel, setActiveChannelId, addChannel } = useChannel();
   const [ytStatus, setYtStatus] = useState(false);
   const [aiStatus, setAiStatus] = useState(false);
   const [analysisActive, setAnalysisActive] = useState(0);
@@ -86,6 +88,31 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <p className="text-xs text-sidebar-text/60 mt-1">
           {isLocal ? "ローカル環境（OCR作業用）" : "競合リサーチ & 台本作成"}
         </p>
+      </div>
+      <div className="px-4 pt-3 pb-1">
+        <div className="flex items-center gap-1">
+          <select
+            value={activeChannel?.id || ""}
+            onChange={(e) => setActiveChannelId(e.target.value)}
+            className="flex-1 bg-white/10 text-white text-xs rounded px-2 py-1.5 border border-white/10 focus:outline-none focus:border-white/30"
+          >
+            {channels.map((ch) => (
+              <option key={ch.id} value={ch.id} className="bg-gray-800">
+                {ch.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              const name = prompt("新しいチャンネル名を入力:");
+              if (name?.trim()) addChannel(name.trim());
+            }}
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 text-white text-sm transition-colors"
+            title="チャンネルを追加"
+          >
+            +
+          </button>
+        </div>
       </div>
       <nav className="flex-1 p-4 space-y-1">
         {navItems

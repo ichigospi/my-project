@@ -29,6 +29,7 @@ export interface ScriptProject {
   telopScript: TelopLine[] | null;
   thumbnailTexts: string[];
   status: "genre" | "title" | "references" | "analyzing" | "proposal" | "script" | "completed";
+  channelId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -93,6 +94,7 @@ export interface HookEntry {
   sourceChannel: string;
   sourceViews?: number;     // 参考動画の再生数
   tags: string[];
+  channelId?: string;
   createdAt: string;
 }
 
@@ -106,6 +108,7 @@ export interface CTAEntry {
   sourceChannel: string;
   sourceViews?: number;
   tags: string[];
+  channelId?: string;
   createdAt: string;
 }
 
@@ -118,6 +121,7 @@ export interface ThumbnailWordEntry {
   sourceVideo: string;
   sourceChannel: string;
   sourceViews?: number;
+  channelId?: string;
   createdAt: string;
 }
 
@@ -130,6 +134,7 @@ export interface TitleEntry {
   sourceVideo: string;     // 元の動画タイトル（同じ場合あり）
   sourceChannel: string;
   sourceViews?: number;
+  channelId?: string;
   createdAt: string;
 }
 
@@ -284,6 +289,7 @@ export interface ProductionTask {
   linkedProjectId: string;
   sourceVideoUrl: string; // ネタ元動画URL
   urgent: boolean; // 急ぎフラグ
+  channelId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -300,7 +306,7 @@ export const DEFAULT_STEPS: Omit<WorkflowStep, "assignee">[] = [
 ];
 
 // 工程表にタスクを追加（台本作成ウィザードやAI分析から呼び出し）
-export function addTaskFromProject(title: string, genre: Genre, style: Style, projectId: string, sourceVideoUrl?: string): ProductionTask | null {
+export function addTaskFromProject(title: string, genre: Genre, style: Style, projectId: string, sourceVideoUrl?: string, channelId?: string): ProductionTask | null {
   // 同じプロジェクトIDの工程が既にあればスキップ
   const existing = getTasks();
   const dup = existing.find((t) => t.linkedProjectId === projectId);
@@ -312,6 +318,7 @@ export function addTaskFromProject(title: string, genre: Genre, style: Style, pr
     steps: DEFAULT_STEPS.map((s) => ({ ...s, assignee: members[0] || "自分" })),
     deadline: "", publishUrl: "", linkedProjectId: projectId,
     sourceVideoUrl: sourceVideoUrl || "", urgent: false,
+    channelId: channelId || "",
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   saveTask(task);
@@ -405,12 +412,13 @@ export function deleteProject(id: string): ScriptProject[] {
   return projects;
 }
 
-export function createProject(genre: Genre, style: Style): ScriptProject {
+export function createProject(genre: Genre, style: Style, channelId?: string): ScriptProject {
   return {
     id: genId(), genre, style, title: "", titleCandidates: [],
     referenceVideos: [], analyses: [], structureProposal: null,
     generatedScript: "", telopScript: null, thumbnailTexts: [],
-    status: "title", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    status: "title", channelId: channelId || "",
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
 }
 
@@ -565,4 +573,29 @@ export function getTopPerformingPatterns(genre?: Genre): PerformanceRecord[] {
     .filter((r) => !genre || r.genre === genre)
     .sort((a, b) => b.views - a.views)
     .slice(0, 10);
+}
+
+// ===== チャンネル別フィルター =====
+export function getProjectsByChannel(channelId: string): ScriptProject[] {
+  return getProjects().filter((p) => !p.channelId || p.channelId === channelId);
+}
+
+export function getTasksByChannel(channelId: string): ProductionTask[] {
+  return getTasks().filter((t) => !t.channelId || t.channelId === channelId);
+}
+
+export function getHooksByChannel(channelId: string): HookEntry[] {
+  return getHooks().filter((h) => !h.channelId || h.channelId === channelId);
+}
+
+export function getCTAsByChannel(channelId: string): CTAEntry[] {
+  return getCTAs().filter((c) => !c.channelId || c.channelId === channelId);
+}
+
+export function getThumbnailWordsByChannel(channelId: string): ThumbnailWordEntry[] {
+  return getThumbnailWords().filter((w) => !w.channelId || w.channelId === channelId);
+}
+
+export function getTitlesByChannel(channelId: string): TitleEntry[] {
+  return getTitles().filter((t) => !t.channelId || t.channelId === channelId);
 }

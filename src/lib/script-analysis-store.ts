@@ -12,6 +12,7 @@ export interface ChannelProfile {
   commonRules: string;    // チャンネル共通ルール（全台本に適用）
   ngExpressions: string;  // NG表現リスト
   referenceAnalysisIds: string[]; // お手本台本のID
+  channelId?: string;
 }
 
 export interface ScriptAnalysis {
@@ -106,6 +107,32 @@ function defaultProfile(): ChannelProfile {
     ngExpressions: "",
     referenceAnalysisIds: [],
   };
+}
+
+// --- Multi-channel Profile support ---
+const PROFILES_KEY = "fortune_yt_profiles";
+
+export function getAllProfiles(): ChannelProfile[] {
+  if (typeof window === "undefined") return [];
+  const stored = localStorage.getItem(PROFILES_KEY);
+  if (stored) return JSON.parse(stored);
+  // Migration: convert single profile to array
+  const single = getProfile();
+  if (single.channelName) return [single];
+  return [];
+}
+
+export function getProfileByChannel(channelId: string): ChannelProfile {
+  const profiles = getAllProfiles();
+  return profiles.find((p) => p.channelId === channelId) || defaultProfile();
+}
+
+export function saveProfileByChannel(profile: ChannelProfile) {
+  const profiles = getAllProfiles();
+  const idx = profiles.findIndex((p) => p.channelId === profile.channelId);
+  if (idx >= 0) profiles[idx] = profile;
+  else profiles.push(profile);
+  localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
 }
 
 // --- Analyses (localStorage + DB sync) ---

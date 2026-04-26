@@ -16,6 +16,7 @@ export interface IdeaEntry {
   suggestedThumbnailWords: string[];
   notes: string;
   linkedProjectId?: string;
+  channelId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,4 +72,9 @@ export function saveIdeaRules(rules: IdeaRules) {
 
 function defaultIdeaRules(): IdeaRules {
   return { direction: "", constraints: "", priority: "", thumbnailPolicy: "", ngThemes: "" };
+}
+
+// ===== チャンネル別フィルター =====
+export function getIdeasByChannel(channelId: string): IdeaEntry[] {
+  return getIdeas().filter((i) => !i.channelId || i.channelId === channelId);
 }

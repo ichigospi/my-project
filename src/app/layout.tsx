@@ -4,6 +4,7 @@ import SessionProvider from "@/components/SessionProvider";
 import AuthGuard from "@/components/AuthGuard";
 import AppShell from "@/components/AppShell";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import { ChannelProvider } from "@/lib/channel-context";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -37,9 +38,11 @@ export default function RootLayout({
       <body className="min-h-screen flex">
         <ServiceWorkerRegister />
         <SessionProvider>
-          <AuthGuard>
-            <AppShell>{children}</AppShell>
-          </AuthGuard>
+          <ChannelProvider>
+            <AuthGuard>
+              <AppShell>{children}</AppShell>
+            </AuthGuard>
+          </ChannelProvider>
         </SessionProvider>
       </body>
     </html>
