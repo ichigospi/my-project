@@ -20,7 +20,8 @@ x_post_system/
 ├── knowledge_common/              ← 両ジャンル共通ノウハウ
 │   ├── post_principles.md         # ポスト作成の原則（共通）
 │   ├── structure_patterns.md      # 構成パターン（フック→展開→締め 等）
-│   └── ng_patterns.md             # NGパターン
+│   ├── ng_patterns.md             # NGパターン
+│   └── education_framework.md     # 6つの教育 + グダ消し（ネタ選定の核）
 ├── knowledge_business/            ← ビジネス系専用
 │   ├── account_info.md            # 自アカ情報（コンセプト・ターゲット等）
 │   ├── teachings.md               # 教材から抽出した指示書
@@ -45,6 +46,16 @@ x_post_system/
 両ジャンルに共通する原則・型は `knowledge_common/` に置く。
 ジャンル特有のものだけ `knowledge_business/` または `knowledge_spiritual/` に置く。
 **迷ったら共通に入れる**（後で重複が出にくい）。
+
+## ネタ選定の中核（教材4ベース）
+
+ポストの **何を書くか** は以下の2大フレームで決定:
+
+1. **6つの教育**（目的 / 信用 / 問題点 / 手段 / 行動 / 投資）
+2. **グダ消し**（買わない理由を先回りで消す）
+
+詳細は `knowledge_common/education_framework.md` 参照。
+ビジ垢用50選カタログには教育タイプ対応マップあり（`knowledge_business/post_angles_catalog.md`）。
 
 ## ノウハウ種別
 
