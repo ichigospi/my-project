@@ -78,12 +78,12 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
     <div className="relative shrink-0">
       {notif.iconUrl ? (
         <div
-          className="w-[38px] h-[38px] rounded-lg bg-cover bg-center"
+      className="w-[38px] h-[38px] rounded-[8px] bg-cover bg-center"
           style={{ backgroundImage: `url(${notif.iconUrl})` }}
         />
       ) : (
         <div
-          className="w-[38px] h-[38px] rounded-lg flex items-center justify-center text-white font-bold text-base"
+      className="w-[38px] h-[38px] rounded-[8px] flex items-center justify-center text-white font-bold text-base"
           style={{ backgroundColor: notif.iconBg }}
         >
           {notif.iconLetter}
@@ -143,7 +143,7 @@ function NotifCard({
   return (
     <div
       onClick={onClick}
-      className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all"
+      className="relative rounded-[18px] cursor-pointer active:brightness-110 transition-all"
       style={{
         ...CARD_BODY,
         boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
@@ -152,7 +152,7 @@ function NotifCard({
       {/* 枠グラデーション（マスクでリング状に切り抜き） */}
       <div
         aria-hidden
-        className="absolute inset-0 rounded-[26px] pointer-events-none"
+        className="absolute inset-0 rounded-[18px] pointer-events-none"
         style={{
           padding: "0.75px",
           background: BORDER_GRADIENT,
@@ -161,18 +161,18 @@ function NotifCard({
       />
 
       {/* コンテンツ */}
-      <div className="relative px-3.5 py-2 flex gap-3.5 items-center">
+      <div className="relative px-3.5 py-3 flex gap-3 items-start">
         <IconView notif={notif} badge={badge} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-white text-[15px] font-semibold truncate drop-shadow-sm">
+            <p className="text-white text-[13px] font-medium truncate opacity-90">
               {notif.sender}
             </p>
-            <p className="text-white/75 text-[12px] shrink-0 tabular-nums">
+            <p className="text-white/60 text-[12px] shrink-0 tabular-nums">
               {notif.time}
             </p>
           </div>
-          <p className="text-white text-[15px] leading-[1.15] mt-0.5 line-clamp-4 whitespace-pre-wrap">
+          <p className="text-white text-[15px] font-normal leading-[1.25] mt-0.5 line-clamp-4 whitespace-pre-wrap">
             {notif.content}
           </p>
         </div>
@@ -193,7 +193,7 @@ function StackedCard({
 }) {
   const renderBehindCard = (className: string) => (
     <div
-      className={`${className} rounded-[26px]`}
+      className={`${className} rounded-[18px]`}
       style={{
         ...CARD_BODY_BEHIND,
         boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
@@ -201,7 +201,7 @@ function StackedCard({
     >
       <div
         aria-hidden
-        className="absolute inset-0 rounded-[26px] pointer-events-none"
+        className="absolute inset-0 rounded-[18px] pointer-events-none"
         style={{
           padding: "0.75px",
           background: BORDER_GRADIENT_BEHIND,
@@ -221,7 +221,7 @@ function StackedCard({
 
       {/* 最前面のカード */}
       <div
-        className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all"
+        className="relative rounded-[18px] cursor-pointer active:brightness-110 transition-all"
         style={{
           ...CARD_BODY,
           boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
@@ -230,7 +230,7 @@ function StackedCard({
         {/* 枠グラデーション */}
         <div
           aria-hidden
-          className="absolute inset-0 rounded-[26px] pointer-events-none"
+          className="absolute inset-0 rounded-[18px] pointer-events-none"
           style={{
             padding: "0.75px",
             background: BORDER_GRADIENT,
@@ -239,18 +239,18 @@ function StackedCard({
         />
 
         {/* コンテンツ */}
-        <div className="relative px-3.5 py-2 flex gap-3.5 items-center">
+        <div className="relative px-3.5 py-3 flex gap-3 items-start">
           <IconView notif={notif} badge={count} />
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline justify-between gap-2">
-              <p className="text-white text-[15px] font-semibold truncate drop-shadow-sm">
+              <p className="text-white text-[13px] font-medium truncate opacity-90">
                 {notif.sender}
               </p>
-              <p className="text-white/75 text-[12px] shrink-0 tabular-nums">
+              <p className="text-white/60 text-[12px] shrink-0 tabular-nums">
                 {notif.time}
               </p>
             </div>
-            <p className="text-white text-[15px] leading-[1.15] mt-0.5 line-clamp-4 whitespace-pre-wrap">
+            <p className="text-white text-[15px] font-normal leading-[1.25] mt-0.5 line-clamp-4 whitespace-pre-wrap">
               {notif.content}
             </p>
           </div>
