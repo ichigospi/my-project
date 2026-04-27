@@ -1,5 +1,6 @@
 #!/bin/bash
 # 占いスピYTツール - リモート公開版（管理者がブラウザからアクセス可能）
+# Cloudflare Quick Tunnel を使用（無料・サインアップ不要）
 # ダブルクリックで起動できます
 
 cd "$(dirname "$0")"
@@ -19,37 +20,42 @@ if ! command -v node &> /dev/null; then
 fi
 echo "✅ Node.js $(node -v)"
 
-# ngrokチェック・インストール
-if ! command -v ngrok &> /dev/null; then
-    echo ""
-    echo "📦 ngrokをインストール中..."
-    if command -v brew &> /dev/null; then
-        brew install ngrok
+# cloudflaredチェック・インストール（brew不要、直接バイナリを取得）
+CLOUDFLARED_BIN="$(command -v cloudflared 2>/dev/null)"
+if [ -z "$CLOUDFLARED_BIN" ]; then
+    # ローカルにキャッシュした cloudflared を再利用
+    if [ -x "./.bin/cloudflared" ]; then
+        CLOUDFLARED_BIN="$(pwd)/.bin/cloudflared"
     else
-        echo "❌ Homebrewが必要です。先にインストールしてください："
-        echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-        echo "  その後: brew install ngrok"
-        read -p "Enterキーで閉じます..."
-        exit 1
+        echo ""
+        echo "📦 cloudflared を取得中..."
+        ARCH="$(uname -m)"
+        case "$ARCH" in
+            arm64)  CF_ASSET="cloudflared-darwin-arm64.tgz" ;;
+            x86_64) CF_ASSET="cloudflared-darwin-amd64.tgz" ;;
+            *)
+                echo "❌ 未対応のCPUアーキテクチャ: $ARCH"
+                read -p "Enterキーで閉じます..."
+                exit 1
+                ;;
+        esac
+        mkdir -p ./.bin
+        if curl -fL --progress-bar \
+            -o "./.bin/cloudflared.tgz" \
+            "https://github.com/cloudflare/cloudflared/releases/latest/download/$CF_ASSET"; then
+            tar -xzf "./.bin/cloudflared.tgz" -C "./.bin/"
+            rm -f "./.bin/cloudflared.tgz"
+            chmod +x "./.bin/cloudflared"
+            CLOUDFLARED_BIN="$(pwd)/.bin/cloudflared"
+            echo "✅ cloudflared インストール完了"
+        else
+            echo "❌ cloudflared のダウンロードに失敗しました"
+            read -p "Enterキーで閉じます..."
+            exit 1
+        fi
     fi
 fi
-echo "✅ ngrok 検出"
-
-# ngrok認証チェック
-if ! ngrok config check &> /dev/null; then
-    echo ""
-    echo "================================"
-    echo "  ngrok初回セットアップ"
-    echo "================================"
-    echo ""
-    echo "1. https://dashboard.ngrok.com/signup でアカウント作成（無料）"
-    echo "2. https://dashboard.ngrok.com/get-started/your-authtoken でトークンをコピー"
-    echo ""
-    read -p "ngrokのAuthTokenを貼り付け: " NGROK_TOKEN
-    ngrok config add-authtoken "$NGROK_TOKEN"
-    echo "✅ ngrok認証完了"
-    echo ""
-fi
+echo "✅ cloudflared 検出: $CLOUDFLARED_BIN"
 
 # .env.localチェック
 if [ ! -f ".env.local" ]; then
@@ -92,31 +98,51 @@ echo ""
 npm run dev &
 NPM_PID=$!
 
-# サーバー起動を待つ
-sleep 5
+# サーバー起動を待つ（http://localhost:3000 が応答するまで最大30秒）
+echo "⏳ サーバーの起動を待機中..."
+for i in $(seq 1 30); do
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null | grep -qE "^(200|3..|4..)$"; then
+        break
+    fi
+    sleep 1
+done
 
-# ngrokでトンネル開始
+# Cloudflare Quick Tunnel 開始（ログを一時ファイルに）
 echo ""
 echo "🌐 外部公開中..."
 echo ""
-ngrok http 3000 --log=stdout &
-NGROK_PID=$!
+TUNNEL_LOG="$(mktemp -t cloudflared-XXXXXX.log)"
+"$CLOUDFLARED_BIN" tunnel --no-autoupdate --url http://localhost:3000 > "$TUNNEL_LOG" 2>&1 &
+TUNNEL_PID=$!
 
-# ngrokのURLを取得して表示
-sleep 3
-NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"[^"]*"' | head -1 | cut -d'"' -f4)
+# 公開URLが出るまで最大30秒待つ
+TUNNEL_URL=""
+for i in $(seq 1 30); do
+    TUNNEL_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" | head -1)"
+    if [ -n "$TUNNEL_URL" ]; then
+        break
+    fi
+    sleep 1
+done
 
 echo ""
 echo "================================"
-echo "  管理者に以下のURLを共有してください："
-echo ""
-echo "  → ${NGROK_URL}/ocr"
-echo ""
+if [ -n "$TUNNEL_URL" ]; then
+    echo "  管理者に以下のURLを共有してください："
+    echo ""
+    echo "  → ${TUNNEL_URL}/ocr"
+    echo ""
+else
+    echo "  ⚠️  公開URLの取得に失敗しました"
+    echo "  下記ログで 'trycloudflare.com' を含む行を探してください："
+    echo "  $TUNNEL_LOG"
+    echo ""
+fi
 echo "  このウィンドウを閉じると停止します"
 echo "================================"
 echo ""
 
 # 終了時にクリーンアップ
-trap "kill $NPM_PID $NGROK_PID 2>/dev/null" EXIT
+trap "kill $NPM_PID $TUNNEL_PID 2>/dev/null; rm -f '$TUNNEL_LOG'" EXIT
 
 wait $NPM_PID
