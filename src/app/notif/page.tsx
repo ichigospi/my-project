@@ -23,6 +23,9 @@ interface Settings {
   bgColor2: string;     // グラデーション2色目
   bgDirection: GradientDir;
   bgImage: string;      // data URL
+  cardWidth: number;    // カードコンテナ最大幅 px
+  fontSize: number;     // 本文・送信者の文字サイズ px
+  lineHeight: number;   // 本文の行間 (ratio)
   // 旧バージョン互換
   useImage?: boolean;
   notifications: NotifItem[];
@@ -36,6 +39,9 @@ const DEFAULT_SETTINGS: Settings = {
   bgColor2: "#3a1f2a",
   bgDirection: "to bottom",
   bgImage: "",
+  cardWidth: 400,
+  fontSize: 15,
+  lineHeight: 1.2,
   notifications: [
     {
       id: "n1",
@@ -100,22 +106,26 @@ function IconView({ notif, badge }: { notif: NotifItem; badge?: number }) {
 
 // ===== 通知カード共通スタイル =====
 // 外枠（グラデーション光沢のみ）
-// 円錐グラデーション: 右上と左下の角だけ完全に暗く、その他の辺・角はすべて均一に光る
-// 暗ゾーンを狭く(±7°)して、辺は全部しっかり明るく
-// from 135deg を起点に時計回り: 0°=右下, 90°=左下, 180°=左上, 270°=右上
-const BORDER_GRADIENT =
-  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.75) 0deg, rgba(255,255,255,0.55) 45deg, rgba(255,255,255,0.5) 80deg, rgba(255,255,255,0.15) 87deg, rgba(255,255,255,0) 90deg, rgba(255,255,255,0.15) 93deg, rgba(255,255,255,0.5) 100deg, rgba(255,255,255,0.55) 135deg, rgba(255,255,255,0.75) 180deg, rgba(255,255,255,0.55) 225deg, rgba(255,255,255,0.5) 260deg, rgba(255,255,255,0.15) 267deg, rgba(255,255,255,0) 270deg, rgba(255,255,255,0.15) 273deg, rgba(255,255,255,0.5) 280deg, rgba(255,255,255,0.55) 315deg, rgba(255,255,255,0.75) 360deg)";
+// 対角線リニアグラデーション: 左上(0%)と右下(100%)が明るく、中間(50%=TR/BL)は暗い
+// 横長カードでも TR/BL の角は常に gradient の 50% 位置に来るので正確
+// 大部分は明るく(0.5以上)、中央の50%だけ急速に暗くして TR/BL にピンポイントで暗を当てる
+// 均一な光沢色（辺全体でばらつきなし）
+const BORDER_COLOR = "rgba(255,255,255,0.45)";
+const BORDER_COLOR_BEHIND = "rgba(255,255,255,0.28)";
 
-const BORDER_GRADIENT_BEHIND =
-  "conic-gradient(from 135deg at 50% 50%, rgba(255,255,255,0.45) 0deg, rgba(255,255,255,0.32) 45deg, rgba(255,255,255,0.3) 80deg, rgba(255,255,255,0.08) 87deg, rgba(255,255,255,0) 90deg, rgba(255,255,255,0.08) 93deg, rgba(255,255,255,0.3) 100deg, rgba(255,255,255,0.32) 135deg, rgba(255,255,255,0.45) 180deg, rgba(255,255,255,0.32) 225deg, rgba(255,255,255,0.3) 260deg, rgba(255,255,255,0.08) 267deg, rgba(255,255,255,0) 270deg, rgba(255,255,255,0.08) 273deg, rgba(255,255,255,0.3) 280deg, rgba(255,255,255,0.32) 315deg, rgba(255,255,255,0.45) 360deg)";
-
-// CSSマスクで枠だけ表示（リング状に切り抜く）
-const BORDER_MASK = {
-  WebkitMask:
-    "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-  WebkitMaskComposite: "xor",
-  maskComposite: "exclude",
-} as React.CSSProperties;
+// リング + TR/BL 切り抜きマスク（4層）
+// 辺は完全均一な明るさ、右上と左下の角だけ透明
+// radialはハードエッジで、両方全く同じサイズで対称にする
+const RING_MASK_WITH_CORNERS: React.CSSProperties = {
+  WebkitMask: [
+    "radial-gradient(circle 28px at 100% 0%, transparent 27px, #000 28px)",
+    "radial-gradient(circle 28px at 0% 100%, transparent 27px, #000 28px)",
+    "linear-gradient(#000 0 0) content-box",
+    "linear-gradient(#000 0 0)",
+  ].join(", "),
+  WebkitMaskComposite: "source-in, source-in, xor",
+  maskComposite: "intersect, intersect, exclude",
+};
 
 // カード本体: 均一な半透明
 const CARD_BODY: React.CSSProperties = {
@@ -135,28 +145,33 @@ function NotifCard({
   notif,
   onClick,
   badge,
+  fontSize = 15,
+  lineHeight = 1.2,
 }: {
   notif: NotifItem;
   onClick: () => void;
   badge?: number;
+  fontSize?: number;
+  lineHeight?: number;
 }) {
+  const timeFontSize = Math.max(10, fontSize - 3);
   return (
     <div
       onClick={onClick}
-      className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all"
+      className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all isolate"
       style={{
         ...CARD_BODY,
-        boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
       }}
     >
-      {/* 枠グラデーション（マスクでリング状に切り抜き） */}
+      {/* 均一な明るさの枠（TR/BL以外の全辺） */}
       <div
         aria-hidden
         className="absolute inset-0 rounded-[26px] pointer-events-none"
         style={{
           padding: "0.75px",
-          background: BORDER_GRADIENT,
-          ...BORDER_MASK,
+          background: BORDER_COLOR,
+          ...RING_MASK_WITH_CORNERS,
         }}
       />
 
@@ -165,14 +180,23 @@ function NotifCard({
         <IconView notif={notif} badge={badge} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-white text-[15px] font-semibold truncate drop-shadow-sm">
+            <p
+              className="text-white font-semibold truncate drop-shadow-sm"
+              style={{ fontSize: `${fontSize}px` }}
+            >
               {notif.sender}
             </p>
-            <p className="text-white/75 text-[12px] shrink-0 tabular-nums">
+            <p
+              className="text-white/75 shrink-0 tabular-nums"
+              style={{ fontSize: `${timeFontSize}px` }}
+            >
               {notif.time}
             </p>
           </div>
-          <p className="text-white text-[15px] leading-[1.15] mt-0.5 line-clamp-4 whitespace-pre-wrap">
+          <p
+            className="text-white mt-0.5 line-clamp-4 whitespace-pre-wrap"
+            style={{ fontSize: `${fontSize}px`, lineHeight }}
+          >
             {notif.content}
           </p>
         </div>
@@ -186,17 +210,22 @@ function StackedCard({
   notif,
   count,
   onClick,
+  fontSize = 15,
+  lineHeight = 1.2,
 }: {
   notif: NotifItem;
   count: number;
   onClick: () => void;
+  fontSize?: number;
+  lineHeight?: number;
 }) {
+  const timeFontSize = Math.max(10, fontSize - 3);
   const renderBehindCard = (className: string) => (
     <div
-      className={`${className} rounded-[26px]`}
+      className={`${className} rounded-[26px] isolate`}
       style={{
         ...CARD_BODY_BEHIND,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
       }}
     >
       <div
@@ -204,8 +233,8 @@ function StackedCard({
         className="absolute inset-0 rounded-[26px] pointer-events-none"
         style={{
           padding: "0.75px",
-          background: BORDER_GRADIENT_BEHIND,
-          ...BORDER_MASK,
+          background: BORDER_COLOR_BEHIND,
+          ...RING_MASK_WITH_CORNERS,
         }}
       />
     </div>
@@ -221,20 +250,20 @@ function StackedCard({
 
       {/* 最前面のカード */}
       <div
-        className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all"
+        className="relative rounded-[26px] cursor-pointer active:brightness-110 transition-all isolate"
         style={{
           ...CARD_BODY,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
         }}
       >
-        {/* 枠グラデーション */}
+        {/* 均一な明るさの枠（TR/BL以外の全辺） */}
         <div
           aria-hidden
           className="absolute inset-0 rounded-[26px] pointer-events-none"
           style={{
             padding: "0.75px",
-            background: BORDER_GRADIENT,
-            ...BORDER_MASK,
+            background: BORDER_COLOR,
+            ...RING_MASK_WITH_CORNERS,
           }}
         />
 
@@ -243,14 +272,23 @@ function StackedCard({
           <IconView notif={notif} badge={count} />
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline justify-between gap-2">
-              <p className="text-white text-[15px] font-semibold truncate drop-shadow-sm">
+              <p
+                className="text-white font-semibold truncate drop-shadow-sm"
+                style={{ fontSize: `${fontSize}px` }}
+              >
                 {notif.sender}
               </p>
-              <p className="text-white/75 text-[12px] shrink-0 tabular-nums">
+              <p
+                className="text-white/75 shrink-0 tabular-nums"
+                style={{ fontSize: `${timeFontSize}px` }}
+              >
                 {notif.time}
               </p>
             </div>
-            <p className="text-white text-[15px] leading-[1.15] mt-0.5 line-clamp-4 whitespace-pre-wrap">
+            <p
+              className="text-white mt-0.5 line-clamp-4 whitespace-pre-wrap"
+              style={{ fontSize: `${fontSize}px`, lineHeight }}
+            >
               {notif.content}
             </p>
           </div>
@@ -552,7 +590,7 @@ function ColorPicker({
   );
 }
 
-// ===== 背景設定モーダル =====
+// ===== 設定モーダル（背景 ＋ 表示） =====
 function BgModal({
   settings,
   onClose,
@@ -562,11 +600,15 @@ function BgModal({
   onClose: () => void;
   onSave: (s: Partial<Settings>) => void;
 }) {
+  const [tab, setTab] = useState<"bg" | "display">("bg");
   const [bgMode, setBgMode] = useState<BgMode>(settings.bgMode);
   const [bgColor, setBgColor] = useState(settings.bgColor);
   const [bgColor2, setBgColor2] = useState(settings.bgColor2);
   const [bgDirection, setBgDirection] = useState<GradientDir>(settings.bgDirection);
   const [bgImage, setBgImage] = useState(settings.bgImage);
+  const [cardWidth, setCardWidth] = useState(settings.cardWidth);
+  const [fontSize, setFontSize] = useState(settings.fontSize);
+  const [lineHeight, setLineHeight] = useState(settings.lineHeight);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -587,10 +629,31 @@ function BgModal({
         </div>
 
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-900">背景設定</h3>
+          <h3 className="text-lg font-bold text-gray-900">設定</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none p-1">&times;</button>
         </div>
 
+        {/* タブ切替 */}
+        <div className="flex gap-2 border-b border-gray-100 -mx-1 px-1">
+          {([
+            { id: "bg" as const, label: "背景" },
+            { id: "display" as const, label: "表示" },
+          ]).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                tab === t.id
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-400"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "bg" && <>
         {/* プレビュー */}
         <div className="w-full h-20 rounded-xl border border-gray-200" style={previewStyle} />
 
@@ -684,9 +747,91 @@ function BgModal({
             <input ref={fileRef} type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />
           </div>
         )}
+        </>}
+
+        {tab === "display" && (
+          <div className="space-y-5">
+            {/* カード幅 */}
+            <div>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <label className="text-xs font-medium text-gray-500">カード幅</label>
+                <span className="text-xs text-gray-600 tabular-nums">{cardWidth}px</span>
+              </div>
+              <input
+                type="range"
+                min={280}
+                max={500}
+                step={5}
+                value={cardWidth}
+                onChange={(e) => setCardWidth(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                <span>狭い (280)</span>
+                <span>広い (500)</span>
+              </div>
+            </div>
+
+            {/* 文字サイズ */}
+            <div>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <label className="text-xs font-medium text-gray-500">文字サイズ</label>
+                <span className="text-xs text-gray-600 tabular-nums">{fontSize}px</span>
+              </div>
+              <input
+                type="range"
+                min={11}
+                max={22}
+                step={1}
+                value={fontSize}
+                onChange={(e) => setFontSize(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                <span>小 (11)</span>
+                <span>大 (22)</span>
+              </div>
+            </div>
+
+            {/* 行間 */}
+            <div>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <label className="text-xs font-medium text-gray-500">行間</label>
+                <span className="text-xs text-gray-600 tabular-nums">{lineHeight.toFixed(2)}</span>
+              </div>
+              <input
+                type="range"
+                min={1.0}
+                max={1.8}
+                step={0.05}
+                value={lineHeight}
+                onChange={(e) => setLineHeight(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                <span>詰 (1.00)</span>
+                <span>広 (1.80)</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setCardWidth(400);
+                setFontSize(15);
+                setLineHeight(1.2);
+              }}
+              className="w-full py-2.5 rounded-xl text-xs font-medium bg-gray-100 text-gray-600 active:bg-gray-200"
+            >
+              デフォルトに戻す
+            </button>
+          </div>
+        )}
 
         <button
-          onClick={() => { onSave({ bgMode, bgColor, bgColor2, bgDirection, bgImage }); onClose(); }}
+          onClick={() => {
+            onSave({ bgMode, bgColor, bgColor2, bgDirection, bgImage, cardWidth, fontSize, lineHeight });
+            onClose();
+          }}
           className="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-blue-600 active:bg-blue-700"
         >
           保存
@@ -783,7 +928,10 @@ export default function NotifPage() {
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />
       )}
 
-      <div className="relative max-w-md mx-auto px-3 pt-12 pb-44 min-h-screen flex flex-col">
+      <div
+        className="relative mx-auto px-4 pt-12 pb-44 min-h-screen flex flex-col"
+        style={{ maxWidth: `${settings.cardWidth}px` }}
+      >
         {/* ステータスバー風 */}
         <div className="flex items-center justify-between text-white px-3 mb-2">
           <p className="text-base font-semibold tabular-nums">{clock}</p>
@@ -833,6 +981,8 @@ export default function NotifPage() {
                         key={n.id}
                         notif={n}
                         onClick={() => { setEditingNotif(n); setShowEditModal(true); }}
+                        fontSize={settings.fontSize}
+                        lineHeight={settings.lineHeight}
                       />
                     ))}
                   </div>
@@ -849,6 +999,8 @@ export default function NotifPage() {
                     notif={newest}
                     count={g.items.length}
                     onClick={() => setExpandedSender(g.sender)}
+                    fontSize={settings.fontSize}
+                    lineHeight={settings.lineHeight}
                   />
                 );
               }
@@ -860,6 +1012,8 @@ export default function NotifPage() {
                   key={n.id}
                   notif={n}
                   onClick={() => { setEditingNotif(n); setShowEditModal(true); }}
+                  fontSize={settings.fontSize}
+                  lineHeight={settings.lineHeight}
                 />
               );
             });
