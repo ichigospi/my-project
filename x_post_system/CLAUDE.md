@@ -21,7 +21,8 @@ x_post_system/
 │   ├── post_principles.md         # ポスト作成の原則（共通）
 │   ├── structure_patterns.md      # 構成パターン（フック→展開→締め 等）
 │   ├── ng_patterns.md             # NGパターン
-│   └── education_framework.md     # 6つの教育 + グダ消し（ネタ選定の核）
+│   ├── education_framework.md     # 6つの教育 + グダ消し（教育中心の運用）
+│   └── story_operation.md         # ストーリー型運用（エンタメ中心の運用）
 ├── knowledge_business/            ← ビジネス系専用
 │   ├── account_info.md            # 自アカ情報（コンセプト・ターゲット等）
 │   ├── teachings.md               # 教材から抽出した指示書
@@ -47,14 +48,17 @@ x_post_system/
 ジャンル特有のものだけ `knowledge_business/` または `knowledge_spiritual/` に置く。
 **迷ったら共通に入れる**（後で重複が出にくい）。
 
-## ネタ選定の中核（教材4ベース）
+## 運用戦略の2軸（教材4・6ベース）
 
-ポストの **何を書くか** は以下の2大フレームで決定:
+X運用の設計には大きく2つの方向性がある:
 
-1. **6つの教育**（目的 / 信用 / 問題点 / 手段 / 行動 / 投資）
-2. **グダ消し**（買わない理由を先回りで消す）
+| 軸 | 詳細ファイル | 中心 | 使うタイミング |
+|---|---|---|---|
+| **教育中心の運用** | `knowledge_common/education_framework.md` | 6つの教育 + グダ消し | 普段の骨格 |
+| **ストーリー型運用** | `knowledge_common/story_operation.md` | エンタメ・物語・マインドシェア | 立ち上げ初期 / ローンチ前 / マンネリ突破 |
 
-詳細は `knowledge_common/education_framework.md` 参照。
+両者は **対立ではなく補完**。普段は教育中心、要所でストーリー型を投入。
+
 ビジ垢用50選カタログには教育タイプ対応マップあり（`knowledge_business/post_angles_catalog.md`）。
 
 ## ノウハウ種別
