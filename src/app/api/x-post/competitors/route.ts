@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
         handle,
         name: body.name ?? "",
         note: body.note ?? "",
+        isSelf: Boolean(body.isSelf ?? false),
       },
     });
     return NextResponse.json(competitor);

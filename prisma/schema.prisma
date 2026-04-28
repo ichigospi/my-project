@@ -194,13 +194,14 @@ model XKnowledge {
   @@index([type])
 }
 
-// 競合アカウント
+// 競合アカウント（isSelf=true は自アナリティクス対象の自分のアカウント）
 model XCompetitor {
   id        String   @id @default(cuid())
   genre     String
   handle    String
   name      String   @default("")
   note      String   @default("")
+  isSelf    Boolean  @default(false)
 
   posts     XPost[]
 

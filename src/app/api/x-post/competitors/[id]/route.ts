@@ -12,6 +12,7 @@ export async function PUT(request: NextRequest, { params }: { params: Params }) 
     if (body.handle !== undefined) data.handle = String(body.handle).replace(/^@/, "");
     if (body.name !== undefined) data.name = body.name;
     if (body.note !== undefined) data.note = body.note;
+    if (body.isSelf !== undefined) data.isSelf = Boolean(body.isSelf);
     const competitor = await prisma.xCompetitor.update({ where: { id }, data });
     return NextResponse.json(competitor);
   } catch (e) {

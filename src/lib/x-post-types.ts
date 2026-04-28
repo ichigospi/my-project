@@ -73,13 +73,14 @@ export interface XTeaching {
   updatedAt: string;
 }
 
-// 競合アカウント
+// 競合アカウント（isSelf=true は自分のアカウント = アナリティクス対象）
 export interface XCompetitor {
   id: string;
   genre: string;
   handle: string;
   name: string;
   note: string;
+  isSelf: boolean;
   createdAt: string;
   updatedAt: string;
   _count: { posts: number };

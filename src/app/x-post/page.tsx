@@ -6,8 +6,8 @@ import { useXPostGenre, X_POST_GENRES } from "@/lib/x-post-genre";
 
 const quickActions = [
   { href: "/x-post/create", label: "新規ポスト生成", emoji: "✏️", color: "bg-indigo-500 hover:bg-indigo-600" },
+  { href: "/x-post/analytics", label: "アナリティクス", emoji: "📊", color: "bg-purple-500 hover:bg-purple-600" },
   { href: "/x-post/competitors", label: "競合追加・収集", emoji: "👥", color: "bg-emerald-500 hover:bg-emerald-600" },
-  { href: "/x-post/analysis", label: "分析実行", emoji: "🔍", color: "bg-amber-500 hover:bg-amber-600" },
   { href: "/x-post/daily", label: "今日のプラン", emoji: "📅", color: "bg-rose-500 hover:bg-rose-600" },
 ];
 
@@ -18,6 +18,7 @@ const featureNav = [
   { href: "/x-post/templates", title: "📋 テンプレ", desc: "単一ポスト + シーケンスパターンの管理" },
   { href: "/x-post/create", title: "✏️ 生成", desc: "ゼロから / テンプレから / デイリーから生成" },
   { href: "/x-post/daily", title: "📅 デイリープラン", desc: "今日のポスト計画と教育バランス・設定" },
+  { href: "/x-post/analytics", title: "📊 アナリティクス", desc: "自アカの伸び比較分析・改善ヒント抽出" },
 ];
 
 interface StatsResponse {

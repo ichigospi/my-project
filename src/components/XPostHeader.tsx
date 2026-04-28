@@ -13,6 +13,7 @@ const tabs = [
   { href: "/x-post/templates", label: "テンプレ", emoji: "📋" },
   { href: "/x-post/create", label: "生成", emoji: "✏️" },
   { href: "/x-post/daily", label: "デイリー", emoji: "📅" },
+  { href: "/x-post/analytics", label: "アナリティクス", emoji: "📊" },
 ];
 
 export default function XPostHeader() {

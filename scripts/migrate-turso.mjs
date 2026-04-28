@@ -68,4 +68,23 @@ for (const sql of sqls) {
   await client.execute(sql);
   console.log("OK:", sql.substring(0, 60));
 }
+
+// 後付けの ALTER TABLE — 失敗しても継続（既に追加済みなら "duplicate column" エラーが出るので無視）
+const alters = [
+  `ALTER TABLE "XCompetitor" ADD COLUMN "isSelf" BOOLEAN NOT NULL DEFAULT false`,
+];
+for (const sql of alters) {
+  try {
+    await client.execute(sql);
+    console.log("ALTER OK:", sql.substring(0, 60));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/duplicate column|already exists/i.test(msg)) {
+      console.log("ALTER skip (already applied):", sql.substring(0, 60));
+    } else {
+      throw e;
+    }
+  }
+}
+
 console.log("Migration complete!");

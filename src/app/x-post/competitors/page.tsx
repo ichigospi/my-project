@@ -97,8 +97,11 @@ export default function CompetitorsPage() {
       const fData: XFolderWithCount[] = await fRes.json();
       const fiData: FolderItemRecord[] = await fiRes.json();
 
-      setCompetitors(cData);
-      setPosts(pData);
+      // 自アカ（isSelf）は /x-post/analytics 側で管理するのでここでは除外
+      const competitorsOnly = cData.filter((c) => !c.isSelf);
+      const selfIds = new Set(cData.filter((c) => c.isSelf).map((c) => c.id));
+      setCompetitors(competitorsOnly);
+      setPosts(pData.filter((p) => !selfIds.has(p.competitorId)));
       setFolders(fData);
       // ポストID集合に絞ってfolder-itemsを保持
       const postIds = new Set(pData.map((p) => p.id));

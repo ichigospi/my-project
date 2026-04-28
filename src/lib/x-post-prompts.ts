@@ -594,3 +594,130 @@ export function parseGeneratedResult(raw: string): { result: GeneratedResult; pa
   }
 }
 
+
+// =============================
+// 自アナリティクス: 伸び比較分析プロンプト
+// =============================
+
+export const ANALYTICS_COMPARE_BASE_SYSTEM = `あなたはXアカウント運用の改善コーチです。
+ユーザー自身のアカウントの「伸びたポスト群」と「伸びなかったポスト群」を比較分析し、
+自アカ用の運用改善ヒントを抽出します。
+
+【重要なルール】
+- 「伸びた要因」「伸びなかった要因」を、教材の14手法・12教育要素・10構造タイプ・NGパターンの観点で言語化する
+- 自アカ情報（口調・USP・過去ストーリー）と整合した具体的な改善案を出す
+- ふんわりではなく、次のポストにすぐ反映できる具体性で書く（「もっと数字を入れる」ではなく「いいね100超えポストは冒頭に〇〇という数字訴求が共通していた」）
+- 出力は必ず指定されたJSON形式のみ（前後に文章を入れない・コードブロックなし）
+`;
+
+export interface AnalyticsPostInput {
+  index: number;
+  content: string;
+  likes: number;
+  retweets: number;
+  impressions: number;
+  postedAt?: string;
+}
+
+export function buildAnalyticsCompareUserMessage(opts: {
+  genre: "business" | "spiritual";
+  topPosts: AnalyticsPostInput[];
+  bottomPosts: AnalyticsPostInput[];
+  customInstruction?: string;
+}): string {
+  const genreLabel = opts.genre === "business" ? "ビジネス系" : "占いスピ系";
+  const fmt = (label: string, posts: AnalyticsPostInput[]) =>
+    posts
+      .map((p) => `[${label}${p.index}] 👍${p.likes} 🔁${p.retweets}${p.impressions ? ` 📊${p.impressions.toLocaleString()}` : ""}\n${p.content.trim()}`)
+      .join("\n\n---\n\n");
+
+  return `以下は自分の${genreLabel}アカウントのポスト群です。「伸びたポスト」と「伸びなかったポスト」を比較分析してください。
+
+【伸びたポスト（上位）】
+${fmt("上位", opts.topPosts)}
+
+【伸びなかったポスト（下位）】
+${fmt("下位", opts.bottomPosts)}
+
+${opts.customInstruction ? `\n【追加指示】\n${opts.customInstruction}\n` : ""}
+
+【出力フォーマット】次のJSONを出力してください（コードブロックなし、生JSON）:
+
+{
+  "winningPatterns": [
+    { "pattern": "上位群に共通する要素を1文で", "evidence": "具体的にどのポストに表れているか", "category": "フック/構造/教育/語彙/その他" }
+  ],
+  "losingPatterns": [
+    { "pattern": "下位群に共通する弱さを1文で", "evidence": "具体的に", "category": "フック/構造/教育/語彙/NG" }
+  ],
+  "diff": "上位と下位の決定的な差を1〜2文で",
+  "improvementHints": [
+    { "hint": "次のポストですぐ実行できる具体的アクション", "priority": "high|medium|low", "rationale": "なぜそれが効くか" }
+  ],
+  "topPickToTemplate": [
+    { "index": 1, "reason": "テンプレ化すべき理由（1文）" }
+  ]
+}`;
+}
+
+export async function buildAnalyticsCompareSystemPrompt(genre: "business" | "spiritual"): Promise<{
+  systemPrompt: string;
+  knowledgeContext: string;
+}> {
+  const framework = await loadKnowledgeFramework();
+  const genreKnowledge = await loadGenreKnowledge(genre);
+  return {
+    systemPrompt: ANALYTICS_COMPARE_BASE_SYSTEM,
+    knowledgeContext: [
+      "# 知識フレームワーク",
+      framework,
+      "",
+      `# ${genre === "business" ? "ビジ垢" : "占い垢"}の自アカ情報・教材`,
+      genreKnowledge,
+    ].join("\n\n"),
+  };
+}
+
+export interface AnalyticsCompareResult {
+  winningPatterns: { pattern: string; evidence: string; category: string }[];
+  losingPatterns: { pattern: string; evidence: string; category: string }[];
+  diff: string;
+  improvementHints: { hint: string; priority: "high" | "medium" | "low"; rationale: string }[];
+  topPickToTemplate: { index: number; reason: string }[];
+}
+
+export function parseAnalyticsCompareResult(raw: string): { result: AnalyticsCompareResult; parseError: boolean } {
+  const empty: AnalyticsCompareResult = {
+    winningPatterns: [], losingPatterns: [], diff: "", improvementHints: [], topPickToTemplate: [],
+  };
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  try {
+    const p = JSON.parse(cleaned);
+    const arrStr = (a: unknown) => (Array.isArray(a) ? a : []);
+    const result: AnalyticsCompareResult = {
+      winningPatterns: arrStr(p.winningPatterns).map((x: Partial<AnalyticsCompareResult["winningPatterns"][number]>) => ({
+        pattern: typeof x.pattern === "string" ? x.pattern : "",
+        evidence: typeof x.evidence === "string" ? x.evidence : "",
+        category: typeof x.category === "string" ? x.category : "",
+      })),
+      losingPatterns: arrStr(p.losingPatterns).map((x: Partial<AnalyticsCompareResult["losingPatterns"][number]>) => ({
+        pattern: typeof x.pattern === "string" ? x.pattern : "",
+        evidence: typeof x.evidence === "string" ? x.evidence : "",
+        category: typeof x.category === "string" ? x.category : "",
+      })),
+      diff: typeof p.diff === "string" ? p.diff : "",
+      improvementHints: arrStr(p.improvementHints).map((x: Partial<AnalyticsCompareResult["improvementHints"][number]>) => ({
+        hint: typeof x.hint === "string" ? x.hint : "",
+        priority: x.priority === "high" || x.priority === "low" ? x.priority : "medium",
+        rationale: typeof x.rationale === "string" ? x.rationale : "",
+      })),
+      topPickToTemplate: arrStr(p.topPickToTemplate).map((x: Partial<AnalyticsCompareResult["topPickToTemplate"][number]>) => ({
+        index: typeof x.index === "number" ? x.index : 0,
+        reason: typeof x.reason === "string" ? x.reason : "",
+      })),
+    };
+    return { result, parseError: false };
+  } catch {
+    return { result: empty, parseError: true };
+  }
+}
