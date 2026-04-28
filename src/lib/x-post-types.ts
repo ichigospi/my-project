@@ -304,6 +304,160 @@ export function parseSequencePattern(record: {
   };
 }
 
+// =============================
+// 設定（XSettings）
+// =============================
+
+export interface EducationFrequencyConfig {
+  // 各教育タイプの最低頻度（X日に1回）
+  // 例: 目的: 1（毎日）, 信用: 2, 問題点: 3, ...
+  minPerDays: Partial<Record<EducationType, number>>;
+}
+
+export interface XSettingsForm {
+  id?: string;
+  genre: XPostGenre;
+  postsPerDay: number;
+  educationConfig: EducationFrequencyConfig;
+  sequenceConfig: { quoteRtRate: number; consecutiveRate: number; independentRate: number; storyChainRate: number };
+  spiceEnabled: boolean;
+  defaultModel: string;
+  xApiBearerToken: string;
+}
+
+export function defaultSettings(genre: XPostGenre): XSettingsForm {
+  return {
+    genre,
+    postsPerDay: 5,
+    educationConfig: {
+      minPerDays: {
+        目的: 1,
+        信用: 2,
+        問題点: 3,
+        手段: 2,
+        投資: 5,
+        行動: 3,
+      },
+    },
+    sequenceConfig: {
+      quoteRtRate: 30,
+      consecutiveRate: 25,
+      independentRate: 40,
+      storyChainRate: 5,
+    },
+    spiceEnabled: true,
+    defaultModel: "claude-sonnet-4-6",
+    xApiBearerToken: "",
+  };
+}
+
+interface XSettingsApiRecord {
+  id: string;
+  genre: string;
+  postsPerDay: number;
+  educationConfig: string;
+  sequenceConfig: string;
+  spiceEnabled: boolean;
+  defaultModel: string;
+  xApiBearerToken: string;
+}
+
+export function parseSettings(record: XSettingsApiRecord | null, genre: XPostGenre): XSettingsForm {
+  if (!record) return defaultSettings(genre);
+  const fallback = defaultSettings(genre);
+  let educationConfig: EducationFrequencyConfig = fallback.educationConfig;
+  let sequenceConfig = fallback.sequenceConfig;
+  try {
+    const parsed = JSON.parse(record.educationConfig || "{}");
+    educationConfig = parsed.minPerDays ? parsed : fallback.educationConfig;
+  } catch {}
+  try {
+    sequenceConfig = { ...fallback.sequenceConfig, ...JSON.parse(record.sequenceConfig || "{}") };
+  } catch {}
+  return {
+    id: record.id,
+    genre,
+    postsPerDay: record.postsPerDay,
+    educationConfig,
+    sequenceConfig,
+    spiceEnabled: record.spiceEnabled,
+    defaultModel: record.defaultModel,
+    xApiBearerToken: record.xApiBearerToken,
+  };
+}
+
+export function serializeSettings(form: XSettingsForm) {
+  return {
+    genre: form.genre,
+    postsPerDay: form.postsPerDay,
+    educationConfig: JSON.stringify(form.educationConfig),
+    sequenceConfig: JSON.stringify(form.sequenceConfig),
+    spiceEnabled: form.spiceEnabled,
+    defaultModel: form.defaultModel,
+    xApiBearerToken: form.xApiBearerToken,
+  };
+}
+
+// =============================
+// デイリープラン
+// =============================
+
+export interface DailyPlanSlot {
+  slot: number; // 1, 2, 3...
+  educationType: EducationType | "";
+  theme: string; // AI提案 or 手動入力したテーマ
+  reasoning: string; // なぜこの教育タイプ・テーマを選んだか（AI出力）
+  hookType: string; // 推奨フック（任意）
+  connectionType: ConnectionType | ""; // 次スロットへの接続
+  status: "draft" | "generated" | "posted"; // ポスト状態
+  generatedPostId?: string;
+}
+
+export interface XDailyPlanRecord {
+  id: string;
+  genre: string;
+  date: string; // YYYY-MM-DD
+  slots: DailyPlanSlot[]; // パース済み
+  notes: string;
+  status: "draft" | "in_progress" | "completed";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function parseDailyPlan(record: {
+  id: string;
+  genre: string;
+  date: string;
+  slots: string;
+  notes: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}): XDailyPlanRecord {
+  let slots: DailyPlanSlot[] = [];
+  try {
+    const arr = JSON.parse(record.slots || "[]");
+    if (Array.isArray(arr)) {
+      slots = arr.map((s: Partial<DailyPlanSlot>, i: number) => ({
+        slot: typeof s.slot === "number" ? s.slot : i + 1,
+        educationType: (s.educationType as EducationType | "") ?? "",
+        theme: s.theme ?? "",
+        reasoning: s.reasoning ?? "",
+        hookType: s.hookType ?? "",
+        connectionType: (s.connectionType as ConnectionType | "") ?? "",
+        status: (s.status as DailyPlanSlot["status"]) ?? "draft",
+        generatedPostId: s.generatedPostId,
+      }));
+    }
+  } catch {}
+  return {
+    ...record,
+    status: (record.status as XDailyPlanRecord["status"]) ?? "draft",
+    slots,
+  };
+}
+
+// =============================
 // 分析レコード（DB保存形式）
 export interface XPostAnalysisRecord {
   id: string;

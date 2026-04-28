@@ -87,6 +87,108 @@ ${opts.customInstruction ? `\n【追加指示】\n${opts.customInstruction}\n` :
 }`;
 }
 
+// =============================
+// デイリープラン: AIテーマ提案プロンプト
+// =============================
+
+export const DAILY_PLAN_BASE_SYSTEM = `あなたはXポスト戦略アドバイザーです。
+ユーザーの自アカ情報・教材・運用フレームワーク（教材1〜13）を踏まえて、今日のポスト計画における各スロットの「具体的なテーマ」「推奨フックタイプ」「選定理由」を提案します。
+
+【重要なルール】
+- 各スロットには既に教育タイプが割り当てられています
+- 自アカ情報の口調・USP・商品・過去のストーリーを必ず参照する
+- 教育タイプに応じたテーマを提案する（例: 目的の教育なら理想未来訴求、信用の教育なら過去のへぼさからの共通点訴求 等）
+- 提案するテーマは具体的で、すぐにポスト生成に使える形で書く
+- 出力は必ず指定されたJSON形式のみで（前後に文章を入れない）
+- JSONはMarkdownコードブロックで囲まずに、生のJSONをそのまま出力
+`;
+
+interface SlotForPrompt {
+  slot: number;
+  educationType: string;
+  connectionType: string;
+}
+
+export function buildDailyPlanUserMessage(opts: {
+  date: string;
+  genre: "business" | "spiritual";
+  slots: SlotForPrompt[];
+  recentThemesSummary?: string; // 過去N日に既に使ったテーマの要約（被り回避用）
+  customInstruction?: string;
+}): string {
+  const genreLabel = opts.genre === "business" ? "ビジネス系" : "占いスピ系";
+  const slotsText = opts.slots
+    .map((s) => `Slot ${s.slot}: ${s.educationType}の教育（次への接続: ${s.connectionType || "(最終)"}）`)
+    .join("\n");
+
+  return `日付: ${opts.date}
+ジャンル: ${genreLabel}
+
+【今日のスロット構成】
+${slotsText}
+
+${opts.recentThemesSummary ? `\n【最近使ったテーマ（被らないように）】\n${opts.recentThemesSummary}\n` : ""}
+${opts.customInstruction ? `\n【追加指示】\n${opts.customInstruction}\n` : ""}
+
+【出力フォーマット】次のJSONを出力してください（コードブロックなし、生JSON）:
+
+{
+  "slots": [
+    {
+      "slot": 1,
+      "theme": "具体的なテーマ（読者が興味を持つ内容を1〜2文で）",
+      "hookType": "推奨フック（不完全情報/重要性/希少性/権威性/恐怖損失回避/ターゲット刺し/強烈な感情/パワーワード/簡易性/矛盾/ニュース性/暴露報告/限定性/反社会性 のいずれか）",
+      "reasoning": "なぜこのテーマ・フックを選んだか（1文）"
+    }
+  ]
+}`;
+}
+
+// デイリープラン用システムプロンプト（キャッシュ対象）
+export async function buildDailyPlanSystemPrompt(genre: "business" | "spiritual"): Promise<{
+  systemPrompt: string;
+  knowledgeContext: string;
+}> {
+  const framework = await loadKnowledgeFramework();
+  const genreKnowledge = await loadGenreKnowledge(genre);
+
+  return {
+    systemPrompt: DAILY_PLAN_BASE_SYSTEM,
+    knowledgeContext: [
+      "# 知識フレームワーク",
+      framework,
+      "",
+      `# ${genre === "business" ? "ビジ垢" : "占い垢"}の自アカ情報・教材`,
+      genreKnowledge,
+    ].join("\n\n"),
+  };
+}
+
+// AI出力のテーマ提案をパース
+export interface DailyPlanSlotProposal {
+  slot: number;
+  theme: string;
+  hookType: string;
+  reasoning: string;
+}
+
+export function parseDailyPlanProposals(raw: string): { proposals: DailyPlanSlotProposal[]; parseError: boolean } {
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    const arr = Array.isArray(parsed.slots) ? parsed.slots : [];
+    const proposals: DailyPlanSlotProposal[] = arr.map((s: Partial<DailyPlanSlotProposal>) => ({
+      slot: typeof s.slot === "number" ? s.slot : 0,
+      theme: typeof s.theme === "string" ? s.theme : "",
+      hookType: typeof s.hookType === "string" ? s.hookType : "",
+      reasoning: typeof s.reasoning === "string" ? s.reasoning : "",
+    }));
+    return { proposals, parseError: false };
+  } catch {
+    return { proposals: [], parseError: true };
+  }
+}
+
 // 分析用システムプロンプト（キャッシュ対象）
 export async function buildAnalysisSystemPrompt(genre: "business" | "spiritual"): Promise<{
   systemPrompt: string;
