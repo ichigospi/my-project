@@ -345,6 +345,108 @@ export interface GeneratedResult {
   rationale: string;
 }
 
+// =============================
+// テンプレ自動抽出プロンプト
+// =============================
+
+export const EXTRACT_TEMPLATE_BASE_SYSTEM = `あなたはXポストの構造分析専門家です。
+渡された競合ポスト（または参考ポスト）から、再利用可能なテンプレ骨格を抽出します。
+
+【重要なルール】
+- 元ポストの固有名詞・数字・人物名をプレースホルダ（{固有名詞}/{数字}/{商品名}/{人名} 等）に置換する
+- 言い回し・接続詞・改行は元の構造を残す（語尾の力強さも踏襲する）
+- 教育タイプ（12要素）・冒頭一文目の14手法・構造タイプ（10種）・強化要素を判定する
+- 出力は必ず指定されたJSON形式のみで（前後に文章を入れない・コードブロックなし）
+`;
+
+export function buildExtractTemplateUserMessage(opts: {
+  genre: "business" | "spiritual";
+  postContent: string;
+  postMeta?: { likes?: number; retweets?: number; impressions?: number };
+}): string {
+  const genreLabel = opts.genre === "business" ? "ビジネス系" : "占いスピ系";
+  const meta = opts.postMeta
+    ? `（👍${opts.postMeta.likes ?? 0} 🔁${opts.postMeta.retweets ?? 0}${opts.postMeta.impressions ? ` 📊${opts.postMeta.impressions.toLocaleString()}` : ""}）`
+    : "";
+  return `以下の${genreLabel}ポストからテンプレ骨格を抽出してください ${meta}
+
+【元ポスト】
+${opts.postContent}
+
+【出力フォーマット】次のJSONを出力してください（コードブロックなし、生JSON）:
+
+{
+  "name": "テンプレ名（30字以内、何のテンプレか分かる短い名前）",
+  "skeleton": "プレースホルダ化した骨格テキスト（改行も保持）",
+  "placeholders": ["{固有名詞1}", "{数字}", "{商品名}"],
+  "structure": {
+    "hookType": "不完全情報/重要性/希少性/権威性/恐怖損失回避/ターゲット刺し/強烈な感情/パワーワード/簡易性/矛盾/ニュース性/暴露報告/限定性/反社会性 のいずれか",
+    "educationType": "目的/信用/問題点/手段/投資/行動/読む見る/変化/素直/アウトプット/基準値/覚悟 のいずれか",
+    "structureType": "フック型/リスト型/ストーリー型/質問型/対比型/実績訴求型/Before/After型/短文インパクト/数字インパクト型/リアクション型 のいずれか",
+    "reinforcementElements": ["再現性", "即効性"]
+  },
+  "notes": "このテンプレを使うコツ・注意点（1〜2文）"
+}`;
+}
+
+export async function buildExtractTemplateSystemPrompt(genre: "business" | "spiritual"): Promise<{
+  systemPrompt: string;
+  knowledgeContext: string;
+}> {
+  const framework = await loadKnowledgeFramework();
+  const genreKnowledge = await loadGenreKnowledge(genre);
+  return {
+    systemPrompt: EXTRACT_TEMPLATE_BASE_SYSTEM,
+    knowledgeContext: [
+      "# 知識フレームワーク",
+      framework,
+      "",
+      `# ${genre === "business" ? "ビジ垢" : "占い垢"}の自アカ情報・教材`,
+      genreKnowledge,
+    ].join("\n\n"),
+  };
+}
+
+export interface ExtractedTemplate {
+  name: string;
+  skeleton: string;
+  placeholders: string[];
+  structure: {
+    hookType: string;
+    educationType: string;
+    structureType: string;
+    reinforcementElements: string[];
+  };
+  notes: string;
+}
+
+export function parseExtractedTemplate(raw: string): { template: ExtractedTemplate | null; parseError: boolean } {
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    const structure = parsed.structure ?? {};
+    const tpl: ExtractedTemplate = {
+      name: typeof parsed.name === "string" ? parsed.name : "",
+      skeleton: typeof parsed.skeleton === "string" ? parsed.skeleton : "",
+      placeholders: Array.isArray(parsed.placeholders)
+        ? parsed.placeholders.filter((x: unknown): x is string => typeof x === "string")
+        : [],
+      structure: {
+        hookType: typeof structure.hookType === "string" ? structure.hookType : "",
+        educationType: typeof structure.educationType === "string" ? structure.educationType : "",
+        structureType: typeof structure.structureType === "string" ? structure.structureType : "",
+        reinforcementElements: Array.isArray(structure.reinforcementElements)
+          ? structure.reinforcementElements.filter((x: unknown): x is string => typeof x === "string")
+          : [],
+      },
+      notes: typeof parsed.notes === "string" ? parsed.notes : "",
+    };
+    return { template: tpl, parseError: false };
+  } catch {
+    return { template: null, parseError: true };
+  }
+}
+
 export function parseGeneratedResult(raw: string): { result: GeneratedResult; parseError: boolean } {
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   try {

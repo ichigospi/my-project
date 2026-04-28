@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { parseXUrl, type XCollectedPost, type XCompetitor } from "@/lib/x-post-types";
+import { getApiKey } from "@/lib/channel-store";
 
 interface Props {
   // 新規収集の場合: 紐付ける競合を渡す
@@ -26,6 +27,8 @@ export default function PostCollectModal({ competitor, post, onClose, onSaved }:
   const [quotedPostUrl, setQuotedPostUrl] = useState(post?.quotedPostUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [continueAdding, setContinueAdding] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractResult, setExtractResult] = useState<{ name: string; savedId: string | null } | null>(null);
 
   // URL貼り付けで postId を自動抽出
   useEffect(() => {
@@ -97,6 +100,32 @@ export default function PostCollectModal({ competitor, post, onClose, onSaved }:
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const extractTemplate = async () => {
+    if (!post) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) {
+      alert("AI APIキーが未設定です。設定ページで登録してください。");
+      return;
+    }
+    setExtracting(true);
+    setExtractResult(null);
+    try {
+      const res = await fetch("/api/x-post/extract-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: post.id, aiApiKey, save: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`抽出失敗: ${data.error || res.statusText}`);
+        return;
+      }
+      setExtractResult({ name: data.template?.name ?? "(無題)", savedId: data.savedId });
+    } finally {
+      setExtracting(false);
     }
   };
 
@@ -227,11 +256,25 @@ export default function PostCollectModal({ competitor, post, onClose, onSaved }:
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-between flex-wrap gap-2">
-          <div>
+          <div className="flex items-center gap-2 flex-wrap">
             {post && (
               <button onClick={remove} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded">
                 🗑️ 削除
               </button>
+            )}
+            {post && (
+              <button
+                onClick={extractTemplate}
+                disabled={extracting}
+                className="text-sm bg-amber-50 hover:bg-amber-100 disabled:bg-amber-50/50 text-amber-800 px-3 py-1.5 rounded"
+              >
+                {extracting ? "抽出中..." : "🧪 テンプレ化"}
+              </button>
+            )}
+            {extractResult && (
+              <span className="text-xs text-emerald-700">
+                ✓ 「{extractResult.name}」を保存
+              </span>
             )}
             {!post && (
               <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">

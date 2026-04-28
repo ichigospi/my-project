@@ -135,6 +135,7 @@ export default function CompetitorsPage() {
                 competitor={c}
                 onCollect={() => setCollectingFor(c)}
                 onEdit={() => setEditingCompetitor(c)}
+                onFetched={load}
               />
             ))}
           </div>
@@ -257,12 +258,41 @@ function CompetitorCard({
   competitor,
   onCollect,
   onEdit,
+  onFetched,
 }: {
   competitor: XCompetitor;
   onCollect: () => void;
   onEdit: () => void;
+  onFetched: () => void;
 }) {
   const lastCollected = competitor.posts[0]?.collectedAt;
+  const [fetching, setFetching] = useState(false);
+  const [fetchMsg, setFetchMsg] = useState<string | null>(null);
+
+  const autoFetch = async () => {
+    setFetching(true);
+    setFetchMsg(null);
+    try {
+      const res = await fetch(`/api/x-post/competitors/${competitor.id}/fetch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxResults: 20, sinceDays: 7 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFetchMsg(`エラー: ${data.error || res.statusText}`);
+        return;
+      }
+      setFetchMsg(`✓ ${data.saved}件保存（${data.skipped}件は既存スキップ）`);
+      onFetched();
+    } catch (e) {
+      setFetchMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetching(false);
+      setTimeout(() => setFetchMsg(null), 5000);
+    }
+  };
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 hover:border-indigo-400 transition">
       <div className="flex items-start justify-between gap-3 mb-2">
@@ -291,12 +321,27 @@ function CompetitorCard({
           <span>最終: {new Date(lastCollected).toLocaleDateString()}</span>
         )}
       </div>
-      <button
-        onClick={onCollect}
-        className="w-full px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-sm font-medium rounded transition-colors"
-      >
-        📥 ポスト収集
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={onCollect}
+          className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-sm font-medium rounded transition-colors"
+        >
+          📥 手動
+        </button>
+        <button
+          onClick={autoFetch}
+          disabled={fetching}
+          className="px-3 py-2 bg-sky-50 hover:bg-sky-100 disabled:bg-sky-50/50 text-sky-700 text-sm font-medium rounded transition-colors"
+          title="X API Bearer Token 必須（設定モーダルで登録）"
+        >
+          {fetching ? "取得中..." : "🔄 自動"}
+        </button>
+      </div>
+      {fetchMsg && (
+        <div className={`mt-2 text-xs ${fetchMsg.startsWith("✓") ? "text-emerald-700" : "text-red-700"}`}>
+          {fetchMsg}
+        </div>
+      )}
     </div>
   );
 }
