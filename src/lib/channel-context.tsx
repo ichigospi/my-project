@@ -81,6 +81,20 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(ACTIVE_KEY, activeChannelId);
   }, [activeChannelId, initialized]);
 
+  // 共有設定の同期で MyChannels が書き換わったらstateを再読込
+  useEffect(() => {
+    const handler = () => {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) return;
+      const loaded: MyChannel[] = JSON.parse(stored);
+      setChannels(loaded);
+      const newActive = localStorage.getItem(ACTIVE_KEY) || loaded[0]?.id || "";
+      setActiveChannelIdState(newActive);
+    };
+    window.addEventListener("fortune_yt_my_channels_updated", handler);
+    return () => window.removeEventListener("fortune_yt_my_channels_updated", handler);
+  }, []);
+
   const activeChannel = channels.find((c) => c.id === activeChannelId) || null;
 
   const setActiveChannelId = (id: string) => {

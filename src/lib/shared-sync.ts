@@ -15,6 +15,66 @@ import {
 import { getWinningPatterns, saveWinningPatterns } from "./winning-patterns-store";
 import { getIdeas, getIdeaRules, saveIdeaRules, type IdeaEntry, type IdeaRules } from "./idea-store";
 import type { RegisteredChannel } from "./channel-store";
+import type { MyChannel } from "./channel-context";
+
+const MY_CHANNELS_KEY = "fortune_yt_my_channels";
+const ACTIVE_CHANNEL_KEY = "fortune_yt_active_channel";
+
+// MyChannel を「同じ名前なら同一」とみなしてマージし、id統一に必要な書き換えマップを返す
+function mergeMyChannelsByName(
+  local: MyChannel[],
+  server: MyChannel[]
+): { merged: MyChannel[]; idMigrations: Record<string, string> } {
+  const all = [...local, ...server];
+  const byName = new Map<string, MyChannel[]>();
+  for (const ch of all) {
+    const key = ch.name || "";
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key)!.push(ch);
+  }
+  const merged: MyChannel[] = [];
+  const idMigrations: Record<string, string> = {};
+  for (const group of byName.values()) {
+    // createdAt 昇順で先に作られた方をcanonicalにする
+    const sorted = group.slice().sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+    const canonical = sorted[0];
+    merged.push(canonical);
+    for (const dupe of sorted.slice(1)) {
+      if (dupe.id !== canonical.id) idMigrations[dupe.id] = canonical.id;
+    }
+  }
+  return { merged, idMigrations };
+}
+
+// channelIdを持つアイテム配列に対して書き換えを適用
+function migrateChannelIds<T extends { channelId?: string }>(
+  items: T[],
+  migrations: Record<string, string>
+): { items: T[]; changed: boolean } {
+  let changed = false;
+  const next = items.map((it) => {
+    if (it.channelId && migrations[it.channelId]) {
+      changed = true;
+      return { ...it, channelId: migrations[it.channelId] };
+    }
+    return it;
+  });
+  return { items: next, changed };
+}
+
+// ローカルストレージのキーを書き換えるヘルパー
+function applyMigrationToStorageKey(key: string, migrations: Record<string, string>) {
+  const stored = localStorage.getItem(key);
+  if (!stored) return;
+  try {
+    const items = JSON.parse(stored);
+    if (!Array.isArray(items)) return;
+    const { items: next, changed } = migrateChannelIds(items, migrations);
+    if (changed) localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+}
 
 // IDベースでマージ（既存を消さない、サーバーにしかないものを追加）
 function mergeById<T extends { id: string }>(local: T[], server: T[]): T[] {
@@ -85,6 +145,39 @@ export async function pullSharedSettings(): Promise<void> {
       setApiKey("ai_api_key", data.ai_api_key);
     }
 
+    // 自分のチャンネル(MyChannel): 同名マージ + id統一書き換え
+    // ※ projects/tasks/hooks 等のマージ「前」に走らせる必要がある
+    let channelMigrations: Record<string, string> = {};
+    if (Array.isArray(data.myChannels) && data.myChannels.length > 0) {
+      const localMyCh: MyChannel[] = JSON.parse(localStorage.getItem(MY_CHANNELS_KEY) || "[]");
+      const { merged: mergedCh, idMigrations } = mergeMyChannelsByName(localMyCh, data.myChannels);
+      localStorage.setItem(MY_CHANNELS_KEY, JSON.stringify(mergedCh));
+      channelMigrations = idMigrations;
+
+      // アクティブチャンネルが書き換え対象なら追従
+      const activeId = localStorage.getItem(ACTIVE_CHANNEL_KEY) || "";
+      if (channelMigrations[activeId]) {
+        localStorage.setItem(ACTIVE_CHANNEL_KEY, channelMigrations[activeId]);
+      }
+      // 既存ローカルのchannelIdを書き換え
+      if (Object.keys(channelMigrations).length > 0) {
+        for (const k of [
+          "fortune_yt_projects", "fortune_yt_tasks",
+          "fortune_yt_hooks", "fortune_yt_ctas",
+          "fortune_yt_thumbnail_words", "fortune_yt_titles",
+          "fortune_yt_ideas",
+        ]) {
+          applyMigrationToStorageKey(k, channelMigrations);
+        }
+        // ChannelProvider に再読込を促す
+        window.dispatchEvent(new Event("fortune_yt_my_channels_updated"));
+      }
+    }
+
+    // 受信データ側のchannelIdも書き換える小ヘルパー
+    const migrate = <T extends { channelId?: string }>(arr: T[] | undefined): T[] =>
+      arr ? migrateChannelIds(arr, channelMigrations).items : [];
+
     // チャンネル: マージ
     if (data.channels?.length > 0) {
       const merged = mergeChannels(getChannels(), data.channels);
@@ -93,25 +186,25 @@ export async function pullSharedSettings(): Promise<void> {
 
     // フック: マージ
     if (data.hooks?.length > 0) {
-      const merged = mergeById(getHooks(), data.hooks as HookEntry[]);
+      const merged = mergeById(getHooks(), migrate(data.hooks as HookEntry[]));
       localStorage.setItem("fortune_yt_hooks", JSON.stringify(merged));
     }
 
     // CTA: マージ
     if (data.ctas?.length > 0) {
-      const merged = mergeById(getCTAs(), data.ctas as CTAEntry[]);
+      const merged = mergeById(getCTAs(), migrate(data.ctas as CTAEntry[]));
       localStorage.setItem("fortune_yt_ctas", JSON.stringify(merged));
     }
 
     // サムネワード: マージ
     if (data.thumbnailWords?.length > 0) {
-      const merged = mergeById(getThumbnailWords(), data.thumbnailWords as ThumbnailWordEntry[]);
+      const merged = mergeById(getThumbnailWords(), migrate(data.thumbnailWords as ThumbnailWordEntry[]));
       localStorage.setItem("fortune_yt_thumbnail_words", JSON.stringify(merged));
     }
 
     // タイトル: マージ
     if (data.titles?.length > 0) {
-      const merged = mergeById(getTitles(), data.titles as TitleEntry[]);
+      const merged = mergeById(getTitles(), migrate(data.titles as TitleEntry[]));
       localStorage.setItem("fortune_yt_titles", JSON.stringify(merged));
     }
 
@@ -134,14 +227,14 @@ export async function pullSharedSettings(): Promise<void> {
     // プロジェクト（台本作成）: 更新日時ベースでマージ
     if (data.projects?.length > 0) {
       const local: ScriptProject[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
-      const merged = mergeByUpdatedAt(local, data.projects);
+      const merged = mergeByUpdatedAt(local, migrate(data.projects as ScriptProject[]));
       localStorage.setItem("fortune_yt_projects", JSON.stringify(merged));
     }
 
     // 工程表タスク: 更新日時ベースでマージ
     if (data.tasks?.length > 0) {
       const local: ProductionTask[] = JSON.parse(localStorage.getItem("fortune_yt_tasks") || "[]");
-      const merged = mergeByUpdatedAt(local, data.tasks);
+      const merged = mergeByUpdatedAt(local, migrate(data.tasks as ProductionTask[]));
       localStorage.setItem("fortune_yt_tasks", JSON.stringify(merged));
     }
 
@@ -193,7 +286,7 @@ export async function pullSharedSettings(): Promise<void> {
     // 企画: マージ
     if (data.ideas?.length > 0) {
       const local: IdeaEntry[] = JSON.parse(localStorage.getItem("fortune_yt_ideas") || "[]");
-      const merged = mergeById(local, data.ideas);
+      const merged = mergeById(local, migrate(data.ideas as IdeaEntry[]));
       localStorage.setItem("fortune_yt_ideas", JSON.stringify(merged));
     }
 
@@ -248,6 +341,9 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         winningPatterns: getWinningPatterns(),
         ideas: getIdeas(),
         ideaRules: getIdeaRules(),
+        myChannels: typeof window !== "undefined"
+          ? JSON.parse(localStorage.getItem(MY_CHANNELS_KEY) || "[]")
+          : [],
       }),
     });
     if (!res.ok) {
