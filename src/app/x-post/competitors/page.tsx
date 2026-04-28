@@ -1,21 +1,360 @@
+// 競合管理 + ポスト収集
 "use client";
 
-import XPostSkeleton from "@/components/XPostSkeleton";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useXPostGenre, X_POST_GENRES } from "@/lib/x-post-genre";
+import type {
+  XCompetitor,
+  XCollectedPost,
+  XFolderWithCount,
+} from "@/lib/x-post-types";
+import CompetitorEditModal from "@/components/x-post/CompetitorEditModal";
+import PostCollectModal from "@/components/x-post/PostCollectModal";
+
+type SortKey = "collectedAt" | "postedAt" | "likes" | "retweets" | "impressions";
+
+interface FolderItemRecord { folderId: string; itemId: string; }
 
 export default function CompetitorsPage() {
+  const [genre] = useXPostGenre();
+  const genreLabel = X_POST_GENRES.find((g) => g.value === genre)?.label ?? "";
+
+  const [competitors, setCompetitors] = useState<XCompetitor[]>([]);
+  const [posts, setPosts] = useState<XCollectedPost[]>([]);
+  const [folders, setFolders] = useState<XFolderWithCount[]>([]);
+  const [folderItems, setFolderItems] = useState<FolderItemRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // モーダル状態
+  const [editingCompetitor, setEditingCompetitor] = useState<XCompetitor | "new" | null>(null);
+  const [collectingFor, setCollectingFor] = useState<XCompetitor | null>(null);
+  const [editingPost, setEditingPost] = useState<XCollectedPost | null>(null);
+
+  // フィルタ
+  const [filterCompetitorId, setFilterCompetitorId] = useState<string>("all");
+  const [filterFolderId, setFilterFolderId] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("likes");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [cRes, pRes, fRes, fiRes] = await Promise.all([
+        fetch(`/api/x-post/competitors?genre=${genre}`),
+        fetch(`/api/x-post/posts?genre=${genre}`),
+        fetch(`/api/x-post/folders?genre=${genre}`),
+        fetch(`/api/x-post/folder-items`),
+      ]);
+      const cData: XCompetitor[] = await cRes.json();
+      const pData: XCollectedPost[] = await pRes.json();
+      const fData: XFolderWithCount[] = await fRes.json();
+      const fiData: FolderItemRecord[] = await fiRes.json();
+
+      setCompetitors(cData);
+      setPosts(pData);
+      setFolders(fData);
+      // ポストID集合に絞ってfolder-itemsを保持
+      const postIds = new Set(pData.map((p) => p.id));
+      setFolderItems(fiData.filter((fi) => postIds.has(fi.itemId)));
+    } finally {
+      setLoading(false);
+    }
+  }, [genre]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filteredPosts = useMemo(() => {
+    let list = posts;
+    if (filterCompetitorId !== "all") {
+      list = list.filter((p) => p.competitorId === filterCompetitorId);
+    }
+    if (filterFolderId !== "all") {
+      const folderItemIds = new Set(
+        folderItems.filter((fi) => fi.folderId === filterFolderId).map((fi) => fi.itemId)
+      );
+      list = list.filter((p) => folderItemIds.has(p.id));
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.content.toLowerCase().includes(s) ||
+          p.competitor.handle.toLowerCase().includes(s) ||
+          p.competitor.name.toLowerCase().includes(s)
+      );
+    }
+    return [...list].sort((a, b) => {
+      if (sortBy === "collectedAt") return new Date(b.collectedAt).getTime() - new Date(a.collectedAt).getTime();
+      if (sortBy === "postedAt") {
+        const ta = a.postedAt ? new Date(a.postedAt).getTime() : 0;
+        const tb = b.postedAt ? new Date(b.postedAt).getTime() : 0;
+        return tb - ta;
+      }
+      return b[sortBy] - a[sortBy];
+    });
+  }, [posts, folderItems, filterCompetitorId, filterFolderId, search, sortBy]);
+
   return (
-    <XPostSkeleton
-      title="競合管理 + ポスト収集"
-      emoji="👥"
-      description="競合アカウント登録 + 伸びてるポストを手動ペースト or X APIで収集"
-      upcoming={[
-        "競合アカウント登録（@ハンドル / 名前 / メモ）",
-        "ポスト収集モーダル（手動ペースト: URL/本文/指標を入力）",
-        "X API v2 自動収集モード（Bearer Token 設定後）",
-        "収集済みポスト一覧（フィルタ: 競合別 / 期間 / いいね順）",
-        "ポストにフォルダを付与",
-        "選択したポストを分析にかけるボタン",
-      ]}
-    />
+    <main className="px-4 md:px-6 py-6 max-w-6xl mx-auto">
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <span>👥</span>
+          競合管理 + ポスト収集
+          <span className="text-base font-normal text-gray-500">（{genreLabel}）</span>
+        </h2>
+        <p className="text-sm text-gray-600 mt-1">
+          競合アカウントを登録して伸びてるポストを収集。手動ペーストで素早く保存できます。
+        </p>
+      </div>
+
+      {/* 上段: 競合一覧 */}
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-bold text-gray-900">競合アカウント（{competitors.length}件）</h3>
+          <button
+            onClick={() => setEditingCompetitor("new")}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md"
+          >
+            + 競合を追加
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center text-gray-500">読み込み中...</div>
+        ) : competitors.length === 0 ? (
+          <div className="bg-white border border-dashed border-gray-300 rounded-lg p-12 text-center">
+            <div className="text-4xl mb-2">👥</div>
+            <p className="text-gray-500 text-sm">まだ競合アカウントが登録されていません</p>
+            <p className="text-xs text-gray-400 mt-1">「+ 競合を追加」から登録してください</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {competitors.map((c) => (
+              <CompetitorCard
+                key={c.id}
+                competitor={c}
+                onCollect={() => setCollectingFor(c)}
+                onEdit={() => setEditingCompetitor(c)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 下段: 収集ポスト */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-bold text-gray-900">収集済みポスト（{posts.length}件）</h3>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-lg p-3 mb-3 flex flex-wrap gap-2 items-center">
+          <select
+            value={filterCompetitorId}
+            onChange={(e) => setFilterCompetitorId(e.target.value)}
+            className="px-3 py-1.5 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="all">競合: 全て</option>
+            {competitors.map((c) => (
+              <option key={c.id} value={c.id}>
+                @{c.handle}{c.name && `（${c.name}）`}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterFolderId}
+            onChange={(e) => setFilterFolderId(e.target.value)}
+            className="px-3 py-1.5 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="all">フォルダ: 全て</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>📁 {f.name}</option>
+            ))}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+            className="px-3 py-1.5 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="likes">いいね順</option>
+            <option value="retweets">RT順</option>
+            <option value="impressions">インプ順</option>
+            <option value="postedAt">投稿日順</option>
+            <option value="collectedAt">収集日順</option>
+          </select>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="🔍 本文・@で検索"
+            className="flex-1 min-w-[180px] px-3 py-1.5 border border-gray-300 rounded-md text-sm"
+          />
+        </div>
+
+        {filteredPosts.length === 0 ? (
+          <div className="bg-white border border-dashed border-gray-300 rounded-lg p-12 text-center">
+            <div className="text-4xl mb-2">📥</div>
+            <p className="text-gray-500 text-sm">
+              {posts.length === 0
+                ? "まだポストが収集されていません"
+                : "条件に合うポストがありません"}
+            </p>
+            {posts.length === 0 && (
+              <p className="text-xs text-gray-400 mt-1">
+                上の競合カードから「📥 ポスト収集」を押してペースト追加
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredPosts.map((p) => (
+              <PostListItem
+                key={p.id}
+                post={p}
+                folderItemsForPost={folderItems.filter((fi) => fi.itemId === p.id)}
+                folders={folders}
+                onClick={() => setEditingPost(p)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* モーダル群 */}
+      {editingCompetitor && (
+        <CompetitorEditModal
+          competitor={editingCompetitor === "new" ? null : editingCompetitor}
+          genre={genre}
+          onClose={() => setEditingCompetitor(null)}
+          onSaved={() => {
+            setEditingCompetitor(null);
+            load();
+          }}
+        />
+      )}
+      {collectingFor && (
+        <PostCollectModal
+          competitor={collectingFor}
+          onClose={() => setCollectingFor(null)}
+          onSaved={load}
+        />
+      )}
+      {editingPost && (
+        <PostCollectModal
+          post={editingPost}
+          onClose={() => setEditingPost(null)}
+          onSaved={load}
+        />
+      )}
+    </main>
+  );
+}
+
+// ============================================================
+// CompetitorCard
+// ============================================================
+
+function CompetitorCard({
+  competitor,
+  onCollect,
+  onEdit,
+}: {
+  competitor: XCompetitor;
+  onCollect: () => void;
+  onEdit: () => void;
+}) {
+  const lastCollected = competitor.posts[0]?.collectedAt;
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:border-indigo-400 transition">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <div className="font-bold text-gray-900 truncate">
+            @{competitor.handle}
+          </div>
+          {competitor.name && (
+            <div className="text-xs text-gray-500 truncate">{competitor.name}</div>
+          )}
+        </div>
+        <button
+          onClick={onEdit}
+          className="text-xs text-gray-400 hover:text-gray-700 px-2 py-1"
+          aria-label="編集"
+        >
+          ⋯
+        </button>
+      </div>
+      {competitor.note && (
+        <p className="text-xs text-gray-600 line-clamp-2 mb-2">{competitor.note}</p>
+      )}
+      <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
+        <span>📥 {competitor._count.posts} 件収集</span>
+        {lastCollected && (
+          <span>最終: {new Date(lastCollected).toLocaleDateString()}</span>
+        )}
+      </div>
+      <button
+        onClick={onCollect}
+        className="w-full px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-sm font-medium rounded transition-colors"
+      >
+        📥 ポスト収集
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// PostListItem
+// ============================================================
+
+function PostListItem({
+  post,
+  folderItemsForPost,
+  folders,
+  onClick,
+}: {
+  post: XCollectedPost;
+  folderItemsForPost: FolderItemRecord[];
+  folders: XFolderWithCount[];
+  onClick: () => void;
+}) {
+  const folderNames = folderItemsForPost
+    .map((fi) => folders.find((f) => f.id === fi.folderId)?.name)
+    .filter(Boolean) as string[];
+
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white border border-gray-200 rounded-lg p-4 hover:border-indigo-400 hover:shadow-sm cursor-pointer transition"
+    >
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <div className="text-xs text-gray-500 font-medium">
+          @{post.competitor.handle}
+          {post.competitor.name && (
+            <span className="text-gray-400 ml-1">({post.competitor.name})</span>
+          )}
+          {post.isQuoteRt && (
+            <span className="ml-2 inline-flex items-center text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+              引用RT
+            </span>
+          )}
+        </div>
+        <div className="text-xs text-gray-500 flex items-center gap-2 shrink-0">
+          <span>👍 {post.likes}</span>
+          <span>🔁 {post.retweets}</span>
+          {post.replies > 0 && <span>💬 {post.replies}</span>}
+          {post.impressions > 0 && <span>📊 {post.impressions.toLocaleString()}</span>}
+        </div>
+      </div>
+      <p className="text-sm text-gray-800 line-clamp-3 whitespace-pre-wrap">{post.content}</p>
+      {(folderNames.length > 0 || post.postedAt) && (
+        <div className="mt-2 flex flex-wrap gap-1.5 items-center text-xs text-gray-500">
+          {post.postedAt && (
+            <span>📅 {new Date(post.postedAt).toLocaleDateString()}</span>
+          )}
+          {folderNames.length > 0 && (
+            <span>📁 {folderNames.join(" / ")}</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

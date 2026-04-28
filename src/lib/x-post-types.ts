@@ -73,6 +73,69 @@ export interface XTeaching {
   updatedAt: string;
 }
 
+// 競合アカウント
+export interface XCompetitor {
+  id: string;
+  genre: string;
+  handle: string;
+  name: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+  _count: { posts: number };
+  posts: { collectedAt: string }[]; // 最新収集日取得用に1件
+}
+
+// 収集した競合ポスト
+export interface XCollectedPost {
+  id: string;
+  competitorId: string;
+  postId: string;
+  postUrl: string;
+  content: string;
+  likes: number;
+  retweets: number;
+  replies: number;
+  impressions: number;
+  postedAt: string | null;
+  collectedAt: string;
+  isQuoteRt: boolean;
+  quotedPostUrl: string;
+  competitor: {
+    id: string;
+    handle: string;
+    name: string;
+    genre: string;
+  };
+}
+
+// X URL から postId とユーザー名を抽出
+// 例: https://x.com/nikichi/status/1234567890 → { handle: "nikichi", postId: "1234567890" }
+export interface ParsedXUrl {
+  handle: string | null;
+  postId: string | null;
+  isQuoteRt: boolean;
+}
+
+export function parseXUrl(url: string): ParsedXUrl {
+  const result: ParsedXUrl = { handle: null, postId: null, isQuoteRt: false };
+  if (!url) return result;
+  try {
+    const u = new URL(url.trim());
+    const validHosts = ["x.com", "twitter.com", "mobile.twitter.com", "www.x.com", "www.twitter.com"];
+    if (!validHosts.includes(u.hostname)) return result;
+    // path: /username/status/123 or /username/status/123/photo/1
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 3 && parts[1] === "status") {
+      result.handle = parts[0];
+      result.postId = parts[2];
+    }
+  } catch {
+    // 無効なURL
+  }
+  return result;
+}
+
 // 参考ポスト
 export interface XReferencePost {
   id: string;
