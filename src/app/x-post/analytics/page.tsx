@@ -37,7 +37,12 @@ interface ComparePostInfo {
   impressions: number;
 }
 
-type SortKey = "likes" | "retweets" | "impressions" | "postedAt";
+type SortKey = "likes" | "retweets" | "replies" | "impressions" | "postedAt";
+
+// "@username..." で始まるポストはリプライとみなす
+function isReplyPost(content: string): boolean {
+  return /^\s*@\w+/.test(content);
+}
 
 export default function AnalyticsPage() {
   const [genre] = useXPostGenre();
@@ -73,6 +78,7 @@ export default function AnalyticsPage() {
   const [compareTopPosts, setCompareTopPosts] = useState<ComparePostInfo[]>([]);
 
   const [sortBy, setSortBy] = useState<SortKey>("likes");
+  const [excludeReplies, setExcludeReplies] = useState(true);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -108,8 +114,13 @@ export default function AnalyticsPage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  const filteredPosts = useMemo(() => {
+    if (!excludeReplies) return posts;
+    return posts.filter((p) => !isReplyPost(p.content));
+  }, [posts, excludeReplies]);
+
   const sortedPosts = useMemo(() => {
-    return [...posts].sort((a, b) => {
+    return [...filteredPosts].sort((a, b) => {
       if (sortBy === "postedAt") {
         const ta = a.postedAt ? new Date(a.postedAt).getTime() : 0;
         const tb = b.postedAt ? new Date(b.postedAt).getTime() : 0;
@@ -117,7 +128,11 @@ export default function AnalyticsPage() {
       }
       return b[sortBy] - a[sortBy];
     });
-  }, [posts, sortBy]);
+  }, [filteredPosts, sortBy]);
+
+  // インプ順を選択中だが全件 0 の場合は警告表示するためのフラグ
+  const allImpressionsZero = sortBy === "impressions" && filteredPosts.length > 0 && filteredPosts.every((p) => p.impressions === 0);
+  const replyCount = posts.filter((p) => isReplyPost(p.content)).length;
 
   const selfCompetitor = selfList.find((s) => s.id === selectedSelfId) ?? null;
 
@@ -196,6 +211,7 @@ export default function AnalyticsPage() {
           topN,
           bottomN,
           customInstruction: customInstruction.trim() || undefined,
+          excludeReplies,
         }),
       });
       const data = await res.json();
@@ -387,14 +403,14 @@ export default function AnalyticsPage() {
             </div>
             <button
               onClick={runCompare}
-              disabled={analyzing || posts.length < topN + bottomN}
+              disabled={analyzing || filteredPosts.length < topN + bottomN}
               className="w-full px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white text-sm font-medium rounded"
             >
-              {analyzing ? "分析中..." : `📊 上位${topN}件と下位${bottomN}件を比較分析`}
+              {analyzing ? "分析中..." : `📊 上位${topN}件と下位${bottomN}件を比較分析${excludeReplies ? "（返信除外）" : ""}`}
             </button>
-            {posts.length < topN + bottomN && (
+            {filteredPosts.length < topN + bottomN && (
               <p className="text-xs text-amber-700">
-                合計 {topN + bottomN} 件以上のポストが必要です（現在 {posts.length} 件）
+                合計 {topN + bottomN} 件以上のポストが必要です（現在 {filteredPosts.length} 件{excludeReplies && replyCount > 0 ? ` / 返信除外、全${posts.length}件` : ""}）
               </p>
             )}
           </section>
@@ -465,21 +481,44 @@ export default function AnalyticsPage() {
           {/* ポスト一覧 */}
           <section>
             <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-              <h3 className="text-sm font-medium text-gray-700">取得済みポスト（{posts.length}件）</h3>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortKey)}
-                className="px-3 py-1 border border-gray-300 rounded text-xs"
-              >
-                <option value="likes">いいね順</option>
-                <option value="retweets">RT順</option>
-                <option value="impressions">インプ順</option>
-                <option value="postedAt">投稿日順</option>
-              </select>
+              <h3 className="text-sm font-medium text-gray-700">
+                取得済みポスト（{filteredPosts.length}件
+                {excludeReplies && replyCount > 0 && (
+                  <span className="text-gray-400">/ 全{posts.length}件中</span>
+                )}
+                ）
+              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={excludeReplies}
+                    onChange={(e) => setExcludeReplies(e.target.checked)}
+                  />
+                  返信を除外（@始まり）
+                  {replyCount > 0 && <span className="text-gray-400">{replyCount}件</span>}
+                </label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortKey)}
+                  className="px-3 py-1 border border-gray-300 rounded text-xs"
+                >
+                  <option value="likes">いいね順</option>
+                  <option value="retweets">RT順</option>
+                  <option value="replies">リプ順</option>
+                  <option value="impressions">インプ順</option>
+                  <option value="postedAt">投稿日順</option>
+                </select>
+              </div>
             </div>
+            {allImpressionsZero && (
+              <div className="bg-amber-50 border border-amber-200 rounded p-2 mb-2 text-xs text-amber-900">
+                ⚠️ インプレッションが全件0です。CSVに impressions 列が無いか、列名が認識されなかった可能性があります。「いいね順」など他の指標で並べ替えてみてください。
+              </div>
+            )}
             {sortedPosts.length === 0 ? (
               <div className="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center text-sm text-gray-500">
-                まだポストが取得されていません
+                {posts.length === 0 ? "まだポストが取得されていません" : "条件に合うポストがありません"}
               </div>
             ) : (
               <div className="space-y-2">
@@ -494,6 +533,7 @@ export default function AnalyticsPage() {
                       <span className="flex items-center gap-2">
                         <span>👍 {p.likes}</span>
                         <span>🔁 {p.retweets}</span>
+                        {p.replies > 0 && <span>💬 {p.replies}</span>}
                         {p.impressions > 0 && <span>📊 {p.impressions.toLocaleString()}</span>}
                       </span>
                     </div>

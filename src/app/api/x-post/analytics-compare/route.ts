@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       topN = 5,
       bottomN = 5,
       customInstruction,
+      excludeReplies = true,
     } = body as {
       competitorId?: string;
       aiApiKey?: string;
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
       topN?: number;
       bottomN?: number;
       customInstruction?: string;
+      excludeReplies?: boolean;
     };
 
     if (!aiApiKey) {
@@ -54,13 +56,17 @@ export async function POST(request: NextRequest) {
       where: { competitorId },
       orderBy: { likes: "desc" },
     });
-    if (allPosts.length < topN + bottomN) {
+    // 返信ポスト除外（"@username..." で始まるもの）
+    const filtered = excludeReplies
+      ? allPosts.filter((p) => !/^\s*@\w+/.test(p.content))
+      : allPosts;
+    if (filtered.length < topN + bottomN) {
       return NextResponse.json(
-        { error: `比較するには最低 ${topN + bottomN} 件のポストが必要です（現在 ${allPosts.length} 件）` },
+        { error: `比較するには最低 ${topN + bottomN} 件のポストが必要です（${excludeReplies ? "返信除外後 " : ""}現在 ${filtered.length} 件）` },
         { status: 400 },
       );
     }
-    const top = allPosts.slice(0, topN).map((p, i) => ({
+    const top = filtered.slice(0, topN).map((p, i) => ({
       index: i + 1,
       content: p.content,
       likes: p.likes,
@@ -68,7 +74,7 @@ export async function POST(request: NextRequest) {
       impressions: p.impressions,
       postedAt: p.postedAt?.toISOString(),
     }));
-    const bottom = allPosts.slice(-bottomN).reverse().map((p, i) => ({
+    const bottom = filtered.slice(-bottomN).reverse().map((p, i) => ({
       index: i + 1,
       content: p.content,
       likes: p.likes,

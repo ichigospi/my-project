@@ -24,15 +24,18 @@ export interface CsvParseResult {
 
 // カラム名候補（小文字で比較）
 const COLUMN_ALIASES: Record<keyof CsvParsedPost, string[]> = {
-  postId: ["tweet id", "tweet_id", "id", "ツイートid"],
-  postUrl: ["tweet permalink", "permalink", "url", "tweet url", "ポストurl"],
-  content: ["tweet text", "text", "tweet", "ポスト本文", "本文"],
-  postedAt: ["time", "created at", "created_at", "date", "投稿日時", "日時"],
-  impressions: ["impressions", "imp", "インプレッション", "表示回数"],
-  likes: ["likes", "favorites", "fav", "いいね"],
-  retweets: ["retweets", "reposts", "rt", "リツイート", "リポスト"],
-  replies: ["replies", "reply", "返信"],
-  engagementRate: ["engagement rate", "engagementrate", "エンゲージメント率"],
+  postId: ["tweet id", "tweet_id", "id", "post id", "post_id", "ツイートid", "ポストid"],
+  postUrl: ["tweet permalink", "permalink", "url", "tweet url", "post url", "post_url", "ポストurl", "ツイートurl"],
+  content: ["tweet text", "text", "tweet", "post text", "post", "ポスト本文", "本文", "ツイート本文", "ツイート"],
+  postedAt: ["time", "created at", "created_at", "date", "datetime", "投稿日時", "日時", "投稿日"],
+  impressions: [
+    "impressions", "impression", "imp", "view count", "view_count", "views", "view",
+    "インプレッション", "インプ", "表示回数", "表示", "閲覧数", "閲覧", "印象", "総閲覧数",
+  ],
+  likes: ["likes", "like", "favorites", "favorite", "fav", "いいね", "いいね数", "好評価"],
+  retweets: ["retweets", "retweet", "reposts", "repost", "rt", "リツイート", "リツイート数", "リポスト", "リポスト数"],
+  replies: ["replies", "reply", "返信", "返信数", "リプ", "リプ数"],
+  engagementRate: ["engagement rate", "engagementrate", "engagement_rate", "エンゲージメント率"],
 };
 
 // 1行を CSV として安全にパース（クォート対応）
