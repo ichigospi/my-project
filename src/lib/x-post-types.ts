@@ -160,6 +160,150 @@ export interface XReferencePost {
   updatedAt: string;
 }
 
+// 教育タイプ（12要素）
+export const EDUCATION_TYPES = [
+  "目的",
+  "信用",
+  "問題点",
+  "手段",
+  "投資",
+  "行動",
+  "読む見る",
+  "変化",
+  "素直",
+  "アウトプット",
+  "基準値",
+  "覚悟",
+] as const;
+export type EducationType = (typeof EDUCATION_TYPES)[number];
+
+// 構造タイプ
+export const STRUCTURE_TYPES = [
+  "フック型",
+  "リスト型",
+  "ストーリー型",
+  "質問型",
+  "対比型",
+  "実績訴求型",
+  "Before/After型",
+  "短文インパクト",
+  "数字インパクト型",
+  "リアクション型",
+] as const;
+
+// 接続タイプ（シーケンスパターンのスロット間）
+export const CONNECTION_TYPES = [
+  { value: "quote_rt", label: "引用RT" },
+  { value: "consecutive", label: "連投" },
+  { value: "independent", label: "独立" },
+  { value: "story_chain", label: "ストーリー連投" },
+] as const;
+export type ConnectionType = (typeof CONNECTION_TYPES)[number]["value"];
+
+// 単一ポストテンプレ
+export interface XSinglePostTemplate {
+  id: string;
+  genre: string;
+  name: string;
+  sourceType: string; // "competitor_post" | "reference_post" | "scratch"
+  sourceId: string | null;
+  structure: TemplateStructure; // パース済み
+  skeleton: string;
+  placeholders: string[];
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemplateStructure {
+  hookType?: string; // 14手法のいずれか
+  educationType?: EducationType | "";
+  structureType?: string;
+  reinforcementElements?: string[];
+}
+
+// シーケンスパターン
+export interface XSequencePatternRecord {
+  id: string;
+  genre: string;
+  name: string;
+  description: string;
+  pattern: SequenceSlot[]; // パース済み
+  example: string;
+  isBuiltIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SequenceSlot {
+  slot: number; // 1, 2, 3...
+  educationType: EducationType | "";
+  structureType: string;
+  skeleton: string;
+  placeholders: string[];
+  // 次のスロットへの接続タイプ（最後のスロットでは無視）
+  connectionType: ConnectionType | "";
+}
+
+export function emptyTemplateStructure(): TemplateStructure {
+  return { hookType: "", educationType: "", structureType: "", reinforcementElements: [] };
+}
+
+export function parseTemplate(record: {
+  id: string;
+  genre: string;
+  name: string;
+  sourceType: string;
+  sourceId: string | null;
+  structure: string;
+  skeleton: string;
+  placeholders: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}): XSinglePostTemplate {
+  let structure: TemplateStructure = emptyTemplateStructure();
+  let placeholders: string[] = [];
+  try { structure = { ...emptyTemplateStructure(), ...JSON.parse(record.structure || "{}") }; } catch {}
+  try { placeholders = JSON.parse(record.placeholders || "[]"); } catch {}
+  return {
+    ...record,
+    structure,
+    placeholders,
+  };
+}
+
+export function parseSequencePattern(record: {
+  id: string;
+  genre: string;
+  name: string;
+  description: string;
+  pattern: string;
+  example: string;
+  isBuiltIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}): XSequencePatternRecord {
+  let pattern: SequenceSlot[] = [];
+  try {
+    const arr = JSON.parse(record.pattern || "[]");
+    if (Array.isArray(arr)) {
+      pattern = arr.map((s: Partial<SequenceSlot>, i: number) => ({
+        slot: typeof s.slot === "number" ? s.slot : i + 1,
+        educationType: (s.educationType as EducationType | "") ?? "",
+        structureType: s.structureType ?? "",
+        skeleton: s.skeleton ?? "",
+        placeholders: Array.isArray(s.placeholders) ? s.placeholders : [],
+        connectionType: (s.connectionType as ConnectionType | "") ?? "",
+      }));
+    }
+  } catch {}
+  return {
+    ...record,
+    pattern,
+  };
+}
+
 // 分析レコード（DB保存形式）
 export interface XPostAnalysisRecord {
   id: string;
