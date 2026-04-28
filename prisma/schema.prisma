@@ -110,3 +110,254 @@ model LaunchExample {
 
   @@index([type])
 }
+
+// ===== Xポストツール =====
+
+// 自アカ情報（ジャンルごとに1レコード）
+model XAccountInfo {
+  id                String   @id @default(cuid())
+  genre             String   @unique // "business" | "spiritual"
+
+  // アカウント基本
+  accountName       String   @default("")
+  handle            String   @default("")
+  concept           String   @default("")
+  target            String   @default("")
+  followerImage     String   @default("")
+
+  // ポジショニング
+  usp               String   @default("")
+  character         String   @default("")
+  divinationStyle   String   @default("") // 占い系のみ
+
+  // 口調
+  pronoun           String   @default("")
+  sentenceEnd       String   @default("")
+  temperature       String   @default("")
+  emojiUsage        String   @default("")
+  lineBreakRule     String   @default("")
+
+  // KW
+  mainKeywords      String   @default("[]") // JSON array
+  subKeywords       String   @default("[]") // JSON array
+  ngExpressions     String   @default("")
+
+  // 商品
+  mainProduct       String   @default("")
+  lpUrl             String   @default("")
+
+  // 過去のストーリー（信用の教育用）
+  storyBeforeState  String   @default("{}") // JSON: 状況/数字/心境
+  storyTurningPoint String   @default("{}") // JSON: きっかけ/出会い/気付き
+  storyEpisodes     String   @default("[]") // JSON array: 苦労エピソード
+  storyExtremeActs  String   @default("[]") // JSON array: ぶっ飛び体験
+  storyNgBehaviors  String   @default("[]") // JSON array: 過去のNG行動
+  storyAfterState   String   @default("{}") // JSON: 状況/数字/ライフスタイル
+  storyCommonGround String   @default("[]") // JSON array: 読者との共通点
+  storyPhrases      String   @default("[]") // JSON array: 印象的フレーズ
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// 教材・参考ポスト・メモ（typeで区別）
+model XKnowledge {
+  id              String   @id @default(cuid())
+  genre           String   // "business" | "spiritual" | "common"
+  type            String   // "teaching" | "reference_post" | "memo"
+  title           String   @default("")
+  content         String
+
+  // reference_post時のみ
+  authorHandle    String   @default("")
+  postUrl         String   @default("")
+  likes           Int      @default(0)
+  retweets        Int      @default(0)
+  impressions     Int      @default(0)
+  postedAt        DateTime?
+  structureType   String   @default("")
+  hookAnalysis    String   @default("")
+  bodyAnalysis    String   @default("")
+  closingAnalysis String   @default("")
+  usedWords       String   @default("[]")
+  applicationHint String   @default("")
+
+  // 共通
+  tags            String   @default("[]")
+  source          String   @default("")
+  note            String   @default("")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([genre])
+  @@index([type])
+}
+
+// 競合アカウント
+model XCompetitor {
+  id        String   @id @default(cuid())
+  genre     String
+  handle    String
+  name      String   @default("")
+  note      String   @default("")
+
+  posts     XPost[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([genre, handle])
+}
+
+// 収集した競合ポスト
+model XPost {
+  id            String   @id @default(cuid())
+  competitorId  String
+  postId        String   @default("") // X側の投稿ID
+  postUrl       String   @default("")
+  content       String
+  likes         Int      @default(0)
+  retweets      Int      @default(0)
+  replies       Int      @default(0)
+  impressions   Int      @default(0)
+  postedAt      DateTime?
+  collectedAt   DateTime @default(now())
+
+  // 引用RT検出用
+  isQuoteRt     Boolean  @default(false)
+  quotedPostUrl String   @default("")
+
+  competitor    XCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+
+  @@index([competitorId])
+}
+
+// ポスト分析結果
+model XPostAnalysis {
+  id                String   @id @default(cuid())
+  genre             String
+  postIds           String   @default("[]") // 分析対象ポストID JSON array
+  result            String?  // JSON: 構成タイプ/フック/強化要素 等
+  summary           String   @default("")
+  customInstruction String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([genre])
+}
+
+// 単一ポストテンプレ
+model XPostTemplate {
+  id           String   @id @default(cuid())
+  genre        String
+  name         String
+  sourceType   String   // "competitor_post" | "reference_post" | "scratch"
+  sourceId     String?
+  structure    String   @default("{}")
+  skeleton     String
+  placeholders String   @default("[]")
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([genre])
+}
+
+// シーケンスパターン（複数ポスト連鎖）
+model XSequencePattern {
+  id          String   @id @default(cuid())
+  genre       String   @default("any") // "business" | "spiritual" | "any"
+  name        String
+  description String   @default("")
+  pattern     String   // JSON: [{slot, educationType, structureType, skeleton, connectionType}]
+  example     String   @default("")
+  isBuiltIn   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([genre])
+}
+
+// フォルダ（参考ポスト・競合ポスト・テンプレ・パターン共通）
+model XFolder {
+  id        String   @id @default(cuid())
+  genre     String
+  name      String
+  color     String   @default("blue")
+
+  items     XFolderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([genre])
+}
+
+model XFolderItem {
+  id        String   @id @default(cuid())
+  folderId  String
+  itemType  String   // "reference_post" | "competitor_post" | "template" | "sequence_pattern"
+  itemId    String
+
+  folder    XFolder  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([folderId, itemType, itemId])
+}
+
+// 生成ポスト
+model XGeneratedPost {
+  id                String   @id @default(cuid())
+  genre             String
+  topic             String   @default("")
+  instruction       String   @default("")
+  educationType     String   @default("")
+  logicType         String   @default("") // "課題解決型" | "欲求喚起型" | ""
+  output            String
+  metadata          String   @default("{}")
+
+  // 参照
+  sourceTemplateId  String?
+  sourceAnalysisId  String?
+  sequencePatternId String?
+  dailyPlanId       String?
+  slotIndex         Int?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([genre])
+  @@index([createdAt])
+}
+
+// デイリープラン
+model XDailyPlan {
+  id        String   @id @default(cuid())
+  genre     String
+  date      String   // YYYY-MM-DD
+  slots     String   // JSON: [{slot, educationType, theme, sequenceWith, connectionType, generatedPostId?, status}]
+  notes     String   @default("")
+  status    String   @default("draft") // "draft" | "in_progress" | "completed"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([genre, date])
+  @@index([date])
+}
+
+// Xポストツール設定
+model XSettings {
+  id              String   @id @default(cuid())
+  genre           String   @unique
+  postsPerDay     Int      @default(5)
+  educationConfig String   @default("{}") // 各教育の最低頻度
+  sequenceConfig  String   @default("{}") // パターン使用率
+  spiceEnabled    Boolean  @default(true)
+  defaultModel    String   @default("claude-sonnet-4-6") // 生成時のデフォルトモデル
+  xApiBearerToken String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
