@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useXPostGenre, X_POST_GENRES } from "@/lib/x-post-genre";
 
@@ -12,16 +13,58 @@ const quickActions = [
 
 const featureNav = [
   { href: "/x-post/knowledge", title: "📚 ナレッジ", desc: "自アカ情報・教材・参考ポスト・テンプレを管理" },
-  { href: "/x-post/competitors", title: "👥 競合", desc: "競合アカウント登録 + 伸びてるポスト収集" },
+  { href: "/x-post/competitors", title: "👥 競合", desc: "競合アカウント登録 + 伸びてるポスト収集（手動 / X API自動 / シーケンス抽出）" },
   { href: "/x-post/analysis", title: "🔍 分析", desc: "収集ポストから構成・フック・強化要素を抽出" },
   { href: "/x-post/templates", title: "📋 テンプレ", desc: "単一ポスト + シーケンスパターンの管理" },
   { href: "/x-post/create", title: "✏️ 生成", desc: "ゼロから / テンプレから / デイリーから生成" },
-  { href: "/x-post/daily", title: "📅 デイリープラン", desc: "今日の5ポスト計画と教育バランス" },
+  { href: "/x-post/daily", title: "📅 デイリープラン", desc: "今日のポスト計画と教育バランス・設定" },
 ];
+
+interface StatsResponse {
+  knowledge: number;
+  competitors: number;
+  collectedPosts: number;
+  analyses: number;
+  generatedPosts: number;
+  templates: number;
+  sequencePatterns: number;
+  dailyPlans: number;
+}
 
 export default function XPostDashboardPage() {
   const [genre] = useXPostGenre();
   const genreLabel = X_POST_GENRES.find((g) => g.value === genre)?.label ?? "";
+
+  const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const r = await fetch(`/api/x-post/stats?genre=${genre}`);
+      const data = (await r.json()) as StatsResponse;
+      setStats(data);
+    } catch {
+      setStats(null);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [genre]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const cards: { label: string; value: string; emoji: string }[] = [
+    { label: "ナレッジ", emoji: "📚", value: stats ? String(stats.knowledge) : "—" },
+    { label: "競合", emoji: "👥", value: stats ? String(stats.competitors) : "—" },
+    { label: "収集ポスト", emoji: "📥", value: stats ? String(stats.collectedPosts) : "—" },
+    { label: "分析", emoji: "🔍", value: stats ? String(stats.analyses) : "—" },
+    { label: "生成済", emoji: "✏️", value: stats ? String(stats.generatedPosts) : "—" },
+    { label: "テンプレ", emoji: "📋", value: stats ? String(stats.templates) : "—" },
+    { label: "シーケンス", emoji: "🧬", value: stats ? String(stats.sequencePatterns) : "—" },
+    { label: "デイリープラン", emoji: "📅", value: stats ? String(stats.dailyPlans) : "—" },
+  ];
 
   return (
     <main className="px-4 md:px-6 py-6 max-w-6xl mx-auto space-y-6">
@@ -34,17 +77,13 @@ export default function XPostDashboardPage() {
         </p>
       </div>
 
-      {/* 統計カード（Phase 2以降で実データ接続） */}
+      {/* 統計カード */}
       <section>
-        <h3 className="text-sm font-medium text-gray-700 mb-2">統計</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            { label: "ナレッジ", value: "—", emoji: "📚" },
-            { label: "競合", value: "—", emoji: "👥" },
-            { label: "収集ポスト", value: "—", emoji: "📥" },
-            { label: "分析", value: "—", emoji: "🔍" },
-            { label: "生成済", value: "—", emoji: "✏️" },
-          ].map((s) => (
+        <h3 className="text-sm font-medium text-gray-700 mb-2">
+          統計 {statsLoading && <span className="text-xs text-gray-400 ml-1">読み込み中...</span>}
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {cards.map((s) => (
             <div key={s.label} className="bg-white border border-gray-200 rounded-lg p-3">
               <div className="text-xs text-gray-500 flex items-center gap-1.5">
                 <span>{s.emoji}</span>
@@ -88,14 +127,6 @@ export default function XPostDashboardPage() {
             </Link>
           ))}
         </div>
-      </section>
-
-      {/* Phase状況の説明 */}
-      <section className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-        <div className="text-sm font-bold text-amber-900">🚧 開発状況</div>
-        <p className="text-xs text-amber-800 mt-1">
-          Phase 1（基盤）実装中。各機能ページはスケルトン表示で、Phase 2以降で機能実装します。
-        </p>
       </section>
     </main>
   );

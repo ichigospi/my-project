@@ -8,6 +8,7 @@ import type {
   XCollectedPost,
   XFolderWithCount,
 } from "@/lib/x-post-types";
+import { getApiKey } from "@/lib/channel-store";
 import CompetitorEditModal from "@/components/x-post/CompetitorEditModal";
 import PostCollectModal from "@/components/x-post/PostCollectModal";
 
@@ -35,6 +36,52 @@ export default function CompetitorsPage() {
   const [filterFolderId, setFilterFolderId] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("likes");
+
+  // シーケンス抽出モード（複数選択）
+  const [sequenceMode, setSequenceMode] = useState(false);
+  const [selectedPostIds, setSelectedPostIds] = useState<string[]>([]);
+  const [extractingSequence, setExtractingSequence] = useState(false);
+  const [sequenceMsg, setSequenceMsg] = useState<string | null>(null);
+
+  const togglePostSelect = (id: string) => {
+    setSelectedPostIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const toggleSequenceMode = () => {
+    setSequenceMode((m) => !m);
+    setSelectedPostIds([]);
+    setSequenceMsg(null);
+  };
+
+  const extractSequence = async () => {
+    if (selectedPostIds.length < 2) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) {
+      alert("AI APIキーが未設定です。");
+      return;
+    }
+    setExtractingSequence(true);
+    setSequenceMsg(null);
+    try {
+      const res = await fetch("/api/x-post/extract-sequence-pattern", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postIds: selectedPostIds, aiApiKey, save: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSequenceMsg(`エラー: ${data.error || res.statusText}`);
+        return;
+      }
+      setSequenceMsg(`✓ 「${data.pattern?.name ?? "(無題)"}」をシーケンスパターンに保存`);
+      setSelectedPostIds([]);
+      setSequenceMode(false);
+    } finally {
+      setExtractingSequence(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,9 +191,41 @@ export default function CompetitorsPage() {
 
       {/* 下段: 収集ポスト */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h3 className="text-base font-bold text-gray-900">収集済みポスト（{posts.length}件）</h3>
+          <div className="flex items-center gap-2">
+            {sequenceMsg && (
+              <span className={`text-xs ${sequenceMsg.startsWith("✓") ? "text-emerald-700" : "text-red-700"}`}>
+                {sequenceMsg}
+              </span>
+            )}
+            <button
+              onClick={toggleSequenceMode}
+              className={`text-sm px-3 py-1.5 rounded transition-colors ${
+                sequenceMode
+                  ? "bg-purple-600 text-white hover:bg-purple-700"
+                  : "bg-purple-50 text-purple-700 hover:bg-purple-100"
+              }`}
+            >
+              {sequenceMode ? "✕ 抽出モード解除" : "🧬 シーケンス抽出"}
+            </button>
+          </div>
         </div>
+
+        {sequenceMode && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3 text-xs text-purple-900 flex items-center justify-between flex-wrap gap-2">
+            <span>
+              連投シーケンスにしたいポストを2〜8件、時系列順（古→新）に選択してください。選択中: <strong>{selectedPostIds.length}</strong>件
+            </span>
+            <button
+              onClick={extractSequence}
+              disabled={selectedPostIds.length < 2 || extractingSequence}
+              className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white text-sm font-medium rounded"
+            >
+              {extractingSequence ? "抽出中..." : `🧬 ${selectedPostIds.length}件から抽出`}
+            </button>
+          </div>
+        )}
 
         <div className="bg-white border border-gray-200 rounded-lg p-3 mb-3 flex flex-wrap gap-2 items-center">
           <select
@@ -213,7 +292,13 @@ export default function CompetitorsPage() {
                 post={p}
                 folderItemsForPost={folderItems.filter((fi) => fi.itemId === p.id)}
                 folders={folders}
-                onClick={() => setEditingPost(p)}
+                sequenceMode={sequenceMode}
+                selected={selectedPostIds.includes(p.id)}
+                selectionIndex={selectedPostIds.indexOf(p.id)}
+                onClick={() => {
+                  if (sequenceMode) togglePostSelect(p.id);
+                  else setEditingPost(p);
+                }}
               />
             ))}
           </div>
@@ -354,11 +439,17 @@ function PostListItem({
   post,
   folderItemsForPost,
   folders,
+  sequenceMode,
+  selected,
+  selectionIndex,
   onClick,
 }: {
   post: XCollectedPost;
   folderItemsForPost: FolderItemRecord[];
   folders: XFolderWithCount[];
+  sequenceMode: boolean;
+  selected: boolean;
+  selectionIndex: number;
   onClick: () => void;
 }) {
   const folderNames = folderItemsForPost
@@ -368,8 +459,19 @@ function PostListItem({
   return (
     <div
       onClick={onClick}
-      className="bg-white border border-gray-200 rounded-lg p-4 hover:border-indigo-400 hover:shadow-sm cursor-pointer transition"
+      className={`bg-white border rounded-lg p-4 cursor-pointer transition ${
+        sequenceMode
+          ? selected
+            ? "border-purple-500 ring-2 ring-purple-300 bg-purple-50/40"
+            : "border-gray-200 hover:border-purple-300"
+          : "border-gray-200 hover:border-indigo-400 hover:shadow-sm"
+      }`}
     >
+      {sequenceMode && selected && (
+        <div className="mb-2 inline-flex items-center gap-1 text-xs bg-purple-600 text-white px-2 py-0.5 rounded">
+          {selectionIndex + 1} 番目
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3 mb-1">
         <div className="text-xs text-gray-500 font-medium">
           @{post.competitor.handle}

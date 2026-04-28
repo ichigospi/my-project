@@ -447,6 +447,128 @@ export function parseExtractedTemplate(raw: string): { template: ExtractedTempla
   }
 }
 
+// =============================
+// シーケンスパターン自動抽出プロンプト
+// =============================
+
+export const EXTRACT_SEQUENCE_BASE_SYSTEM = `あなたはXポスト連投・引用RT・ストーリー連投の構造分析専門家です。
+ユーザーが選んだ複数のポスト（並び順は時系列）から、再利用可能な連投パターンを抽出します。
+
+【重要なルール】
+- 各スロットの教育タイプ（12要素）・構造タイプ（10種）・骨格スケルトンをプレースホルダ化して抽出する
+- スロット間の接続タイプを判定: quote_rt（引用RT）/ consecutive（連投・スレッド）/ independent（独立投稿）/ story_chain（ストーリー連投）
+- パターン全体の趣旨（どういう導線か・どこで反応を取りに行くか）も短く言語化する
+- 出力は必ず指定されたJSON形式のみで（前後に文章を入れない・コードブロックなし）
+`;
+
+export interface SequenceExtractPostInput {
+  index: number; // 1始まり
+  content: string;
+  isQuoteRt?: boolean;
+  likes?: number;
+  retweets?: number;
+}
+
+export function buildExtractSequenceUserMessage(opts: {
+  genre: "business" | "spiritual";
+  posts: SequenceExtractPostInput[];
+}): string {
+  const genreLabel = opts.genre === "business" ? "ビジネス系" : "占いスピ系";
+  const postsText = opts.posts
+    .map((p) => {
+      const meta = [
+        p.isQuoteRt ? "(引用RT)" : "",
+        typeof p.likes === "number" ? `👍${p.likes}` : "",
+        typeof p.retweets === "number" ? `🔁${p.retweets}` : "",
+      ].filter(Boolean).join(" ");
+      return `[ポスト${p.index}] ${meta}\n${p.content.trim()}`;
+    })
+    .join("\n\n---\n\n");
+
+  return `以下の${genreLabel}ポスト${opts.posts.length}件を時系列順の連投パターンとして分析し、シーケンスパターンを抽出してください。
+
+${postsText}
+
+【出力フォーマット】次のJSONを出力してください（コードブロックなし、生JSON）:
+
+{
+  "name": "パターン名（30字以内）",
+  "description": "このパターンの導線・狙い（1〜2文）",
+  "pattern": [
+    {
+      "slot": 1,
+      "educationType": "目的/信用/問題点/手段/投資/行動/読む見る/変化/素直/アウトプット/基準値/覚悟 のいずれか",
+      "structureType": "フック型/リスト型/ストーリー型/質問型/対比型/実績訴求型/Before/After型/短文インパクト/数字インパクト型/リアクション型 のいずれか",
+      "skeleton": "プレースホルダ化した骨格テキスト",
+      "placeholders": ["{固有名詞}", "{数字}"],
+      "connectionType": "quote_rt | consecutive | independent | story_chain （次スロットへの接続。最終スロットは空文字）"
+    }
+  ],
+  "example": "実際のポスト本文を連結した参考例（読みやすいよう改行で区切る）"
+}`;
+}
+
+export async function buildExtractSequenceSystemPrompt(genre: "business" | "spiritual"): Promise<{
+  systemPrompt: string;
+  knowledgeContext: string;
+}> {
+  const framework = await loadKnowledgeFramework();
+  const genreKnowledge = await loadGenreKnowledge(genre);
+  return {
+    systemPrompt: EXTRACT_SEQUENCE_BASE_SYSTEM,
+    knowledgeContext: [
+      "# 知識フレームワーク",
+      framework,
+      "",
+      `# ${genre === "business" ? "ビジ垢" : "占い垢"}の自アカ情報・教材`,
+      genreKnowledge,
+    ].join("\n\n"),
+  };
+}
+
+export interface ExtractedSequenceSlot {
+  slot: number;
+  educationType: string;
+  structureType: string;
+  skeleton: string;
+  placeholders: string[];
+  connectionType: string;
+}
+
+export interface ExtractedSequencePattern {
+  name: string;
+  description: string;
+  pattern: ExtractedSequenceSlot[];
+  example: string;
+}
+
+export function parseExtractedSequence(raw: string): { pattern: ExtractedSequencePattern | null; parseError: boolean } {
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    const arr = Array.isArray(parsed.pattern) ? parsed.pattern : [];
+    const slots: ExtractedSequenceSlot[] = arr.map((s: Partial<ExtractedSequenceSlot>, i: number) => ({
+      slot: typeof s.slot === "number" ? s.slot : i + 1,
+      educationType: typeof s.educationType === "string" ? s.educationType : "",
+      structureType: typeof s.structureType === "string" ? s.structureType : "",
+      skeleton: typeof s.skeleton === "string" ? s.skeleton : "",
+      placeholders: Array.isArray(s.placeholders)
+        ? s.placeholders.filter((x: unknown): x is string => typeof x === "string")
+        : [],
+      connectionType: typeof s.connectionType === "string" ? s.connectionType : "",
+    }));
+    const pattern: ExtractedSequencePattern = {
+      name: typeof parsed.name === "string" ? parsed.name : "",
+      description: typeof parsed.description === "string" ? parsed.description : "",
+      pattern: slots,
+      example: typeof parsed.example === "string" ? parsed.example : "",
+    };
+    return { pattern, parseError: false };
+  } catch {
+    return { pattern: null, parseError: true };
+  }
+}
+
 export function parseGeneratedResult(raw: string): { result: GeneratedResult; parseError: boolean } {
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   try {
