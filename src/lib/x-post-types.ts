@@ -160,6 +160,18 @@ export interface XReferencePost {
   updatedAt: string;
 }
 
+// 分析レコード（DB保存形式）
+export interface XPostAnalysisRecord {
+  id: string;
+  genre: string;
+  postIds: string; // JSON文字列
+  result: string | null; // JSON文字列 or null
+  summary: string;
+  customInstruction: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // メモ
 export interface XMemo {
   id: string;
