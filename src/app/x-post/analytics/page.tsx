@@ -7,6 +7,7 @@ import { getApiKey } from "@/lib/channel-store";
 import { DEFAULT_X_POST_MODEL, X_POST_MODEL_LABELS, type XPostModel } from "@/lib/x-post-ai";
 import type { XCompetitor, XCollectedPost } from "@/lib/x-post-types";
 import PostCollectModal from "@/components/x-post/PostCollectModal";
+import CsvImportModal from "@/components/x-post/CsvImportModal";
 
 interface SummaryResponse {
   count: number;
@@ -58,6 +59,7 @@ export default function AnalyticsPage() {
   // 取得フォーム
   const [collectingFor, setCollectingFor] = useState<XCompetitor | null>(null);
   const [editingPost, setEditingPost] = useState<XCollectedPost | null>(null);
+  const [csvImportFor, setCsvImportFor] = useState<XCompetitor | null>(null);
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState<string | null>(null);
 
@@ -287,6 +289,13 @@ export default function AnalyticsPage() {
               </button>
               {selfCompetitor && (
                 <>
+                  <button
+                    onClick={() => setCsvImportFor(selfCompetitor)}
+                    className="text-xs px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded"
+                    title="X analytics CSV を一括取り込み（X API不要）"
+                  >
+                    📁 CSVインポート
+                  </button>
                   <button
                     onClick={() => setCollectingFor(selfCompetitor)}
                     className="text-xs px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded"
@@ -560,6 +569,13 @@ export default function AnalyticsPage() {
           post={editingPost}
           onClose={() => setEditingPost(null)}
           onSaved={loadAll}
+        />
+      )}
+      {csvImportFor && (
+        <CsvImportModal
+          competitor={csvImportFor}
+          onClose={() => setCsvImportFor(null)}
+          onImported={loadAll}
         />
       )}
     </main>
