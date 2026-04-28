@@ -4,16 +4,18 @@ import { useState } from "react";
 import { useXPostGenre, X_POST_GENRES } from "@/lib/x-post-genre";
 import AccountInfoTab from "@/components/x-post/AccountInfoTab";
 import TeachingsTab from "@/components/x-post/TeachingsTab";
+import BaseKnowledgeTab from "@/components/x-post/BaseKnowledgeTab";
 import ReferencesTab from "@/components/x-post/ReferencesTab";
 import MemosTab from "@/components/x-post/MemosTab";
 
-type Tab = "account" | "teachings" | "references" | "memos";
+type Tab = "account" | "base" | "teachings" | "references" | "memos";
 
 const TABS: { value: Tab; label: string; emoji: string; description: string }[] = [
   { value: "account", label: "自アカ情報", emoji: "📌", description: "コンセプト・口調・KW・過去のストーリー" },
-  { value: "teachings", label: "教材", emoji: "📖", description: "学んだ教材・ノウハウから抽出した指示書" },
+  { value: "base", label: "基礎教材", emoji: "📖", description: "AIに毎回注入される中核教材（読み取り専用）" },
+  { value: "teachings", label: "追加教材", emoji: "📝", description: "後から書き足したノウハウ・指示書" },
   { value: "references", label: "参考ポスト", emoji: "📥", description: "伸びた投稿の実例集（フォルダ分け対応）" },
-  { value: "memos", label: "メモ", emoji: "📝", description: "自由記述メモ" },
+  { value: "memos", label: "メモ", emoji: "🗒️", description: "自由記述メモ" },
 ];
 
 export default function KnowledgePage() {
@@ -62,6 +64,7 @@ export default function KnowledgePage() {
 
       <div>
         {tab === "account" && <AccountInfoTab />}
+        {tab === "base" && <BaseKnowledgeTab />}
         {tab === "teachings" && <TeachingsTab />}
         {tab === "references" && <ReferencesTab />}
         {tab === "memos" && <MemosTab />}
