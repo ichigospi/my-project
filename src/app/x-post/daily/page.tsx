@@ -242,6 +242,7 @@ export default function DailyPlanPage() {
               <SlotCard
                 key={i}
                 slot={slot}
+                planId={plan.id}
                 isLast={i === plan.slots.length - 1}
                 onUpdate={(patch) => updateSlot(i, patch)}
               />
@@ -289,8 +290,9 @@ export default function DailyPlanPage() {
 // SlotCard
 // ============================================================
 
-function SlotCard({ slot, isLast, onUpdate }: {
+function SlotCard({ slot, planId, isLast, onUpdate }: {
   slot: DailyPlanSlot;
+  planId: string;
   isLast: boolean;
   onUpdate: (patch: Partial<DailyPlanSlot>) => void;
 }) {
@@ -375,7 +377,7 @@ function SlotCard({ slot, isLast, onUpdate }: {
             {editing ? "閉じる" : "編集"}
           </button>
           <Link
-            href={`/x-post/create?from=daily&slot=${slot.slot}&education=${encodeURIComponent(slot.educationType)}&theme=${encodeURIComponent(slot.theme)}`}
+            href={`/x-post/create?from=daily&planId=${planId}&slot=${slot.slot}&education=${encodeURIComponent(slot.educationType)}&theme=${encodeURIComponent(slot.theme)}&hook=${encodeURIComponent(slot.hookType ?? "")}`}
             className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded text-center"
           >
             ✏️ 生成
