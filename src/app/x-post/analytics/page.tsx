@@ -8,6 +8,7 @@ import { DEFAULT_X_POST_MODEL, X_POST_MODEL_LABELS, type XPostModel } from "@/li
 import type { XCompetitor, XCollectedPost } from "@/lib/x-post-types";
 import PostCollectModal from "@/components/x-post/PostCollectModal";
 import CsvImportModal from "@/components/x-post/CsvImportModal";
+import CleanupModal from "@/components/x-post/CleanupModal";
 
 interface SummaryResponse {
   count: number;
@@ -65,6 +66,7 @@ export default function AnalyticsPage() {
   const [collectingFor, setCollectingFor] = useState<XCompetitor | null>(null);
   const [editingPost, setEditingPost] = useState<XCollectedPost | null>(null);
   const [csvImportFor, setCsvImportFor] = useState<XCompetitor | null>(null);
+  const [cleanupFor, setCleanupFor] = useState<XCompetitor | null>(null);
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState<string | null>(null);
 
@@ -311,6 +313,13 @@ export default function AnalyticsPage() {
                     title="X analytics CSV を一括取り込み（X API不要）"
                   >
                     📁 CSVインポート
+                  </button>
+                  <button
+                    onClick={() => setCleanupFor(selfCompetitor)}
+                    className="text-xs px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded"
+                    title="重複・インプ0のポストを整理"
+                  >
+                    🧹 クリーンアップ
                   </button>
                   <button
                     onClick={() => setCollectingFor(selfCompetitor)}
@@ -616,6 +625,13 @@ export default function AnalyticsPage() {
           competitor={csvImportFor}
           onClose={() => setCsvImportFor(null)}
           onImported={loadAll}
+        />
+      )}
+      {cleanupFor && (
+        <CleanupModal
+          competitor={cleanupFor}
+          onClose={() => setCleanupFor(null)}
+          onCleaned={loadAll}
         />
       )}
     </main>
