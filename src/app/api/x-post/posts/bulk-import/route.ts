@@ -15,14 +15,16 @@ interface IncomingPost {
 }
 
 // POST /api/x-post/posts/bulk-import
-// Body: { competitorId, posts: IncomingPost[] }
-//   既存と同じ postId はスキップ。空 postId のものは内容ハッシュ重複チェックなしでそのまま追加。
+// Body: { competitorId, posts: IncomingPost[], upsert?: boolean }
+//   upsert=true（デフォルト）: 同 postId の既存があれば指標を上書き更新
+//   upsert=false: 同 postId はスキップ
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { competitorId, posts } = body as {
+    const { competitorId, posts, upsert = true } = body as {
       competitorId?: string;
       posts?: IncomingPost[];
+      upsert?: boolean;
     };
 
     if (!competitorId) {
@@ -40,24 +42,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "アカウントが見つかりません" }, { status: 404 });
     }
 
-    // postId 重複検出
+    // postId 重複検出（postIdがあるもののみ）
     const incomingPostIds = posts
       .map((p) => p.postId?.trim())
       .filter((s): s is string => Boolean(s));
     const existing = incomingPostIds.length > 0
       ? await prisma.xPost.findMany({
           where: { competitorId, postId: { in: incomingPostIds } },
-          select: { postId: true },
+          select: { id: true, postId: true },
         })
       : [];
-    const existingSet = new Set(existing.map((p) => p.postId));
+    const existingByPostId = new Map(existing.map((p) => [p.postId, p.id]));
 
     let saved = 0;
+    let updated = 0;
     let skipped = 0;
     const errors: string[] = [];
 
-    // バッチでcreate（Prismaのトランザクション）
-    const toCreate = [];
+    interface CreateData {
+      competitorId: string;
+      postId: string;
+      postUrl: string;
+      content: string;
+      likes: number;
+      retweets: number;
+      replies: number;
+      impressions: number;
+      postedAt: Date | null;
+      isQuoteRt: boolean;
+      quotedPostUrl: string;
+    }
+    type UpdateData = Omit<CreateData, "competitorId" | "postId">;
+
+    const toCreate: CreateData[] = [];
+    const toUpdate: { id: string; data: UpdateData }[] = [];
+
     for (const p of posts) {
       const content = (p.content ?? "").trim();
       if (!content) {
@@ -65,13 +84,9 @@ export async function POST(request: NextRequest) {
         continue;
       }
       const postId = (p.postId ?? "").trim();
-      if (postId && existingSet.has(postId)) {
-        skipped++;
-        continue;
-      }
-      toCreate.push({
-        competitorId,
-        postId,
+      const existingId = postId ? existingByPostId.get(postId) : undefined;
+
+      const dataCommon = {
         postUrl: p.postUrl ?? "",
         content,
         likes: Number(p.likes ?? 0) || 0,
@@ -81,15 +96,29 @@ export async function POST(request: NextRequest) {
         postedAt: p.postedAt ? new Date(p.postedAt) : null,
         isQuoteRt: Boolean(p.isQuoteRt ?? false),
         quotedPostUrl: "",
-      });
+      };
+
+      if (existingId) {
+        if (upsert) {
+          toUpdate.push({ id: existingId, data: dataCommon });
+        } else {
+          skipped++;
+        }
+      } else {
+        toCreate.push({
+          competitorId,
+          postId,
+          ...dataCommon,
+        });
+      }
     }
 
+    // create を一括（createMany）
     if (toCreate.length > 0) {
       try {
         const result = await prisma.xPost.createMany({ data: toCreate });
         saved = result.count;
       } catch {
-        // フォールバック: 1件ずつ try
         for (const data of toCreate) {
           try {
             await prisma.xPost.create({ data });
@@ -101,8 +130,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // update は1件ずつ（Prismaにbulk updateがないので）
+    for (const u of toUpdate) {
+      try {
+        await prisma.xPost.update({ where: { id: u.id }, data: u.data });
+        updated++;
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : String(err));
+      }
+    }
+
     return NextResponse.json({
-      saved,
+      saved: saved + updated,
+      created: saved,
+      updated,
       skipped,
       total: posts.length,
       errors: errors.slice(0, 10),
