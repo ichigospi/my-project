@@ -6,7 +6,8 @@ import { getProfile, saveProfile, type ChannelProfile } from "./script-analysis-
 import {
   getHooks, getCTAs, getThumbnailWords, getTitles,
   getPresets, savePreset,
-  getProjects, getTasks, getMembers, getMyChannel, saveMyChannel,
+  getProjects, getTasks, getMembers,
+  getMyChannelDataList, saveMyChannelData,
   getAnalysisLogs, getWeeklySnapshots, getPerformanceRecords,
   type HookEntry, type CTAEntry, type ThumbnailWordEntry, type TitleEntry,
   type ScriptProject, type ProductionTask, type MyChannelData,
@@ -245,9 +246,21 @@ export async function pullSharedSettings(): Promise<void> {
       localStorage.setItem("fortune_yt_members", JSON.stringify(merged));
     }
 
-    // 自チャンネルデータ: ローカルが空ならサーバーから
-    if (data.myChannel && !getMyChannel()) {
-      saveMyChannel(data.myChannel);
+    // 自チャンネルデータ(YouTube情報): チャンネル毎にupsert
+    // 新形式 myChannelDataList が優先、無ければ旧 myChannel(singular)を1件として扱う
+    const incomingMyChData: MyChannelData[] = Array.isArray(data.myChannelDataList)
+      ? data.myChannelDataList
+      : data.myChannel ? [data.myChannel] : [];
+    if (incomingMyChData.length > 0) {
+      const localList = getMyChannelDataList();
+      for (const incoming of incomingMyChData) {
+        const key = incoming.internalChannelId || "";
+        const existing = localList.find((d) => (d.internalChannelId || "") === key);
+        // ローカルに無いか、サーバー側のlastFetchedの方が新しければ採用
+        if (!existing || (incoming.lastFetched || "") > (existing.lastFetched || "")) {
+          saveMyChannelData(incoming);
+        }
+      }
     }
 
     // 分析ログ: マージ
@@ -334,7 +347,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         projects: getProjects(),
         tasks: getTasks(),
         members: getMembers(),
-        myChannel: getMyChannel(),
+        myChannelDataList: getMyChannelDataList(),
         analysisLogs: getAnalysisLogs(),
         weeklySnapshots: getWeeklySnapshots(),
         performanceRecords: getPerformanceRecords(),

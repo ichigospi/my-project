@@ -159,6 +159,7 @@ export interface PerformanceRecord {
   ctasUsed: string[];
   notes: string;
   recordedAt: string;
+  channelId?: string;
 }
 
 // ===== 自チャンネルトラッキング =====
@@ -182,23 +183,62 @@ export interface VideoSnapshot {
 }
 
 export interface MyChannelData {
-  channelId: string;
+  internalChannelId?: string; // 内部のMyChannel.id（メインチャンネル/金華 等の識別）
+  channelId: string;          // YouTubeのチャンネルID (UCxxx)
   channelName: string;
   videos: MyChannelVideo[];
   lastFetched: string;
 }
 
-const MY_CHANNEL_KEY = "fortune_yt_my_channel";
+const MY_CHANNEL_KEY = "fortune_yt_my_channel";                  // 旧singleton
+const MY_CHANNEL_DATA_LIST_KEY = "fortune_yt_my_channel_data_list"; // 新list
 
+// 一覧取得（旧singletonがあれば自動でlistに移行）
+export function getMyChannelDataList(): MyChannelData[] {
+  if (typeof window === "undefined") return [];
+  const stored = localStorage.getItem(MY_CHANNEL_DATA_LIST_KEY);
+  if (stored) return JSON.parse(stored);
+  // 移行: 旧singletonがあれば最初のMyChannelに紐付けて配列化
+  const old = localStorage.getItem(MY_CHANNEL_KEY);
+  if (old) {
+    const oldData: MyChannelData = JSON.parse(old);
+    const myChannels = JSON.parse(localStorage.getItem("fortune_yt_my_channels") || "[]");
+    const firstChId = myChannels[0]?.id || "";
+    const list: MyChannelData[] = [{ ...oldData, internalChannelId: firstChId }];
+    localStorage.setItem(MY_CHANNEL_DATA_LIST_KEY, JSON.stringify(list));
+    return list;
+  }
+  return [];
+}
+
+// 内部チャンネルIDで取得
+export function getMyChannelDataByChannel(internalChannelId: string): MyChannelData | null {
+  const list = getMyChannelDataList();
+  // チャンネル指定があればそれ、無ければ未紐付け（internalChannelId空）のものを返す
+  return (
+    list.find((d) => d.internalChannelId === internalChannelId) ||
+    (internalChannelId ? null : list.find((d) => !d.internalChannelId)) ||
+    null
+  );
+}
+
+// 保存（internalChannelIdをキーにupsert）
+export function saveMyChannelData(data: MyChannelData) {
+  if (typeof window === "undefined") return;
+  const list = getMyChannelDataList();
+  const idx = list.findIndex((d) => d.internalChannelId === data.internalChannelId);
+  if (idx >= 0) list[idx] = data;
+  else list.push(data);
+  localStorage.setItem(MY_CHANNEL_DATA_LIST_KEY, JSON.stringify(list));
+}
+
+// 後方互換: 旧API
 export function getMyChannel(): MyChannelData | null {
-  if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem(MY_CHANNEL_KEY);
-  return stored ? JSON.parse(stored) : null;
+  return getMyChannelDataList()[0] || null;
 }
 
 export function saveMyChannel(data: MyChannelData) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(MY_CHANNEL_KEY, JSON.stringify(data));
+  saveMyChannelData(data);
 }
 
 // ジャンル自動判定
@@ -215,6 +255,7 @@ export interface AnalysisLog {
   analysis: string;
   videoCount: number;
   avgViews: number;
+  channelId?: string;
 }
 
 const ANALYSIS_LOG_KEY = "fortune_yt_analysis_log";
@@ -224,11 +265,22 @@ export function getAnalysisLogs(): AnalysisLog[] {
   return JSON.parse(localStorage.getItem(ANALYSIS_LOG_KEY) || "[]");
 }
 
+export function getAnalysisLogsByChannel(channelId: string): AnalysisLog[] {
+  return getAnalysisLogs().filter((l) => !l.channelId || l.channelId === channelId);
+}
+
 export function saveAnalysisLog(log: AnalysisLog) {
   const logs = getAnalysisLogs();
   logs.unshift(log);
-  // 最大10件保持
-  const trimmed = logs.slice(0, 10);
+  // チャンネル毎に最大10件保持
+  const byChannel = new Map<string, AnalysisLog[]>();
+  for (const l of logs) {
+    const k = l.channelId || "";
+    if (!byChannel.has(k)) byChannel.set(k, []);
+    byChannel.get(k)!.push(l);
+  }
+  const trimmed: AnalysisLog[] = [];
+  for (const list of byChannel.values()) trimmed.push(...list.slice(0, 10));
   localStorage.setItem(ANALYSIS_LOG_KEY, JSON.stringify(trimmed));
 }
 
@@ -242,6 +294,7 @@ export interface WeeklySnapshot {
   videoCount: number;
   subscribersGained: number;
   topVideo: { title: string; views: number };
+  channelId?: string;
 }
 
 const WEEKLY_KEY = "fortune_yt_weekly";
@@ -251,13 +304,26 @@ export function getWeeklySnapshots(): WeeklySnapshot[] {
   return JSON.parse(localStorage.getItem(WEEKLY_KEY) || "[]");
 }
 
+export function getWeeklySnapshotsByChannel(channelId: string): WeeklySnapshot[] {
+  return getWeeklySnapshots().filter((s) => !s.channelId || s.channelId === channelId);
+}
+
 export function saveWeeklySnapshot(snapshot: WeeklySnapshot) {
   const snapshots = getWeeklySnapshots();
-  const idx = snapshots.findIndex((s) => s.weekStart === snapshot.weekStart);
+  const idx = snapshots.findIndex(
+    (s) => s.weekStart === snapshot.weekStart && (s.channelId || "") === (snapshot.channelId || "")
+  );
   if (idx >= 0) snapshots[idx] = snapshot;
   else snapshots.unshift(snapshot);
-  // 最大12週分保持
-  const trimmed = snapshots.slice(0, 12);
+  // チャンネル毎に最大12週分保持
+  const byChannel = new Map<string, WeeklySnapshot[]>();
+  for (const s of snapshots) {
+    const k = s.channelId || "";
+    if (!byChannel.has(k)) byChannel.set(k, []);
+    byChannel.get(k)!.push(s);
+  }
+  const trimmed: WeeklySnapshot[] = [];
+  for (const list of byChannel.values()) trimmed.push(...list.slice(0, 12));
   localStorage.setItem(WEEKLY_KEY, JSON.stringify(trimmed));
 }
 
@@ -577,6 +643,10 @@ export function getTopPerformingPatterns(genre?: Genre): PerformanceRecord[] {
     .filter((r) => !genre || r.genre === genre)
     .sort((a, b) => b.views - a.views)
     .slice(0, 10);
+}
+
+export function getPerformanceRecordsByChannel(channelId: string): PerformanceRecord[] {
+  return getPerformanceRecords().filter((r) => !r.channelId || r.channelId === channelId);
 }
 
 // ===== チャンネル別フィルター =====

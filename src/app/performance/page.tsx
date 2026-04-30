@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { getApiKey } from "@/lib/channel-store";
 import { getWinningPatterns, saveWinningPatterns, type WinningPatterns } from "@/lib/winning-patterns-store";
 import { getAnalyses } from "@/lib/script-analysis-store";
-import { getMyChannel, saveMyChannel, detectGenre, GENRE_LABELS, genId, getAnalysisLogs, saveAnalysisLog, getWeeklySnapshots, saveWeeklySnapshot } from "@/lib/project-store";
+import { getMyChannelDataByChannel, saveMyChannelData, detectGenre, GENRE_LABELS, genId, getAnalysisLogsByChannel, saveAnalysisLog, getWeeklySnapshotsByChannel, saveWeeklySnapshot } from "@/lib/project-store";
 import { useChannel } from "@/lib/channel-context";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { MyChannelData, MyChannelVideo, Genre, AnalysisLog, WeeklySnapshot } from "@/lib/project-store";
@@ -176,13 +176,14 @@ export default function PerformancePage() {
 
   useEffect(() => {
     pullSharedSettings().then(() => {
-      const saved = getMyChannel();
-      if (saved) setMyChannel(saved);
-      setAnalysisLogs(getAnalysisLogs());
-      setWeeklySnapshots(getWeeklySnapshots());
+      const chId = activeChannel?.id || "";
+      const saved = getMyChannelDataByChannel(chId);
+      setMyChannel(saved);
+      setAnalysisLogs(getAnalysisLogsByChannel(chId));
+      setWeeklySnapshots(getWeeklySnapshotsByChannel(chId));
       setWinPatterns(getWinningPatterns());
     });
-  }, []);
+  }, [activeChannel]);
 
   useEffect(() => {
     if (myChannel) {
@@ -227,7 +228,7 @@ export default function PerformancePage() {
     const vidData = await vidRes.json();
     if (vidData.error) { setError(vidData.error); return; }
 
-    const existing = getMyChannel();
+    const existing = getMyChannelDataByChannel(activeChannel?.id || "");
     const now = new Date().toISOString().split("T")[0];
 
     const videos: MyChannelVideo[] = (vidData.videos || []).map((v: {
@@ -254,19 +255,21 @@ export default function PerformancePage() {
     });
 
     const data: MyChannelData = {
+      internalChannelId: activeChannel?.id || "",
       channelId,
       channelName,
       videos,
       lastFetched: new Date().toISOString(),
     };
-    saveMyChannel(data);
+    saveMyChannelData(data);
     setMyChannel(data);
   };
 
   // ===== データ更新（YouTube + Analytics） =====
   // 週次スナップショット自動保存
   const autoSaveWeeklySnapshot = () => {
-    const ch = getMyChannel();
+    const chId = activeChannel?.id || "";
+    const ch = getMyChannelDataByChannel(chId);
     if (!ch || ch.videos.length === 0) return;
     // 今週の月曜日を計算
     const now = new Date();
@@ -298,8 +301,9 @@ export default function PerformancePage() {
       videoCount: videos.length,
       subscribersGained: totalSubs,
       topVideo: { title: best.title, views: best.views },
+      channelId: chId,
     });
-    setWeeklySnapshots(getWeeklySnapshots());
+    setWeeklySnapshots(getWeeklySnapshotsByChannel(chId));
   };
 
   const handleRefresh = async () => {
@@ -415,9 +419,10 @@ export default function PerformancePage() {
           analysis: data.analysis,
           videoCount: enrichedVideos.length,
           avgViews: enrichedVideos.length > 0 ? Math.round(totalViews / enrichedVideos.length) : 0,
+          channelId: activeChannel?.id || "",
         };
         saveAnalysisLog(log);
-        setAnalysisLogs(getAnalysisLogs());
+        setAnalysisLogs(getAnalysisLogsByChannel(activeChannel?.id || ""));
       }
     } catch {
       setError("分析に失敗しました");
@@ -429,13 +434,14 @@ export default function PerformancePage() {
   // ===== ジャンル変更 =====
   const handleGenreChange = (videoId: string, newGenre: Genre) => {
     if (!myChannel) return;
-    const updated = {
+    const updated: MyChannelData = {
       ...myChannel,
+      internalChannelId: myChannel.internalChannelId || activeChannel?.id || "",
       videos: myChannel.videos.map((v) =>
         v.videoId === videoId ? { ...v, genre: newGenre } : v
       ),
     };
-    saveMyChannel(updated);
+    saveMyChannelData(updated);
     setMyChannel(updated);
   };
 
