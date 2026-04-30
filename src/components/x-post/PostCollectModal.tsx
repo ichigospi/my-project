@@ -29,6 +29,8 @@ export default function PostCollectModal({ competitor, post, onClose, onSaved }:
   const [continueAdding, setContinueAdding] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractResult, setExtractResult] = useState<{ name: string; savedId: string | null } | null>(null);
+  const [looking, setLooking] = useState(false);
+  const [lookupMsg, setLookupMsg] = useState<{ type: "ok" | "warn" | "err"; text: string } | null>(null);
 
   // URL貼り付けで postId を自動抽出
   useEffect(() => {
@@ -38,6 +40,70 @@ export default function PostCollectModal({ competitor, post, onClose, onSaved }:
       setPostId(parsed.postId);
     }
   }, [postUrl, postId]);
+
+  const lookup = async () => {
+    if (!postUrl.trim()) {
+      setLookupMsg({ type: "err", text: "URLを入力してください" });
+      return;
+    }
+    const targetCompetitor = competitor ?? post?.competitor;
+    const competitorId = post?.competitorId ?? competitor?.id;
+    if (!competitorId && !targetCompetitor) {
+      setLookupMsg({ type: "err", text: "競合アカウントが特定できません" });
+      return;
+    }
+    setLooking(true);
+    setLookupMsg(null);
+    try {
+      const res = await fetch("/api/x-post/posts/lookup-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: postUrl.trim(),
+          competitorId,
+          genre: targetCompetitor?.genre,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLookupMsg({ type: "err", text: data.error || "取得失敗" });
+        return;
+      }
+
+      // フィールドにフィル
+      if (data.postId) setPostId(data.postId);
+      if (data.postUrl) setPostUrl(data.postUrl);
+      if (data.content) setContent(data.content);
+      if (data.likes !== undefined) setLikes(String(data.likes));
+      if (data.retweets !== undefined) setRetweets(String(data.retweets));
+      if (data.replies !== undefined) setReplies(String(data.replies));
+      if (data.impressions !== undefined && data.impressions > 0) setImpressions(String(data.impressions));
+      if (data.postedAt) {
+        // ISO → datetime-local 形式（YYYY-MM-DDTHH:MM）
+        try {
+          const d = new Date(data.postedAt);
+          const pad = (n: number) => String(n).padStart(2, "0");
+          const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          setPostedAt(local);
+        } catch {}
+      }
+      if (data.isQuoteRt) setIsQuoteRt(true);
+
+      const sourceLabel =
+        data.source === "x_api" ? "X API"
+        : data.source === "oembed" ? "oEmbed"
+        : "部分取得";
+      const warn = (data.warnings ?? []).join(" / ");
+      setLookupMsg({
+        type: warn ? "warn" : "ok",
+        text: `✓ ${sourceLabel}で取得${warn ? ` — ${warn}` : ""}`,
+      });
+    } catch (e) {
+      setLookupMsg({ type: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setLooking(false);
+    }
+  };
 
   const reset = () => {
     setPostUrl("");
@@ -164,16 +230,38 @@ export default function PostCollectModal({ competitor, post, onClose, onSaved }:
         <div className="p-6 space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">ポストURL（推奨）</label>
-            <input
-              type="text"
-              value={postUrl}
-              onChange={(e) => setPostUrl(e.target.value)}
-              placeholder="https://x.com/xxx/status/1234567890..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={postUrl}
+                onChange={(e) => setPostUrl(e.target.value)}
+                placeholder="https://x.com/xxx/status/1234567890..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm"
+              />
+              <button
+                type="button"
+                onClick={lookup}
+                disabled={looking || !postUrl.trim()}
+                className="shrink-0 px-3 py-2 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-300 text-white text-sm font-medium rounded"
+                title="URLから本文・いいね・RT・返信・日時を自動取得（インプは要手入力）"
+              >
+                {looking ? "取得中..." : "🔍 URLから取得"}
+              </button>
+            </div>
             <p className="text-xs text-gray-500 mt-1">
-              URLを貼ると postId が自動入力されます
+              URLから本文・いいね/RT/返信/日時を自動取得。インプは X 画面の「N views」を見て手入力。
             </p>
+            {lookupMsg && (
+              <div className={`mt-2 text-xs rounded px-2 py-1 ${
+                lookupMsg.type === "ok"
+                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                  : lookupMsg.type === "warn"
+                    ? "bg-amber-50 text-amber-800 border border-amber-200"
+                    : "bg-red-50 text-red-800 border border-red-200"
+              }`}>
+                {lookupMsg.text}
+              </div>
+            )}
           </div>
 
           <div>
