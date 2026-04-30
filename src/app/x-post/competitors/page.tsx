@@ -11,6 +11,7 @@ import type {
 import { getApiKey } from "@/lib/channel-store";
 import CompetitorEditModal from "@/components/x-post/CompetitorEditModal";
 import PostCollectModal from "@/components/x-post/PostCollectModal";
+import HotFetchModal from "@/components/x-post/HotFetchModal";
 
 type SortKey = "collectedAt" | "postedAt" | "likes" | "retweets" | "impressions";
 
@@ -28,6 +29,7 @@ export default function CompetitorsPage() {
 
   // モーダル状態
   const [editingCompetitor, setEditingCompetitor] = useState<XCompetitor | "new" | null>(null);
+  const [showHotFetch, setShowHotFetch] = useState(false);
   const [collectingFor, setCollectingFor] = useState<XCompetitor | null>(null);
   const [editingPost, setEditingPost] = useState<XCollectedPost | null>(null);
 
@@ -159,14 +161,24 @@ export default function CompetitorsPage() {
 
       {/* 上段: 競合一覧 */}
       <section className="mb-8">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 className="text-base font-bold text-gray-900">競合アカウント（{competitors.length}件）</h3>
-          <button
-            onClick={() => setEditingCompetitor("new")}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md"
-          >
-            + 競合を追加
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowHotFetch(true)}
+              disabled={competitors.length === 0}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white text-sm font-medium rounded-md"
+              title="全競合からX APIで一括取得 → 閾値超えのみ保存"
+            >
+              🔥 ホット取得
+            </button>
+            <button
+              onClick={() => setEditingCompetitor("new")}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md"
+            >
+              + 競合を追加
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -332,6 +344,13 @@ export default function CompetitorsPage() {
           post={editingPost}
           onClose={() => setEditingPost(null)}
           onSaved={load}
+        />
+      )}
+      {showHotFetch && (
+        <HotFetchModal
+          genre={genre}
+          onClose={() => setShowHotFetch(false)}
+          onFetched={load}
         />
       )}
     </main>
