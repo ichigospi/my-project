@@ -32,10 +32,16 @@ export async function GET() {
       performanceRecords: map["shared_performance_records"] ? JSON.parse(map["shared_performance_records"]) : [],
       ideas: map["shared_ideas"] ? JSON.parse(map["shared_ideas"]) : [],
       ideaRules: map["shared_idea_rules"] ? JSON.parse(map["shared_idea_rules"]) : null,
+      ideaRulesList: map["shared_idea_rules_list"]
+        ? JSON.parse(map["shared_idea_rules_list"])
+        : (map["shared_idea_rules"] ? [JSON.parse(map["shared_idea_rules"])] : []),
       myChannels: map["shared_my_channels"] ? JSON.parse(map["shared_my_channels"]) : [],
       myChannelDataList: map["shared_my_channel_data_list"]
         ? JSON.parse(map["shared_my_channel_data_list"])
         : (map["shared_my_channel"] ? [JSON.parse(map["shared_my_channel"])] : []),
+      winningPatternsList: map["shared_winning_patterns_list"]
+        ? JSON.parse(map["shared_winning_patterns_list"])
+        : (map["shared_winning_patterns"] ? [JSON.parse(map["shared_winning_patterns"])] : []),
     });
   } catch (e) {
     console.error("GET /api/shared-settings error:", e);
@@ -73,6 +79,8 @@ export async function POST(request: NextRequest) {
     if (body.ideaRules !== undefined) updates.push({ key: "shared_idea_rules", value: JSON.stringify(body.ideaRules) });
     if (body.myChannels !== undefined) updates.push({ key: "shared_my_channels", value: JSON.stringify(body.myChannels) });
     if (body.myChannelDataList !== undefined) updates.push({ key: "shared_my_channel_data_list", value: JSON.stringify(body.myChannelDataList) });
+    if (body.winningPatternsList !== undefined) updates.push({ key: "shared_winning_patterns_list", value: JSON.stringify(body.winningPatternsList) });
+    if (body.ideaRulesList !== undefined) updates.push({ key: "shared_idea_rules_list", value: JSON.stringify(body.ideaRulesList) });
 
     for (const { key, value } of updates) {
       const existing = await prisma.appSetting.findUnique({ where: { key } });

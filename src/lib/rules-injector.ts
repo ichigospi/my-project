@@ -1,7 +1,7 @@
 // AIプロンプトに自動注入するルールを構築するヘルパー
 import { getProfile, getAnalyses, type ChannelProfile } from "./script-analysis-store";
 import { getPresetFor, type Genre, type Style } from "./project-store";
-import { getWinningPatterns } from "./winning-patterns-store";
+import { getWinningPatternsByChannel } from "./winning-patterns-store";
 
 export interface InjectedRules {
   channelContext: string;
@@ -12,7 +12,7 @@ export interface InjectedRules {
   winningPatterns: string;
 }
 
-export function buildInjectedRules(genre?: Genre, style?: Style): InjectedRules {
+export function buildInjectedRules(genre?: Genre, style?: Style, channelId?: string): InjectedRules {
   const profile = getProfile();
   const preset = genre && style ? getPresetFor(genre, style) : undefined;
 
@@ -21,7 +21,7 @@ export function buildInjectedRules(genre?: Genre, style?: Style): InjectedRules 
   const ngExpressions = profile.ngExpressions?.trim() || "";
   const categoryRules = preset ? `${preset.rules}\n\nフックパターン: ${preset.hookPattern}\nCTAパターン: ${preset.ctaPattern}` : "";
   const referenceExamples = buildReferenceExamples(profile);
-  const winningPatterns = buildWinningPatterns();
+  const winningPatterns = buildWinningPatterns(channelId || "");
 
   return { channelContext, commonRules, categoryRules, ngExpressions, referenceExamples, winningPatterns };
 }
@@ -52,8 +52,8 @@ CTA: ${r?.ctas?.join(" / ") || ""}`;
   }).join("\n\n");
 }
 
-function buildWinningPatterns(): string {
-  const wp = getWinningPatterns();
+function buildWinningPatterns(channelId: string): string {
+  const wp = getWinningPatternsByChannel(channelId);
   if (!wp) return "";
 
   const lines: string[] = [];

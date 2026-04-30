@@ -31,7 +31,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     setError("");
 
     try {
-      const rules = buildInjectedRules(project.genre as Genre, project.style as Style);
+      const rules = buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId);
       const rulesText = formatRulesForPrompt(rules);
       const res = await fetch("/api/script/propose", {
         method: "POST",

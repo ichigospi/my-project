@@ -13,8 +13,15 @@ import {
   type ScriptProject, type ProductionTask, type MyChannelData,
   type AnalysisLog, type WeeklySnapshot, type PerformanceRecord,
 } from "./project-store";
-import { getWinningPatterns, saveWinningPatterns } from "./winning-patterns-store";
-import { getIdeas, getIdeaRules, saveIdeaRules, type IdeaEntry, type IdeaRules } from "./idea-store";
+import {
+  getWinningPatternsList, saveWinningPatternsByChannel,
+  type WinningPatterns,
+} from "./winning-patterns-store";
+import {
+  getIdeas,
+  getIdeaRulesList, saveIdeaRulesByChannel,
+  type IdeaEntry, type IdeaRules,
+} from "./idea-store";
 import type { RegisteredChannel } from "./channel-store";
 import type { MyChannel } from "./channel-context";
 
@@ -288,11 +295,19 @@ export async function pullSharedSettings(): Promise<void> {
       localStorage.setItem("fortune_yt_performance", JSON.stringify(merged));
     }
 
-    // 勝ちパターン: サーバーの方が新しければ採用
-    if (data.winningPatterns) {
-      const local = getWinningPatterns();
-      if (!local || (data.winningPatterns.updatedAt && (!local.updatedAt || data.winningPatterns.updatedAt > local.updatedAt))) {
-        saveWinningPatterns(data.winningPatterns);
+    // 勝ちパターン(チャンネル別): updatedAt新しい方を採用してチャンネル毎にupsert
+    // 新形式 winningPatternsList が優先、無ければ旧 winningPatterns(singular)を1件として扱う
+    const incomingWP: WinningPatterns[] = Array.isArray(data.winningPatternsList)
+      ? data.winningPatternsList
+      : data.winningPatterns ? [data.winningPatterns] : [];
+    if (incomingWP.length > 0) {
+      const localList = getWinningPatternsList();
+      for (const incoming of incomingWP) {
+        const key = incoming.channelId || "";
+        const existing = localList.find((p) => (p.channelId || "") === key);
+        if (!existing || (incoming.updatedAt || "") > (existing.updatedAt || "")) {
+          saveWinningPatternsByChannel(incoming);
+        }
       }
     }
 
@@ -303,10 +318,20 @@ export async function pullSharedSettings(): Promise<void> {
       localStorage.setItem("fortune_yt_ideas", JSON.stringify(merged));
     }
 
-    // 企画ルール: ローカルが空ならサーバーから
-    if (data.ideaRules) {
-      const local = getIdeaRules();
-      if (!local.direction && !local.constraints) saveIdeaRules(data.ideaRules);
+    // 企画ルール(チャンネル別): channelId毎にupsert（ローカル分が空っぽならサーバー優先）
+    // 新形式 ideaRulesList が優先、無ければ旧 ideaRules(singular)を1件として扱う
+    const incomingIR: IdeaRules[] = Array.isArray(data.ideaRulesList)
+      ? data.ideaRulesList
+      : data.ideaRules ? [data.ideaRules] : [];
+    if (incomingIR.length > 0) {
+      const localList = getIdeaRulesList();
+      for (const incoming of incomingIR) {
+        const key = incoming.channelId || "";
+        const existing = localList.find((r) => (r.channelId || "") === key);
+        if (!existing || (!existing.direction && !existing.constraints)) {
+          saveIdeaRulesByChannel(incoming);
+        }
+      }
     }
 
     notifySync("synced");
@@ -351,9 +376,9 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         analysisLogs: getAnalysisLogs(),
         weeklySnapshots: getWeeklySnapshots(),
         performanceRecords: getPerformanceRecords(),
-        winningPatterns: getWinningPatterns(),
+        winningPatternsList: getWinningPatternsList(),
         ideas: getIdeas(),
-        ideaRules: getIdeaRules(),
+        ideaRulesList: getIdeaRulesList(),
         myChannels: typeof window !== "undefined"
           ? JSON.parse(localStorage.getItem(MY_CHANNELS_KEY) || "[]")
           : [],

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getApiKey } from "@/lib/channel-store";
-import { getWinningPatterns, saveWinningPatterns, type WinningPatterns } from "@/lib/winning-patterns-store";
+import { getWinningPatternsByChannel, saveWinningPatternsByChannel, type WinningPatterns } from "@/lib/winning-patterns-store";
 import { getAnalyses } from "@/lib/script-analysis-store";
 import { getMyChannelDataByChannel, saveMyChannelData, detectGenre, GENRE_LABELS, genId, getAnalysisLogsByChannel, saveAnalysisLog, getWeeklySnapshotsByChannel, saveWeeklySnapshot } from "@/lib/project-store";
 import { useChannel } from "@/lib/channel-context";
@@ -181,7 +181,7 @@ export default function PerformancePage() {
       setMyChannel(saved);
       setAnalysisLogs(getAnalysisLogsByChannel(chId));
       setWeeklySnapshots(getWeeklySnapshotsByChannel(chId));
-      setWinPatterns(getWinningPatterns());
+      setWinPatterns(getWinningPatternsByChannel(chId));
     });
   }, [activeChannel]);
 
@@ -361,11 +361,12 @@ export default function PerformancePage() {
 
       const patterns: WinningPatterns = {
         ...data,
+        channelId: activeChannel?.id || "",
         updatedAt: new Date().toISOString(),
         videoCount: videosWithStats.length,
         rawAnalysis: JSON.stringify(data, null, 2),
       };
-      saveWinningPatterns(patterns);
+      saveWinningPatternsByChannel(patterns);
       setWinPatterns(patterns);
       pushSharedSettings();
     } catch { setError("勝ちパターン分析に失敗"); }
