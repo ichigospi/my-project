@@ -601,13 +601,18 @@ export function parseGeneratedResult(raw: string): { result: GeneratedResult; pa
 
 export const ANALYTICS_COMPARE_BASE_SYSTEM = `あなたはXアカウント運用の改善コーチです。
 ユーザー自身のアカウントの「伸びたポスト群」と「伸びなかったポスト群」を比較分析し、
-自アカ用の運用改善ヒントを抽出します。
+ワード・フレーズ・訴求軸・構造の観点で「何が刺さっていて、何が刺さっていないか」を抽出します。
 
-【重要なルール】
-- 「伸びた要因」「伸びなかった要因」を、教材の14手法・12教育要素・10構造タイプ・NGパターンの観点で言語化する
-- 自アカ情報（口調・USP・過去ストーリー）と整合した具体的な改善案を出す
-- ふんわりではなく、次のポストにすぐ反映できる具体性で書く（「もっと数字を入れる」ではなく「いいね100超えポストは冒頭に〇〇という数字訴求が共通していた」）
-- 出力は必ず指定されたJSON形式のみ（前後に文章を入れない・コードブロックなし）
+【絶対のルール】
+- "該当なし"や空配列で逃げないこと。最低でも 伸びパターン3個・伸びないパターン3個・刺さりワード5個・刺さらない言い回し3個・改善ヒント3個 は必ず出す
+- ポストの本文を実際に読み込んで、共通する具体的な単語・絵文字・冒頭一文・語尾・訴求パターンを抽出する
+- 抽象論（「具体性が大事」「数字を入れる」など）禁止。必ず**実際に元ポストから引用**するか、**何文字目に何が書かれていたか**まで具体的に書く
+- 教材の14手法・12教育要素・10構造タイプ・NGパターンの観点を踏まえて言語化する
+- 自アカ情報の口調・USP・過去ストーリーと整合した改善案を出す
+
+【出力ルール】
+- 必ず指定されたJSON形式のみで出力（前後に文章を入れない・コードブロックなし）
+- どうしても見つからない項目は空配列OKだが、その場合は他のフィールドで埋め合わせる
 `;
 
 export interface AnalyticsPostInput {
@@ -631,7 +636,9 @@ export function buildAnalyticsCompareUserMessage(opts: {
       .map((p) => `[${label}${p.index}] 👍${p.likes} 🔁${p.retweets}${p.impressions ? ` 📊${p.impressions.toLocaleString()}` : ""}\n${p.content.trim()}`)
       .join("\n\n---\n\n");
 
-  return `以下は自分の${genreLabel}アカウントのポスト群です。「伸びたポスト」と「伸びなかったポスト」を比較分析してください。
+  return `以下は自分の${genreLabel}アカウントのポスト群です。
+「伸びたポスト」と「伸びなかったポスト」の本文を**注意深く読み込んで**、
+何が刺さっていて何が刺さっていないかを比較分析してください。
 
 【伸びたポスト（上位）】
 ${fmt("上位", opts.topPosts)}
@@ -641,21 +648,47 @@ ${fmt("下位", opts.bottomPosts)}
 
 ${opts.customInstruction ? `\n【追加指示】\n${opts.customInstruction}\n` : ""}
 
+【分析観点（必ず全部見る）】
+1. **冒頭一文**: 上位はどんな言葉で始まる？下位は？（例: 「〇〇な人へ」「実は…」「【保存版】」など）
+2. **刺さってるワード/フレーズ**: 上位群で頻出する具体的な単語・言い回し・絵文字（最低5個）
+3. **刺さってないワード/フレーズ**: 下位群でしか出てこない or 下位群に偏ってる単語・言い回し（最低3個）
+4. **訴求軸**: 数字訴求 / 緊急性 / 限定性 / 共感 / 暴露 / 実績 / 未来訴求 / 恐怖回避 / 反社会性 など、上位と下位で何が違う？
+5. **教育タイプ**: 12教育要素のどれが上位に多いか / 下位に多いか
+6. **構造**: 短文インパクト型 / リスト型 / ストーリー型 / 質問型 / 対比型 など、上位の構造傾向
+7. **語尾・口調**: 「〜やで」「〜ます」「〜よね」など、語尾のリズム
+8. **絵文字使い**: 数・位置・種類
+
 【出力フォーマット】次のJSONを出力してください（コードブロックなし、生JSON）:
 
 {
+  "diff": "上位と下位の決定的な差を1〜2文で（最も重要な発見）",
+
+  "stickyWords": [
+    { "word": "実際の単語/フレーズ/絵文字", "context": "上位ポストN番に〇〇という形で出現", "why": "なぜ刺さるか" }
+  ],
+
+  "missingWords": [
+    { "word": "下位で目立つ言い回し", "context": "下位ポストN番で〇〇のように使われていた", "why": "なぜ弱いか" }
+  ],
+
+  "appealAxes": [
+    { "axis": "訴求軸名（数字訴求/限定性/暴露 など）", "winning": "上位での出方を具体的に", "losing": "下位での出方を具体的に" }
+  ],
+
   "winningPatterns": [
-    { "pattern": "上位群に共通する要素を1文で", "evidence": "具体的にどのポストに表れているか", "category": "フック/構造/教育/語彙/その他" }
+    { "pattern": "上位群に共通する要素を1文で", "evidence": "ポストN番の〇〇という箇所", "category": "フック/構造/教育/語彙/語尾/絵文字/訴求" }
   ],
+
   "losingPatterns": [
-    { "pattern": "下位群に共通する弱さを1文で", "evidence": "具体的に", "category": "フック/構造/教育/語彙/NG" }
+    { "pattern": "下位群に共通する弱さを1文で", "evidence": "ポストN番の〇〇という箇所", "category": "フック/構造/教育/語彙/NG/訴求" }
   ],
-  "diff": "上位と下位の決定的な差を1〜2文で",
+
   "improvementHints": [
-    { "hint": "次のポストですぐ実行できる具体的アクション", "priority": "high|medium|low", "rationale": "なぜそれが効くか" }
+    { "hint": "次のポストですぐ実行できる具体的アクション（XXすべき/XXは避けるべき）", "priority": "high", "rationale": "上位群の傾向から見るとXXが効いている" }
   ],
+
   "topPickToTemplate": [
-    { "index": 1, "reason": "テンプレ化すべき理由（1文）" }
+    { "index": 1, "reason": "このポストはXXの観点で再現性高い" }
   ]
 }`;
 }
@@ -679,45 +712,81 @@ export async function buildAnalyticsCompareSystemPrompt(genre: "business" | "spi
 }
 
 export interface AnalyticsCompareResult {
+  diff: string;
+  stickyWords: { word: string; context: string; why: string }[];
+  missingWords: { word: string; context: string; why: string }[];
+  appealAxes: { axis: string; winning: string; losing: string }[];
   winningPatterns: { pattern: string; evidence: string; category: string }[];
   losingPatterns: { pattern: string; evidence: string; category: string }[];
-  diff: string;
   improvementHints: { hint: string; priority: "high" | "medium" | "low"; rationale: string }[];
   topPickToTemplate: { index: number; reason: string }[];
 }
 
-export function parseAnalyticsCompareResult(raw: string): { result: AnalyticsCompareResult; parseError: boolean } {
-  const empty: AnalyticsCompareResult = {
-    winningPatterns: [], losingPatterns: [], diff: "", improvementHints: [], topPickToTemplate: [],
+export function emptyAnalyticsCompareResult(): AnalyticsCompareResult {
+  return {
+    diff: "",
+    stickyWords: [],
+    missingWords: [],
+    appealAxes: [],
+    winningPatterns: [],
+    losingPatterns: [],
+    improvementHints: [],
+    topPickToTemplate: [],
   };
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+}
+
+export function parseAnalyticsCompareResult(raw: string): { result: AnalyticsCompareResult; parseError: boolean } {
+  // 余計な前後テキストを耐えるため、最初の { から最後の } までを抜き出す
+  let cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
   try {
     const p = JSON.parse(cleaned);
-    const arrStr = (a: unknown) => (Array.isArray(a) ? a : []);
+    const arr = (a: unknown): unknown[] => (Array.isArray(a) ? a : []);
+    const str = (v: unknown): string => (typeof v === "string" ? v : "");
     const result: AnalyticsCompareResult = {
-      winningPatterns: arrStr(p.winningPatterns).map((x: Partial<AnalyticsCompareResult["winningPatterns"][number]>) => ({
-        pattern: typeof x.pattern === "string" ? x.pattern : "",
-        evidence: typeof x.evidence === "string" ? x.evidence : "",
-        category: typeof x.category === "string" ? x.category : "",
-      })),
-      losingPatterns: arrStr(p.losingPatterns).map((x: Partial<AnalyticsCompareResult["losingPatterns"][number]>) => ({
-        pattern: typeof x.pattern === "string" ? x.pattern : "",
-        evidence: typeof x.evidence === "string" ? x.evidence : "",
-        category: typeof x.category === "string" ? x.category : "",
-      })),
-      diff: typeof p.diff === "string" ? p.diff : "",
-      improvementHints: arrStr(p.improvementHints).map((x: Partial<AnalyticsCompareResult["improvementHints"][number]>) => ({
-        hint: typeof x.hint === "string" ? x.hint : "",
-        priority: x.priority === "high" || x.priority === "low" ? x.priority : "medium",
-        rationale: typeof x.rationale === "string" ? x.rationale : "",
-      })),
-      topPickToTemplate: arrStr(p.topPickToTemplate).map((x: Partial<AnalyticsCompareResult["topPickToTemplate"][number]>) => ({
-        index: typeof x.index === "number" ? x.index : 0,
-        reason: typeof x.reason === "string" ? x.reason : "",
-      })),
+      diff: str(p.diff),
+      stickyWords: arr(p.stickyWords).map((x): AnalyticsCompareResult["stickyWords"][number] => {
+        const o = x as Partial<AnalyticsCompareResult["stickyWords"][number]>;
+        return { word: str(o.word), context: str(o.context), why: str(o.why) };
+      }),
+      missingWords: arr(p.missingWords).map((x): AnalyticsCompareResult["missingWords"][number] => {
+        const o = x as Partial<AnalyticsCompareResult["missingWords"][number]>;
+        return { word: str(o.word), context: str(o.context), why: str(o.why) };
+      }),
+      appealAxes: arr(p.appealAxes).map((x): AnalyticsCompareResult["appealAxes"][number] => {
+        const o = x as Partial<AnalyticsCompareResult["appealAxes"][number]>;
+        return { axis: str(o.axis), winning: str(o.winning), losing: str(o.losing) };
+      }),
+      winningPatterns: arr(p.winningPatterns).map((x): AnalyticsCompareResult["winningPatterns"][number] => {
+        const o = x as Partial<AnalyticsCompareResult["winningPatterns"][number]>;
+        return { pattern: str(o.pattern), evidence: str(o.evidence), category: str(o.category) };
+      }),
+      losingPatterns: arr(p.losingPatterns).map((x): AnalyticsCompareResult["losingPatterns"][number] => {
+        const o = x as Partial<AnalyticsCompareResult["losingPatterns"][number]>;
+        return { pattern: str(o.pattern), evidence: str(o.evidence), category: str(o.category) };
+      }),
+      improvementHints: arr(p.improvementHints).map((x): AnalyticsCompareResult["improvementHints"][number] => {
+        const o = x as Partial<AnalyticsCompareResult["improvementHints"][number]>;
+        return {
+          hint: str(o.hint),
+          priority: o.priority === "high" || o.priority === "low" ? o.priority : "medium",
+          rationale: str(o.rationale),
+        };
+      }),
+      topPickToTemplate: arr(p.topPickToTemplate).map((x): AnalyticsCompareResult["topPickToTemplate"][number] => {
+        const o = x as Partial<AnalyticsCompareResult["topPickToTemplate"][number]>;
+        return {
+          index: typeof o.index === "number" ? o.index : 0,
+          reason: str(o.reason),
+        };
+      }),
     };
     return { result, parseError: false };
   } catch {
-    return { result: empty, parseError: true };
+    return { result: emptyAnalyticsCompareResult(), parseError: true };
   }
 }

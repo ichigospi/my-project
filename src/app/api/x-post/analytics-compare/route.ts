@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       knowledgeContext,
       userInstruction: userMessage,
       model: model ?? (settings.defaultModel as XPostModel),
-      maxTokens: 2500,
+      maxTokens: 4096,
     });
     if (aiRes.error) {
       return NextResponse.json({ error: aiRes.error, retryable: aiRes.retryable }, { status: 500 });

@@ -23,9 +23,12 @@ interface SummaryResponse {
 }
 
 interface CompareResult {
+  diff: string;
+  stickyWords: { word: string; context: string; why: string }[];
+  missingWords: { word: string; context: string; why: string }[];
+  appealAxes: { axis: string; winning: string; losing: string }[];
   winningPatterns: { pattern: string; evidence: string; category: string }[];
   losingPatterns: { pattern: string; evidence: string; category: string }[];
-  diff: string;
   improvementHints: { hint: string; priority: "high" | "medium" | "low"; rationale: string }[];
   topPickToTemplate: { index: number; reason: string }[];
 }
@@ -77,6 +80,8 @@ export default function AnalyticsPage() {
   const [customInstruction, setCustomInstruction] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
+  const [compareRaw, setCompareRaw] = useState<string>("");
+  const [compareParseError, setCompareParseError] = useState(false);
   const [compareTopPosts, setCompareTopPosts] = useState<ComparePostInfo[]>([]);
 
   const [sortBy, setSortBy] = useState<SortKey>("likes");
@@ -202,6 +207,8 @@ export default function AnalyticsPage() {
     }
     setAnalyzing(true);
     setCompareResult(null);
+    setCompareRaw("");
+    setCompareParseError(false);
     try {
       const res = await fetch("/api/x-post/analytics-compare", {
         method: "POST",
@@ -222,6 +229,8 @@ export default function AnalyticsPage() {
         return;
       }
       setCompareResult(data.result);
+      setCompareRaw(data.raw ?? "");
+      setCompareParseError(Boolean(data.parseError));
       setCompareTopPosts(data.topPosts ?? []);
     } finally {
       setAnalyzing(false);
@@ -427,11 +436,60 @@ export default function AnalyticsPage() {
           {compareResult && (
             <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
               <h3 className="text-sm font-bold text-gray-900">分析結果</h3>
+
+              {compareParseError && (
+                <div className="bg-red-50 border border-red-200 rounded p-3 text-xs text-red-900">
+                  ⚠️ AI出力のパース失敗。下のRAW出力を参考にプロンプト調整が必要かもしれません。
+                </div>
+              )}
+
               {compareResult.diff && (
                 <div className="text-sm bg-indigo-50 border border-indigo-200 rounded p-3 text-indigo-900">
                   <span className="font-bold">差の核心: </span>{compareResult.diff}
                 </div>
               )}
+
+              {/* 刺さってるワード / 刺さってない言い回し */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <WordList
+                  title="🎯 刺さってるワード/フレーズ"
+                  items={compareResult.stickyWords}
+                  accent="emerald"
+                />
+                <WordList
+                  title="💤 刺さってない言い回し"
+                  items={compareResult.missingWords}
+                  accent="rose"
+                />
+              </div>
+
+              {/* 訴求軸の比較 */}
+              {compareResult.appealAxes.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-gray-700 mb-2">⚖️ 訴求軸の比較</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-600">
+                          <th className="border border-gray-200 px-2 py-1.5 text-left w-32">訴求軸</th>
+                          <th className="border border-gray-200 px-2 py-1.5 text-left">🏆 上位での出方</th>
+                          <th className="border border-gray-200 px-2 py-1.5 text-left">⚠️ 下位での出方</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {compareResult.appealAxes.map((a, i) => (
+                          <tr key={i} className="align-top">
+                            <td className="border border-gray-200 px-2 py-1.5 font-medium text-gray-900">{a.axis}</td>
+                            <td className="border border-gray-200 px-2 py-1.5 text-emerald-800 bg-emerald-50/40">{a.winning}</td>
+                            <td className="border border-gray-200 px-2 py-1.5 text-rose-800 bg-rose-50/40">{a.losing}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               <div className="grid md:grid-cols-2 gap-4">
                 <PatternList title="🏆 伸びたパターン" items={compareResult.winningPatterns} accent="emerald" />
                 <PatternList title="⚠️ 伸びなかったパターン" items={compareResult.losingPatterns} accent="rose" />
@@ -483,6 +541,15 @@ export default function AnalyticsPage() {
                     })}
                   </div>
                 </div>
+              )}
+
+              {compareRaw && (
+                <details className="text-xs text-gray-500">
+                  <summary className="cursor-pointer hover:text-gray-700">RAW AI出力（デバッグ用）</summary>
+                  <pre className="mt-2 bg-gray-50 border border-gray-200 rounded p-2 whitespace-pre-wrap max-h-60 overflow-auto text-gray-700">
+                    {compareRaw}
+                  </pre>
+                </details>
               )}
             </section>
           )}
@@ -645,6 +712,41 @@ function StatCard({ label, value, emoji }: { label: string; value: number; emoji
         <span>{emoji}</span>{label}
       </div>
       <div className="text-2xl font-bold text-gray-900 mt-1">{value.toLocaleString()}</div>
+    </div>
+  );
+}
+
+function WordList({
+  title, items, accent,
+}: {
+  title: string;
+  items: { word: string; context: string; why: string }[];
+  accent: "emerald" | "rose";
+}) {
+  const accentClass = accent === "emerald"
+    ? "border-emerald-200 bg-emerald-50/40"
+    : "border-rose-200 bg-rose-50/40";
+  const badgeClass = accent === "emerald"
+    ? "bg-emerald-600 text-white"
+    : "bg-rose-600 text-white";
+  return (
+    <div>
+      <h4 className="text-xs font-bold text-gray-700 mb-2">{title}</h4>
+      {items.length === 0 ? (
+        <div className="text-xs text-gray-400 border border-gray-200 rounded p-3">該当なし</div>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((w, i) => (
+            <li key={i} className={`border rounded p-2 ${accentClass}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-xs font-bold px-2 py-0.5 rounded ${badgeClass}`}>{w.word || "(空)"}</span>
+              </div>
+              {w.context && <p className="text-xs text-gray-700">📍 {w.context}</p>}
+              {w.why && <p className="text-xs text-gray-600 mt-0.5">💭 {w.why}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
