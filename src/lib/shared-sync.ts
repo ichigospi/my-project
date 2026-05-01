@@ -70,14 +70,31 @@ function migrateChannelIds<T extends { channelId?: string }>(
   return { items: next, changed };
 }
 
-// ローカルストレージのキーを書き換えるヘルパー
+// ローカルストレージのキーを書き換えるヘルパー（channelIdフィールド対象）
 function applyMigrationToStorageKey(key: string, migrations: Record<string, string>) {
+  applyMigrationToStorageKeyByField(key, "channelId", migrations);
+}
+
+// 任意のフィールド名で書き換え（MyChannelData の internalChannelId など）
+function applyMigrationToStorageKeyByField(
+  key: string,
+  fieldName: string,
+  migrations: Record<string, string>
+) {
   const stored = localStorage.getItem(key);
   if (!stored) return;
   try {
     const items = JSON.parse(stored);
     if (!Array.isArray(items)) return;
-    const { items: next, changed } = migrateChannelIds(items, migrations);
+    let changed = false;
+    const next = items.map((it) => {
+      const cur = it[fieldName];
+      if (typeof cur === "string" && migrations[cur]) {
+        changed = true;
+        return { ...it, [fieldName]: migrations[cur] };
+      }
+      return it;
+    });
     if (changed) localStorage.setItem(key, JSON.stringify(next));
   } catch {
     // ignore
@@ -169,14 +186,25 @@ export async function pullSharedSettings(): Promise<void> {
       }
       // 既存ローカルのchannelIdを書き換え
       if (Object.keys(channelMigrations).length > 0) {
+        // channelIdフィールドを持つストア
         for (const k of [
           "fortune_yt_projects", "fortune_yt_tasks",
           "fortune_yt_hooks", "fortune_yt_ctas",
           "fortune_yt_thumbnail_words", "fortune_yt_titles",
           "fortune_yt_ideas",
+          "fortune_yt_analysis_log",
+          "fortune_yt_weekly",
+          "fortune_yt_performance",
+          "fortune_yt_winning_patterns_list",
+          "fortune_yt_idea_rules_list",
+          "fortune_yt_presets",
         ]) {
           applyMigrationToStorageKey(k, channelMigrations);
         }
+        // MyChannelData は internalChannelId フィールドなので個別対応
+        applyMigrationToStorageKeyByField(
+          "fortune_yt_my_channel_data_list", "internalChannelId", channelMigrations
+        );
         // ChannelProvider に再読込を促す
         window.dispatchEvent(new Event("fortune_yt_my_channels_updated"));
       }

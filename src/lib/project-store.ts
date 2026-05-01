@@ -85,6 +85,7 @@ export interface ScriptRulePreset {
   hookPattern: string;
   ctaPattern: string;
   notes: string;
+  channelId?: string;
 }
 
 // ===== フック & CTA データベース =====
@@ -508,8 +509,24 @@ export function savePreset(preset: ScriptRulePreset) {
   localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
 }
 
-export function getPresetFor(genre: Genre, style: Style): ScriptRulePreset | undefined {
-  return getPresets().find((p) => p.genre === genre && p.style === style);
+export function deletePreset(id: string) {
+  const presets = getPresets().filter((p) => p.id !== id);
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+// チャンネル別プリセット取得（channelIdが空のもの=デフォルト も含む）
+export function getPresetsByChannel(channelId: string): ScriptRulePreset[] {
+  return getPresets().filter((p) => !p.channelId || p.channelId === channelId);
+}
+
+export function getPresetFor(genre: Genre, style: Style, channelId?: string): ScriptRulePreset | undefined {
+  const presets = getPresets();
+  // チャンネル指定がある場合は、そのチャンネルのもの優先 → 共通(channelIdなし)にフォールバック
+  if (channelId) {
+    const own = presets.find((p) => p.genre === genre && p.style === style && p.channelId === channelId);
+    if (own) return own;
+  }
+  return presets.find((p) => p.genre === genre && p.style === style && !p.channelId);
 }
 
 const DEFAULT_PRESETS: ScriptRulePreset[] = [
@@ -551,8 +568,12 @@ export function saveHook(hook: HookEntry) {
   localStorage.setItem(HOOKS_KEY, JSON.stringify(hooks));
 }
 
-export function getHooksFor(genre?: Genre, style?: Style): HookEntry[] {
-  return getHooks().filter((h) => (!genre || h.genre === genre) && (!style || h.style === style));
+export function getHooksFor(genre?: Genre, style?: Style, channelId?: string): HookEntry[] {
+  return getHooks().filter((h) =>
+    (!genre || h.genre === genre) &&
+    (!style || h.style === style) &&
+    (!channelId || !h.channelId || h.channelId === channelId)
+  );
 }
 
 export function deleteHook(id: string) {

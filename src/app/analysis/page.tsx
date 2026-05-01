@@ -8,8 +8,9 @@ import { formatNumber } from "@/lib/mock-data";
 import {
   getAnalyses, saveAnalysis, deleteAnalysis,
   getProposals, saveProposal, deleteProposal,
-  getProfile, saveProfile, generateId, syncFromServer,
+  getProfileByChannel, saveProfileByChannel, generateId, syncFromServer,
 } from "@/lib/script-analysis-store";
+import { useChannel } from "@/lib/channel-context";
 import type {
   ScriptAnalysis, AnalysisResult, AnalysisScore,
   ScriptProposal, ProposalResult, ChannelProfile,
@@ -130,17 +131,20 @@ function AnalysisContent() {
 
 // ===== 自チャンネル設計タブ =====
 function ProfileTab() {
-  const [profile, setProfile] = useState<ChannelProfile>(getProfile());
+  const { activeChannel } = useChannel();
+  const [profile, setProfile] = useState<ChannelProfile>(getProfileByChannel(activeChannel?.id || ""));
   const [saved, setSaved] = useState(false);
   const [genreInput, setGenreInput] = useState("");
   const [channelUrl, setChannelUrl] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState("");
 
-  useEffect(() => { setProfile(getProfile()); }, []);
+  useEffect(() => {
+    setProfile(getProfileByChannel(activeChannel?.id || ""));
+  }, [activeChannel]);
 
   const handleSave = () => {
-    saveProfile(profile);
+    saveProfileByChannel({ ...profile, channelId: activeChannel?.id || "" });
     pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -1245,6 +1249,7 @@ function LibraryTab() {
 
 // ===== 構成提案・台本作成タブ =====
 function ProposeTab() {
+  const { activeChannel } = useChannel();
   const [analyses, setAnalyses] = useState<ScriptAnalysis[]>([]);
   const [selectedArr, setSelectedArr] = usePersisted<string[]>("propose_selected", []);
   const selected = new Set(selectedArr);
@@ -1285,7 +1290,7 @@ function ProposeTab() {
           analyses: selectedAnalyses,
           style,
           topic: topic || "未指定",
-          channelProfile: getProfile(),
+          channelProfile: getProfileByChannel(activeChannel?.id || ""),
           aiApiKey,
         }),
       });
@@ -1309,7 +1314,7 @@ function ProposeTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           proposal,
-          channelProfile: getProfile(),
+          channelProfile: getProfileByChannel(activeChannel?.id || ""),
           style,
           topic: topic || "未指定",
           additionalNotes,

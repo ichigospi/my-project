@@ -14,7 +14,7 @@ export interface InjectedRules {
 
 export function buildInjectedRules(genre?: Genre, style?: Style, channelId?: string): InjectedRules {
   const profile = getProfile();
-  const preset = genre && style ? getPresetFor(genre, style) : undefined;
+  const preset = genre && style ? getPresetFor(genre, style, channelId) : undefined;
 
   const channelContext = buildChannelContext(profile);
   const commonRules = profile.commonRules?.trim() || "";

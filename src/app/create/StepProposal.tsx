@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
-import { getAnalyses, getProfile } from "@/lib/script-analysis-store";
+import { getAnalyses, getProfileByChannel } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import type { ScriptProject } from "@/lib/project-store";
@@ -38,7 +38,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           analyses, style: project.style, topic: project.title,
-          channelProfile: getProfile(), aiApiKey,
+          channelProfile: getProfileByChannel(project.channelId || ""), aiApiKey,
           userPrompt: promptText || undefined,
           currentSkeleton: skeleton || undefined,
           rulesText,
