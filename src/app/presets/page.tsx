@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getPresets, savePreset, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
+import { getPresetsByChannel, savePreset, deletePreset, genId, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
 import { getProfileByChannel, saveProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { ScriptRulePreset, Genre, Style } from "@/lib/project-store";
@@ -19,7 +19,7 @@ export default function PresetsPage() {
 
   useEffect(() => {
     pullSharedSettings().then(() => {
-      setPresets(getPresets());
+      setPresets(getPresetsByChannel(activeChannel?.id || ""));
       setProfileState(getProfileByChannel(activeChannel?.id || ""));
       setAnalysesState(getAnalyses());
     });
@@ -27,11 +27,27 @@ export default function PresetsPage() {
 
   const handleSavePreset = () => {
     if (!editing) return;
-    savePreset(editing);
-    setPresets(getPresets());
+    const channelId = activeChannel?.id || "";
+    // 共有プリセット(channelId未設定)を編集中なら、このチャンネル専用に複製して保存
+    // 既にチャンネル別プリセットなら、そのまま上書き
+    const toSave: ScriptRulePreset = !editing.channelId && channelId
+      ? { ...editing, id: genId(), channelId }
+      : editing;
+    savePreset(toSave);
+    setPresets(getPresetsByChannel(channelId));
+    setEditing(toSave);  // 新IDに切り替え
     pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleResetToDefault = () => {
+    if (!editing || !editing.channelId) return;
+    if (!confirm("このチャンネル専用のカスタマイズを削除して共有プリセットに戻しますか？")) return;
+    deletePreset(editing.id);
+    setPresets(getPresetsByChannel(activeChannel?.id || ""));
+    setEditing(null);
+    pushSharedSettings();
   };
 
   const handleSaveProfile = () => {
@@ -122,9 +138,14 @@ export default function PresetsPage() {
           {presets.map((p) => (
             <div key={p.id} onClick={() => setEditing(p)}
               className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 cursor-pointer hover:border-accent/30 hover:shadow-md transition-all">
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{GENRE_LABELS[p.genre as Genre]}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">{STYLE_LABELS[p.style as Style]}</span>
+                {p.channelId ? (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{activeChannel?.name || "ch"}専用</span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">共有</span>
+                )}
               </div>
               <h3 className="font-semibold mb-2">{p.name}</h3>
               <p className="text-sm text-gray-600 line-clamp-2 mb-3">{p.rules}</p>
@@ -183,9 +204,19 @@ export default function PresetsPage() {
               <textarea value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })}
                 rows={2} className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm" />
             </div>
-            <button onClick={handleSavePreset} className="px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
-              {saved ? "保存しました！" : "保存"}
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button onClick={handleSavePreset} className="px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
+                {saved ? "保存しました！" : (!editing.channelId && activeChannel?.id ? `${activeChannel.name}用に保存` : "保存")}
+              </button>
+              {editing.channelId && (
+                <button onClick={handleResetToDefault} className="px-4 py-2.5 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50">
+                  共有プリセットに戻す
+                </button>
+              )}
+              {!editing.channelId && activeChannel?.id && (
+                <p className="text-xs text-gray-400">※ これは共有プリセット。保存すると{activeChannel.name}専用のコピーが作成されます</p>
+              )}
+            </div>
           </div>
         </div>
       )}

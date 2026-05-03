@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getApiKey, getChannels } from "@/lib/channel-store";
-import { getIdeasByChannel, saveIdea, deleteIdea, getIdeaRules, saveIdeaRules, IDEA_STATUS_LABELS, type IdeaEntry, type IdeaRules, type IdeaStatus } from "@/lib/idea-store";
-import { getHooksFor, getPerformanceRecords, GENRE_LABELS, STYLE_LABELS, genId, createProject, saveProject } from "@/lib/project-store";
+import { getIdeasByChannel, saveIdea, deleteIdea, getIdeaRulesByChannel, saveIdeaRulesByChannel, IDEA_STATUS_LABELS, type IdeaEntry, type IdeaRules, type IdeaStatus } from "@/lib/idea-store";
+import { getHooksFor, getPerformanceRecordsByChannel, GENRE_LABELS, STYLE_LABELS, genId, createProject, saveProject } from "@/lib/project-store";
 import { useChannel } from "@/lib/channel-context";
 import type { Genre, Style } from "@/lib/project-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
-import { getWinningPatterns } from "@/lib/winning-patterns-store";
+import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { formatNumber } from "@/lib/mock-data";
 
 export default function IdeasPage() {
@@ -32,7 +32,7 @@ export default function IdeasPage() {
   useEffect(() => {
     pullSharedSettings().then(() => {
       setIdeas(getIdeasByChannel(activeChannel?.id || ""));
-      setRulesState(getIdeaRules());
+      setRulesState(getIdeaRulesByChannel(activeChannel?.id || ""));
     });
   }, [activeChannel]);
 
@@ -86,10 +86,10 @@ export default function IdeasPage() {
       }
       competitorVideos.sort((a, b) => b.views - a.views);
 
-      const perfRecords = getPerformanceRecords().filter((r) => r.genre === genre);
+      const perfRecords = getPerformanceRecordsByChannel(activeChannel?.id || "").filter((r) => r.genre === genre);
       const selfTopVideos = perfRecords.sort((a, b) => b.views - a.views).slice(0, 5).map((r) => `${r.title}（${r.views?.toLocaleString()}回再生）`);
-      const hooks = getHooksFor(genre, style).slice(0, 5).map((h) => h.text);
-      const wp = getWinningPatterns();
+      const hooks = getHooksFor(genre, style, activeChannel?.id).slice(0, 5).map((h) => h.text);
+      const wp = getWinningPatternsByChannel(activeChannel?.id || "");
 
       const res = await fetch("/api/ideas/suggest", {
         method: "POST",
@@ -127,7 +127,7 @@ export default function IdeasPage() {
 
   // === ルール設定 ===
   const handleSaveRules = () => {
-    saveIdeaRules(rules);
+    saveIdeaRulesByChannel({ ...rules, channelId: activeChannel?.id || "" });
     pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);

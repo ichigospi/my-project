@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { pullSharedSettings } from "@/lib/shared-sync";
-import { getTasksByChannel, getMyChannel } from "@/lib/project-store";
+import { getTasksByChannel, getMyChannelDataByChannel } from "@/lib/project-store";
 import type { ProductionTask, MyChannelData } from "@/lib/project-store";
 import { getChannels } from "@/lib/channel-store";
 import type { RegisteredChannel } from "@/lib/channel-store";
@@ -150,15 +150,16 @@ function PipelineSection({ tasks }: { tasks: ProductionTask[] }) {
 
 // ===== セクション2: 自チャンネルKPI =====
 function MyChannelSection() {
+  const { activeChannel } = useChannel();
   const [myChannel, setMyChannel] = useState<MyChannelData | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     pullSharedSettings().then(() => {
-      setMyChannel(getMyChannel());
+      setMyChannel(getMyChannelDataByChannel(activeChannel?.id || ""));
       setLoaded(true);
     });
-  }, []);
+  }, [activeChannel]);
 
   if (!loaded) {
     return (

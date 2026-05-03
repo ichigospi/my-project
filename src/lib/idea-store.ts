@@ -22,6 +22,7 @@ export interface IdeaEntry {
 }
 
 export interface IdeaRules {
+  channelId?: string;      // 紐付くMyChannel.id
   direction: string;       // チャンネルの方向性（やるネタ/やらないネタ）
   constraints: string;     // 企画の制約条件
   priority: string;        // 重視する指標
@@ -30,7 +31,8 @@ export interface IdeaRules {
 }
 
 const IDEAS_KEY = "fortune_yt_ideas";
-const IDEA_RULES_KEY = "fortune_yt_idea_rules";
+const IDEA_RULES_KEY = "fortune_yt_idea_rules";              // 旧singleton
+const IDEA_RULES_LIST_KEY = "fortune_yt_idea_rules_list";    // 新list
 
 export const IDEA_STATUS_LABELS: Record<IdeaStatus, string> = {
   idea: "アイデア",
@@ -59,15 +61,50 @@ export function deleteIdea(id: string): IdeaEntry[] {
   return ideas;
 }
 
+// 一覧取得（旧singletonがあれば自動でlistに移行）
+export function getIdeaRulesList(): IdeaRules[] {
+  if (typeof window === "undefined") return [];
+  const stored = localStorage.getItem(IDEA_RULES_LIST_KEY);
+  if (stored) return JSON.parse(stored);
+  // 移行: 旧singletonを最初のMyChannelに紐付け
+  const old = localStorage.getItem(IDEA_RULES_KEY);
+  if (old) {
+    const oldData: IdeaRules = JSON.parse(old);
+    const myChannels = JSON.parse(localStorage.getItem("fortune_yt_my_channels") || "[]");
+    const firstChId = myChannels[0]?.id || "";
+    const list: IdeaRules[] = [{ ...oldData, channelId: firstChId }];
+    localStorage.setItem(IDEA_RULES_LIST_KEY, JSON.stringify(list));
+    return list;
+  }
+  return [];
+}
+
+// チャンネル別取得
+export function getIdeaRulesByChannel(channelId: string): IdeaRules {
+  const list = getIdeaRulesList();
+  const found =
+    list.find((r) => r.channelId === channelId) ||
+    (channelId ? null : list.find((r) => !r.channelId));
+  return found || { ...defaultIdeaRules(), channelId };
+}
+
+// チャンネル別保存
+export function saveIdeaRulesByChannel(rules: IdeaRules) {
+  if (typeof window === "undefined") return;
+  const list = getIdeaRulesList();
+  const idx = list.findIndex((r) => (r.channelId || "") === (rules.channelId || ""));
+  if (idx >= 0) list[idx] = rules;
+  else list.push(rules);
+  localStorage.setItem(IDEA_RULES_LIST_KEY, JSON.stringify(list));
+}
+
+// 後方互換: 旧API（最初のチャンネル分のルールを返す）
 export function getIdeaRules(): IdeaRules {
-  if (typeof window === "undefined") return defaultIdeaRules();
-  const stored = localStorage.getItem(IDEA_RULES_KEY);
-  return stored ? JSON.parse(stored) : defaultIdeaRules();
+  return getIdeaRulesList()[0] || defaultIdeaRules();
 }
 
 export function saveIdeaRules(rules: IdeaRules) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(IDEA_RULES_KEY, JSON.stringify(rules));
+  saveIdeaRulesByChannel(rules);
 }
 
 function defaultIdeaRules(): IdeaRules {

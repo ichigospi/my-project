@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
-import { getProfile, getAnalyses } from "@/lib/script-analysis-store";
-import { getPresetFor, getPerformanceRecords } from "@/lib/project-store";
+import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
+import { getPresetFor, getPerformanceRecordsByChannel } from "@/lib/project-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
@@ -80,7 +80,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 
     setGenerating(true);
     setError("");
-    const preset = getPresetFor(project.genre, project.style);
+    const preset = getPresetFor(project.genre, project.style, project.channelId);
 
     try {
       const res = await fetch("/api/script/create", {
@@ -88,11 +88,11 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           proposal: project.structureProposal,
-          channelProfile: getProfile(),
+          channelProfile: getProfileByChannel(project.channelId || ""),
           style: project.style,
           topic: project.title,
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${preset.targetWordCount}文字\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
-          rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style)),
+          rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)),
           aiApiKey,
         }),
       });

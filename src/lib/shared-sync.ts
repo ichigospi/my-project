@@ -6,14 +6,22 @@ import { getProfile, saveProfile, type ChannelProfile } from "./script-analysis-
 import {
   getHooks, getCTAs, getThumbnailWords, getTitles,
   getPresets, savePreset,
-  getProjects, getTasks, getMembers, getMyChannel, saveMyChannel,
+  getProjects, getTasks, getMembers,
+  getMyChannelDataList, saveMyChannelData,
   getAnalysisLogs, getWeeklySnapshots, getPerformanceRecords,
   type HookEntry, type CTAEntry, type ThumbnailWordEntry, type TitleEntry,
   type ScriptProject, type ProductionTask, type MyChannelData,
   type AnalysisLog, type WeeklySnapshot, type PerformanceRecord,
 } from "./project-store";
-import { getWinningPatterns, saveWinningPatterns } from "./winning-patterns-store";
-import { getIdeas, getIdeaRules, saveIdeaRules, type IdeaEntry, type IdeaRules } from "./idea-store";
+import {
+  getWinningPatternsList, saveWinningPatternsByChannel,
+  type WinningPatterns,
+} from "./winning-patterns-store";
+import {
+  getIdeas,
+  getIdeaRulesList, saveIdeaRulesByChannel,
+  type IdeaEntry, type IdeaRules,
+} from "./idea-store";
 import type { RegisteredChannel } from "./channel-store";
 import type { MyChannel } from "./channel-context";
 
@@ -62,14 +70,31 @@ function migrateChannelIds<T extends { channelId?: string }>(
   return { items: next, changed };
 }
 
-// ローカルストレージのキーを書き換えるヘルパー
+// ローカルストレージのキーを書き換えるヘルパー（channelIdフィールド対象）
 function applyMigrationToStorageKey(key: string, migrations: Record<string, string>) {
+  applyMigrationToStorageKeyByField(key, "channelId", migrations);
+}
+
+// 任意のフィールド名で書き換え（MyChannelData の internalChannelId など）
+function applyMigrationToStorageKeyByField(
+  key: string,
+  fieldName: string,
+  migrations: Record<string, string>
+) {
   const stored = localStorage.getItem(key);
   if (!stored) return;
   try {
     const items = JSON.parse(stored);
     if (!Array.isArray(items)) return;
-    const { items: next, changed } = migrateChannelIds(items, migrations);
+    let changed = false;
+    const next = items.map((it) => {
+      const cur = it[fieldName];
+      if (typeof cur === "string" && migrations[cur]) {
+        changed = true;
+        return { ...it, [fieldName]: migrations[cur] };
+      }
+      return it;
+    });
     if (changed) localStorage.setItem(key, JSON.stringify(next));
   } catch {
     // ignore
@@ -161,14 +186,25 @@ export async function pullSharedSettings(): Promise<void> {
       }
       // 既存ローカルのchannelIdを書き換え
       if (Object.keys(channelMigrations).length > 0) {
+        // channelIdフィールドを持つストア
         for (const k of [
           "fortune_yt_projects", "fortune_yt_tasks",
           "fortune_yt_hooks", "fortune_yt_ctas",
           "fortune_yt_thumbnail_words", "fortune_yt_titles",
           "fortune_yt_ideas",
+          "fortune_yt_analysis_log",
+          "fortune_yt_weekly",
+          "fortune_yt_performance",
+          "fortune_yt_winning_patterns_list",
+          "fortune_yt_idea_rules_list",
+          "fortune_yt_presets",
         ]) {
           applyMigrationToStorageKey(k, channelMigrations);
         }
+        // MyChannelData は internalChannelId フィールドなので個別対応
+        applyMigrationToStorageKeyByField(
+          "fortune_yt_my_channel_data_list", "internalChannelId", channelMigrations
+        );
         // ChannelProvider に再読込を促す
         window.dispatchEvent(new Event("fortune_yt_my_channels_updated"));
       }
@@ -245,9 +281,21 @@ export async function pullSharedSettings(): Promise<void> {
       localStorage.setItem("fortune_yt_members", JSON.stringify(merged));
     }
 
-    // 自チャンネルデータ: ローカルが空ならサーバーから
-    if (data.myChannel && !getMyChannel()) {
-      saveMyChannel(data.myChannel);
+    // 自チャンネルデータ(YouTube情報): チャンネル毎にupsert
+    // 新形式 myChannelDataList が優先、無ければ旧 myChannel(singular)を1件として扱う
+    const incomingMyChData: MyChannelData[] = Array.isArray(data.myChannelDataList)
+      ? data.myChannelDataList
+      : data.myChannel ? [data.myChannel] : [];
+    if (incomingMyChData.length > 0) {
+      const localList = getMyChannelDataList();
+      for (const incoming of incomingMyChData) {
+        const key = incoming.internalChannelId || "";
+        const existing = localList.find((d) => (d.internalChannelId || "") === key);
+        // ローカルに無いか、サーバー側のlastFetchedの方が新しければ採用
+        if (!existing || (incoming.lastFetched || "") > (existing.lastFetched || "")) {
+          saveMyChannelData(incoming);
+        }
+      }
     }
 
     // 分析ログ: マージ
@@ -275,11 +323,19 @@ export async function pullSharedSettings(): Promise<void> {
       localStorage.setItem("fortune_yt_performance", JSON.stringify(merged));
     }
 
-    // 勝ちパターン: サーバーの方が新しければ採用
-    if (data.winningPatterns) {
-      const local = getWinningPatterns();
-      if (!local || (data.winningPatterns.updatedAt && (!local.updatedAt || data.winningPatterns.updatedAt > local.updatedAt))) {
-        saveWinningPatterns(data.winningPatterns);
+    // 勝ちパターン(チャンネル別): updatedAt新しい方を採用してチャンネル毎にupsert
+    // 新形式 winningPatternsList が優先、無ければ旧 winningPatterns(singular)を1件として扱う
+    const incomingWP: WinningPatterns[] = Array.isArray(data.winningPatternsList)
+      ? data.winningPatternsList
+      : data.winningPatterns ? [data.winningPatterns] : [];
+    if (incomingWP.length > 0) {
+      const localList = getWinningPatternsList();
+      for (const incoming of incomingWP) {
+        const key = incoming.channelId || "";
+        const existing = localList.find((p) => (p.channelId || "") === key);
+        if (!existing || (incoming.updatedAt || "") > (existing.updatedAt || "")) {
+          saveWinningPatternsByChannel(incoming);
+        }
       }
     }
 
@@ -290,10 +346,20 @@ export async function pullSharedSettings(): Promise<void> {
       localStorage.setItem("fortune_yt_ideas", JSON.stringify(merged));
     }
 
-    // 企画ルール: ローカルが空ならサーバーから
-    if (data.ideaRules) {
-      const local = getIdeaRules();
-      if (!local.direction && !local.constraints) saveIdeaRules(data.ideaRules);
+    // 企画ルール(チャンネル別): channelId毎にupsert（ローカル分が空っぽならサーバー優先）
+    // 新形式 ideaRulesList が優先、無ければ旧 ideaRules(singular)を1件として扱う
+    const incomingIR: IdeaRules[] = Array.isArray(data.ideaRulesList)
+      ? data.ideaRulesList
+      : data.ideaRules ? [data.ideaRules] : [];
+    if (incomingIR.length > 0) {
+      const localList = getIdeaRulesList();
+      for (const incoming of incomingIR) {
+        const key = incoming.channelId || "";
+        const existing = localList.find((r) => (r.channelId || "") === key);
+        if (!existing || (!existing.direction && !existing.constraints)) {
+          saveIdeaRulesByChannel(incoming);
+        }
+      }
     }
 
     notifySync("synced");
@@ -334,13 +400,13 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         projects: getProjects(),
         tasks: getTasks(),
         members: getMembers(),
-        myChannel: getMyChannel(),
+        myChannelDataList: getMyChannelDataList(),
         analysisLogs: getAnalysisLogs(),
         weeklySnapshots: getWeeklySnapshots(),
         performanceRecords: getPerformanceRecords(),
-        winningPatterns: getWinningPatterns(),
+        winningPatternsList: getWinningPatternsList(),
         ideas: getIdeas(),
-        ideaRules: getIdeaRules(),
+        ideaRulesList: getIdeaRulesList(),
         myChannels: typeof window !== "undefined"
           ? JSON.parse(localStorage.getItem(MY_CHANNELS_KEY) || "[]")
           : [],

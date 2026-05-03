@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { getApiKey, getChannels } from "@/lib/channel-store";
-import { getHooksFor, getPerformanceRecords, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
+import { getHooksFor, getPerformanceRecordsByChannel, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
 import type { ScriptProject } from "@/lib/project-store";
 
 interface TitleCandidateEx {
@@ -55,9 +55,9 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
         } catch { /* 競合データ取得失敗しても提案は続行 */ }
       }
 
-      const perfRecords = getPerformanceRecords().filter((r) => r.genre === project.genre);
+      const perfRecords = getPerformanceRecordsByChannel(project.channelId || "").filter((r) => r.genre === project.genre);
       const selfTopVideos = perfRecords.sort((a, b) => b.views - a.views).slice(0, 5).map((r) => `${r.title}（${r.views}回再生）`);
-      const hooks = getHooksFor(project.genre, project.style).slice(0, 5).map((h) => h.text);
+      const hooks = getHooksFor(project.genre, project.style, project.channelId).slice(0, 5).map((h) => h.text);
 
       // 前回の提案をNG例として渡す
       const excludeTitles = candidates.map((c) => c.title);
@@ -102,7 +102,7 @@ export default function StepTitle({ project, onUpdate }: { project: ScriptProjec
     setChecking(true);
     setCheckResult(null);
     try {
-      const pastTitles = getPerformanceRecords().map((r) => r.title);
+      const pastTitles = getPerformanceRecordsByChannel(project.channelId || "").map((r) => r.title);
       const res = await fetch("/api/script/similar-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
