@@ -159,6 +159,43 @@ export function saveAnalysis(analysis: ScriptAnalysis): ScriptAnalysis[] {
   return analyses;
 }
 
+// 「不明」や空欄になっている既存分析を YouTube API で再取得して直す
+// 戻り値: 修復した件数
+export async function repairAnalysisVideoInfos(ytApiKey: string): Promise<number> {
+  if (!ytApiKey) return 0;
+  const analyses = getAnalyses();
+  const targets = analyses.filter(
+    (a) =>
+      a.videoId &&
+      (!a.videoTitle || a.videoTitle === "不明" ||
+       !a.channelName || a.channelName === "不明" ||
+       !a.thumbnailUrl)
+  );
+  if (targets.length === 0) return 0;
+  let repaired = 0;
+  for (const a of targets) {
+    try {
+      const params = new URLSearchParams({ videoId: a.videoId, apiKey: ytApiKey });
+      const res = await fetch(`/api/youtube/transcript?${params}`);
+      if (!res.ok) continue;
+      const d = await res.json();
+      if (!d?.title) continue;
+      const updated: ScriptAnalysis = {
+        ...a,
+        videoTitle: d.title,
+        channelName: d.channelTitle || a.channelName,
+        thumbnailUrl: d.thumbnailUrl || a.thumbnailUrl,
+        views: typeof d.views === "number" && d.views > 0 ? d.views : a.views,
+      };
+      saveAnalysis(updated);
+      repaired++;
+    } catch {
+      // 1件失敗しても他は続行
+    }
+  }
+  return repaired;
+}
+
 export function deleteAnalysis(id: string): ScriptAnalysis[] {
   const analyses = getAnalyses().filter((a) => a.id !== id);
   if (typeof window !== "undefined") {

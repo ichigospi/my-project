@@ -9,6 +9,7 @@ import {
   getAnalyses, saveAnalysis, deleteAnalysis,
   getProposals, saveProposal, deleteProposal,
   getProfileByChannel, saveProfileByChannel, generateId, syncFromServer,
+  repairAnalysisVideoInfos,
 } from "@/lib/script-analysis-store";
 import { useChannel } from "@/lib/channel-context";
 import type {
@@ -695,14 +696,31 @@ function AnalyzeTab({ videoFromQuery }: { videoFromQuery?: string }) {
       if (data.error) { setError(data.error); }
       else {
         setAnalysis(data);
+        // videoInfoが取れてない場合、videoIdを使って /api/youtube/transcript から再取得
+        let info = videoInfo;
+        const videoId = extractVideoId(videoUrl) || "";
+        if ((!info?.title || !info?.channelTitle) && videoId) {
+          const ytApiKey = getApiKey("yt_api_key");
+          if (ytApiKey) {
+            try {
+              const params = new URLSearchParams({ videoId, apiKey: ytApiKey });
+              const res2 = await fetch(`/api/youtube/transcript?${params}`);
+              const d2 = await res2.json();
+              if (d2.title && d2.channelTitle) {
+                info = { title: d2.title, channelTitle: d2.channelTitle, views: d2.views || 0, thumbnailUrl: d2.thumbnailUrl || "" };
+                setVideoInfo(info);
+              }
+            } catch { /* 取得失敗はそのまま続行 */ }
+          }
+        }
         const saved: ScriptAnalysis = {
           id: generateId(),
-          videoId: extractVideoId(videoUrl) || "",
+          videoId,
           videoUrl,
-          videoTitle: videoInfo?.title || "不明",
-          channelName: videoInfo?.channelTitle || "不明",
-          thumbnailUrl: videoInfo?.thumbnailUrl || "",
-          views: videoInfo?.views || 0,
+          videoTitle: info?.title || "",
+          channelName: info?.channelTitle || "",
+          thumbnailUrl: info?.thumbnailUrl || "",
+          views: info?.views || 0,
           transcript,
           analysisResult: data,
           category,
@@ -1014,8 +1032,14 @@ function LibraryTab() {
   useEffect(() => {
     setAnalyses(getAnalyses());
     // サーバーと同期
-    syncFromServer().then(({ analyses }) => {
+    syncFromServer().then(async ({ analyses }) => {
       setAnalyses(analyses);
+      // 「不明」のままになってる分析を YouTube API で再取得して修復
+      const ytApiKey = getApiKey("yt_api_key");
+      if (ytApiKey) {
+        const repaired = await repairAnalysisVideoInfos(ytApiKey);
+        if (repaired > 0) setAnalyses(getAnalyses());
+      }
       setSyncStatus("");
     });
   }, []);

@@ -27,6 +27,46 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
     setAnalyzedVideos(getAnalyses());
   }, []);
 
+  // 「不明」/空タイトルになっている参考動画を YouTube API で再取得して修復
+  useEffect(() => {
+    const repair = async () => {
+      const broken = (project.referenceVideos || []).filter(
+        (v) => v.videoId && (!v.title || v.title === "不明" || !v.channelName || v.channelName === "不明")
+      );
+      if (broken.length === 0) return;
+      const ytApiKey = getApiKey("yt_api_key");
+      if (!ytApiKey) return;
+      const next = [...project.referenceVideos];
+      let changed = false;
+      for (let i = 0; i < next.length; i++) {
+        const v = next[i];
+        if (!v.videoId) continue;
+        if (v.title && v.title !== "不明" && v.channelName && v.channelName !== "不明") continue;
+        try {
+          const params = new URLSearchParams({ videoId: v.videoId, apiKey: ytApiKey });
+          const res = await fetch(`/api/youtube/transcript?${params}`);
+          if (!res.ok) continue;
+          const d = await res.json();
+          if (!d?.title) continue;
+          next[i] = {
+            ...v,
+            title: d.title,
+            channelName: d.channelTitle || v.channelName,
+            thumbnailUrl: d.thumbnailUrl || v.thumbnailUrl,
+            views: typeof d.views === "number" && d.views > 0 ? d.views : v.views,
+          };
+          changed = true;
+        } catch { /* 1件失敗しても続行 */ }
+      }
+      if (changed) {
+        setVideos(next);
+        onUpdate({ ...project, referenceVideos: next });
+      }
+    };
+    repair();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const fetchVideos = async () => {
     const ytApiKey = getApiKey("yt_api_key");
     if (!ytApiKey) { setError("YouTube APIキーを設定してください"); return; }
