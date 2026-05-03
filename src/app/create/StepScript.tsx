@@ -459,8 +459,57 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-3 mt-6">
+      <div className="flex flex-col sm:flex-row gap-3 mt-6 items-start">
         <button onClick={() => onUpdate({ ...project, status: "proposal" })} className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
+        {/* 台本チェック依頼ワークフロー（台本生成済みの場合のみ） */}
+        {!!project.generatedScript && (
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <span className="text-xs text-gray-400">台本チェック</span>
+            {(!project.scriptReviewStatus || project.scriptReviewStatus === "none") && (
+              <button onClick={() => { onUpdate({ ...project, scriptReviewStatus: "pending" }); pushSharedSettings(); }}
+                className="px-3 py-1.5 rounded-lg text-xs border border-blue-300 text-blue-600 hover:bg-blue-50">
+                台本チェック依頼
+              </button>
+            )}
+            {project.scriptReviewStatus === "pending" && (
+              <>
+                <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-medium">チェック待ち</span>
+                <select
+                  value="pending"
+                  onChange={(e) => {
+                    const val = e.target.value as "pending" | "approved" | "rejected" | "none";
+                    const note = val === "rejected" ? prompt("差し戻し理由:") || "" : "";
+                    onUpdate({ ...project, scriptReviewStatus: val, scriptReviewNote: note });
+                    pushSharedSettings();
+                  }}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                >
+                  <option value="pending">チェック待ち</option>
+                  <option value="approved">承認</option>
+                  <option value="rejected">差し戻し</option>
+                  <option value="none">取り消し</option>
+                </select>
+              </>
+            )}
+            {project.scriptReviewStatus === "approved" && (
+              <>
+                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">承認済み</span>
+                <button onClick={() => { onUpdate({ ...project, scriptReviewStatus: "none", scriptReviewNote: "" }); pushSharedSettings(); }}
+                  className="text-xs text-gray-400 hover:text-gray-600">リセット</button>
+              </>
+            )}
+            {project.scriptReviewStatus === "rejected" && (
+              <>
+                <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">差し戻し</span>
+                {project.scriptReviewNote && <span className="text-xs text-red-500">{project.scriptReviewNote}</span>}
+                <button onClick={() => { onUpdate({ ...project, scriptReviewStatus: "pending", scriptReviewNote: "" }); pushSharedSettings(); }}
+                  className="px-2 py-1 rounded text-xs border border-blue-300 text-blue-600 hover:bg-blue-50">
+                  再依頼
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -167,8 +167,8 @@ export default function CreatePage() {
                   </>
                 )}
               </div>
-              {/* 台本チェック（step6=台本完成後のみ表示） */}
-              {p.status === "completed" && (
+              {/* 台本チェック（台本生成済みの場合のみ表示） */}
+              {!!p.generatedScript && (
                 <div className="flex items-center gap-3 mt-2 pt-3 border-t border-gray-100">
                   <span className="text-xs text-gray-400 shrink-0">台本</span>
                   {(!p.scriptReviewStatus || p.scriptReviewStatus === "none") && (
