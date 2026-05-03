@@ -32,8 +32,12 @@ export interface ScriptProject {
   thumbnailTexts: string[];
   status: "genre" | "title" | "references" | "analyzing" | "proposal" | "script" | "completed";
   channelId?: string;
+  // 企画チェック（step1〜2 後にいつでも依頼可能）
   reviewStatus?: ReviewStatus;
   reviewNote?: string;
+  // 台本チェック（step6 完了後のみ依頼可能）
+  scriptReviewStatus?: ReviewStatus;
+  scriptReviewNote?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -672,7 +676,32 @@ export function getPerformanceRecordsByChannel(channelId: string): PerformanceRe
 
 // ===== チャンネル別フィルター =====
 export function getProjectsByChannel(channelId: string): ScriptProject[] {
-  return getProjects().filter((p) => !p.channelId || p.channelId === channelId);
+  const filtered = getProjects().filter((p) => !p.channelId || p.channelId === channelId);
+  return sortProjectsByReview(filtered);
+}
+
+// レビュー状態優先で並び替え:
+//   1) rejected (差し戻し) を最上部
+//   2) pending (チェック待ち)
+//   3) その他（none / approved）
+// 同優先度内は updatedAt 降順。
+// 企画チェック・台本チェックの両方を見て、どちらかが該当すれば優先する。
+function projectReviewPriority(p: ScriptProject): number {
+  const statuses = [p.reviewStatus, p.scriptReviewStatus];
+  if (statuses.includes("rejected")) return 0;
+  if (statuses.includes("pending")) return 1;
+  return 2;
+}
+
+export function sortProjectsByReview(projects: ScriptProject[]): ScriptProject[] {
+  return [...projects].sort((a, b) => {
+    const pa = projectReviewPriority(a);
+    const pb = projectReviewPriority(b);
+    if (pa !== pb) return pa - pb;
+    const ta = new Date(a.updatedAt || 0).getTime();
+    const tb = new Date(b.updatedAt || 0).getTime();
+    return tb - ta;
+  });
 }
 
 export function getTasksByChannel(channelId: string): ProductionTask[] {
