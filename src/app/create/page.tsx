@@ -167,6 +167,56 @@ export default function CreatePage() {
                   </>
                 )}
               </div>
+              {/* 台本チェック（step6=台本完成後のみ表示） */}
+              {p.status === "completed" && (
+                <div className="flex items-center gap-3 mt-2 pt-3 border-t border-gray-100">
+                  <span className="text-xs text-gray-400 shrink-0">台本</span>
+                  {(!p.scriptReviewStatus || p.scriptReviewStatus === "none") && (
+                    <button onClick={() => { saveProject({ ...p, scriptReviewStatus: "pending" }); setProjects(getProjectsByChannel(activeChannel?.id || "")); pushSharedSettings(); }}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-blue-300 text-blue-600 hover:bg-blue-50">
+                      台本チェック依頼
+                    </button>
+                  )}
+                  {p.scriptReviewStatus === "pending" && (
+                    <>
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-medium">チェック待ち</span>
+                      <select
+                        value="pending"
+                        onChange={(e) => {
+                          const val = e.target.value as ReviewStatus;
+                          const note = val === "rejected" ? prompt("差し戻し理由:") || "" : "";
+                          saveProject({ ...p, scriptReviewStatus: val, scriptReviewNote: note });
+                          setProjects(getProjectsByChannel(activeChannel?.id || ""));
+                          pushSharedSettings();
+                        }}
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none"
+                      >
+                        <option value="pending">チェック待ち</option>
+                        <option value="approved">承認</option>
+                        <option value="rejected">差し戻し</option>
+                        <option value="none">取り消し</option>
+                      </select>
+                    </>
+                  )}
+                  {p.scriptReviewStatus === "approved" && (
+                    <>
+                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">承認済み</span>
+                      <button onClick={() => { saveProject({ ...p, scriptReviewStatus: "none", scriptReviewNote: "" }); setProjects(getProjectsByChannel(activeChannel?.id || "")); pushSharedSettings(); }}
+                        className="text-xs text-gray-400 hover:text-gray-600">リセット</button>
+                    </>
+                  )}
+                  {p.scriptReviewStatus === "rejected" && (
+                    <>
+                      <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">差し戻し</span>
+                      {p.scriptReviewNote && <span className="text-xs text-red-500">{p.scriptReviewNote}</span>}
+                      <button onClick={() => { saveProject({ ...p, scriptReviewStatus: "pending", scriptReviewNote: "" }); setProjects(getProjectsByChannel(activeChannel?.id || "")); pushSharedSettings(); }}
+                        className="px-2 py-1 rounded text-xs border border-blue-300 text-blue-600 hover:bg-blue-50">
+                        再依頼
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
