@@ -10,6 +10,8 @@ import {
   getProposals, saveProposal, deleteProposal,
   getProfileByChannel, saveProfileByChannel, generateId, syncFromServer,
   repairAnalysisVideoInfos,
+  getAIInsightsByChannel, saveAIInsight, deleteAIInsight,
+  type AIAnalysisInsight,
 } from "@/lib/script-analysis-store";
 import { useChannel } from "@/lib/channel-context";
 import type {
@@ -72,7 +74,7 @@ function usePersisted<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T))
 }
 
 // ===== タブ切り替え =====
-type Tab = "profile" | "analyze" | "library" | "propose";
+type Tab = "profile" | "analyze" | "library" | "propose" | "ai";
 
 export default function AnalysisPage() {
   return (
@@ -91,6 +93,7 @@ function AnalysisContent() {
     { id: "analyze", label: "台本分析" },
     { id: "library", label: "分析ライブラリ" },
     { id: "propose", label: "構成提案・台本作成" },
+    { id: "ai", label: "AI分析" },
   ];
 
   // サイドバーから直接アクセス、または動画URLパラメータがある場合は「台本分析」タブを表示
@@ -126,6 +129,7 @@ function AnalysisContent() {
       {tab === "analyze" && <AnalyzeTab videoFromQuery={videoFromQuery} />}
       {tab === "library" && <LibraryTab />}
       {tab === "propose" && <ProposeTab />}
+      {tab === "ai" && <AITab />}
     </div>
   );
 }
@@ -1505,6 +1509,250 @@ function MiniList({ title, items }: { title: string; items?: string[] }) {
       <ul className="space-y-1">
         {items.map((item, i) => <li key={i} className="text-xs text-gray-700">· {item}</li>)}
       </ul>
+    </div>
+  );
+}
+
+// ===== AI分析タブ =====
+const PRESET_QUESTIONS: { label: string; prompt: string }[] = [
+  { label: "共通する構成パターン", prompt: "選択した台本に共通する構成パターン（導入→展開→クライマックス→CTA等の流れ）を抽出して、特徴を整理してください。" },
+  { label: "効果的なフックの傾向", prompt: "選択した台本のフック（冒頭の引き）に共通する手法や傾向を抽出して、効果的なフックの作り方を提案してください。" },
+  { label: "視聴者の痛点・欲求", prompt: "選択した台本から想定される視聴者の痛点・抱えている悩み・欲求を抽出してください。" },
+  { label: "勝ちパターンの提案", prompt: "選択した台本から自分のチャンネルに活かせる勝ちパターンを提案してください。具体的なアクションまで踏み込んでください。" },
+  { label: "NG表現・避けるべき構成", prompt: "選択した台本の中で、視聴者離脱を招きそうな表現や構成、避けたほうが良いパターンを指摘してください。" },
+];
+
+function AITab() {
+  const { activeChannel } = useChannel();
+  const [analyses, setAnalysesState] = useState<ScriptAnalysis[]>([]);
+  const [insights, setInsights] = useState<AIAnalysisInsight[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [filterGenre, setFilterGenre] = useState<string>("all");
+  const [minScore, setMinScore] = useState<number>(0);
+  const [prompt, setPrompt] = useState("");
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState("");
+  const [error, setError] = useState("");
+  const [appended, setAppended] = useState(false);
+
+  useEffect(() => {
+    setAnalysesState(getAnalyses());
+    setInsights(getAIInsightsByChannel(activeChannel?.id || ""));
+  }, [activeChannel]);
+
+  const filtered = analyses.filter((a) => {
+    if (filterGenre !== "all") {
+      const ar = a.analysisResult as Record<string, unknown> | undefined;
+      const tag = (a.category || "").toString();
+      const pat = ((ar?.overallPattern as string) || "").toString();
+      // ゆるめ: カテゴリ or パターンに含まれてればOK
+      if (!tag.includes(filterGenre) && !pat.includes(filterGenre) && !a.videoTitle?.includes(filterGenre)) return false;
+    }
+    if (minScore > 0 && (a.score?.overall || 0) < minScore) return false;
+    return true;
+  });
+
+  const toggle = (id: string) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+  const selectAll = () => setSelectedIds(filtered.map((a) => a.id));
+  const selectTopScored = () => {
+    const top = [...filtered].sort((a, b) => (b.score?.overall || 0) - (a.score?.overall || 0)).slice(0, 5);
+    setSelectedIds(top.map((a) => a.id));
+  };
+  const clearSelection = () => setSelectedIds([]);
+
+  const handleRun = async () => {
+    setError("");
+    setResult("");
+    setAppended(false);
+    if (selectedIds.length === 0) { setError("対象の分析を選択してください"); return; }
+    if (!prompt.trim()) { setError("質問内容を入力してください"); return; }
+    if (selectedIds.length > 10) {
+      if (!confirm(`${selectedIds.length}本選択中。多すぎるとAIが正しく扱えない/コストが上がる可能性あり。続けますか？`)) return;
+    }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+
+    const targets = analyses.filter((a) => selectedIds.includes(a.id));
+    setRunning(true);
+    try {
+      const res = await fetch("/api/script/free-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analyses: targets.map((a) => ({
+            videoTitle: a.videoTitle, channelName: a.channelName, views: a.views,
+            transcript: a.transcript, analysisResult: a.analysisResult, score: a.score,
+          })),
+          userPrompt: prompt.trim(),
+          aiApiKey,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); }
+      else if (data.result) { setResult(data.result); }
+    } catch {
+      setError("AI分析の呼び出しに失敗しました");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const handleSaveInsight = () => {
+    if (!result.trim()) return;
+    const insight: AIAnalysisInsight = {
+      id: generateId(),
+      channelId: activeChannel?.id || "",
+      prompt: prompt.trim(),
+      response: result,
+      sourceAnalysisIds: [...selectedIds],
+      createdAt: new Date().toISOString(),
+    };
+    saveAIInsight(insight);
+    setInsights(getAIInsightsByChannel(activeChannel?.id || ""));
+    pushSharedSettings();
+  };
+
+  const handleAppendToRule = () => {
+    if (!result.trim()) return;
+    if (!confirm("AI分析の結果をチャンネル共通ルール (台本ルール → チャンネル共通ルール) の末尾に追記します。既存の内容は消えません。よろしいですか？")) return;
+    const profile = getProfileByChannel(activeChannel?.id || "");
+    const header = `\n\n--- AI分析からの示唆 (${new Date().toLocaleDateString("ja-JP")}) ---\n質問: ${prompt.trim()}\n${result}\n--- ここまで ---`;
+    const newRules = (profile.commonRules || "") + header;
+    saveProfileByChannel({ ...profile, channelId: activeChannel?.id || "", commonRules: newRules });
+    pushSharedSettings();
+    setAppended(true);
+    setTimeout(() => setAppended(false), 3000);
+  };
+
+  const handleDeleteInsight = (id: string) => {
+    if (!confirm("この気づきを削除しますか？")) return;
+    deleteAIInsight(id);
+    setInsights(getAIInsightsByChannel(activeChannel?.id || ""));
+    pushSharedSettings();
+  };
+
+  const handleLoadInsight = (it: AIAnalysisInsight) => {
+    setPrompt(it.prompt);
+    setResult(it.response);
+    setSelectedIds(it.sourceAnalysisIds);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 対象選択 */}
+      <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="font-semibold">① 分析対象を選ぶ</h3>
+          <div className="flex items-center gap-2 text-xs">
+            <button onClick={selectAll} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
+            <button onClick={selectTopScored} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">高スコア5件</button>
+            <button onClick={clearSelection} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">選択解除</button>
+          </div>
+        </div>
+
+        {/* フィルタ */}
+        <div className="flex flex-wrap gap-3 mb-3">
+          <label className="text-xs text-gray-600 flex items-center gap-1">
+            キーワード:
+            <input type="text" value={filterGenre === "all" ? "" : filterGenre}
+              onChange={(e) => setFilterGenre(e.target.value || "all")}
+              placeholder="例: 金運 / 恋愛" className="border border-gray-200 rounded px-2 py-1 text-xs outline-none" />
+          </label>
+          <label className="text-xs text-gray-600 flex items-center gap-1">
+            最低スコア:
+            <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}
+              className="border border-gray-200 rounded px-2 py-1 text-xs outline-none">
+              <option value={0}>制限なし</option>
+              <option value={6}>6以上</option>
+              <option value={7}>7以上</option>
+              <option value={8}>8以上</option>
+            </select>
+          </label>
+        </div>
+
+        <p className="text-xs text-gray-400 mb-2">{filtered.length}件中 {selectedIds.length}件選択中</p>
+
+        {/* 一覧 */}
+        <div className="space-y-1 max-h-80 overflow-y-auto border border-gray-100 rounded-lg p-2">
+          {filtered.length === 0 && <p className="text-sm text-gray-400 p-3 text-center">該当する分析がありません</p>}
+          {filtered.map((a) => (
+            <label key={a.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" checked={selectedIds.includes(a.id)} onChange={() => toggle(a.id)}
+                className="w-4 h-4 rounded text-accent" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm truncate">{a.videoTitle}</p>
+                <p className="text-xs text-gray-400">{a.channelName} · スコア {a.score?.overall || "?"}/10 · {formatNumber(a.views || 0)}回</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* 質問 */}
+      <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+        <h3 className="font-semibold mb-3">② 質問する</h3>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {PRESET_QUESTIONS.map((q, i) => (
+            <button key={i} onClick={() => setPrompt(q.prompt)}
+              className="px-3 py-1.5 text-xs rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-accent/30">
+              {q.label}
+            </button>
+          ))}
+        </div>
+        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
+          placeholder="例: 共通している構成を抽出して。または独自の質問を入力してください。"
+          className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm" />
+        <div className="flex items-center justify-between mt-3">
+          {error && <p className="text-danger text-sm">{error}</p>}
+          <button onClick={handleRun} disabled={running}
+            className="ml-auto px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
+            {running ? "AI分析中..." : "AI分析する"}
+          </button>
+        </div>
+      </div>
+
+      {/* 回答 */}
+      {result && (
+        <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="font-semibold mb-3">③ 回答</h3>
+          <pre className="text-sm whitespace-pre-wrap font-sans text-gray-700 leading-relaxed">{result}</pre>
+          <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-gray-100">
+            <button onClick={handleSaveInsight}
+              className="px-4 py-2 text-sm rounded-lg border border-accent text-accent hover:bg-accent/5">
+              気づきとして保存
+            </button>
+            <button onClick={handleAppendToRule}
+              className="px-4 py-2 text-sm rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200">
+              {appended ? "追記しました ✓" : "チャンネルルールに追記"}
+            </button>
+            <span className="text-xs text-gray-400">※ 既存の共通ルールは消さず末尾に追記します</span>
+          </div>
+        </div>
+      )}
+
+      {/* 履歴 */}
+      <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+        <h3 className="font-semibold mb-3">気づきライブラリ（{activeChannel?.name || "未選択"}・{insights.length}件）</h3>
+        {insights.length === 0 && <p className="text-sm text-gray-400">まだありません。AI分析の結果を「気づきとして保存」で溜めていきましょう。</p>}
+        <div className="space-y-2">
+          {insights.map((it) => (
+            <div key={it.id} className="border border-gray-100 rounded-lg p-3 hover:border-accent/30">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleLoadInsight(it)}>
+                  <p className="text-sm font-medium line-clamp-1">{it.prompt}</p>
+                  <p className="text-xs text-gray-500 line-clamp-2 mt-1">{it.response.substring(0, 200)}...</p>
+                  <p className="text-xs text-gray-400 mt-1">{new Date(it.createdAt).toLocaleString("ja-JP")} · 対象 {it.sourceAnalysisIds.length}本</p>
+                </div>
+                <button onClick={() => handleDeleteInsight(it.id)} className="text-gray-300 hover:text-danger shrink-0">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

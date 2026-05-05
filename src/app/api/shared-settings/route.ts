@@ -42,6 +42,7 @@ export async function GET() {
       winningPatternsList: map["shared_winning_patterns_list"]
         ? JSON.parse(map["shared_winning_patterns_list"])
         : (map["shared_winning_patterns"] ? [JSON.parse(map["shared_winning_patterns"])] : []),
+      aiInsights: map["shared_ai_insights"] ? JSON.parse(map["shared_ai_insights"]) : [],
     });
   } catch (e) {
     console.error("GET /api/shared-settings error:", e);
@@ -81,6 +82,7 @@ export async function POST(request: NextRequest) {
     if (body.myChannelDataList !== undefined) updates.push({ key: "shared_my_channel_data_list", value: JSON.stringify(body.myChannelDataList) });
     if (body.winningPatternsList !== undefined) updates.push({ key: "shared_winning_patterns_list", value: JSON.stringify(body.winningPatternsList) });
     if (body.ideaRulesList !== undefined) updates.push({ key: "shared_idea_rules_list", value: JSON.stringify(body.ideaRulesList) });
+    if (body.aiInsights !== undefined) updates.push({ key: "shared_ai_insights", value: JSON.stringify(body.aiInsights) });
 
     for (const { key, value } of updates) {
       const existing = await prisma.appSetting.findUnique({ where: { key } });
