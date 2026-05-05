@@ -1542,9 +1542,9 @@ function AITab() {
 
   const filtered = analyses.filter((a) => {
     if (filterGenre !== "all") {
-      const ar = a.analysisResult as Record<string, unknown> | undefined;
+      const ar = a.analysisResult;
       const tag = (a.category || "").toString();
-      const pat = ((ar?.overallPattern as string) || "").toString();
+      const pat = (ar?.overallPattern || "").toString();
       // ゆるめ: カテゴリ or パターンに含まれてればOK
       if (!tag.includes(filterGenre) && !pat.includes(filterGenre) && !a.videoTitle?.includes(filterGenre)) return false;
     }
