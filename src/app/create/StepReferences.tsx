@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getApiKey, getChannels } from "@/lib/channel-store";
 import { getAnalyses } from "@/lib/script-analysis-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
@@ -15,13 +15,52 @@ const GENRE_KEYWORDS: Record<Genre, string[]> = {
   general: ["運勢", "スピリチュアル", "覚醒", "エネルギー", "浄化", "チャクラ", "瞑想", "ヒーリング", "波動", "アセンション", "守護", "天使", "エンジェル", "宇宙"],
 };
 
+// フィルタ設定の localStorage キー
+const FILTER_STORAGE_KEY = "fortune_yt_ref_filter";
+interface RefFilter {
+  periodDays: number;     // 公開期間 (日)
+  minViews: number;       // 最低再生数
+  minMultiplier: number;  // 最低再生倍率
+}
+const DEFAULT_FILTER: RefFilter = { periodDays: 30, minViews: 0, minMultiplier: 0 };
+
+function loadFilter(): RefFilter {
+  if (typeof window === "undefined") return DEFAULT_FILTER;
+  try {
+    const stored = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (stored) return { ...DEFAULT_FILTER, ...JSON.parse(stored) };
+  } catch { /* ignore */ }
+  return DEFAULT_FILTER;
+}
+function saveFilter(f: RefFilter) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(f));
+}
+
+// 動画オブジェクトに保持する追加情報
+type ScoredVideo = ReferenceVideo & {
+  duration?: string;
+  publishedAt?: string;
+  genreMatch?: number;
+};
+
 export default function StepReferences({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
-  const [videos, setVideos] = useState<(ReferenceVideo & { duration?: string })[]>(project.referenceVideos.length > 0 ? project.referenceVideos : []);
+  const [videos, setVideos] = useState<ScoredVideo[]>(project.referenceVideos.length > 0 ? project.referenceVideos : []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fetched, setFetched] = useState(project.referenceVideos.length > 0);
   const [tab, setTab] = useState<"search" | "analyzed">("search");
   const [analyzedVideos, setAnalyzedVideos] = useState<ScriptAnalysis[]>([]);
+  // フィルタ
+  const [filter, setFilter] = useState<RefFilter>(DEFAULT_FILTER);
+  useEffect(() => { setFilter(loadFilter()); }, []);
+  const updateFilter = (patch: Partial<RefFilter>) => {
+    setFilter((prev) => {
+      const next = { ...prev, ...patch };
+      saveFilter(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     setAnalyzedVideos(getAnalyses());
@@ -80,28 +119,23 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
       const res = await fetch("/api/youtube/search-videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channels: channels.map((ch) => ({ channelId: ch.channelId, name: ch.name, handle: ch.handle })), apiKey: ytApiKey, maxResultsPerChannel: 30 }),
+        body: JSON.stringify({ channels: channels.map((ch) => ({ channelId: ch.channelId, name: ch.name, handle: ch.handle })), apiKey: ytApiKey, maxResultsPerChannel: 50 }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); setLoading(false); return; }
 
-      const oneMonthAgo = new Date(); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-      const dateStr = oneMonthAgo.toISOString().split("T")[0];
       const keywords = GENRE_KEYWORDS[project.genre] || [];
 
+      // 構造的フィルタ（期間と再生数倍率の閾値はクライアント側で動的に変えるので、ここでは
+      // ショートと #shorts のみ除外する）
       const allVideos = (data.videos || [])
         .filter((v: { publishedAt: string; duration?: string; title?: string }) => {
-          // 直近1ヶ月
-          if (v.publishedAt < dateStr) return false;
           // ショート除外: durationが5分未満
           if (v.duration) {
             const parts = v.duration.split(":");
             if (parts.length === 2) {
-              // M:SS形式
               const mins = parseInt(parts[0]);
               if (mins < 5) return false;
-            } else if (parts.length === 3) {
-              // H:MM:SS形式 → 常に5分以上なのでOK
             } else if (v.duration === "0:00") {
               return false;
             }
@@ -111,34 +145,49 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
           return true;
         });
 
-      // ジャンル一致の動画を優先ソート
-      const scored = allVideos.map((v: { id: string; title: string; channelName: string; views: number; thumbnailUrl: string; channelId: string; duration?: string }) => {
+      // ジャンル一致スコアと再生倍率を付与（フィルタは適用せず全部保持）
+      const scored: ScoredVideo[] = allVideos.map((v: { id: string; title: string; channelName: string; views: number; thumbnailUrl: string; channelId: string; duration?: string; publishedAt?: string }) => {
         const matchCount = keywords.filter((kw) => v.title.includes(kw)).length;
         const stats = data.channelStats?.[v.channelId];
         return {
           videoId: v.id, title: v.title, channelName: v.channelName, views: v.views,
-          thumbnailUrl: v.thumbnailUrl, duration: v.duration,
+          thumbnailUrl: v.thumbnailUrl, duration: v.duration, publishedAt: v.publishedAt,
           multiplier: stats?.avgViews ? Math.round((v.views / stats.avgViews) * 10) / 10 : undefined,
           selected: false,
           genreMatch: matchCount,
         };
       });
 
-      // ジャンル一致数 → 再生数の順でソート
-      scored.sort((a: { genreMatch: number; views: number }, b: { genreMatch: number; views: number }) =>
-        b.genreMatch - a.genreMatch || b.views - a.views
-      );
-
-      const refs: ReferenceVideo[] = scored.slice(0, 30);
-      setVideos(refs);
+      setVideos(scored);
       setFetched(true);
 
-      if (scored.filter((v: { genreMatch: number }) => v.genreMatch > 0).length === 0) {
+      if (scored.filter((v) => (v.genreMatch || 0) > 0).length === 0) {
         setError(`「${GENRE_LABELS[project.genre]}」に関連する動画が見つかりませんでした。他のジャンルの動画から選んでください。`);
       }
     } catch { setError("動画の取得に失敗"); }
     finally { setLoading(false); }
   };
+
+  // フィルタ適用 + ソート + 表示30件にスライス
+  const filteredVideos = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - filter.periodDays);
+    const cutoffStr = cutoff.toISOString().split("T")[0];
+
+    const result = videos.filter((v) => {
+      // 公開日
+      if (v.publishedAt && v.publishedAt < cutoffStr) return false;
+      // 最低再生数
+      if (filter.minViews > 0 && (v.views || 0) < filter.minViews) return false;
+      // 最低再生倍率（multiplier が未取得のものは弾かない）
+      if (filter.minMultiplier > 0 && v.multiplier !== undefined && v.multiplier < filter.minMultiplier) return false;
+      return true;
+    });
+
+    // ジャンル一致数 → 再生数 で降順
+    result.sort((a, b) => (b.genreMatch || 0) - (a.genreMatch || 0) || (b.views || 0) - (a.views || 0));
+    return result.slice(0, 30);
+  }, [videos, filter]);
 
   const toggleSelect = (videoId: string) => {
     setVideos((prev) => prev.map((v) => v.videoId === videoId ? { ...v, selected: !v.selected } : v));
@@ -244,8 +293,69 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
 
       {tab === "search" && fetched && (
         <>
+          {/* フィルタコントロール */}
+          <div className="bg-gray-50 rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
+            <label className="text-xs text-gray-600 flex items-center gap-1.5">
+              期間:
+              <select
+                value={filter.periodDays}
+                onChange={(e) => updateFilter({ periodDays: Number(e.target.value) })}
+                className="border border-gray-200 rounded px-2 py-1 text-xs outline-none bg-white"
+              >
+                <option value={7}>1週間</option>
+                <option value={14}>2週間</option>
+                <option value={30}>1ヶ月</option>
+                <option value={60}>2ヶ月</option>
+                <option value={90}>3ヶ月</option>
+                <option value={180}>半年</option>
+                <option value={365}>1年</option>
+                <option value={3650}>制限なし</option>
+              </select>
+            </label>
+            <label className="text-xs text-gray-600 flex items-center gap-1.5">
+              最低再生数:
+              <select
+                value={filter.minViews}
+                onChange={(e) => updateFilter({ minViews: Number(e.target.value) })}
+                className="border border-gray-200 rounded px-2 py-1 text-xs outline-none bg-white"
+              >
+                <option value={0}>制限なし</option>
+                <option value={1000}>1,000以上</option>
+                <option value={5000}>5,000以上</option>
+                <option value={10000}>1万以上</option>
+                <option value={30000}>3万以上</option>
+                <option value={50000}>5万以上</option>
+                <option value={100000}>10万以上</option>
+                <option value={500000}>50万以上</option>
+              </select>
+            </label>
+            <label className="text-xs text-gray-600 flex items-center gap-1.5">
+              最低再生倍率:
+              <select
+                value={filter.minMultiplier}
+                onChange={(e) => updateFilter({ minMultiplier: Number(e.target.value) })}
+                className="border border-gray-200 rounded px-2 py-1 text-xs outline-none bg-white"
+              >
+                <option value={0}>制限なし</option>
+                <option value={1}>1.0倍以上</option>
+                <option value={1.5}>1.5倍以上</option>
+                <option value={2}>2倍以上</option>
+                <option value={3}>3倍以上</option>
+                <option value={5}>5倍以上</option>
+              </select>
+            </label>
+            <button
+              onClick={() => updateFilter(DEFAULT_FILTER)}
+              className="ml-auto text-xs text-gray-500 hover:text-gray-700"
+            >
+              フィルタリセット
+            </button>
+          </div>
+
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm text-gray-500">{videos.length}件（{GENRE_LABELS[project.genre]}優先） | {selectedCount}/3 選択中</span>
+            <span className="text-sm text-gray-500">
+              {filteredVideos.length}件表示中（取得 {videos.length}件・{GENRE_LABELS[project.genre]}優先） | {selectedCount}/3 選択中
+            </span>
             <button onClick={fetchVideos} disabled={loading} className="text-xs text-accent hover:underline">
               {loading ? "更新中..." : "再取得"}
             </button>
@@ -254,7 +364,12 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
           {error && <p className="text-danger text-sm mb-3">{error}</p>}
 
           <div className="space-y-2 mb-6 max-h-[60vh] overflow-y-auto">
-            {videos.map((v, i) => (
+            {filteredVideos.length === 0 && (
+              <p className="text-center py-8 text-gray-400 text-sm">
+                条件に合う動画がありません。フィルタを緩めるか「再取得」してください。
+              </p>
+            )}
+            {filteredVideos.map((v, i) => (
               <label key={v.videoId || `ref-${i}`} className={`flex items-center gap-4 p-3 rounded-lg cursor-pointer transition-all ${
                 v.selected ? "bg-accent/5 border border-accent/30" : "bg-card-bg border border-gray-100 hover:border-gray-200"
               }`}>
