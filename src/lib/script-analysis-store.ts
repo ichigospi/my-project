@@ -242,11 +242,19 @@ export function generateId(): string {
 }
 
 // --- AI 分析の気づき (チャンネル別) ---
+export interface AIChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface AIAnalysisInsight {
   id: string;
   channelId?: string;
-  prompt: string;            // ユーザー質問
-  response: string;          // AI回答
+  // 新形式: 会話履歴
+  messages?: AIChatMessage[];
+  // 旧形式: 後方互換 (1往復のみだった頃のデータ)
+  prompt?: string;
+  response?: string;
   sourceAnalysisIds: string[]; // 対象analyses
   createdAt: string;
 }
