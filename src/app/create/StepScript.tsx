@@ -422,6 +422,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           {/* 品質チェック */}
           <QualityCheckPanel
             project={project}
+            onUpdate={onUpdate}
             checking={checkingQuality}
             showDetail={showQualityDetail}
             onToggleDetail={() => setShowQualityDetail(!showQualityDetail)}
@@ -612,9 +613,10 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 }
 
 function QualityCheckPanel({
-  project, checking, showDetail, onToggleDetail, onCheck, onApplyFix, currentScriptHash,
+  project, onUpdate, checking, showDetail, onToggleDetail, onCheck, onApplyFix, currentScriptHash,
 }: {
   project: ScriptProject;
+  onUpdate: (p: ScriptProject) => void;
   checking: boolean;
   showDetail: boolean;
   onToggleDetail: () => void;
@@ -631,6 +633,101 @@ function QualityCheckPanel({
     if (status === "warn") return <span className="text-amber-600 shrink-0">⚠</span>;
     return <span className="text-red-600 shrink-0">✗</span>;
   };
+
+  // 編集中のキー: "ci-ii" or "new-ci"
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState<QualityCheckItem>({ name: "", status: "warn", comment: "", suggestion: "" });
+  const [editingPriority, setEditingPriority] = useState(false);
+  const [topPriorityDraft, setTopPriorityDraft] = useState("");
+
+  // 結果を更新するヘルパー
+  const updateResult = (next: QualityCheckResult) => {
+    // categories の passed を items から再計算
+    next.categories = next.categories.map((c) => ({
+      ...c,
+      passed: c.items.every((it) => it.status === "pass"),
+    }));
+    onUpdate({ ...project, qualityCheckResult: next });
+  };
+
+  const startEdit = (ci: number, ii: number) => {
+    if (!r) return;
+    const item = r.categories[ci].items[ii];
+    setDraft({ ...item });
+    setEditingKey(`${ci}-${ii}`);
+  };
+  const startAdd = (ci: number) => {
+    setDraft({ name: "", status: "warn", comment: "", suggestion: "" });
+    setEditingKey(`new-${ci}`);
+  };
+  const cancelEdit = () => {
+    setEditingKey(null);
+  };
+  const saveEdit = () => {
+    if (!r || !editingKey) return;
+    if (!draft.name.trim() || !draft.comment.trim()) return;
+    const next: QualityCheckResult = JSON.parse(JSON.stringify(r));
+    if (editingKey.startsWith("new-")) {
+      const ci = parseInt(editingKey.slice(4), 10);
+      next.categories[ci].items.push({ ...draft, suggestion: draft.suggestion?.trim() || undefined });
+    } else {
+      const [ciStr, iiStr] = editingKey.split("-");
+      const ci = parseInt(ciStr, 10);
+      const ii = parseInt(iiStr, 10);
+      next.categories[ci].items[ii] = { ...draft, suggestion: draft.suggestion?.trim() || undefined };
+    }
+    updateResult(next);
+    setEditingKey(null);
+  };
+  const deleteItem = (ci: number, ii: number) => {
+    if (!r) return;
+    if (!confirm("この指摘を削除しますか？")) return;
+    const next: QualityCheckResult = JSON.parse(JSON.stringify(r));
+    next.categories[ci].items.splice(ii, 1);
+    updateResult(next);
+  };
+  const startEditPriority = () => {
+    setTopPriorityDraft(r?.topPriority || "");
+    setEditingPriority(true);
+  };
+  const savePriority = () => {
+    if (!r) return;
+    updateResult({ ...r, topPriority: topPriorityDraft });
+    setEditingPriority(false);
+  };
+
+  const editForm = () => (
+    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+      <div className="flex gap-2 flex-wrap">
+        <input type="text" value={draft.name}
+          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          placeholder="項目名（例: 冒頭フックの強さ）"
+          className="flex-1 min-w-32 px-2 py-1.5 rounded border border-gray-200 text-sm outline-none focus:border-accent" />
+        <select value={draft.status}
+          onChange={(e) => setDraft({ ...draft, status: e.target.value as QualityCheckItem["status"] })}
+          className="px-2 py-1.5 rounded border border-gray-200 text-sm outline-none">
+          <option value="pass">✓ pass</option>
+          <option value="warn">⚠ warn</option>
+          <option value="fail">✗ fail</option>
+        </select>
+      </div>
+      <textarea value={draft.comment} rows={2}
+        onChange={(e) => setDraft({ ...draft, comment: e.target.value })}
+        placeholder="評価内容（該当箇所引用 等）"
+        className="w-full px-2 py-1.5 rounded border border-gray-200 text-sm outline-none focus:border-accent" />
+      <textarea value={draft.suggestion || ""} rows={2}
+        onChange={(e) => setDraft({ ...draft, suggestion: e.target.value })}
+        placeholder="改善案（warn/fail のとき記入）"
+        className="w-full px-2 py-1.5 rounded border border-gray-200 text-sm outline-none focus:border-accent" />
+      <div className="flex justify-end gap-2">
+        <button onClick={cancelEdit}
+          className="px-3 py-1 rounded text-xs border border-gray-200 hover:bg-gray-50">キャンセル</button>
+        <button onClick={saveEdit}
+          disabled={!draft.name.trim() || !draft.comment.trim()}
+          className="px-3 py-1 rounded text-xs bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">保存</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-purple-200">
@@ -671,12 +768,31 @@ function QualityCheckPanel({
 
       {r && (
         <>
-          {r.topPriority && (
-            <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
-              <p className="text-xs font-medium text-amber-700 mb-1">最優先で直すべき</p>
-              <p className="text-sm text-amber-900">{r.topPriority}</p>
+          {/* 最優先で直すべき */}
+          <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-medium text-amber-700">最優先で直すべき</p>
+              {!editingPriority && (
+                <button onClick={startEditPriority}
+                  className="text-xs text-amber-600 hover:text-amber-800">編集</button>
+              )}
             </div>
-          )}
+            {editingPriority ? (
+              <>
+                <textarea value={topPriorityDraft} rows={2}
+                  onChange={(e) => setTopPriorityDraft(e.target.value)}
+                  className="w-full px-2 py-1 rounded border border-amber-300 text-sm outline-none" />
+                <div className="flex justify-end gap-2 mt-1">
+                  <button onClick={() => setEditingPriority(false)}
+                    className="px-3 py-1 rounded text-xs border border-gray-200 hover:bg-gray-50">キャンセル</button>
+                  <button onClick={savePriority}
+                    className="px-3 py-1 rounded text-xs bg-amber-600 text-white hover:bg-amber-700">保存</button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-amber-900">{r.topPriority || "（未設定）"}</p>
+            )}
+          </div>
 
           {showDetail && r.categories.map((cat: QualityCheckCategory, ci: number) => (
             <div key={ci} className="mb-3 last:mb-0">
@@ -684,18 +800,39 @@ function QualityCheckPanel({
                 {cat.passed ? "✅" : "⚠️"} {cat.name}
               </h4>
               <div className="space-y-1.5 ml-1">
-                {cat.items.map((item: QualityCheckItem, ii: number) => (
-                  <div key={ii} className="flex items-start gap-2 text-sm">
-                    {statusBadge(item.status)}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-700">{item.name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{item.comment}</p>
-                      {item.suggestion && item.status !== "pass" && (
-                        <p className="text-xs text-blue-700 mt-0.5">→ {item.suggestion}</p>
-                      )}
+                {cat.items.map((item: QualityCheckItem, ii: number) => {
+                  const key = `${ci}-${ii}`;
+                  if (editingKey === key) {
+                    return <div key={ii}>{editForm()}</div>;
+                  }
+                  return (
+                    <div key={ii} className="group flex items-start gap-2 text-sm">
+                      {statusBadge(item.status)}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-700">{item.name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{item.comment}</p>
+                        {item.suggestion && item.status !== "pass" && (
+                          <p className="text-xs text-blue-700 mt-0.5">→ {item.suggestion}</p>
+                        )}
+                      </div>
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
+                        <button onClick={() => startEdit(ci, ii)}
+                          className="text-xs text-gray-500 hover:text-gray-800 px-1.5 py-0.5 rounded hover:bg-gray-100">編集</button>
+                        <button onClick={() => deleteItem(ci, ii)}
+                          className="text-xs text-gray-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-gray-100">×</button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+                {/* 新規追加フォーム */}
+                {editingKey === `new-${ci}` && editForm()}
+                {/* 追加ボタン */}
+                {editingKey !== `new-${ci}` && (
+                  <button onClick={() => startAdd(ci)}
+                    className="text-xs text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-2 py-1 rounded">
+                    + 指摘を追加
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -705,7 +842,7 @@ function QualityCheckPanel({
               className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200">
               指摘をAIに反映してもらう
             </button>
-            <span className="text-xs text-gray-400">※ 指摘内容を「修正指示」に転記します。「修正する」を押せば反映</span>
+            <span className="text-xs text-gray-400">※ 編集後の指摘内容を「修正指示」に転記します</span>
           </div>
         </>
       )}
