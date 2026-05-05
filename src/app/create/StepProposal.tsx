@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { getApiKey } from "@/lib/channel-store";
 import { getAnalyses, getProfileByChannel } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
@@ -93,6 +94,9 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     <div className="w-full max-w-3xl">
       <h2 className="text-xl font-bold mb-2">⑤ 構成提案</h2>
       <p className="text-sm text-gray-500 mb-6">{analyses.length}本の分析を基に台本の骨組みを提案</p>
+
+      {/* チャンネルプロフィール未設定の警告 */}
+      <ProfileWarning channelId={project.channelId} />
 
       {/* 参考動画サマリー */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
@@ -309,6 +313,35 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
             スキップして台本作成へ →
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ProfileWarning({ channelId }: { channelId?: string }) {
+  const [warn, setWarn] = useState<string | null>(null);
+  useEffect(() => {
+    const profile = getProfileByChannel(channelId || "");
+    const missing: string[] = [];
+    if (!profile.channelName) missing.push("チャンネル名");
+    if (!profile.concept) missing.push("コンセプト");
+    if (!profile.tone) missing.push("口調");
+    if (missing.length > 0) {
+      setWarn(`未設定: ${missing.join(" / ")}。AIが参考動画の人物像（アリサ等）に乗っ取られる原因になります。`);
+    } else {
+      setWarn(null);
+    }
+  }, [channelId]);
+  if (!warn) return null;
+  return (
+    <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+      <span className="text-xl">⚠️</span>
+      <div className="flex-1">
+        <p className="text-sm font-medium text-amber-800">自チャンネルプロフィールが未設定です</p>
+        <p className="text-xs text-amber-700 mt-1">{warn}</p>
+        <Link href="/analysis?tab=profile" className="inline-block mt-2 text-xs text-amber-700 underline hover:text-amber-900">
+          → 自チャンネル設計を開く
+        </Link>
       </div>
     </div>
   );
