@@ -1522,6 +1522,8 @@ const PRESET_QUESTIONS: { label: string; prompt: string }[] = [
   { label: "NG表現・避けるべき構成", prompt: "選択した台本の中で、視聴者離脱を招きそうな表現や構成、避けたほうが良いパターンを指摘してください。" },
 ];
 
+type ChatMsg = { role: "user" | "assistant"; content: string };
+
 function AITab() {
   const { activeChannel } = useChannel();
   const [analyses, setAnalysesState] = useState<ScriptAnalysis[]>([]);
@@ -1531,7 +1533,10 @@ function AITab() {
   const [minScore, setMinScore] = useState<number>(0);
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState("");
+  // 会話履歴: 空 = まだ実行してない、長さ1以上 = 会話モード
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  // 表示用: 最初のユーザー発言は分析データ前置済みなので、ユーザーが実際に打った文字を別管理
+  const [displayPrompts, setDisplayPrompts] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [appended, setAppended] = useState(false);
 
@@ -1539,6 +1544,14 @@ function AITab() {
     setAnalysesState(getAnalyses());
     setInsights(getAIInsightsByChannel(activeChannel?.id || ""));
   }, [activeChannel]);
+
+  const resetConversation = () => {
+    setMessages([]);
+    setDisplayPrompts([]);
+    setPrompt("");
+    setError("");
+    setAppended(false);
+  };
 
   const filtered = analyses.filter((a) => {
     if (filterGenre !== "all") {
@@ -1562,36 +1575,46 @@ function AITab() {
   };
   const clearSelection = () => setSelectedIds([]);
 
-  const handleRun = async () => {
+  const handleSend = async () => {
     setError("");
-    setResult("");
     setAppended(false);
-    if (selectedIds.length === 0) { setError("対象の分析を選択してください"); return; }
-    if (!prompt.trim()) { setError("質問内容を入力してください"); return; }
-    if (selectedIds.length > 10) {
-      if (!confirm(`${selectedIds.length}本選択中。多すぎるとAIが正しく扱えない/コストが上がる可能性あり。続けますか？`)) return;
-    }
+    if (!prompt.trim()) { setError("内容を入力してください"); return; }
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
-    const targets = analyses.filter((a) => selectedIds.includes(a.id));
+    const isFirst = messages.length === 0;
+    if (isFirst) {
+      if (selectedIds.length === 0) { setError("対象の分析を選択してください"); return; }
+      if (selectedIds.length > 10) {
+        if (!confirm(`${selectedIds.length}本選択中。多すぎるとAIが正しく扱えない/コストが上がる可能性あり。続けますか？`)) return;
+      }
+    }
+
     setRunning(true);
     try {
+      const newUserMsg: ChatMsg = { role: "user", content: prompt.trim() };
+      const messagesForApi = isFirst ? [newUserMsg] : [...messages, newUserMsg];
+      const targets = isFirst ? analyses.filter((a) => selectedIds.includes(a.id)) : undefined;
+
       const res = await fetch("/api/script/free-analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          analyses: targets.map((a) => ({
+          analyses: targets?.map((a) => ({
             videoTitle: a.videoTitle, channelName: a.channelName, views: a.views,
             transcript: a.transcript, analysisResult: a.analysisResult, score: a.score,
           })),
-          userPrompt: prompt.trim(),
+          messages: messagesForApi,
           aiApiKey,
         }),
       });
       const data = await res.json();
-      if (data.error) { setError(data.error); }
-      else if (data.result) { setResult(data.result); }
+      if (data.error) { setError(data.error); return; }
+      if (Array.isArray(data.messages)) {
+        setMessages(data.messages);
+        setDisplayPrompts((prev) => [...prev, prompt.trim()]);
+        setPrompt("");
+      }
     } catch {
       setError("AI分析の呼び出しに失敗しました");
     } finally {
@@ -1599,13 +1622,14 @@ function AITab() {
     }
   };
 
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant")?.content || "";
+
   const handleSaveInsight = () => {
-    if (!result.trim()) return;
+    if (messages.length === 0) return;
     const insight: AIAnalysisInsight = {
       id: generateId(),
       channelId: activeChannel?.id || "",
-      prompt: prompt.trim(),
-      response: result,
+      messages: messages,
       sourceAnalysisIds: [...selectedIds],
       createdAt: new Date().toISOString(),
     };
@@ -1615,10 +1639,11 @@ function AITab() {
   };
 
   const handleAppendToRule = () => {
-    if (!result.trim()) return;
-    if (!confirm("AI分析の結果をチャンネル共通ルール (台本ルール → チャンネル共通ルール) の末尾に追記します。既存の内容は消えません。よろしいですか？")) return;
+    if (!lastAssistant.trim()) return;
+    if (!confirm("AI分析の最終回答をチャンネル共通ルール (台本ルール → チャンネル共通ルール) の末尾に追記します。既存の内容は消えません。よろしいですか？")) return;
     const profile = getProfileByChannel(activeChannel?.id || "");
-    const header = `\n\n--- AI分析からの示唆 (${new Date().toLocaleDateString("ja-JP")}) ---\n質問: ${prompt.trim()}\n${result}\n--- ここまで ---`;
+    const firstUserPrompt = displayPrompts[0] || "(質問記録なし)";
+    const header = `\n\n--- AI分析からの示唆 (${new Date().toLocaleDateString("ja-JP")}) ---\n質問: ${firstUserPrompt}\n${lastAssistant}\n--- ここまで ---`;
     const newRules = (profile.commonRules || "") + header;
     saveProfileByChannel({ ...profile, channelId: activeChannel?.id || "", commonRules: newRules });
     pushSharedSettings();
@@ -1634,53 +1659,82 @@ function AITab() {
   };
 
   const handleLoadInsight = (it: AIAnalysisInsight) => {
-    setPrompt(it.prompt);
-    setResult(it.response);
+    // 新形式 messages があればそれを、無ければ旧 prompt/response から再構成
+    const msgs: ChatMsg[] = it.messages && it.messages.length > 0
+      ? it.messages
+      : (it.prompt && it.response ? [{ role: "user", content: it.prompt }, { role: "assistant", content: it.response }] : []);
+    setMessages(msgs);
+    // displayPrompts: ユーザー発言の中身をそのまま流用（最初のは分析データ前置済みかもなので分割を試みる）
+    const userMsgs = msgs.filter((m) => m.role === "user");
+    const display = userMsgs.map((m, i) => {
+      if (i === 0) {
+        // 「【ユーザーの質問】\n」の後を抜き出す
+        const idx = m.content.indexOf("【ユーザーの質問】");
+        if (idx >= 0) return m.content.slice(idx).replace(/^【ユーザーの質問】\n?/, "").trim();
+      }
+      return m.content;
+    });
+    setDisplayPrompts(display);
     setSelectedIds(it.sourceAnalysisIds);
+    setPrompt("");
   };
+
+  const inConversation = messages.length > 0;
 
   return (
     <div className="space-y-6">
-      {/* 対象選択 */}
+      {/* 対象選択 (会話開始後はコンパクト表示) */}
       <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h3 className="font-semibold">① 分析対象を選ぶ</h3>
-          <div className="flex items-center gap-2 text-xs">
-            <button onClick={selectAll} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
-            <button onClick={selectTopScored} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">高スコア5件</button>
-            <button onClick={clearSelection} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">選択解除</button>
-          </div>
+          <h3 className="font-semibold">{inConversation ? "対象（変更不可・会話中）" : "① 分析対象を選ぶ"}</h3>
+          {!inConversation && (
+            <div className="flex items-center gap-2 text-xs">
+              <button onClick={selectAll} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">全選択</button>
+              <button onClick={selectTopScored} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">高スコア5件</button>
+              <button onClick={clearSelection} className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50">選択解除</button>
+            </div>
+          )}
         </div>
 
-        {/* フィルタ */}
-        <div className="flex flex-wrap gap-3 mb-3">
-          <label className="text-xs text-gray-600 flex items-center gap-1">
-            キーワード:
-            <input type="text" value={filterGenre === "all" ? "" : filterGenre}
-              onChange={(e) => setFilterGenre(e.target.value || "all")}
-              placeholder="例: 金運 / 恋愛" className="border border-gray-200 rounded px-2 py-1 text-xs outline-none" />
-          </label>
-          <label className="text-xs text-gray-600 flex items-center gap-1">
-            最低スコア:
-            <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}
-              className="border border-gray-200 rounded px-2 py-1 text-xs outline-none">
-              <option value={0}>制限なし</option>
-              <option value={6}>6以上</option>
-              <option value={7}>7以上</option>
-              <option value={8}>8以上</option>
-            </select>
-          </label>
-        </div>
+        {!inConversation && (
+          <>
+            {/* フィルタ */}
+            <div className="flex flex-wrap gap-3 mb-3">
+              <label className="text-xs text-gray-600 flex items-center gap-1">
+                キーワード:
+                <input type="text" value={filterGenre === "all" ? "" : filterGenre}
+                  onChange={(e) => setFilterGenre(e.target.value || "all")}
+                  placeholder="例: 金運 / 恋愛" className="border border-gray-200 rounded px-2 py-1 text-xs outline-none" />
+              </label>
+              <label className="text-xs text-gray-600 flex items-center gap-1">
+                最低スコア:
+                <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}
+                  className="border border-gray-200 rounded px-2 py-1 text-xs outline-none">
+                  <option value={0}>制限なし</option>
+                  <option value={6}>6以上</option>
+                  <option value={7}>7以上</option>
+                  <option value={8}>8以上</option>
+                </select>
+              </label>
+            </div>
+          </>
+        )}
 
-        <p className="text-xs text-gray-400 mb-2">{filtered.length}件中 {selectedIds.length}件選択中</p>
+        <p className="text-xs text-gray-400 mb-2">
+          {inConversation
+            ? `${selectedIds.length}件を対象に会話中（新しい分析を始めるには下の「リセット」を押してください）`
+            : `${filtered.length}件中 ${selectedIds.length}件選択中`}
+        </p>
 
-        {/* 一覧 */}
+        {/* 一覧（会話中は選択済みのみコンパクトに表示） */}
         <div className="space-y-1 max-h-80 overflow-y-auto border border-gray-100 rounded-lg p-2">
-          {filtered.length === 0 && <p className="text-sm text-gray-400 p-3 text-center">該当する分析がありません</p>}
-          {filtered.map((a) => (
-            <label key={a.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" checked={selectedIds.includes(a.id)} onChange={() => toggle(a.id)}
-                className="w-4 h-4 rounded text-accent" />
+          {!inConversation && filtered.length === 0 && <p className="text-sm text-gray-400 p-3 text-center">該当する分析がありません</p>}
+          {(inConversation ? analyses.filter((a) => selectedIds.includes(a.id)) : filtered).map((a) => (
+            <label key={a.id} className={`flex items-center gap-3 p-2 rounded ${inConversation ? "" : "hover:bg-gray-50 cursor-pointer"}`}>
+              {!inConversation && (
+                <input type="checkbox" checked={selectedIds.includes(a.id)} onChange={() => toggle(a.id)}
+                  className="w-4 h-4 rounded text-accent" />
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm truncate">{a.videoTitle}</p>
                 <p className="text-xs text-gray-400">{a.channelName} · スコア {a.score?.overall || "?"}/10 · {formatNumber(a.views || 0)}回</p>
@@ -1690,35 +1744,70 @@ function AITab() {
         </div>
       </div>
 
-      {/* 質問 */}
-      <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
-        <h3 className="font-semibold mb-3">② 質問する</h3>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {PRESET_QUESTIONS.map((q, i) => (
-            <button key={i} onClick={() => setPrompt(q.prompt)}
-              className="px-3 py-1.5 text-xs rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-accent/30">
-              {q.label}
-            </button>
-          ))}
+      {/* 会話表示 */}
+      {inConversation && (
+        <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+          <h3 className="font-semibold">会話</h3>
+          {messages.map((m, i) => {
+            if (m.role === "user") {
+              const userIdx = messages.slice(0, i + 1).filter((x) => x.role === "user").length - 1;
+              const display = displayPrompts[userIdx] || m.content;
+              return (
+                <div key={i} className="flex justify-end">
+                  <div className="max-w-[85%] bg-accent/10 text-gray-800 rounded-xl rounded-tr-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+                    {display}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={i} className="flex justify-start">
+                <div className="max-w-[95%] bg-gray-50 text-gray-700 rounded-xl rounded-tl-sm px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed">
+                  {m.content}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
-          placeholder="例: 共通している構成を抽出して。または独自の質問を入力してください。"
+      )}
+
+      {/* 入力エリア */}
+      <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+        <h3 className="font-semibold mb-3">{inConversation ? "追加質問・修正指示" : "② 質問する"}</h3>
+        {!inConversation && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {PRESET_QUESTIONS.map((q, i) => (
+              <button key={i} onClick={() => setPrompt(q.prompt)}
+                className="px-3 py-1.5 text-xs rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-accent/30">
+                {q.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={inConversation ? 3 : 4}
+          placeholder={inConversation ? "例: もっと具体例を多めに / フックの部分を詳しく / 違う切り口で再分析して" : "例: 共通している構成を抽出して。または独自の質問を入力してください。"}
           className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm" />
-        <div className="flex items-center justify-between mt-3">
+        <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
           {error && <p className="text-danger text-sm">{error}</p>}
-          <button onClick={handleRun} disabled={running}
-            className="ml-auto px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
-            {running ? "AI分析中..." : "AI分析する"}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {inConversation && (
+              <button onClick={resetConversation} disabled={running}
+                className="px-4 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+                リセット
+              </button>
+            )}
+            <button onClick={handleSend} disabled={running}
+              className="px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
+              {running ? "AI分析中..." : (inConversation ? "送信" : "AI分析する")}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 回答 */}
-      {result && (
+      {/* 保存・追記アクション */}
+      {inConversation && lastAssistant && (
         <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
-          <h3 className="font-semibold mb-3">③ 回答</h3>
-          <pre className="text-sm whitespace-pre-wrap font-sans text-gray-700 leading-relaxed">{result}</pre>
-          <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-gray-100">
+          <div className="flex flex-wrap items-center gap-3">
             <button onClick={handleSaveInsight}
               className="px-4 py-2 text-sm rounded-lg border border-accent text-accent hover:bg-accent/5">
               気づきとして保存
@@ -1727,7 +1816,7 @@ function AITab() {
               className="px-4 py-2 text-sm rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200">
               {appended ? "追記しました ✓" : "チャンネルルールに追記"}
             </button>
-            <span className="text-xs text-gray-400">※ 既存の共通ルールは消さず末尾に追記します</span>
+            <span className="text-xs text-gray-400">※ ルール追記は最終回答のみを使用 / 既存の共通ルールは消さず末尾に追記</span>
           </div>
         </div>
       )}
@@ -1737,20 +1826,29 @@ function AITab() {
         <h3 className="font-semibold mb-3">気づきライブラリ（{activeChannel?.name || "未選択"}・{insights.length}件）</h3>
         {insights.length === 0 && <p className="text-sm text-gray-400">まだありません。AI分析の結果を「気づきとして保存」で溜めていきましょう。</p>}
         <div className="space-y-2">
-          {insights.map((it) => (
-            <div key={it.id} className="border border-gray-100 rounded-lg p-3 hover:border-accent/30">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleLoadInsight(it)}>
-                  <p className="text-sm font-medium line-clamp-1">{it.prompt}</p>
-                  <p className="text-xs text-gray-500 line-clamp-2 mt-1">{it.response.substring(0, 200)}...</p>
-                  <p className="text-xs text-gray-400 mt-1">{new Date(it.createdAt).toLocaleString("ja-JP")} · 対象 {it.sourceAnalysisIds.length}本</p>
+          {insights.map((it) => {
+            const previewPrompt = it.messages?.[0]?.content
+              ? (it.messages[0].content.includes("【ユーザーの質問】")
+                  ? it.messages[0].content.split("【ユーザーの質問】").pop()?.trim() || ""
+                  : it.messages[0].content)
+              : (it.prompt || "");
+            const previewResponse = ([...(it.messages || [])].reverse().find((m) => m.role === "assistant")?.content) || it.response || "";
+            const turnCount = it.messages ? it.messages.filter((m) => m.role === "user").length : 1;
+            return (
+              <div key={it.id} className="border border-gray-100 rounded-lg p-3 hover:border-accent/30">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleLoadInsight(it)}>
+                    <p className="text-sm font-medium line-clamp-1">{previewPrompt}</p>
+                    <p className="text-xs text-gray-500 line-clamp-2 mt-1">{previewResponse.substring(0, 200)}...</p>
+                    <p className="text-xs text-gray-400 mt-1">{new Date(it.createdAt).toLocaleString("ja-JP")} · 対象 {it.sourceAnalysisIds.length}本 · {turnCount}回往復</p>
+                  </div>
+                  <button onClick={() => handleDeleteInsight(it.id)} className="text-gray-300 hover:text-danger shrink-0">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
                 </div>
-                <button onClick={() => handleDeleteInsight(it.id)} className="text-gray-300 hover:text-danger shrink-0">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
