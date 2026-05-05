@@ -194,20 +194,46 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
   };
 
   const addFromAnalyzed = (analysis: ScriptAnalysis) => {
-    // 既に追加済みならスキップ
-    if (videos.some((v) => v.videoId === analysis.videoId)) return;
+    // 既に追加済み（選択済み）なら何もしない（ボタン側で「解除」になっている）
+    const existing = videos.find((v) => v.videoId === analysis.videoId);
+    if (existing && existing.selected) return;
     if (selectedCount >= 3) return;
-    const ref: ReferenceVideo = {
-      videoId: analysis.videoId,
-      title: analysis.videoTitle,
-      channelName: analysis.channelName,
-      views: analysis.views,
-      thumbnailUrl: analysis.thumbnailUrl,
-      selected: true,
-    };
-    setVideos((prev) => [ref, ...prev]);
-    setFetched(true);
+    if (existing) {
+      // リストにはあるが未選択 → 選択ON
+      setVideos((prev) => prev.map((v) => v.videoId === analysis.videoId ? { ...v, selected: true } : v));
+    } else {
+      // 新規追加
+      const ref: ReferenceVideo = {
+        videoId: analysis.videoId,
+        title: analysis.videoTitle,
+        channelName: analysis.channelName,
+        views: analysis.views,
+        thumbnailUrl: analysis.thumbnailUrl,
+        selected: true,
+      };
+      setVideos((prev) => [ref, ...prev]);
+      setFetched(true);
+    }
   };
+
+  // 分析済み一覧の重複を videoId で除去（最新 + スコア高い方を優先）
+  const dedupedAnalyzedVideos = useMemo(() => {
+    const byVideoId = new Map<string, ScriptAnalysis>();
+    for (const a of analyzedVideos) {
+      const key = a.videoId || a.id;
+      const prev = byVideoId.get(key);
+      if (!prev) {
+        byVideoId.set(key, a);
+        continue;
+      }
+      // 比較: スコアが高い方優先、同点なら createdAt 新しい方
+      const prevScore = prev.score?.overall ?? -1;
+      const curScore = a.score?.overall ?? -1;
+      if (curScore > prevScore) byVideoId.set(key, a);
+      else if (curScore === prevScore && (a.createdAt || "") > (prev.createdAt || "")) byVideoId.set(key, a);
+    }
+    return Array.from(byVideoId.values());
+  }, [analyzedVideos]);
 
   const selectedCount = videos.filter((v) => v.selected).length;
 
@@ -230,7 +256,7 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
         </button>
         <button onClick={() => setTab("analyzed")}
           className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px ${tab === "analyzed" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
-          分析済みから選ぶ（{analyzedVideos.length}件）
+          分析済みから選ぶ（{dedupedAnalyzedVideos.length}件）
         </button>
       </div>
 
@@ -250,10 +276,10 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
       {/* 分析済みタブ */}
       {tab === "analyzed" && (
         <div className="space-y-2 mb-6 max-h-[50vh] overflow-y-auto">
-          {analyzedVideos.length === 0 && (
+          {dedupedAnalyzedVideos.length === 0 && (
             <p className="text-center py-8 text-gray-400 text-sm">分析済みの動画がありません。台本分析で動画を分析してください。</p>
           )}
-          {analyzedVideos.map((a) => {
+          {dedupedAnalyzedVideos.map((a) => {
             const alreadyAdded = videos.some((v) => v.videoId === a.videoId && v.selected);
             return (
               <div key={a.id} className={`flex items-center gap-4 p-3 rounded-lg ${alreadyAdded ? "bg-accent/5 border border-accent/30" : "bg-card-bg border border-gray-100"}`}>
