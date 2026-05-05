@@ -241,6 +241,49 @@ export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 }
 
+// --- AI 分析の気づき (チャンネル別) ---
+export interface AIAnalysisInsight {
+  id: string;
+  channelId?: string;
+  prompt: string;            // ユーザー質問
+  response: string;          // AI回答
+  sourceAnalysisIds: string[]; // 対象analyses
+  createdAt: string;
+}
+
+const AI_INSIGHTS_KEY = "fortune_yt_ai_insights";
+
+export function getAIInsights(): AIAnalysisInsight[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem(AI_INSIGHTS_KEY) || "[]");
+}
+
+export function getAIInsightsByChannel(channelId: string): AIAnalysisInsight[] {
+  return getAIInsights().filter((i) => !i.channelId || i.channelId === channelId);
+}
+
+export function saveAIInsight(insight: AIAnalysisInsight) {
+  if (typeof window === "undefined") return;
+  const all = getAIInsights();
+  all.unshift(insight);
+  // チャンネル毎に最新50件のみ保持
+  const byChannel = new Map<string, AIAnalysisInsight[]>();
+  for (const it of all) {
+    const k = it.channelId || "";
+    if (!byChannel.has(k)) byChannel.set(k, []);
+    byChannel.get(k)!.push(it);
+  }
+  const trimmed: AIAnalysisInsight[] = [];
+  for (const list of byChannel.values()) trimmed.push(...list.slice(0, 50));
+  localStorage.setItem(AI_INSIGHTS_KEY, JSON.stringify(trimmed));
+}
+
+export function deleteAIInsight(id: string) {
+  if (typeof window === "undefined") return;
+  const filtered = getAIInsights().filter((i) => i.id !== id);
+  localStorage.setItem(AI_INSIGHTS_KEY, JSON.stringify(filtered));
+}
+
 // --- DB同期: サーバーからlocalStorageにマージ ---
 
 export async function syncFromServer(): Promise<{ analyses: ScriptAnalysis[]; proposals: ScriptProposal[] }> {

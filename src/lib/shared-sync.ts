@@ -2,7 +2,11 @@
 // ルール: サーバーとローカルの両方を保持。どちらかにしかないデータは追加。
 
 import { getApiKey, setApiKey, getChannels, saveChannels } from "./channel-store";
-import { getProfile, saveProfile, type ChannelProfile } from "./script-analysis-store";
+import {
+  getProfile, saveProfile,
+  getAIInsights, saveAIInsight,
+  type ChannelProfile, type AIAnalysisInsight,
+} from "./script-analysis-store";
 import {
   getHooks, getCTAs, getThumbnailWords, getTitles,
   getPresets, savePreset,
@@ -362,6 +366,15 @@ export async function pullSharedSettings(): Promise<void> {
       }
     }
 
+    // AI分析の気づき: idベースでマージ
+    if (Array.isArray(data.aiInsights) && data.aiInsights.length > 0) {
+      const local = getAIInsights();
+      const localIds = new Set(local.map((i) => i.id));
+      for (const ins of data.aiInsights as AIAnalysisInsight[]) {
+        if (!localIds.has(ins.id)) saveAIInsight(ins);
+      }
+    }
+
     notifySync("synced");
     console.log("[shared-sync] pulled & merged settings from server");
   } catch (e) {
@@ -407,6 +420,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         winningPatternsList: getWinningPatternsList(),
         ideas: getIdeas(),
         ideaRulesList: getIdeaRulesList(),
+        aiInsights: getAIInsights(),
         myChannels: typeof window !== "undefined"
           ? JSON.parse(localStorage.getItem(MY_CHANNELS_KEY) || "[]")
           : [],
