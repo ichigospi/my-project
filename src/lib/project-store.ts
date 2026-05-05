@@ -18,6 +18,30 @@ export const STYLE_LABELS: Record<Style, string> = {
 // ===== 台本プロジェクト =====
 export type ReviewStatus = "none" | "pending" | "approved" | "rejected";
 
+// 品質チェック結果（step6完了後の台本品質評価）
+export type QualityCheckStatus = "pass" | "warn" | "fail";
+
+export interface QualityCheckItem {
+  name: string;
+  status: QualityCheckStatus;
+  comment: string;
+  suggestion?: string;
+}
+
+export interface QualityCheckCategory {
+  name: string;
+  passed: boolean;
+  items: QualityCheckItem[];
+}
+
+export interface QualityCheckResult {
+  categories: QualityCheckCategory[];
+  overallScore: number;        // 0-10
+  topPriority: string;         // 最優先で直すべきポイント
+  checkedAt: string;
+  scriptHash?: string;         // チェック時の台本ハッシュ（変更検知用）
+}
+
 export interface ScriptProject {
   id: string;
   genre: Genre;
@@ -38,6 +62,8 @@ export interface ScriptProject {
   // 台本チェック（step6 完了後のみ依頼可能）
   scriptReviewStatus?: ReviewStatus;
   scriptReviewNote?: string;
+  // 台本品質チェック結果（step6 完了後）
+  qualityCheckResult?: QualityCheckResult;
   createdAt: string;
   updatedAt: string;
 }

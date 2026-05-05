@@ -4,10 +4,20 @@ import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { getPresetFor, getPerformanceRecordsByChannel } from "@/lib/project-store";
+import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
-import type { ScriptProject, TelopLine, Genre, Style } from "@/lib/project-store";
+import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem } from "@/lib/project-store";
+
+// 簡易ハッシュ（チェック時の台本と現在の台本が一致するか判定用）
+function simpleHash(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
 
 // マークダウン記法を除いた純粋なテキスト文字数
 function pureTextLength(text: string): number {
@@ -50,6 +60,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [scriptHistory, setScriptHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [checkingQuality, setCheckingQuality] = useState(false);
+  const [showQualityDetail, setShowQualityDetail] = useState(true);
   const [syncDone, setSyncDone] = useState(false);
 
   // 一致率チェック
@@ -139,6 +151,79 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       setScriptHistory((prev) => [...prev, project.generatedScript]);
     }
     onUpdate({ ...project, generatedScript: scriptHistory[idx] });
+  };
+
+  // 品質チェック実行
+  const handleQualityCheck = async () => {
+    if (!project.generatedScript) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+
+    setCheckingQuality(true);
+    setError("");
+    try {
+      // 元ネタの分析データを取得
+      const allAnalyses = getAnalyses();
+      const referenceAnalyses = allAnalyses.filter((a) => project.analyses?.includes(a.id));
+      const profile = getProfileByChannel(project.channelId || "");
+      const preset = getPresetFor(project.genre as Genre, project.style as Style, project.channelId);
+      const winningPatterns = getWinningPatternsByChannel(project.channelId || "");
+
+      const res = await fetch("/api/script/quality-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          script: project.generatedScript,
+          title: project.title || "",
+          profile, preset, winningPatterns,
+          referenceAnalyses: referenceAnalyses.map((a) => ({
+            videoTitle: a.videoTitle,
+            views: a.views,
+            analysisResult: a.analysisResult,
+            transcript: a.transcript,
+          })),
+          aiApiKey,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+      const result: QualityCheckResult = {
+        categories: data.categories || [],
+        overallScore: data.overallScore || 0,
+        topPriority: data.topPriority || "",
+        checkedAt: new Date().toISOString(),
+        scriptHash: simpleHash(project.generatedScript),
+      };
+      onUpdate({ ...project, qualityCheckResult: result });
+      setShowQualityDetail(true);
+      pushSharedSettings();
+    } catch {
+      setError("品質チェックに失敗しました");
+    } finally {
+      setCheckingQuality(false);
+    }
+  };
+
+  // 品質チェック結果を修正指示欄に流し込む（既存の修正フローを再利用）
+  const handleApplyQualityFix = () => {
+    const r = project.qualityCheckResult;
+    if (!r) return;
+    const issues: string[] = [];
+    for (const cat of r.categories) {
+      for (const item of cat.items) {
+        if (item.status !== "pass" && item.suggestion) {
+          issues.push(`【${cat.name} - ${item.name}】\n  問題: ${item.comment}\n  修正案: ${item.suggestion}`);
+        }
+      }
+    }
+    if (issues.length === 0) { setError("修正が必要な項目がありません"); return; }
+    const note = `以下の品質チェック指摘を反映して、台本全体を書き換えてください。\n\n${issues.join("\n\n")}`;
+    setRevisionNote(note);
+    // スクロールして修正指示欄を見せる
+    setTimeout(() => {
+      const el = document.querySelector("textarea[placeholder*=\"フック\"]") as HTMLElement | null;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
   };
 
   const handleConvertTelop = async () => {
@@ -334,6 +419,17 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
           </div>
 
+          {/* 品質チェック */}
+          <QualityCheckPanel
+            project={project}
+            checking={checkingQuality}
+            showDetail={showQualityDetail}
+            onToggleDetail={() => setShowQualityDetail(!showQualityDetail)}
+            onCheck={handleQualityCheck}
+            onApplyFix={handleApplyQualityFix}
+            currentScriptHash={simpleHash(project.generatedScript || "")}
+          />
+
           {/* 修正指示欄 */}
           <div className={`bg-card-bg rounded-xl p-5 shadow-sm border ${revising ? "border-accent" : "border-accent/20"}`}>
             <div className="flex items-center gap-2 mb-2">
@@ -511,6 +607,108 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function QualityCheckPanel({
+  project, checking, showDetail, onToggleDetail, onCheck, onApplyFix, currentScriptHash,
+}: {
+  project: ScriptProject;
+  checking: boolean;
+  showDetail: boolean;
+  onToggleDetail: () => void;
+  onCheck: () => void;
+  onApplyFix: () => void;
+  currentScriptHash: string;
+}) {
+  const r = project.qualityCheckResult;
+  const stale = r?.scriptHash && r.scriptHash !== currentScriptHash;
+  const scoreColor = (s: number) =>
+    s >= 8 ? "text-green-600" : s >= 6 ? "text-amber-600" : "text-red-600";
+  const statusBadge = (status: QualityCheckItem["status"]) => {
+    if (status === "pass") return <span className="text-green-600 shrink-0">✓</span>;
+    if (status === "warn") return <span className="text-amber-600 shrink-0">⚠</span>;
+    return <span className="text-red-600 shrink-0">✗</span>;
+  };
+
+  return (
+    <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-purple-200">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">品質チェック</h3>
+          {r && (
+            <span className={`text-sm font-bold ${scoreColor(r.overallScore)}`}>
+              {r.overallScore.toFixed(1)} / 10
+            </span>
+          )}
+          {r && stale && <span className="text-xs text-amber-600">※ 台本が変更されています。再チェックを推奨</span>}
+          {checking && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-purple-600 font-medium">
+              <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
+              分析中...
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {r && (
+            <button onClick={onToggleDetail} className="text-xs text-gray-500 hover:text-gray-700">
+              {showDetail ? "詳細を閉じる" : "詳細を見る"}
+            </button>
+          )}
+          <button onClick={onCheck} disabled={checking}
+            className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+            {checking ? "チェック中..." : (r ? "再チェック" : "品質チェック実行")}
+          </button>
+        </div>
+      </div>
+
+      {!r && !checking && (
+        <p className="text-sm text-gray-500">
+          ルール遵守 / 元ネタとの比較 / 勝ちパターン / 構成密度 / タイトル整合性 の5観点で台本を評価します。
+        </p>
+      )}
+
+      {r && (
+        <>
+          {r.topPriority && (
+            <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <p className="text-xs font-medium text-amber-700 mb-1">最優先で直すべき</p>
+              <p className="text-sm text-amber-900">{r.topPriority}</p>
+            </div>
+          )}
+
+          {showDetail && r.categories.map((cat: QualityCheckCategory, ci: number) => (
+            <div key={ci} className="mb-3 last:mb-0">
+              <h4 className="text-sm font-semibold mb-1">
+                {cat.passed ? "✅" : "⚠️"} {cat.name}
+              </h4>
+              <div className="space-y-1.5 ml-1">
+                {cat.items.map((item: QualityCheckItem, ii: number) => (
+                  <div key={ii} className="flex items-start gap-2 text-sm">
+                    {statusBadge(item.status)}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-700">{item.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{item.comment}</p>
+                      {item.suggestion && item.status !== "pass" && (
+                        <p className="text-xs text-blue-700 mt-0.5">→ {item.suggestion}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-100">
+            <button onClick={onApplyFix}
+              className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200">
+              指摘をAIに反映してもらう
+            </button>
+            <span className="text-xs text-gray-400">※ 指摘内容を「修正指示」に転記します。「修正する」を押せば反映</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
