@@ -155,7 +155,20 @@ function ProfileTab() {
   }, [activeChannel]);
 
   const handleSave = () => {
-    saveProfileByChannel({ ...profile, channelId: activeChannel?.id || "" });
+    // 他ページ（台本ルール等）が編集したフィールドを潰さないよう、保存直前に最新を取得してマージ
+    const latest = getProfileByChannel(activeChannel?.id || "");
+    saveProfileByChannel({
+      ...latest,
+      // 自チャンネル設計タブで編集する項目だけ上書き
+      channelName: profile.channelName,
+      concept: profile.concept,
+      tone: profile.tone,
+      target: profile.target,
+      genres: profile.genres,
+      mainStyle: profile.mainStyle,
+      characteristics: profile.characteristics,
+      channelId: activeChannel?.id || "",
+    });
     pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
