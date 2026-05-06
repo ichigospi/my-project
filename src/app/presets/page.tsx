@@ -52,7 +52,16 @@ export default function PresetsPage() {
 
   const handleSaveProfile = () => {
     if (!profile) return;
-    saveProfileByChannel({ ...profile, channelId: activeChannel?.id || "" });
+    // 他ページ（自チャンネル設計等）が編集したフィールドを潰さないよう、保存直前に最新を取得してマージ
+    const latest = getProfileByChannel(activeChannel?.id || "");
+    saveProfileByChannel({
+      ...latest,
+      // 台本ルール画面で編集する項目だけ上書き
+      commonRules: profile.commonRules,
+      ngExpressions: profile.ngExpressions,
+      referenceAnalysisIds: profile.referenceAnalysisIds,
+      channelId: activeChannel?.id || "",
+    });
     pushSharedSettings();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);

@@ -21,6 +21,9 @@ export async function GET() {
       thumbnailWords: map["shared_thumbnail_words"] ? JSON.parse(map["shared_thumbnail_words"]) : [],
       titles: map["shared_titles"] ? JSON.parse(map["shared_titles"]) : [],
       profile: map["shared_profile"] ? JSON.parse(map["shared_profile"]) : null,
+      profilesList: map["shared_profiles_list"]
+        ? JSON.parse(map["shared_profiles_list"])
+        : (map["shared_profile"] ? [JSON.parse(map["shared_profile"])] : []),
       winningPatterns: map["shared_winning_patterns"] ? JSON.parse(map["shared_winning_patterns"]) : null,
       presets: map["shared_presets"] ? JSON.parse(map["shared_presets"]) : [],
       projects: map["shared_projects"] ? JSON.parse(map["shared_projects"]) : [],
@@ -67,6 +70,7 @@ export async function POST(request: NextRequest) {
     if (body.thumbnailWords !== undefined) updates.push({ key: "shared_thumbnail_words", value: JSON.stringify(body.thumbnailWords) });
     if (body.titles !== undefined) updates.push({ key: "shared_titles", value: JSON.stringify(body.titles) });
     if (body.profile !== undefined) updates.push({ key: "shared_profile", value: JSON.stringify(body.profile) });
+    if (body.profilesList !== undefined) updates.push({ key: "shared_profiles_list", value: JSON.stringify(body.profilesList) });
     if (body.winningPatterns !== undefined) updates.push({ key: "shared_winning_patterns", value: JSON.stringify(body.winningPatterns) });
     if (body.presets !== undefined) updates.push({ key: "shared_presets", value: JSON.stringify(body.presets) });
     if (body.projects !== undefined) updates.push({ key: "shared_projects", value: JSON.stringify(body.projects) });

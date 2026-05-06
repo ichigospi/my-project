@@ -4,6 +4,7 @@
 import { getApiKey, setApiKey, getChannels, saveChannels } from "./channel-store";
 import {
   getProfile, saveProfile,
+  getAllProfiles, saveProfileByChannel,
   getAIInsights, saveAIInsight,
   type ChannelProfile, type AIAnalysisInsight,
 } from "./script-analysis-store";
@@ -248,10 +249,21 @@ export async function pullSharedSettings(): Promise<void> {
       localStorage.setItem("fortune_yt_titles", JSON.stringify(merged));
     }
 
-    // プロフィール: マージ
+    // プロフィール: 旧singleton (後方互換)
     if (data.profile) {
       const merged = mergeProfile(getProfile(), data.profile);
       saveProfile(merged);
+    }
+
+    // チャンネル別プロフィール: channelId毎にマージ
+    if (Array.isArray(data.profilesList) && data.profilesList.length > 0) {
+      const localList = getAllProfiles();
+      for (const incoming of data.profilesList as ChannelProfile[]) {
+        const key = incoming.channelId || "";
+        const existing = localList.find((p) => (p.channelId || "") === key);
+        const merged = mergeProfile(existing || incoming, incoming);
+        saveProfileByChannel({ ...merged, channelId: key });
+      }
     }
 
     // プリセット: マージ
@@ -409,6 +421,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         thumbnailWords: getThumbnailWords(),
         titles: getTitles(),
         profile: getProfile(),
+        profilesList: getAllProfiles(),
         presets: getPresets(),
         projects: getProjects(),
         tasks: getTasks(),

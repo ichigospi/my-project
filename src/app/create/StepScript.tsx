@@ -303,6 +303,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     <div>
       <h2 className="text-xl font-bold mb-6">⑥ 台本出力</h2>
 
+      <ScriptProfileWarning channelId={project.channelId} />
+
       {!project.generatedScript && (
         <div className="text-center py-12">
           <button onClick={handleGenerate} disabled={generating}
@@ -846,6 +848,31 @@ function QualityCheckPanel({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function ScriptProfileWarning({ channelId }: { channelId?: string }) {
+  const [warn, setWarn] = useState<string | null>(null);
+  useEffect(() => {
+    const profile = getProfileByChannel(channelId || "");
+    const missing: string[] = [];
+    if (!profile.channelName) missing.push("チャンネル名");
+    if (!profile.concept) missing.push("コンセプト");
+    if (!profile.tone) missing.push("口調");
+    setWarn(missing.length > 0 ? `未設定: ${missing.join(" / ")}` : null);
+  }, [channelId]);
+  if (!warn) return null;
+  return (
+    <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-3">
+      <span>⚠️</span>
+      <div className="flex-1">
+        <p className="text-sm font-medium text-amber-800">自チャンネルプロフィール {warn}</p>
+        <p className="text-xs text-amber-700 mt-0.5">未設定のままだと、AIが参考動画の人物像をコピーしてしまうことがあります。</p>
+        <a href="/analysis?tab=profile" className="inline-block mt-1 text-xs text-amber-700 underline hover:text-amber-900">
+          → 自チャンネル設計を開く
+        </a>
+      </div>
     </div>
   );
 }
