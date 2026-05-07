@@ -347,8 +347,12 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                 <p className="text-xs text-gray-500">セクション数</p>
               </div>
               <div>
-                <p className={`text-xl md:text-2xl font-bold ${similarities.every((s) => s.rate <= 25) ? "text-green-600" : "text-red-500"}`}>
-                  {similarities.length > 0 ? (similarities.every((s) => s.rate <= 25) ? "安全" : "要確認") : "—"}
+                <p className={`text-xl md:text-2xl font-bold ${similarities.every((s) => s.rate <= 70) ? (similarities.some((s) => s.rate >= 30) ? "text-green-600" : "text-amber-600") : "text-red-500"}`}>
+                  {similarities.length > 0
+                    ? (similarities.every((s) => s.rate <= 70)
+                        ? (similarities.some((s) => s.rate >= 30) ? "適正" : "薄い")
+                        : "丸コピー疑い")
+                    : "—"}
                 </p>
                 <p className="text-xs text-gray-500">一致率チェック</p>
               </div>
@@ -377,21 +381,24 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             {/* 一致率詳細 */}
             {similarities.length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500 mb-2">参考台本との一致率（25%以下が安全圏）</p>
+                <p className="text-xs text-gray-500 mb-2">参考台本との一致率（30〜70%が適正トレース範囲）</p>
                 <div className="space-y-1.5">
-                  {similarities.map((s, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-600 flex-1 truncate">{s.title}</span>
-                      <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${s.rate <= 25 ? "bg-green-500" : s.rate <= 40 ? "bg-yellow-500" : "bg-red-500"}`}
-                          style={{ width: `${Math.min(s.rate, 100)}%` }} />
+                  {similarities.map((s, i) => {
+                    const color = s.rate < 30 ? "amber" : s.rate <= 70 ? "green" : "red";
+                    const bgClass = color === "green" ? "bg-green-500" : color === "amber" ? "bg-amber-500" : "bg-red-500";
+                    const textClass = color === "green" ? "text-green-600" : color === "amber" ? "text-amber-600" : "text-red-500";
+                    return (
+                      <div key={i} className="flex items-center gap-3">
+                        <span className="text-xs text-gray-600 flex-1 truncate">{s.title}</span>
+                        <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${bgClass}`} style={{ width: `${Math.min(s.rate, 100)}%` }} />
+                        </div>
+                        <span className={`text-xs font-bold w-10 text-right ${textClass}`}>{s.rate}%</span>
                       </div>
-                      <span className={`text-xs font-bold w-10 text-right ${s.rate <= 25 ? "text-green-600" : s.rate <= 40 ? "text-yellow-600" : "text-red-500"}`}>
-                        {s.rate}%
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+                <p className="text-[10px] text-gray-400 mt-1">※ 30%未満=訴求が薄い／30〜70%=適正／70%超=丸コピー疑い</p>
               </div>
             )}
           </div>
