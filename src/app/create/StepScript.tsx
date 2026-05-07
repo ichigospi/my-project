@@ -209,15 +209,24 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const r = project.qualityCheckResult;
     if (!r) return;
     const issues: string[] = [];
+    const preserved: string[] = [];
     for (const cat of r.categories) {
       for (const item of cat.items) {
-        if (item.status !== "pass" && item.suggestion) {
+        if (item.status === "pass") {
+          // 合格項目: AI が触らないように記録
+          preserved.push(`・【${cat.name}】${item.name}: ${item.comment}`);
+        } else if (item.suggestion) {
           issues.push(`【${cat.name} - ${item.name}】\n  問題: ${item.comment}\n  修正案: ${item.suggestion}`);
         }
       }
     }
     if (issues.length === 0) { setError("修正が必要な項目がありません"); return; }
-    const note = `以下の品質チェック指摘を反映して、台本全体を書き換えてください。\n\n${issues.join("\n\n")}`;
+    let note = `以下の指摘箇所だけを最小限の差分で修正してください。\n\n`;
+    note += `【最重要ルール】\n・指摘されてない部分は1文字も変えないこと\n・既に合格してる部分の言い回し・構成・並び順を絶対に触らないこと\n・修正前後の差分を最小化すること\n\n`;
+    note += `【修正すべき箇所】\n${issues.join("\n\n")}`;
+    if (preserved.length > 0) {
+      note += `\n\n【既に合格していて変更してはいけない要素（参考）】\n${preserved.join("\n")}`;
+    }
     setRevisionNote(note);
     // スクロールして修正指示欄を見せる
     setTimeout(() => {
