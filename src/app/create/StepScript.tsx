@@ -94,6 +94,16 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     setError("");
     const preset = getPresetFor(project.genre, project.style, project.channelId);
 
+    // 元ネタの分析データ（上位互換生成のため、超えるべき基準値として渡す）
+    const referenceAnalyses = getAnalyses()
+      .filter((a) => project.analyses?.includes(a.id))
+      .map((a) => ({
+        videoTitle: a.videoTitle,
+        channelName: a.channelName,
+        views: a.views,
+        analysisResult: a.analysisResult,
+      }));
+
     try {
       const res = await fetch("/api/script/create", {
         method: "POST",
@@ -105,6 +115,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           topic: project.title,
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${preset.targetWordCount}文字\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)),
+          referenceAnalyses,
           aiApiKey,
         }),
       });

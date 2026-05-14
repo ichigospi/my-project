@@ -40,6 +40,11 @@ export interface AnalysisResult {
   appealPoints: string[];
   targetEmotion: string;
   overallPattern: string;
+  // --- 上位互換生成のための5要素（元ネタから抽出し、これを超える台本を作る） ---
+  idealFuture?: string;        // 理想の未来（欲求喚起）: 数字・シチュエーション込みの具体描写
+  worstFuture?: string;        // 最悪の未来: 回避したい恐怖・損失の具体描写
+  retentionTactics?: string[]; // 視聴維持率を確保する仕掛け（離脱防止の工夫）
+  worldview?: string;          // 世界観の演出（用語・比喩・スピリチュアルな世界観の作り込み）
 }
 
 export interface StructureSection {
