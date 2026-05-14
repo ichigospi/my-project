@@ -15,16 +15,22 @@ export async function POST(request: NextRequest) {
       structure: { name: string; timeRange: string; purpose: string }[];
       hooks: string[]; ctas: string[]; growthFactors: string[];
       appealPoints: string[]; overallPattern: string;
+      idealFuture?: string; worstFuture?: string;
+      retentionTactics?: string[]; worldview?: string;
       score?: { overall: number };
     };
   }, i: number) => `
 【参考動画${i + 1}】「${a.videoTitle}」（${a.channelName}）再生数: ${a.views?.toLocaleString()}回
 概要: ${a.analysisResult?.summary}
-構成: ${a.analysisResult?.structure?.map((s) => `${s.name}(${s.timeRange})`).join(" → ")}
+構成（★この順番・役割・尺配分を完全トレースする）:
+${a.analysisResult?.structure?.map((s, idx) => `  ${idx + 1}. ${s.name}（${s.timeRange}）— 役割: ${s.purpose || "不明"}`).join("\n") || "  不明"}
 フック: ${a.analysisResult?.hooks?.join(" / ")}
+理想の未来(欲求喚起): ${a.analysisResult?.idealFuture || a.analysisResult?.appealPoints?.join(" / ") || "不明"}
+最悪の未来: ${a.analysisResult?.worstFuture || "不明"}
 CTA: ${a.analysisResult?.ctas?.join(" / ")}
+視聴維持の仕掛け(離脱防止): ${a.analysisResult?.retentionTactics?.join(" / ") || "不明"}
+世界観の演出: ${a.analysisResult?.worldview || "不明"}
 伸び要因: ${a.analysisResult?.growthFactors?.join(" / ")}
-訴求: ${a.analysisResult?.appealPoints?.join(" / ")}
 パターン: ${a.analysisResult?.overallPattern}
 スコア: ${a.analysisResult?.score?.overall || "不明"}/10
 `).join("\n");
@@ -61,13 +67,16 @@ ${userPrompt}
 
 修正後の骨組み全体をマークダウン形式で出力してください。修正点以外はできるだけ維持してください。`;
   } else {
-    prompt = `あなたは占い・スピリチュアル系YouTubeの台本構成プロデューサーです。
+    prompt = `あなたはプロのスピーチマーケター兼YouTube台本構成プロデューサーです。
 
-以下の参考動画の分析を基に、「良いとこどり」の台本骨組みを提案してください。
+以下の参考動画の分析を基に、元ネタを超える「上位互換」の台本骨組みを設計してください。
+これは元ネタの設計図をそのまま使い、中身の訴求だけを一段強くするための骨組みです。
 
 【鉄則】
-- 参考動画で実際に伸びている要素を軸にすること
+- 構成は元ネタを完全にトレースする: セクションの順番・役割・尺配分をそのまま踏襲し、勝手に組み替えない
+- 参考動画が複数ある場合は、最も伸びている動画の構成を主軸とし、他は訴求要素の補強に使う
 - 各セクションで「どの参考動画のどの要素を取り入れたか」を必ず明記すること
+- 各セクションに、元ネタの5要素（理想の未来／最悪の未来／CTA／視聴維持の仕掛け／世界観の演出）のうち該当するものを「元ネタはこう → 上位互換ではこう一段具体的にする」の形で明記すること
 - オリジナリティを出しすぎて参考動画から乖離しないこと
 - ヒーリング系の場合: 本編（ヒーリングパート）は3分以内に開始すること。冒頭のフック＋共感は1-2分で切り上げてすぐ本編に入る
 - 教育系の場合: 冒頭2分以内に本題に入ること
@@ -97,6 +106,7 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
 
 > 📺 参考元: 「参考動画タイトル」の○○を採用
 > 💡 この要素が有効な理由の解説
+> ⬆️ 上位互換ポイント: 元ネタの「○○」を、より具体的な□□に強化する（該当する5要素がある場合のみ）
 
 ## ❷ セクション名（0:50-2:00）
 ...（同じ形式で全セクション）

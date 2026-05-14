@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SYSTEM_PROMPT = `あなたは占い・スピリチュアル系YouTubeの台本分析の専門家です。
+const SYSTEM_PROMPT = `あなたはプロのスピーチマーケター兼YouTube台本分析の専門家です。
+この分析結果は「元ネタを超える上位互換の台本」を作るための設計図になります。
+そのため、抽象的な要約ではなく、元ネタが実際に使っている訴求の「具体性」（数字・固有のシチュエーション・感情の動き）をそのまま捉えてください。
 与えられた台本を分析し、必ず有効なJSONのみを出力してください。
 JSON以外のテキスト（説明文、マークダウン、コードブロック記法）は一切出力しないでください。`;
 
@@ -12,8 +14,11 @@ function buildUserPrompt(transcript: string, videoTitle: string, channelName: st
 再生回数: ${views ? views.toLocaleString() + '回' : '不明'}
 
 --- 台本テキスト ---
-${transcript.substring(0, 8000)}
+${transcript.substring(0, 15000)}
 --- ここまで ---
+
+structure は台本の冒頭から末尾（CTA・締め）まで、実際の流れを省略せず全セクション抽出してください。
+構成のトレースに使うため、各セクションの purpose（役割）は具体的に書いてください。
 
 以下のJSON形式で出力:
 {
@@ -25,6 +30,10 @@ ${transcript.substring(0, 8000)}
   "appealPoints": ["訴求ポイント"],
   "targetEmotion": "ターゲット感情",
   "overallPattern": "台本パターン",
+  "idealFuture": "この台本が描く『理想の未来（欲求喚起）』。視聴者がこうなりたいと思う状態を、台本内の具体的な表現（数字・金額・固有のシチュエーション）込みで記述。抽象化しない",
+  "worstFuture": "この台本が描く『最悪の未来』。視聴者が回避したい恐怖・損失を、台本内の具体的な表現込みで記述。描かれていない場合は『なし』",
+  "retentionTactics": ["視聴維持率を確保し離脱を防いでいる仕掛け（次の展開の予告、問いかけ、間の取り方、感情の起伏、テンポ等）を具体的に"],
+  "worldview": "世界観の演出方法（独自の用語、比喩、スピリチュアルな世界観の作り込み方、視聴者の没入を生む語り口）",
   "thumbnailWords": ["サムネイルに使うと効果的なパワーワード（タイトルや台本から抽出、3-5個）"],
   "titleElements": ["このタイトルの効果的な要素（数字訴求、限定感、感情喚起など、2-4個）"],
   "score": {"hookStrength": 8, "ctaEffectiveness": 7, "structureBalance": 9, "emotionalAppeal": 8, "overall": 8}

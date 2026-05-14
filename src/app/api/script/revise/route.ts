@@ -1,16 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
 
+interface RefAnalysis {
+  videoTitle?: string;
+  analysisResult?: {
+    structure?: { name: string; timeRange: string; purpose: string }[];
+    ctas?: string[];
+    idealFuture?: string;
+    worstFuture?: string;
+    retentionTactics?: string[];
+    worldview?: string;
+  } | null;
+}
+
+// 元ネタ分析を「修正時に超えるべき基準値」として整形する
+function buildReferenceText(referenceAnalyses: RefAnalysis[]): string {
+  if (!referenceAnalyses || referenceAnalyses.length === 0) return "";
+
+  const blocks = referenceAnalyses.map((a, i) => {
+    const r = a.analysisResult;
+    if (!r) return "";
+    return `■ 元ネタ${i + 1}「${a.videoTitle || "無題"}」
+・構成: ${r.structure?.map((s) => `${s.name}(${s.timeRange})`).join(" → ") || "不明"}
+・理想の未来: ${r.idealFuture || "不明"}
+・最悪の未来: ${r.worstFuture || "不明"}
+・CTA: ${r.ctas?.join(" / ") || "不明"}
+・視聴維持の仕掛け: ${r.retentionTactics?.join(" / ") || "不明"}
+・世界観の演出: ${r.worldview || "不明"}`;
+  }).filter(Boolean);
+
+  if (blocks.length === 0) return "";
+
+  return `
+【元ネタ分析（修正時の基準値。これと同等以下にしないこと）】
+${blocks.join("\n\n")}
+`;
+}
+
 // 台本の修正指示を受けて差分修正
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { script, revisionNote, aiApiKey } = body;
+  const { script, revisionNote, aiApiKey, referenceAnalyses } = body;
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが必要です" }, { status: 400 });
   if (!script || !revisionNote) return NextResponse.json({ error: "台本と修正指示が必要です" }, { status: 400 });
 
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
 
-  const prompt = `以下の台本を「修正指示」に従って **必要最小限** に修正してください。
+  const referenceText = buildReferenceText(referenceAnalyses);
+
+  const prompt = `あなたはプロのスピーチマーケター兼YouTube台本ライターです。
+以下の台本を「修正指示」に従って **必要最小限** に修正してください。
 
 【絶対ルール】
 - 修正指示で明示的に挙げられた問題箇所だけを直す
@@ -21,6 +60,11 @@ export async function POST(request: NextRequest) {
 - 全体を書き直さない。指示に関係ない部分の言い回しは絶対に変えない
 - 「文法を修正」のような全体指示が来た場合のみ、明らかな誤り（助詞の誤り・誤字）に限って直し、それ以外は触らない
 
+【修正時の品質基準】
+- 元ネタ分析が与えられている場合、修正後の該当箇所は元ネタの該当要素（理想の未来／最悪の未来／CTA／視聴維持の仕掛け／世界観）より具体的でターゲットに刺さる状態にすること
+- 構成（セクションの順番・役割）は元ネタをトレースしたまま維持し、修正で崩さないこと
+- ただし上記の「絶対ルール」が最優先。基準値を満たすためでも、指示外の箇所は変えない
+${referenceText}
 【修正指示】
 ${revisionNote}
 
