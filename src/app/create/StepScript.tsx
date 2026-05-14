@@ -33,13 +33,17 @@ function pureTextLength(text: string): number {
 }
 
 // セクション別文字数
+// 「## 見出し」だけでなく、チャンネルルールに沿った「❶〜❿」マーカーや
+// 「【前半】【中盤】【終盤】」ラベルでのセクション区切りにも対応する
+const SECTION_HEADER_RE = /^(?=##\s|[❶❷❸❹❺❻❼❽❾❿]|【(?:前半|中盤|終盤)[^】]*】)/m;
+
 function getSectionStats(text: string): { name: string; chars: number }[] {
   const sections: { name: string; chars: number }[] = [];
-  const parts = text.split(/^## /m);
+  const parts = text.split(SECTION_HEADER_RE);
   for (const part of parts) {
     if (!part.trim()) continue;
     const lines = part.split("\n");
-    const name = lines[0]?.trim() || "（セクション名なし）";
+    const name = (lines[0]?.replace(/^##\s+/, "").trim()) || "（セクション名なし）";
     const body = lines.slice(1).join("\n");
     sections.push({ name, chars: pureTextLength(body) });
   }
