@@ -22,7 +22,8 @@ export async function POST(request: NextRequest) {
   }, i: number) => `
 【参考動画${i + 1}】「${a.videoTitle}」（${a.channelName}）再生数: ${a.views?.toLocaleString()}回
 概要: ${a.analysisResult?.summary}
-構成: ${a.analysisResult?.structure?.map((s) => `${s.name}(${s.timeRange})`).join(" → ")}
+構成（★この順番・役割・尺配分を完全トレースする）:
+${a.analysisResult?.structure?.map((s, idx) => `  ${idx + 1}. ${s.name}（${s.timeRange}）— 役割: ${s.purpose || "不明"}`).join("\n") || "  不明"}
 フック: ${a.analysisResult?.hooks?.join(" / ")}
 理想の未来(欲求喚起): ${a.analysisResult?.idealFuture || a.analysisResult?.appealPoints?.join(" / ") || "不明"}
 最悪の未来: ${a.analysisResult?.worstFuture || "不明"}

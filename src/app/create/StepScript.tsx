@@ -136,11 +136,19 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     setRevising(true);
     setError("");
 
+    // 元ネタの分析データ（修正時も基準値として渡す）
+    const referenceAnalyses = getAnalyses()
+      .filter((a) => project.analyses?.includes(a.id))
+      .map((a) => ({
+        videoTitle: a.videoTitle,
+        analysisResult: a.analysisResult,
+      }));
+
     try {
       const res = await fetch("/api/script/revise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: project.generatedScript, revisionNote, aiApiKey }),
+        body: JSON.stringify({ script: project.generatedScript, revisionNote, referenceAnalyses, aiApiKey }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }

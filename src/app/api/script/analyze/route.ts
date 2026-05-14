@@ -14,8 +14,11 @@ function buildUserPrompt(transcript: string, videoTitle: string, channelName: st
 再生回数: ${views ? views.toLocaleString() + '回' : '不明'}
 
 --- 台本テキスト ---
-${transcript.substring(0, 8000)}
+${transcript.substring(0, 15000)}
 --- ここまで ---
+
+structure は台本の冒頭から末尾（CTA・締め）まで、実際の流れを省略せず全セクション抽出してください。
+構成のトレースに使うため、各セクションの purpose（役割）は具体的に書いてください。
 
 以下のJSON形式で出力:
 {
