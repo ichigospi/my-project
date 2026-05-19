@@ -78,10 +78,10 @@ async function callAnthropic(
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages: [
-          { role: "user", content: userPrompt + "\n\nJSONのみ出力してください。```は不要です。{から始めてください。" },
+          { role: "user", content: userPrompt + "\n\nJSONのみ出力してください。```は不要です。{から始めてください。各フィールドの値は簡潔に（長文は避け要点のみ）。" },
         ],
       }),
     });
@@ -119,7 +119,7 @@ async function callOpenAI(
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
-      max_tokens: 4096,
+      max_tokens: 8192,
       response_format: { type: "json_object" },
     }),
   });
