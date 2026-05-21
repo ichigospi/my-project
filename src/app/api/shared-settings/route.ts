@@ -88,16 +88,26 @@ export async function POST(request: NextRequest) {
     if (body.ideaRulesList !== undefined) updates.push({ key: "shared_idea_rules_list", value: JSON.stringify(body.ideaRulesList) });
     if (body.aiInsights !== undefined) updates.push({ key: "shared_ai_insights", value: JSON.stringify(body.aiInsights) });
 
+    // キーごとに独立して書き込む。1つが失敗（容量超過等）しても残りは同期する。
+    const failed: { key: string; size: number; error: string }[] = [];
     for (const { key, value } of updates) {
-      const existing = await prisma.appSetting.findUnique({ where: { key } });
-      if (existing) {
-        await prisma.appSetting.update({ where: { key }, data: { value } });
-      } else {
-        await prisma.appSetting.create({ data: { key, value } });
+      try {
+        await prisma.appSetting.upsert({
+          where: { key },
+          update: { value },
+          create: { key, value },
+        });
+      } catch (e) {
+        console.error(`POST /api/shared-settings: key "${key}" failed (size=${value.length})`, e);
+        failed.push({ key, size: value.length, error: String(e).slice(0, 300) });
       }
     }
 
-    return NextResponse.json({ ok: true, updated: updates.length });
+    return NextResponse.json({
+      ok: failed.length === 0,
+      updated: updates.length - failed.length,
+      failed,
+    });
   } catch (e) {
     console.error("POST /api/shared-settings error:", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });

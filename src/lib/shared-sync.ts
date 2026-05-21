@@ -441,8 +441,17 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
     });
     if (!res.ok) {
       notifySync("error");
-      const err = await res.json();
-      return { ok: false, error: err.error };
+      const err = await res.json().catch(() => ({}));
+      return { ok: false, error: err.error || `保存に失敗しました (HTTP ${res.status})` };
+    }
+    const data = await res.json().catch(() => ({}));
+    if (Array.isArray(data.failed) && data.failed.length > 0) {
+      notifySync("error");
+      const detail = data.failed
+        .map((f: { key: string; size: number; error: string }) => `${f.key}(${Math.round(f.size / 1024)}KB)`)
+        .join(", ");
+      console.error("[shared-sync] 一部のデータの同期に失敗:", data.failed);
+      return { ok: false, error: `一部のデータが同期できませんでした: ${detail}` };
     }
     notifySync("synced");
     console.log("[shared-sync] pushed settings to server");
