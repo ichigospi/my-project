@@ -309,10 +309,16 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     setSyncing(true);
     setSyncDone(false);
     try {
-      await pushSharedSettings();
-      setSyncDone(true);
-      setTimeout(() => setSyncDone(false), 3000);
-    } catch { /* ignore */ }
+      const result = await pushSharedSettings();
+      if (result.ok) {
+        setSyncDone(true);
+        setTimeout(() => setSyncDone(false), 3000);
+      } else {
+        setError(result.error || "同期に失敗しました");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "同期に失敗しました");
+    }
     finally { setSyncing(false); }
   };
   const handleExport = () => {
