@@ -3,49 +3,78 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
 
 // 共有設定の取得
+const SHARED_KEYS = [
+  "shared_yt_api_key", "shared_ai_api_key", "shared_channels", "shared_hooks",
+  "shared_ctas", "shared_thumbnail_words", "shared_titles", "shared_profile",
+  "shared_profiles_list", "shared_winning_patterns", "shared_presets",
+  "shared_projects", "shared_tasks", "shared_members", "shared_my_channel",
+  "shared_analysis_logs", "shared_weekly_snapshots", "shared_performance_records",
+  "shared_ideas", "shared_idea_rules", "shared_idea_rules_list",
+  "shared_my_channels", "shared_my_channel_data_list",
+  "shared_winning_patterns_list", "shared_ai_insights",
+];
+
 export async function GET() {
   try {
     const auth = await requireAuth();
     if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    const settings = await prisma.appSetting.findMany();
+    // キーごとに個別取得。巨大化した1キー(shared_projects等)が読めなくても、
+    // APIキー・チャンネル等の重要な設定は確実に返す。
     const map: Record<string, string> = {};
-    for (const s of settings) map[s.key] = s.value;
+    const skipped: { key: string; error: string }[] = [];
+    for (const key of SHARED_KEYS) {
+      try {
+        const row = await prisma.appSetting.findUnique({ where: { key } });
+        if (row) map[key] = row.value;
+      } catch (e) {
+        console.error(`GET /api/shared-settings: key "${key}" failed to read`, e);
+        skipped.push({ key, error: String(e).slice(0, 200) });
+      }
+    }
+
+    // 値が壊れていても全体を落とさないための安全パース
+    const parse = <T,>(key: string, fallback: T): T => {
+      const v = map[key];
+      if (!v) return fallback;
+      try { return JSON.parse(v) as T; } catch { return fallback; }
+    };
 
     return NextResponse.json({
       yt_api_key: map["shared_yt_api_key"] || "",
       ai_api_key: map["shared_ai_api_key"] || "",
-      channels: map["shared_channels"] ? JSON.parse(map["shared_channels"]) : [],
-      hooks: map["shared_hooks"] ? JSON.parse(map["shared_hooks"]) : [],
-      ctas: map["shared_ctas"] ? JSON.parse(map["shared_ctas"]) : [],
-      thumbnailWords: map["shared_thumbnail_words"] ? JSON.parse(map["shared_thumbnail_words"]) : [],
-      titles: map["shared_titles"] ? JSON.parse(map["shared_titles"]) : [],
-      profile: map["shared_profile"] ? JSON.parse(map["shared_profile"]) : null,
+      channels: parse("shared_channels", [] as unknown[]),
+      hooks: parse("shared_hooks", [] as unknown[]),
+      ctas: parse("shared_ctas", [] as unknown[]),
+      thumbnailWords: parse("shared_thumbnail_words", [] as unknown[]),
+      titles: parse("shared_titles", [] as unknown[]),
+      profile: parse("shared_profile", null),
       profilesList: map["shared_profiles_list"]
-        ? JSON.parse(map["shared_profiles_list"])
-        : (map["shared_profile"] ? [JSON.parse(map["shared_profile"])] : []),
-      winningPatterns: map["shared_winning_patterns"] ? JSON.parse(map["shared_winning_patterns"]) : null,
-      presets: map["shared_presets"] ? JSON.parse(map["shared_presets"]) : [],
-      projects: map["shared_projects"] ? JSON.parse(map["shared_projects"]) : [],
-      tasks: map["shared_tasks"] ? JSON.parse(map["shared_tasks"]) : [],
-      members: map["shared_members"] ? JSON.parse(map["shared_members"]) : [],
-      myChannel: map["shared_my_channel"] ? JSON.parse(map["shared_my_channel"]) : null,
-      analysisLogs: map["shared_analysis_logs"] ? JSON.parse(map["shared_analysis_logs"]) : [],
-      weeklySnapshots: map["shared_weekly_snapshots"] ? JSON.parse(map["shared_weekly_snapshots"]) : [],
-      performanceRecords: map["shared_performance_records"] ? JSON.parse(map["shared_performance_records"]) : [],
-      ideas: map["shared_ideas"] ? JSON.parse(map["shared_ideas"]) : [],
-      ideaRules: map["shared_idea_rules"] ? JSON.parse(map["shared_idea_rules"]) : null,
+        ? parse("shared_profiles_list", [] as unknown[])
+        : (map["shared_profile"] ? [parse("shared_profile", null)] : []),
+      winningPatterns: parse("shared_winning_patterns", null),
+      presets: parse("shared_presets", [] as unknown[]),
+      projects: parse("shared_projects", [] as unknown[]),
+      tasks: parse("shared_tasks", [] as unknown[]),
+      members: parse("shared_members", [] as unknown[]),
+      myChannel: parse("shared_my_channel", null),
+      analysisLogs: parse("shared_analysis_logs", [] as unknown[]),
+      weeklySnapshots: parse("shared_weekly_snapshots", [] as unknown[]),
+      performanceRecords: parse("shared_performance_records", [] as unknown[]),
+      ideas: parse("shared_ideas", [] as unknown[]),
+      ideaRules: parse("shared_idea_rules", null),
       ideaRulesList: map["shared_idea_rules_list"]
-        ? JSON.parse(map["shared_idea_rules_list"])
-        : (map["shared_idea_rules"] ? [JSON.parse(map["shared_idea_rules"])] : []),
-      myChannels: map["shared_my_channels"] ? JSON.parse(map["shared_my_channels"]) : [],
+        ? parse("shared_idea_rules_list", [] as unknown[])
+        : (map["shared_idea_rules"] ? [parse("shared_idea_rules", null)] : []),
+      myChannels: parse("shared_my_channels", [] as unknown[]),
       myChannelDataList: map["shared_my_channel_data_list"]
-        ? JSON.parse(map["shared_my_channel_data_list"])
-        : (map["shared_my_channel"] ? [JSON.parse(map["shared_my_channel"])] : []),
+        ? parse("shared_my_channel_data_list", [] as unknown[])
+        : (map["shared_my_channel"] ? [parse("shared_my_channel", null)] : []),
       winningPatternsList: map["shared_winning_patterns_list"]
-        ? JSON.parse(map["shared_winning_patterns_list"])
-        : (map["shared_winning_patterns"] ? [JSON.parse(map["shared_winning_patterns"])] : []),
-      aiInsights: map["shared_ai_insights"] ? JSON.parse(map["shared_ai_insights"]) : [],
+        ? parse("shared_winning_patterns_list", [] as unknown[])
+        : (map["shared_winning_patterns"] ? [parse("shared_winning_patterns", null)] : []),
+      aiInsights: parse("shared_ai_insights", [] as unknown[]),
+      _skipped: skipped,
     });
   } catch (e) {
     console.error("GET /api/shared-settings error:", e);
