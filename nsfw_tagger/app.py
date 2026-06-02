@@ -26,7 +26,24 @@ for _v in ("no_proxy", "NO_PROXY"):
 import gradio as gr
 from PIL import Image
 
-from tagger import MODELS, Tagger, tag_image
+# --- gradio 4.x + Python 3.9 の既知バグ回避 ---
+# API 仕様の自動生成時、JSON スキーマが真偽値(bool)だと gradio_client.utils.get_type が
+# `if "const" in schema` で "argument of type 'bool' is not iterable" を投げてサーバ起動が
+# クラッシュする。dict 以外が来たら "Any" を返すよう安全に上書きする。
+import gradio_client.utils as _gcu  # noqa: E402
+
+_orig_get_type = _gcu.get_type
+
+
+def _safe_get_type(schema):
+    if not isinstance(schema, dict):
+        return "Any"
+    return _orig_get_type(schema)
+
+
+_gcu.get_type = _safe_get_type
+
+from tagger import MODELS, Tagger, tag_image  # noqa: E402
 
 
 @functools.lru_cache(maxsize=4)
