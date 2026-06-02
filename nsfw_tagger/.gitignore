@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# モデルキャッシュ（HuggingFace。数百MB〜あるのでコミットしない）
+models/
+*.onnx
+
+# Gradio
+flagged/
+gradio_cached_examples/
