@@ -13,6 +13,15 @@ Stable Diffusion / Illustrious / Pony / NAI 系で使えるプロンプトを生
 from __future__ import annotations
 
 import functools
+import os
+
+# Gradio は起動時に localhost への自己チェックを行うが、プロキシ/VPN 環境では
+# それが弾かれて "localhost is not accessible" エラーになる。
+# localhost をプロキシ除外に設定しておく（gradio の import より前に行う必要がある）。
+for _v in ("no_proxy", "NO_PROXY"):
+    _cur = os.environ.get(_v, "")
+    _hosts = "localhost,127.0.0.1,0.0.0.0,::1"
+    os.environ[_v] = f"{_cur},{_hosts}" if _cur else _hosts
 
 import gradio as gr
 from PIL import Image
@@ -115,4 +124,11 @@ def build_ui() -> gr.Blocks:
 
 
 if __name__ == "__main__":
-    build_ui().launch()
+    # 127.0.0.1 に明示バインドし、API 仕様生成（無害だが警告が出る）をスキップ。
+    # inbrowser=True で起動時に自動でブラウザを開く。
+    build_ui().launch(
+        server_name="127.0.0.1",
+        server_port=7860,
+        show_api=False,
+        inbrowser=True,
+    )
