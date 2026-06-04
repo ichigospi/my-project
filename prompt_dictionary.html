@@ -191,8 +191,14 @@ const SEED = {
   categories: [
     {id:"c_quality", name:"品質"},
     {id:"c_trigger", name:"トリガー/キャラ"},
+    {id:"c_male",    name:"男キャラ"},
+    {id:"c_body",    name:"身体"},
+    {id:"c_cloth",   name:"服装"},
     {id:"c_compo",   name:"構図"},
     {id:"c_angle",   name:"アングル"},
+    {id:"c_pose",    name:"ポーズ"},
+    {id:"c_pos",     name:"体位"},
+    {id:"c_act",     name:"行為"},
     {id:"c_expr",    name:"表情"},
     {id:"c_neg",     name:"ネガティブ"},
   ],
@@ -221,6 +227,22 @@ function load(){
   return structuredClone(SEED);
 }
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+
+// 既存ユーザー向け：不足カテゴリを1回だけ補充（消したものは復活させない）
+function migrate(){
+  if(!state.migrations) state.migrations={};
+  if(!state.migrations.cats_2026_06){
+    const want=["男キャラ","身体","服装","ポーズ","体位","行為"];
+    for(const name of want){
+      if(!state.categories.some(c=>c.name===name)){
+        state.categories.push({id:uid(),name});
+      }
+    }
+    state.migrations.cats_2026_06=true;
+    save();
+  }
+}
+migrate();
 
 /* =========================================================
    画面状態
