@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>プロンプト辞書</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --text:#e6e9ef; --muted:#9aa3b2; --accent:#6aa3ff; --accent2:#3b82f6;
+    --good:#34d399; --danger:#f87171; --chip:#252b36;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+       background:var(--bg);color:var(--text);font-size:14px;}
+  header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);
+         border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10;flex-wrap:wrap;}
+  header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.02em;}
+  .tabs{display:flex;gap:6px;margin-left:8px;}
+  .tab{padding:6px 14px;border-radius:8px;cursor:pointer;color:var(--muted);background:transparent;border:1px solid transparent;}
+  .tab.active{background:var(--panel2);color:var(--text);border-color:var(--line);}
+  .spacer{flex:1}
+  button{font-family:inherit;font-size:13px;cursor:pointer;border:1px solid var(--line);
+          background:var(--panel2);color:var(--text);border-radius:8px;padding:7px 12px;}
+  button:hover{border-color:var(--accent);}
+  button.primary{background:var(--accent2);border-color:var(--accent2);color:#fff;}
+  button.ghost{background:transparent;}
+  button.sm{padding:3px 8px;font-size:12px;border-radius:6px;}
+  input,select,textarea{font-family:inherit;font-size:13px;background:var(--panel2);
+        color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none;}
+  input:focus,textarea:focus,select:focus{border-color:var(--accent);}
+  .wrap{display:flex;min-height:calc(100vh - 53px);}
+  /* sidebar */
+  aside{width:210px;background:var(--panel);border-right:1px solid var(--line);padding:12px;flex-shrink:0;}
+  .cat{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--muted);}
+  .cat:hover{background:var(--panel2);}
+  .cat.active{background:var(--chip);color:var(--text);font-weight:600;}
+  .cat .count{margin-left:auto;font-size:11px;color:var(--muted);background:var(--chip);padding:1px 7px;border-radius:10px;}
+  .cat.active .count{background:var(--accent2);color:#fff;}
+  .cat .mini{opacity:0;}
+  .cat:hover .mini{opacity:.8;}
+  .mini{background:none;border:none;color:var(--muted);padding:2px;font-size:12px;}
+  /* main */
+  main{flex:1;padding:16px;min-width:0;}
+  .toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+  .toolbar input.search{flex:1;min-width:160px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;}
+  .card .body{cursor:pointer;border-radius:6px;}
+  .card .label{font-weight:600;margin-bottom:2px;}
+  .card .text{color:var(--muted);font-size:12.5px;white-space:pre-wrap;word-break:break-word;line-height:1.5;}
+  .card.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;}
+  .card .row{display:flex;gap:6px;align-items:center;}
+  .card .cat-tag{font-size:11px;color:var(--muted);background:var(--chip);padding:1px 7px;border-radius:10px;}
+  .pick{margin-left:auto;}
+  .empty{color:var(--muted);padding:40px;text-align:center;border:1px dashed var(--line);border-radius:12px;}
+  /* tray */
+  .tray{position:sticky;bottom:0;margin-top:16px;background:var(--panel);border:1px solid var(--line);
+        border-radius:12px;padding:12px;}
+  .tray h3{margin:0 0 8px;font-size:13px;}
+  .tray .items{display:flex;flex-direction:column;gap:4px;max-height:160px;overflow:auto;margin-bottom:8px;}
+  .tray .item{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);
+              border-radius:7px;padding:5px 8px;font-size:12.5px;}
+  .tray .item .t{flex:1;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tray .ctrls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .preview{width:100%;min-height:60px;resize:vertical;margin:8px 0;}
+  /* modal */
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;}
+  .mask.show{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;width:min(480px,92vw);}
+  .modal h3{margin:0 0 14px;}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+  .field label{font-size:12px;color:var(--muted);}
+  .field textarea{min-height:90px;resize:vertical;}
+  .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
+  /* image tab */
+  .drop{border:2px dashed var(--line);border-radius:14px;padding:46px;text-align:center;color:var(--muted);
+        background:var(--panel);transition:.15s;}
+  .drop.over{border-color:var(--accent);color:var(--text);background:var(--panel2);}
+  .res{margin-top:16px;display:flex;flex-direction:column;gap:12px;}
+  .res .block{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;}
+  .res .block h4{margin:0 0 8px;font-size:13px;display:flex;align-items:center;gap:8px;}
+  .res .block .kw{font-size:11px;color:var(--muted);background:var(--chip);padding:1px 8px;border-radius:10px;}
+  .res textarea{width:100%;min-height:80px;resize:vertical;}
+  .res .acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;}
+  .hide{display:none!important;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;
+         background:var(--good);color:#06281c;font-weight:700;padding:10px 18px;border-radius:10px;
+         transition:.2s;z-index:99;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .preview-img{max-width:200px;max-height:200px;border-radius:8px;border:1px solid var(--line);}
+  small.hint{color:var(--muted);}
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 プロンプト辞書</h1>
+  <div class="tabs">
+    <div class="tab active" data-tab="dict">辞書</div>
+    <div class="tab" data-tab="image">画像から抽出</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="ghost sm" id="exportBtn">⬇ バックアップ</button>
+  <button class="ghost sm" id="importBtn">⬆ 復元</button>
+  <input type="file" id="importFile" accept="application/json" class="hide">
+</header>
+
+<!-- ===== 辞書タブ ===== -->
+<div id="tab-dict">
+<div class="wrap">
+  <aside>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-size:12px;color:var(--muted);">カテゴリ</span>
+      <button class="sm ghost" id="addCatBtn">＋</button>
+    </div>
+    <div id="catList"></div>
+  </aside>
+  <main>
+    <div class="toolbar">
+      <input class="search" id="search" placeholder="🔍 キーワードで検索（ラベル・本文）">
+      <button class="primary" id="addEntryBtn">＋ 項目を追加</button>
+    </div>
+    <div id="grid" class="grid"></div>
+
+    <div class="tray">
+      <h3>🧺 選択中（連結コピー）</h3>
+      <div class="items" id="trayItems"></div>
+      <textarea class="preview" id="trayPreview" placeholder="項目の「＋追加」を押すと、ここに連結されたプロンプトが出ます"></textarea>
+      <div class="ctrls">
+        <label style="color:var(--muted);font-size:12px;">区切り：</label>
+        <select id="sep">
+          <option value=", ">, （カンマ＋スペース）</option>
+          <option value=" ">␣ （スペース）</option>
+          <option value="\n">改行</option>
+          <option value="">なし（直結）</option>
+        </select>
+        <button class="primary" id="copyComboBtn">連結してコピー</button>
+        <button class="ghost" id="clearTrayBtn">クリア</button>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ===== 画像タブ ===== -->
+<div id="tab-image" class="hide">
+  <main style="max-width:860px;margin:0 auto;">
+    <div class="drop" id="drop">
+      <div style="font-size:30px;margin-bottom:8px;">🖼️</div>
+      <div><b>生成PNG画像</b>をここにドロップ / クリックして選択</div>
+      <div style="margin-top:6px;"><small class="hint">ComfyUI・Automatic1111 が画像に埋め込んだプロンプトを取り出します（オフライン処理）</small></div>
+      <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp" class="hide">
+    </div>
+    <div class="res" id="imgResult"></div>
+  </main>
+</div>
+
+<!-- 項目 追加/編集 モーダル -->
+<div class="mask" id="entryMask">
+  <div class="modal">
+    <h3 id="entryTitle">項目を追加</h3>
+    <div class="field">
+      <label>カテゴリ</label>
+      <select id="entryCat"></select>
+    </div>
+    <div class="field">
+      <label>ラベル（任意・一覧での表示名。空なら本文を表示）</label>
+      <input id="entryLabel" placeholder="例：俯瞰アングル">
+    </div>
+    <div class="field">
+      <label>本文（コピーされる中身）</label>
+      <textarea id="entryText" placeholder="例：from above, looking down"></textarea>
+    </div>
+    <div class="actions">
+      <button class="ghost" id="entryCancel">キャンセル</button>
+      <button class="primary" id="entrySave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">コピーしました</div>
+
+<script>
+/* =========================================================
+   データ層（localStorage）
+   ========================================================= */
+const LS_KEY = "promptDictionary.v1";
+const uid = () => Math.random().toString(36).slice(2,9);
+
+const SEED = {
+  categories: [
+    {id:"c_quality", name:"品質"},
+    {id:"c_trigger", name:"トリガー/キャラ"},
+    {id:"c_compo",   name:"構図"},
+    {id:"c_angle",   name:"アングル"},
+    {id:"c_expr",    name:"表情"},
+    {id:"c_neg",     name:"ネガティブ"},
+  ],
+  entries: [
+    {id:uid(),categoryId:"c_quality",label:"高品質",text:"masterpiece, best quality, ultra-detailed"},
+    {id:uid(),categoryId:"c_quality",label:"高精細",text:"high detail, sharp focus"},
+    {id:uid(),categoryId:"c_trigger",label:"yumi",text:"yumi"},
+    {id:uid(),categoryId:"c_compo",label:"全身",text:"full body"},
+    {id:uid(),categoryId:"c_compo",label:"上半身",text:"upper body"},
+    {id:uid(),categoryId:"c_compo",label:"クローズアップ",text:"close-up"},
+    {id:uid(),categoryId:"c_angle",label:"俯瞰",text:"from above"},
+    {id:uid(),categoryId:"c_angle",label:"煽り",text:"from below"},
+    {id:uid(),categoryId:"c_angle",label:"正面",text:"front view"},
+    {id:uid(),categoryId:"c_expr",label:"笑顔",text:"smile"},
+    {id:uid(),categoryId:"c_expr",label:"赤面",text:"blush"},
+    {id:uid(),categoryId:"c_neg",label:"基本ネガ",text:"bad anatomy, extra fingers, fused fingers, deformed, lowres, bad hands"},
+  ],
+};
+
+let state = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return structuredClone(SEED);
+}
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+
+/* =========================================================
+   画面状態
+   ========================================================= */
+let currentCat = "__all__";
+let searchText = "";
+let tray = []; // entry ids（順序付き）
+
+/* =========================================================
+   ユーティリティ
+   ========================================================= */
+const $ = s => document.querySelector(s);
+function toast(msg="コピーしました"){
+  const t=$("#toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),1100);
+}
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){
+    const ta=document.createElement("textarea"); ta.value=text;
+    ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); ta.remove();
+  }
+  toast();
+}
+function catName(id){ const c=state.categories.find(c=>c.id===id); return c?c.name:"(未分類)"; }
+function esc(s){ return (s||"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m])); }
+
+/* =========================================================
+   カテゴリ描画
+   ========================================================= */
+function renderCats(){
+  const list=$("#catList");
+  const total=state.entries.length;
+  let html=`<div class="cat ${currentCat==="__all__"?"active":""}" data-id="__all__">
+      <span>すべて</span><span class="count">${total}</span></div>`;
+  for(const c of state.categories){
+    const n=state.entries.filter(e=>e.categoryId===c.id).length;
+    html+=`<div class="cat ${currentCat===c.id?"active":""}" data-id="${c.id}">
+      <span>${esc(c.name)}</span>
+      <button class="mini" data-act="ren" title="名前変更">✎</button>
+      <button class="mini" data-act="del" title="削除">🗑</button>
+      <span class="count">${n}</span></div>`;
+  }
+  list.innerHTML=html;
+  list.querySelectorAll(".cat").forEach(el=>{
+    el.addEventListener("click",ev=>{
+      const id=el.dataset.id;
+      const act=ev.target.dataset.act;
+      if(act==="ren"){ ev.stopPropagation(); renameCat(id); return; }
+      if(act==="del"){ ev.stopPropagation(); delCat(id); return; }
+      currentCat=id; render();
+    });
+  });
+}
+
+function addCat(){
+  const name=prompt("新しいカテゴリ名");
+  if(!name) return;
+  state.categories.push({id:uid(),name:name.trim()});
+  save(); render();
+}
+function renameCat(id){
+  const c=state.categories.find(c=>c.id===id); if(!c)return;
+  const name=prompt("カテゴリ名を変更",c.name);
+  if(!name) return;
+  c.name=name.trim(); save(); render();
+}
+function delCat(id){
+  const n=state.entries.filter(e=>e.categoryId===id).length;
+  if(!confirm(`このカテゴリと中の ${n} 項目を削除します。よろしいですか？`)) return;
+  state.categories=state.categories.filter(c=>c.id!==id);
+  state.entries=state.entries.filter(e=>e.categoryId!==id);
+  if(currentCat===id) currentCat="__all__";
+  save(); render();
+}
+
+/* =========================================================
+   項目（カード）描画
+   ========================================================= */
+function visibleEntries(){
+  const q=searchText.trim().toLowerCase();
+  return state.entries.filter(e=>{
+    if(currentCat!=="__all__" && e.categoryId!==currentCat) return false;
+    if(q){
+      const hay=((e.label||"")+" "+e.text).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+function renderGrid(){
+  const grid=$("#grid");
+  const items=visibleEntries();
+  if(items.length===0){
+    grid.innerHTML=`<div class="empty">項目がありません。<br>「＋ 項目を追加」で登録してください。</div>`;
+    return;
+  }
+  grid.innerHTML=items.map(e=>{
+    const sel=tray.includes(e.id);
+    const label=e.label?esc(e.label):"";
+    return `<div class="card ${sel?"sel":""}" data-id="${e.id}">
+      <div class="body" data-act="copy">
+        ${label?`<div class="label">${label}</div>`:""}
+        <div class="text">${esc(e.text)}</div>
+      </div>
+      <div class="row">
+        ${currentCat==="__all__"?`<span class="cat-tag">${esc(catName(e.categoryId))}</span>`:""}
+        <button class="sm ghost" data-act="edit">編集</button>
+        <button class="sm ghost" data-act="del">削除</button>
+        <button class="sm ${sel?"primary":""} pick" data-act="pick">${sel?"✓ 選択中":"＋ 追加"}</button>
+      </div>
+    </div>`;
+  }).join("");
+  grid.querySelectorAll(".card").forEach(card=>{
+    const id=card.dataset.id;
+    card.querySelectorAll("[data-act]").forEach(el=>{
+      el.addEventListener("click",ev=>{
+        ev.stopPropagation();
+        const act=el.dataset.act;
+        const e=state.entries.find(x=>x.id===id);
+        if(act==="copy"){ copyText(e.text); }
+        else if(act==="edit"){ openEntry(e); }
+        else if(act==="del"){ if(confirm("この項目を削除しますか？")){ state.entries=state.entries.filter(x=>x.id!==id); tray=tray.filter(t=>t!==id); save(); render(); } }
+        else if(act==="pick"){ togglePick(id); }
+      });
+    });
+  });
+}
+
+/* =========================================================
+   選択トレイ（連結）
+   ========================================================= */
+function togglePick(id){
+  if(tray.includes(id)) tray=tray.filter(t=>t!==id);
+  else tray.push(id);
+  render();
+}
+function combined(){
+  let sep=$("#sep").value;
+  if(sep==="\\n") sep="\n";
+  return tray.map(id=>{ const e=state.entries.find(x=>x.id===id); return e?e.text:""; })
+             .filter(Boolean).join(sep);
+}
+function renderTray(){
+  const box=$("#trayItems");
+  if(tray.length===0){
+    box.innerHTML=`<div style="color:var(--muted);font-size:12px;">未選択。カードの「＋追加」で組み立てます。</div>`;
+  }else{
+    box.innerHTML=tray.map((id,i)=>{
+      const e=state.entries.find(x=>x.id===id); if(!e)return"";
+      const name=e.label||e.text;
+      return `<div class="item" data-id="${id}">
+        <span class="t">${esc(name)}</span>
+        <button class="sm ghost" data-act="up" ${i===0?"disabled":""}>▲</button>
+        <button class="sm ghost" data-act="down" ${i===tray.length-1?"disabled":""}>▼</button>
+        <button class="sm ghost" data-act="rm">✕</button>
+      </div>`;
+    }).join("");
+    box.querySelectorAll(".item").forEach(it=>{
+      const id=it.dataset.id;
+      it.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>{
+        const i=tray.indexOf(id); const act=b.dataset.act;
+        if(act==="rm") tray.splice(i,1);
+        else if(act==="up"&&i>0){ [tray[i-1],tray[i]]=[tray[i],tray[i-1]]; }
+        else if(act==="down"&&i<tray.length-1){ [tray[i+1],tray[i]]=[tray[i],tray[i+1]]; }
+        render();
+      }));
+    });
+  }
+  $("#trayPreview").value=combined();
+}
+
+/* =========================================================
+   項目モーダル
+   ========================================================= */
+let editingId=null;
+function openEntry(entry){
+  editingId = entry?entry.id:null;
+  $("#entryTitle").textContent = entry?"項目を編集":"項目を追加";
+  const sel=$("#entryCat");
+  sel.innerHTML=state.categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  sel.value = entry?entry.categoryId : (currentCat!=="__all__"?currentCat:(state.categories[0]&&state.categories[0].id));
+  $("#entryLabel").value = entry?entry.label||"":"";
+  $("#entryText").value = entry?entry.text:"";
+  $("#entryMask").classList.add("show");
+  $("#entryText").focus();
+}
+function closeEntry(){ $("#entryMask").classList.remove("show"); editingId=null; }
+function saveEntry(){
+  const cat=$("#entryCat").value;
+  const label=$("#entryLabel").value.trim();
+  const text=$("#entryText").value.trim();
+  if(!text){ alert("本文を入力してください"); return; }
+  if(editingId){
+    const e=state.entries.find(x=>x.id===editingId);
+    e.categoryId=cat; e.label=label; e.text=text;
+  }else{
+    state.entries.push({id:uid(),categoryId:cat,label,text});
+  }
+  save(); closeEntry(); render();
+}
+
+/* =========================================================
+   バックアップ/復元
+   ========================================================= */
+function exportData(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="prompt_dictionary_backup.json";
+  a.click(); URL.revokeObjectURL(a.href);
+}
+function importData(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const data=JSON.parse(r.result);
+      if(!data.categories||!data.entries) throw new Error("形式が不正です");
+      if(!confirm("現在のデータを置き換えます。よろしいですか？（先にバックアップ推奨）")) return;
+      state=data; tray=[]; currentCat="__all__"; save(); render();
+      toast("復元しました");
+    }catch(e){ alert("読み込み失敗: "+e.message); }
+  };
+  r.readAsText(file);
+}
+
+/* =========================================================
+   画像 → 埋め込みプロンプト抽出
+   ========================================================= */
+async function inflate(bytes){
+  if(typeof DecompressionStream==="undefined") throw new Error("このブラウザは圧縮テキストの解凍に未対応です");
+  const ds=new DecompressionStream("deflate");
+  const w=ds.writable.getWriter(); w.write(bytes); w.close();
+  const ab=await new Response(ds.readable).arrayBuffer();
+  return new Uint8Array(ab);
+}
+async function extractPngText(buf){
+  const bytes=new Uint8Array(buf), dv=new DataView(buf);
+  const sig=[137,80,78,71,13,10,26,10];
+  for(let i=0;i<8;i++) if(bytes[i]!==sig[i]) throw new Error("PNG画像ではありません（PNGなら確実に取り出せます）");
+  const L1=new TextDecoder("latin1"), U8=new TextDecoder("utf-8");
+  let off=8; const out=[];
+  while(off<bytes.length){
+    const len=dv.getUint32(off); off+=4;
+    const type=L1.decode(bytes.subarray(off,off+4)); off+=4;
+    const data=bytes.subarray(off,off+len); off+=len+4;
+    if(type==="tEXt"){
+      const z=data.indexOf(0);
+      out.push({keyword:L1.decode(data.subarray(0,z)), text:L1.decode(data.subarray(z+1))});
+    }else if(type==="iTXt"){
+      let p=0; let z=data.indexOf(0,p);
+      const keyword=L1.decode(data.subarray(0,z)); p=z+1;
+      const comp=data[p]; p+=2; // compFlag + compMethod
+      z=data.indexOf(0,p); p=z+1; // langTag
+      z=data.indexOf(0,p); p=z+1; // translatedKeyword
+      let tb=data.subarray(p);
+      if(comp===1){ try{ tb=await inflate(tb); }catch(e){ continue; } }
+      out.push({keyword, text:U8.decode(tb)});
+    }else if(type==="zTXt"){
+      const z=data.indexOf(0);
+      const keyword=L1.decode(data.subarray(0,z));
+      try{ const tb=await inflate(data.subarray(z+2)); out.push({keyword,text:L1.decode(tb)}); }catch(e){}
+    }
+    if(type==="IEND") break;
+  }
+  return out;
+}
+// A1111 / ComfyUI のテキストを「プロンプト」に整形
+function parseExtracted(chunks){
+  const results=[]; // {kw, title, text}
+  for(const c of chunks){
+    const kw=c.keyword;
+    if(kw==="parameters"){ // Automatic1111
+      results.push({kw, title:"Automatic1111 生成情報", text:c.text});
+    }else if(kw==="prompt"){ // ComfyUI API graph
+      try{
+        const g=JSON.parse(c.text); let found=[];
+        for(const nid in g){
+          const node=g[nid];
+          const ct=(node.class_type||"")+"";
+          const t=node.inputs&&node.inputs.text;
+          if(typeof t==="string" && t.trim()){
+            const tag=/clip|encode|text|prompt/i.test(ct)?ct:("node "+nid);
+            found.push("【"+tag+"】\n"+t.trim());
+          }
+        }
+        if(found.length) results.push({kw, title:"ComfyUI 抽出プロンプト", text:found.join("\n\n")});
+      }catch(e){
+        results.push({kw, title:"ComfyUI prompt(生データ)", text:c.text});
+      }
+    }else if(kw==="workflow"){
+      // ワークフロー全体。プロンプト抽出は prompt 側で済むので、参考として末尾に出さない
+    }else if(c.text && c.text.length<5000){
+      results.push({kw, title:kw, text:c.text});
+    }
+  }
+  return results;
+}
+
+async function handleImage(file){
+  const res=$("#imgResult");
+  res.innerHTML=`<div class="block">読み取り中…</div>`;
+  const buf=await file.arrayBuffer();
+  const url=URL.createObjectURL(file);
+  let chunks=[];
+  try{ chunks=await extractPngText(buf); }
+  catch(e){ res.innerHTML=`<div class="block"><b style="color:var(--danger)">${esc(e.message)}</b>
+     <div style="margin-top:6px"><small class="hint">JPEG/WebPにはプロンプトが埋め込まれない場合が多いです。ComfyUIで保存したPNGを使ってください。</small></div>
+     <div style="margin-top:10px"><img class="preview-img" src="${url}"></div></div>`; return; }
+  const parsed=parseExtracted(chunks);
+  let html=`<div class="block" style="display:flex;gap:12px;align-items:center;">
+     <img class="preview-img" src="${url}">
+     <div><b>${esc(file.name)}</b><br>
+     <small class="hint">${parsed.length?parsed.length+" 件のテキスト情報を検出":"埋め込みプロンプトは見つかりませんでした"}</small></div></div>`;
+  if(parsed.length===0){
+    html+=`<div class="block"><small class="hint">この画像にはプロンプトが埋め込まれていません。ComfyUI/A1111で「保存」した元PNG（リサイズ・再保存していないもの）をお試しください。</small></div>`;
+  }
+  parsed.forEach((p,i)=>{
+    const cats=state.categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    html+=`<div class="block" data-idx="${i}">
+      <h4>${esc(p.title)} <span class="kw">${esc(p.kw)}</span></h4>
+      <textarea id="extxt_${i}">${esc(p.text)}</textarea>
+      <div class="acts">
+        <button class="primary sm" data-act="copy" data-i="${i}">コピー</button>
+        <span style="color:var(--muted);font-size:12px;">辞書へ：</span>
+        <select id="excat_${i}">${cats}</select>
+        <button class="sm" data-act="whole" data-i="${i}">まるごと1項目で追加</button>
+        <button class="sm" data-act="split" data-i="${i}">カンマで分解して追加</button>
+      </div>
+    </div>`;
+  });
+  res.innerHTML=html;
+  res.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>{
+    const i=b.dataset.i, act=b.dataset.act;
+    const txt=$("#extxt_"+i).value;
+    if(act==="copy"){ copyText(txt); return; }
+    const cat=$("#excat_"+i).value;
+    if(act==="whole"){
+      state.entries.push({id:uid(),categoryId:cat,label:"",text:txt.trim()});
+      save(); renderCats(); toast("辞書に追加しました");
+    }else if(act==="split"){
+      const parts=txt.split(",").map(s=>s.trim()).filter(Boolean);
+      parts.forEach(p=>state.entries.push({id:uid(),categoryId:cat,label:"",text:p}));
+      save(); renderCats(); toast(parts.length+" 項目を追加しました");
+    }
+  }));
+}
+
+/* =========================================================
+   タブ切り替え
+   ========================================================= */
+function switchTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
+  $("#tab-dict").classList.toggle("hide",name!=="dict");
+  $("#tab-image").classList.toggle("hide",name!=="image");
+}
+
+/* =========================================================
+   まとめ描画 & イベント
+   ========================================================= */
+function render(){ save(); renderCats(); renderGrid(); renderTray(); }
+
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>switchTab(t.dataset.tab)));
+$("#addCatBtn").addEventListener("click",addCat);
+$("#addEntryBtn").addEventListener("click",()=>openEntry(null));
+$("#entryCancel").addEventListener("click",closeEntry);
+$("#entrySave").addEventListener("click",saveEntry);
+$("#entryMask").addEventListener("click",e=>{ if(e.target.id==="entryMask") closeEntry(); });
+$("#search").addEventListener("input",e=>{ searchText=e.target.value; renderGrid(); });
+$("#sep").addEventListener("change",renderTray);
+$("#copyComboBtn").addEventListener("click",()=>{ const t=combined(); if(!t){toast("未選択です");return;} copyText(t); });
+$("#clearTrayBtn").addEventListener("click",()=>{ tray=[]; render(); });
+$("#exportBtn").addEventListener("click",exportData);
+$("#importBtn").addEventListener("click",()=>$("#importFile").click());
+$("#importFile").addEventListener("change",e=>{ if(e.target.files[0]) importData(e.target.files[0]); e.target.value=""; });
+
+// 画像ドロップ
+const drop=$("#drop"), imgFile=$("#imgFile");
+drop.addEventListener("click",()=>imgFile.click());
+imgFile.addEventListener("change",e=>{ if(e.target.files[0]) handleImage(e.target.files[0]); });
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>{ const f=e.dataTransfer.files[0]; if(f) handleImage(f); });
+
+// 起動
+render();
+</script>
+</body>
+</html>
