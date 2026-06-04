@@ -434,15 +434,19 @@ function openEntry(entry){
 function closeEntry(){ $("#entryMask").classList.remove("show"); editingId=null; }
 function saveEntry(){
   const cat=$("#entryCat").value;
-  const label=$("#entryLabel").value.trim();
-  const text=$("#entryText").value.trim();
-  if(!text){ alert("本文を入力してください"); return; }
+  let label=$("#entryLabel").value.trim();
+  let text=$("#entryText").value.trim();
+  if(!text && label){ text=label; }   // ラベルだけ入れた場合は本文に流用
+  if(!text){ alert("本文（またはラベル）を入力してください"); return; }
   if(editingId){
     const e=state.entries.find(x=>x.id===editingId);
     e.categoryId=cat; e.label=label; e.text=text;
   }else{
     state.entries.push({id:uid(),categoryId:cat,label,text});
   }
+  // 追加した項目が必ず見えるように、検索を解除してそのカテゴリへ移動
+  searchText=""; const s=$("#search"); if(s) s.value="";
+  currentCat=cat;
   save(); closeEntry(); render();
 }
 
