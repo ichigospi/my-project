@@ -276,11 +276,20 @@ export async function pullSharedSettings(): Promise<void> {
       }
     }
 
-    // プロジェクト（台本作成）: 更新日時ベースでマージ
-    if (data.projects?.length > 0) {
-      const local: ScriptProject[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
-      const merged = mergeByUpdatedAt(local, migrate(data.projects as ScriptProject[]));
-      localStorage.setItem("fortune_yt_projects", JSON.stringify(merged));
+    // プロジェクト（台本作成）: 専用エンドポイント /api/projects から取得（巨大ブロブ回避）
+    try {
+      const pjRes = await fetch("/api/projects");
+      if (pjRes.ok) {
+        const pjData = await pjRes.json();
+        const remote = Array.isArray(pjData.projects) ? (pjData.projects as ScriptProject[]) : [];
+        if (remote.length > 0) {
+          const local: ScriptProject[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
+          const merged = mergeByUpdatedAt(local, migrate(remote));
+          localStorage.setItem("fortune_yt_projects", JSON.stringify(merged));
+        }
+      }
+    } catch (e) {
+      console.warn("[shared-sync] pull projects failed:", e);
     }
 
     // 工程表タスク: 更新日時ベースでマージ
@@ -423,7 +432,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         profile: getProfile(),
         profilesList: getAllProfiles(),
         presets: getPresets(),
-        projects: getProjects(),
+        // projects は別エンドポイント /api/projects で保存（巨大ブロブ防止）
         tasks: getTasks(),
         members: getMembers(),
         myChannelDataList: getMyChannelDataList(),
@@ -453,6 +462,32 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       console.error("[shared-sync] 一部のデータの同期に失敗:", data.failed);
       return { ok: false, error: `一部のデータが同期できませんでした: ${detail}` };
     }
+    // プロジェクト（台本）は専用エンドポイントに分けて個別保存（巨大ブロブ回避）
+    try {
+      const pjRes = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projects: getProjects() }),
+      });
+      if (!pjRes.ok) {
+        notifySync("error");
+        const err = await pjRes.json().catch(() => ({}));
+        return { ok: false, error: err.error || `プロジェクトの保存に失敗しました (HTTP ${pjRes.status})` };
+      }
+      const pjData = await pjRes.json().catch(() => ({}));
+      if (Array.isArray(pjData.failed) && pjData.failed.length > 0) {
+        notifySync("error");
+        const detail = pjData.failed
+          .map((f: { id: string; size: number; error: string }) => `${f.id}(${Math.round(f.size / 1024)}KB)`)
+          .join(", ");
+        console.error("[shared-sync] 一部のプロジェクト同期に失敗:", pjData.failed);
+        return { ok: false, error: `一部のプロジェクトが同期できませんでした: ${detail}` };
+      }
+    } catch (e) {
+      notifySync("error");
+      return { ok: false, error: `プロジェクト同期に失敗: ${String(e)}` };
+    }
+
     notifySync("synced");
     console.log("[shared-sync] pushed settings to server");
     return { ok: true };
