@@ -35,7 +35,7 @@ const ROLE_LABELS: Record<string, string> = {
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const { channels, activeChannel, setActiveChannelId, addChannel } = useChannel();
+  const { channels, activeChannel, setActiveChannelId, addChannel, renameChannel } = useChannel();
   const [ytStatus, setYtStatus] = useState(false);
   const [aiStatus, setAiStatus] = useState(false);
   const [analysisActive, setAnalysisActive] = useState(0);
@@ -102,6 +102,20 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => {
+              if (!activeChannel) return;
+              const name = prompt("新しいチャンネル名:", activeChannel.name);
+              if (name && name.trim() && name.trim() !== activeChannel.name) {
+                renameChannel(activeChannel.id, name.trim());
+              }
+            }}
+            disabled={!activeChannel}
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white text-xs transition-colors"
+            title="現在のチャンネル名を変更"
+          >
+            ✏️
+          </button>
           <button
             onClick={() => {
               const name = prompt("新しいチャンネル名を入力:");

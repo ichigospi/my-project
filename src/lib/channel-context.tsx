@@ -13,6 +13,7 @@ interface ChannelContextType {
   activeChannel: MyChannel | null;
   setActiveChannelId: (id: string) => void;
   addChannel: (name: string, handle?: string) => MyChannel;
+  renameChannel: (id: string, newName: string) => void;
   removeChannel: (id: string) => void;
 }
 
@@ -36,6 +37,7 @@ const ChannelContext = createContext<ChannelContextType>({
   activeChannel: null,
   setActiveChannelId: () => {},
   addChannel: () => createDefaultChannel(),
+  renameChannel: () => {},
   removeChannel: () => {},
 });
 
@@ -115,6 +117,12 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
     return ch;
   };
 
+  const renameChannel = (id: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setChannels((prev) => prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c)));
+  };
+
   const removeChannel = (id: string) => {
     // Prevent removing the last channel
     if (channels.length <= 1) return;
@@ -130,7 +138,7 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChannelContext.Provider
-      value={{ channels, activeChannel, setActiveChannelId, addChannel, removeChannel }}
+      value={{ channels, activeChannel, setActiveChannelId, addChannel, renameChannel, removeChannel }}
     >
       {children}
     </ChannelContext.Provider>
