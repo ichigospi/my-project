@@ -3,11 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
 
 // 共有設定の取得
+// 注: shared_projects は別エンドポイント (/api/projects) に分離済み。
+// ここで束ねるとリクエスト/レスポンスが肥大化し "Failed to fetch" の原因になるため、
+// 重い可能性のあるキーは含めない。
 const SHARED_KEYS = [
   "shared_yt_api_key", "shared_ai_api_key", "shared_channels", "shared_hooks",
   "shared_ctas", "shared_thumbnail_words", "shared_titles", "shared_profile",
   "shared_profiles_list", "shared_winning_patterns", "shared_presets",
-  "shared_projects", "shared_tasks", "shared_members", "shared_my_channel",
+  "shared_tasks", "shared_members", "shared_my_channel",
   "shared_analysis_logs", "shared_weekly_snapshots", "shared_performance_records",
   "shared_ideas", "shared_idea_rules", "shared_idea_rules_list",
   "shared_my_channels", "shared_my_channel_data_list",
@@ -54,7 +57,9 @@ export async function GET() {
         : (map["shared_profile"] ? [parse("shared_profile", null)] : []),
       winningPatterns: parse("shared_winning_patterns", null),
       presets: parse("shared_presets", [] as unknown[]),
-      projects: parse("shared_projects", [] as unknown[]),
+      // projects は /api/projects に分離（巨大ブロブを防ぐため）。
+      // 後方互換のためフィールド自体は残し、空配列を返す。
+      projects: [] as unknown[],
       tasks: parse("shared_tasks", [] as unknown[]),
       members: parse("shared_members", [] as unknown[]),
       myChannel: parse("shared_my_channel", null),
@@ -102,7 +107,7 @@ export async function POST(request: NextRequest) {
     if (body.profilesList !== undefined) updates.push({ key: "shared_profiles_list", value: JSON.stringify(body.profilesList) });
     if (body.winningPatterns !== undefined) updates.push({ key: "shared_winning_patterns", value: JSON.stringify(body.winningPatterns) });
     if (body.presets !== undefined) updates.push({ key: "shared_presets", value: JSON.stringify(body.presets) });
-    if (body.projects !== undefined) updates.push({ key: "shared_projects", value: JSON.stringify(body.projects) });
+    // projects は /api/projects で個別保存するため、ここでは書き込まない（巨大ブロブ防止）
     if (body.tasks !== undefined) updates.push({ key: "shared_tasks", value: JSON.stringify(body.tasks) });
     if (body.members !== undefined) updates.push({ key: "shared_members", value: JSON.stringify(body.members) });
     if (body.myChannel !== undefined) updates.push({ key: "shared_my_channel", value: JSON.stringify(body.myChannel) });
