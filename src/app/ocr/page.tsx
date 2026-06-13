@@ -250,6 +250,110 @@ export default function OcrPage() {
     await processOne({ ...item, status: "pending" }, true);
   };
 
+  // 音声書き起こしモード (字幕なし＆OCRも効かない動画用)
+  // yt-dlp で音声DL → OpenAI Whisper で書き起こし → 既存パイプラインで保存
+  const processOneAudio = async (item: QueueItem) => {
+    const openaiApiKey = getApiKey("openai_api_key");
+    if (!openaiApiKey || !openaiApiKey.startsWith("sk-") || openaiApiKey.startsWith("sk-ant-")) {
+      setError("音声書き起こしには OpenAI のAPIキー(sk-...)が必要です。設定画面で OpenAI APIキー を登録してください。");
+      return;
+    }
+    const aiApiKey = getApiKey("ai_api_key");
+    // テキスト整理(cleanup)用。なくても継続可
+
+    setProcessing(true);
+    setCurrentVideo(item.videoTitle);
+    setDebugLog([]);
+    addLog(`音声書き起こし開始: ${item.videoId}`);
+    setProgress("音声をダウンロード中（yt-dlp）...");
+
+    try {
+      // Step 1: 音声抽出
+      const audioRes = await fetch("/api/youtube/extract-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: item.videoId }),
+      });
+      const audioData = await audioRes.json();
+      if (audioData.error) throw new Error(audioData.error);
+      addLog(`音声DL完了: ${audioData.sizeMB}MB / ${audioData.chunkCount}チャンク`);
+      setProgress(`音声をWhisper APIで書き起こし中 (${audioData.chunkCount}チャンク)...`);
+
+      // Step 2: Whisper 書き起こし
+      const transcribeRes = await fetch("/api/script/whisper-transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chunks: audioData.chunks,
+          openaiApiKey,
+          cleanupDir: audioData.cleanupDir,
+        }),
+      });
+      const transcribeData = await transcribeRes.json();
+      if (transcribeData.error) throw new Error(transcribeData.error);
+
+      let transcript = (transcribeData.text || "").trim();
+      addLog(`Whisper結果: ${transcript.length}文字`);
+
+      // Step 3: 任意でテキスト整理 (aiApiKey があれば)
+      if (transcript.length > 0 && aiApiKey) {
+        setProgress("テキスト整理中...");
+        try {
+          const cleanRes = await fetch("/api/script/cleanup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rawText: transcript, sampleImages: [], aiApiKey }),
+          });
+          const cleanData = await cleanRes.json();
+          if (cleanData.text?.trim()) {
+            const cleaned = cleanData.text.trim();
+            if (cleaned.length >= transcript.length * 0.5) {
+              transcript = cleaned;
+              addLog(`整理後: ${cleaned.length}文字`);
+            } else {
+              addLog(`整理で削りすぎ→整理前を採用`);
+            }
+          }
+        } catch { /* cleanup失敗は無視 */ }
+      }
+
+      if (!transcript || transcript.length < 50) {
+        throw new Error(`書き起こし結果が短すぎます（${transcript.length}文字）`);
+      }
+
+      // 保存
+      saveAnalysis({
+        id: generateId(), videoId: item.videoId,
+        videoUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
+        videoTitle: item.videoTitle, channelName: item.channelName,
+        thumbnailUrl: item.thumbnailUrl, views: item.views,
+        transcript, analysisResult: null, category: "other",
+        tags: [], createdAt: new Date().toISOString(),
+      });
+
+      await fetch("/api/ocr-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete", id: item.id, transcript }),
+      });
+
+      setProgress(`音声書き起こし完了！（${transcript.length}文字取得）`);
+      fetchQueue();
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : "音声書き起こし失敗";
+      setError(errMsg);
+      await fetch("/api/ocr-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "error", id: item.id, error: errMsg }),
+      });
+      fetchQueue();
+    } finally {
+      setProcessing(false);
+      setCurrentVideo("");
+    }
+  };
+
   // 全件一括処理
   const processAll = async () => {
     for (const item of pendingItems) {
@@ -349,6 +453,11 @@ export default function OcrPage() {
               <button onClick={() => processOne(item)} disabled={processing}
                 className="px-3 py-1.5 rounded-lg text-xs bg-accent text-white hover:bg-accent/90 disabled:opacity-50">
                 読み取り
+              </button>
+              <button onClick={() => processOneAudio(item)} disabled={processing}
+                title="字幕もテロップもない動画用。OpenAI Whisper API で音声から書き起こします（OpenAIキー必須）"
+                className="px-2 py-1.5 rounded-lg text-xs bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
+                🎙 音声
               </button>
               <button onClick={async () => {
                 await fetch("/api/ocr-queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", id: item.id }) });

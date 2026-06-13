@@ -174,6 +174,9 @@ export async function pullSharedSettings(): Promise<void> {
     if (data.ai_api_key && !getApiKey("ai_api_key")) {
       setApiKey("ai_api_key", data.ai_api_key);
     }
+    if (data.openai_api_key && !getApiKey("openai_api_key")) {
+      setApiKey("openai_api_key", data.openai_api_key);
+    }
 
     // 自分のチャンネル(MyChannel): 同名マージ + id統一書き換え
     // ※ projects/tasks/hooks 等のマージ「前」に走らせる必要がある
@@ -424,6 +427,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       body: JSON.stringify({
         yt_api_key: getApiKey("yt_api_key"),
         ai_api_key: getApiKey("ai_api_key"),
+        openai_api_key: getApiKey("openai_api_key"),
         channels: getChannels(),
         hooks: getHooks(),
         ctas: getCTAs(),

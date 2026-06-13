@@ -7,7 +7,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 // ここで束ねるとリクエスト/レスポンスが肥大化し "Failed to fetch" の原因になるため、
 // 重い可能性のあるキーは含めない。
 const SHARED_KEYS = [
-  "shared_yt_api_key", "shared_ai_api_key", "shared_channels", "shared_hooks",
+  "shared_yt_api_key", "shared_ai_api_key", "shared_openai_api_key", "shared_channels", "shared_hooks",
   "shared_ctas", "shared_thumbnail_words", "shared_titles", "shared_profile",
   "shared_profiles_list", "shared_winning_patterns", "shared_presets",
   "shared_tasks", "shared_members", "shared_my_channel",
@@ -46,6 +46,7 @@ export async function GET() {
     return NextResponse.json({
       yt_api_key: map["shared_yt_api_key"] || "",
       ai_api_key: map["shared_ai_api_key"] || "",
+      openai_api_key: map["shared_openai_api_key"] || "",
       channels: parse("shared_channels", [] as unknown[]),
       hooks: parse("shared_hooks", [] as unknown[]),
       ctas: parse("shared_ctas", [] as unknown[]),
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
 
     if (body.yt_api_key !== undefined) updates.push({ key: "shared_yt_api_key", value: body.yt_api_key });
     if (body.ai_api_key !== undefined) updates.push({ key: "shared_ai_api_key", value: body.ai_api_key });
+    if (body.openai_api_key !== undefined) updates.push({ key: "shared_openai_api_key", value: body.openai_api_key });
     if (body.channels !== undefined) updates.push({ key: "shared_channels", value: JSON.stringify(body.channels) });
     if (body.hooks !== undefined) updates.push({ key: "shared_hooks", value: JSON.stringify(body.hooks) });
     if (body.ctas !== undefined) updates.push({ key: "shared_ctas", value: JSON.stringify(body.ctas) });
