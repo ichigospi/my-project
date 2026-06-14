@@ -132,7 +132,7 @@ ${userPrompt}
 
 ${analysisTexts}
 ${profileText}
-スタイル: ${style === "healing" ? "ヒーリング系" : "教育系"}
+スタイル: ${style === "healing" ? "ヒーリング系" : style === "tarot" ? "タロット系（3つの山から視聴者が直感で選ぶカード鑑定。山ごとに独立したパートを設ける）" : "教育系"}
 テーマ: ${topic}
 ${rulesText || ""}
 ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}

@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
 
   const genreLabels: Record<string, string> = { love: "恋愛運", money: "金運", general: "総合運" };
   const genreLabel = genreLabels[genre] || genre;
-  const styleLabel = style === "healing" ? "ヒーリング系" : "教育系";
+  const styleLabel = style === "healing" ? "ヒーリング系" : style === "tarot" ? "タロット系" : "教育系";
 
   let rulesBlock = "";
   if (ideaRules) {

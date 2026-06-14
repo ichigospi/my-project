@@ -28,6 +28,7 @@ function SettingsContent() {
 
   const [youtubeApiKey, setYoutubeApiKey] = useState("");
   const [aiApiKey, setAiApiKeyState] = useState("");
+  const [openaiApiKey, setOpenaiApiKeyState] = useState("");
   const [saved, setSaved] = useState(false);
   const [channelCount, setChannelCount] = useState(0);
   const [testingYt, setTestingYt] = useState(false);
@@ -48,6 +49,7 @@ function SettingsContent() {
   const [copiedToken, setCopiedToken] = useState("");
   const [showYtKey, setShowYtKey] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [cookieStatus, setCookieStatus] = useState<{ hasCookies: boolean; size: number; uploadedAt?: string; expiresAt?: string; isExpired?: boolean } | null>(null);
   const [uploadingCookie, setUploadingCookie] = useState(false);
   const [cookieResult, setCookieResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -73,6 +75,7 @@ function SettingsContent() {
     pullSharedSettings().then(() => {
       setYoutubeApiKey(getApiKey("yt_api_key"));
       setAiApiKeyState(getApiKey("ai_api_key"));
+      setOpenaiApiKeyState(getApiKey("openai_api_key"));
       setChannelCount(getChannels().length);
     });
     setOauthClientId(localStorage.getItem("oauth_client_id") || "");
@@ -226,6 +229,7 @@ function SettingsContent() {
   const handleSave = () => {
     setApiKey("yt_api_key", youtubeApiKey);
     setApiKey("ai_api_key", aiApiKey);
+    setApiKey("openai_api_key", openaiApiKey);
     // サーバーにも共有設定を保存
     pushSharedSettings();
     setSaved(true);
@@ -329,6 +333,29 @@ function SettingsContent() {
             <button type="button" onClick={() => setShowAiKey(!showAiKey)}
               className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
               {showAiKey ? "隠す" : "表示"}
+            </button>
+          </div>
+        </div>
+
+        {/* OpenAI APIキー（Whisper音声書き起こし用）*/}
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-semibold mb-1">OpenAI APIキー（音声書き起こし用 / 任意）</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            ローカル<code className="bg-gray-100 px-1 rounded text-xs">/ocr</code>の「🎙 音声」ボタンで使用。
+            字幕もテロップも無い動画を OpenAI Whisper API で書き起こすために必要です。
+            <code className="bg-gray-100 px-1 rounded text-xs">sk-</code>(ant- は不可) で始まるOpenAIキーを入力。
+          </p>
+          <div className="relative">
+            <input
+              type={showOpenaiKey ? "text" : "password"}
+              value={openaiApiKey}
+              onChange={(e) => setOpenaiApiKeyState(e.target.value)}
+              placeholder="sk-..."
+              className="w-full px-4 py-2.5 pr-16 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+            />
+            <button type="button" onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+              {showOpenaiKey ? "隠す" : "表示"}
             </button>
           </div>
         </div>
