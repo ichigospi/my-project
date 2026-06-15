@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { getApiKey, setApiKey } from "@/lib/channel-store";
 import { saveAnalysis, generateId, syncFromServer } from "@/lib/script-analysis-store";
+import { pullSharedSettings } from "@/lib/shared-sync";
 import { formatNumber } from "@/lib/mock-data";
 
 interface QueueItem {
@@ -72,6 +73,10 @@ export default function OcrPage() {
         setHealthWarnings(warnings);
       })
       .catch(() => { /* ヘルスチェック失敗は無視 */ });
+
+    // 共有DBから設定をpull（管理者のlocalStorageに OpenAI/AI キーを配布するため）
+    // /ocr は AppShell の外なので、ここで明示的に呼ぶ必要がある
+    pullSharedSettings().catch(() => { /* pull失敗は無視 */ });
 
     // APIキー自動読み込み（localStorageに未設定の場合のみ）
     if (!getApiKey("ai_api_key")) {
