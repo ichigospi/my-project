@@ -146,17 +146,21 @@ function mergeChannels(local: RegisteredChannel[], server: RegisteredChannel[]):
 // プロフィールをマージ（ローカル優先、ローカルが空ならサーバーの値を採用）
 function mergeProfile(local: ChannelProfile, server: ChannelProfile | null): ChannelProfile {
   if (!server) return local;
+  // チャンネル設定は「オーナーが管理しメンバーが参照する」性質のため、
+  // サーバー値を優先する。サーバーが空の項目だけローカル値を残す。
+  // (admin 側で個別編集→未push の状態が pull に潰されることはあるが、
+  //  通常は保存=即push なので問題にならない)
   return {
-    channelName: local.channelName || server.channelName || "",
-    concept: local.concept || server.concept || "",
-    tone: local.tone || server.tone || "",
-    target: local.target || server.target || "",
-    genres: local.genres?.length > 0 ? local.genres : server.genres || [],
-    mainStyle: local.mainStyle || server.mainStyle || "healing",
-    characteristics: local.characteristics || server.characteristics || "",
-    commonRules: local.commonRules || server.commonRules || "",
-    ngExpressions: local.ngExpressions || server.ngExpressions || "",
-    referenceAnalysisIds: [...new Set([...(local.referenceAnalysisIds || []), ...(server.referenceAnalysisIds || [])])],
+    channelName: server.channelName || local.channelName || "",
+    concept: server.concept || local.concept || "",
+    tone: server.tone || local.tone || "",
+    target: server.target || local.target || "",
+    genres: server.genres?.length > 0 ? server.genres : local.genres || [],
+    mainStyle: server.mainStyle || local.mainStyle || "healing",
+    characteristics: server.characteristics || local.characteristics || "",
+    commonRules: server.commonRules || local.commonRules || "",
+    ngExpressions: server.ngExpressions || local.ngExpressions || "",
+    referenceAnalysisIds: [...new Set([...(server.referenceAnalysisIds || []), ...(local.referenceAnalysisIds || [])])],
   };
 }
 
