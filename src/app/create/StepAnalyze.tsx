@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getApiKey } from "@/lib/channel-store";
-import { getAnalyses } from "@/lib/script-analysis-store";
+import { getAnalyses, syncFromServer } from "@/lib/script-analysis-store";
 import type { ScriptProject } from "@/lib/project-store";
 import { getTaskManager, type AnalysisTask } from "@/lib/analysis-task-manager";
 
@@ -20,6 +20,15 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
   const mgr = getTaskManager();
 
   const [ocrDoneVideoIds, setOcrDoneVideoIds] = useState<Set<string>>(new Set());
+  const [serverSyncDone, setServerSyncDone] = useState(false);
+
+  // 起動時にサーバーから分析データをpull
+  // (他メンバーが分析済みのデータも localStorage に取り込む)
+  useEffect(() => {
+    syncFromServer()
+      .catch(() => { /* pull失敗しても localStorage 分は使う */ })
+      .finally(() => setServerSyncDone(true));
+  }, []);
 
   useEffect(() => {
     fetch("/api/ocr-queue")
@@ -99,10 +108,10 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
     return unsubscribe;
   }, [mgr, project, onUpdate]);
 
-  // 初期状態を再計算（ページに戻ってきた時）
+  // 初期状態を再計算（ページに戻ってきた時 or サーバー同期完了時）
   useEffect(() => {
     setProgresses(buildProgresses());
-  }, [buildProgresses]);
+  }, [buildProgresses, serverSyncDone]);
 
   // OCRキューをポーリングしてローカル読み取り完了を自動検知
   useEffect(() => {

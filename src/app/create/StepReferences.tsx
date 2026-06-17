@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { getApiKey, getChannels } from "@/lib/channel-store";
-import { getAnalyses } from "@/lib/script-analysis-store";
+import { getAnalyses, syncFromServer } from "@/lib/script-analysis-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { GENRE_LABELS } from "@/lib/project-store";
@@ -62,8 +62,17 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
     });
   };
 
+  // サーバー(Turso DB)から分析データをpullしてから localStorage の最新版を反映
+  // (他メンバーが分析したものも本端末で「分析済み」として扱えるようにする)
   useEffect(() => {
-    setAnalyzedVideos(getAnalyses());
+    let mounted = true;
+    setAnalyzedVideos(getAnalyses()); // まず localStorage 分を即表示
+    syncFromServer()
+      .then(({ analyses }) => {
+        if (mounted) setAnalyzedVideos(analyses);
+      })
+      .catch(() => { /* pull失敗しても localStorage 分は表示済み */ });
+    return () => { mounted = false; };
   }, []);
 
   // 「不明」/空タイトルになっている参考動画を YouTube API で再取得して修復

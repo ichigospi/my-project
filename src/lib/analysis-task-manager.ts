@@ -264,12 +264,43 @@ class AnalysisTaskManager {
       await new Promise((r) => setTimeout(r, 3000));
       let analysisData: Record<string, unknown> = {};
       for (let retry = 0; retry < 5; retry++) {
-        const analyzeRes = await fetch("/api/script/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript, videoTitle: task.title, channelName: task.channelName, views: task.views, aiApiKey }),
-        });
-        analysisData = await analyzeRes.json();
+        let parseError: string | null = null;
+        let httpStatus = 0;
+        try {
+          const analyzeRes = await fetch("/api/script/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript, videoTitle: task.title, channelName: task.channelName, views: task.views, aiApiKey }),
+          });
+          httpStatus = analyzeRes.status;
+          const raw = await analyzeRes.text();
+          // proxyが "upstream error" などのプレーンテキストを返すケースをガード
+          try {
+            analysisData = JSON.parse(raw);
+          } catch {
+            parseError = raw.slice(0, 120) || "(empty body)";
+          }
+        } catch (e) {
+          parseError = `network error: ${String(e).slice(0, 100)}`;
+        }
+
+        // パース失敗 or 5xx は Anthropicへのupstreamタイムアウトなのでリトライ
+        if (parseError || httpStatus >= 500) {
+          const wait = 15000 * (retry + 1);
+          this.updateTask(task.id, {
+            progress: `AI分析中... タイムアウトリトライ${retry + 1}/5 (${parseError || `HTTP ${httpStatus}`})`,
+          });
+          if (retry < 4) {
+            await new Promise((r) => setTimeout(r, wait));
+            continue;
+          }
+          // リトライ上限：エラーで終了
+          analysisData = {
+            error: `AI分析のupstreamタイムアウト (リトライ5回失敗): ${parseError || `HTTP ${httpStatus}`}`,
+          };
+          break;
+        }
+
         if (analysisData.retryable) {
           const wait = 15000 * (retry + 1);
           this.updateTask(task.id, { progress: `AI分析中... API混雑リトライ${retry + 1}/5` });
