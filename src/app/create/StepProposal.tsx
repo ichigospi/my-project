@@ -136,6 +136,15 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
                 </div>
               </div>
 
+              {!a.analysisResult && (
+                <div className="p-4 bg-amber-50 border-t border-amber-100">
+                  <p className="text-xs text-amber-700">
+                    ⚠️ この動画はAI分析がまだ実行されていません（書き起こしのみ）。
+                    「戻る」ボタンで分析ステップに戻り、もう一度実行してください。
+                  </p>
+                </div>
+              )}
+
               {a.analysisResult && (
                 <div className="p-4 space-y-3">
                   <p className="text-sm text-gray-700">{a.analysisResult.summary}</p>

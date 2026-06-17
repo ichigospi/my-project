@@ -47,10 +47,17 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
 
   const buildProgresses = useCallback((): VideoProgress[] => {
     const existingAnalyses = getAnalyses();
+    // analysisResult が null のものは「AI分析未完了(=OCRのみ)」なので「分析済み」と扱わない
     const analyzedVideoIds = new Set(
       existingAnalyses
-        .filter((a) => project.analyses.includes(a.id))
+        .filter((a) => project.analyses.includes(a.id) && a.analysisResult !== null)
         .map((a) => a.videoId)
+    );
+    // 既存の分析エントリ(OCRのみ)があれば後で更新するため id を保持
+    const ocrOnlyEntries = new Map(
+      existingAnalyses
+        .filter((a) => a.analysisResult === null)
+        .map((a) => [a.videoId, a.id] as const)
     );
     const tasks = mgr.getTasks();
 
@@ -64,12 +71,22 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
           selected: false, taskId: task.id, analysisId: task.analysisId,
         };
       }
-      // 分析済みか（ローカルストア or OCRキュー完了）
-      if (analyzedVideoIds.has(v.videoId) || ocrDoneVideoIds.has(v.videoId)) {
+      // AI分析済みか（analysisResult がある）
+      if (analyzedVideoIds.has(v.videoId)) {
         return {
           videoId: v.videoId, title: v.title,
           status: "done" as const, progress: "分析済み",
           selected: false,
+        };
+      }
+      // OCR完了のみ → AI分析が必要
+      const ocrEntryId = ocrOnlyEntries.get(v.videoId);
+      if (ocrEntryId || ocrDoneVideoIds.has(v.videoId)) {
+        return {
+          videoId: v.videoId, title: v.title,
+          status: "pending" as const,
+          progress: ocrEntryId ? "AI分析が必要(書き起こし済み)" : "AI分析が必要",
+          selected: true,
         };
       }
       return {
