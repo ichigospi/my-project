@@ -470,26 +470,55 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       console.error("[shared-sync] 一部のデータの同期に失敗:", data.failed);
       return { ok: false, error: `一部のデータが同期できませんでした: ${detail}` };
     }
-    // プロジェクト（台本）は専用エンドポイントに分けて個別保存（巨大ブロブ回避）
+    // プロジェクト（台本）は専用エンドポイント /api/projects に
+    // **チャンク分割**して送る（リクエストボディが巨大化して経路で潰されるのを防ぐ）。
+    // 旧実装は全プロジェクトを1リクエストにまとめており、台本が貯まると
+    // proxy で切られて "Failed to fetch" になっていた。
     try {
-      const pjRes = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projects: getProjects() }),
-      });
-      if (!pjRes.ok) {
-        notifySync("error");
-        const err = await pjRes.json().catch(() => ({}));
-        return { ok: false, error: err.error || `プロジェクトの保存に失敗しました (HTTP ${pjRes.status})` };
+      const allProjects = getProjects();
+      const CHUNK_SIZE = 3; // 1リクエストあたりのプロジェクト数（生成台本込みで安全な数）
+      const failedProjects: { id: string; size: number; error: string }[] = [];
+
+      for (let i = 0; i < allProjects.length; i += CHUNK_SIZE) {
+        const chunk = allProjects.slice(i, i + CHUNK_SIZE);
+        const chunkIdx = Math.floor(i / CHUNK_SIZE) + 1;
+        const totalChunks = Math.ceil(allProjects.length / CHUNK_SIZE);
+        try {
+          const pjRes = await fetch("/api/projects", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projects: chunk }),
+          });
+          if (!pjRes.ok) {
+            const err = await pjRes.json().catch(() => ({}));
+            const reason = err.error || `HTTP ${pjRes.status}`;
+            console.error(`[shared-sync] project chunk ${chunkIdx}/${totalChunks} failed:`, reason);
+            for (const p of chunk) {
+              failedProjects.push({ id: p.id, size: JSON.stringify(p).length, error: reason });
+            }
+            continue;
+          }
+          const pjData = await pjRes.json().catch(() => ({}));
+          if (Array.isArray(pjData.failed) && pjData.failed.length > 0) {
+            failedProjects.push(...pjData.failed);
+          }
+        } catch (e) {
+          const reason = String(e).slice(0, 200);
+          console.error(`[shared-sync] project chunk ${chunkIdx}/${totalChunks} threw:`, reason);
+          for (const p of chunk) {
+            failedProjects.push({ id: p.id, size: JSON.stringify(p).length, error: reason });
+          }
+        }
       }
-      const pjData = await pjRes.json().catch(() => ({}));
-      if (Array.isArray(pjData.failed) && pjData.failed.length > 0) {
+
+      if (failedProjects.length > 0) {
         notifySync("error");
-        const detail = pjData.failed
-          .map((f: { id: string; size: number; error: string }) => `${f.id}(${Math.round(f.size / 1024)}KB)`)
+        const detail = failedProjects
+          .slice(0, 3) // エラーメッセージは長くなりすぎないように先頭3件のみ
+          .map((f) => `${f.id}(${Math.round(f.size / 1024)}KB)`)
           .join(", ");
-        console.error("[shared-sync] 一部のプロジェクト同期に失敗:", pjData.failed);
-        return { ok: false, error: `一部のプロジェクトが同期できませんでした: ${detail}` };
+        const more = failedProjects.length > 3 ? ` 他${failedProjects.length - 3}件` : "";
+        return { ok: false, error: `${failedProjects.length}件のプロジェクト同期に失敗: ${detail}${more}` };
       }
     } catch (e) {
       notifySync("error");
