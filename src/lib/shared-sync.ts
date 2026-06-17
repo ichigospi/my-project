@@ -168,7 +168,11 @@ export async function pullSharedSettings(): Promise<void> {
   try {
     notifySync("syncing");
     const res = await fetch("/api/shared-settings");
-    if (!res.ok) { notifySync("error"); return; }
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      notifySync("error", `pull失敗: GET /api/shared-settings HTTP ${res.status} ${errBody.slice(0, 120)}`);
+      return;
+    }
     const data = await res.json();
 
     // APIキー: ローカルが空ならサーバーから、サーバーの方が新しければサーバーから
@@ -406,7 +410,7 @@ export async function pullSharedSettings(): Promise<void> {
     notifySync("synced");
     console.log("[shared-sync] pulled & merged settings from server");
   } catch (e) {
-    notifySync("error");
+    notifySync("error", `pull例外: ${String(e).slice(0, 200)}`);
     console.error("[shared-sync] pull failed:", e);
   }
 }
@@ -418,58 +422,90 @@ export function onSyncStatus(listener: SyncListener): () => void {
   syncListeners.add(listener);
   return () => syncListeners.delete(listener);
 }
-function notifySync(status: "syncing" | "synced" | "error") {
+// 直近のエラー詳細を保持（UI に表示するため）
+let lastSyncError: string = "";
+export function getLastSyncError(): string {
+  return lastSyncError;
+}
+function notifySync(status: "syncing" | "synced" | "error", errorDetail?: string) {
+  if (status === "error" && errorDetail) {
+    lastSyncError = errorDetail;
+    console.error("[shared-sync] error:", errorDetail);
+  } else if (status === "synced") {
+    lastSyncError = "";
+  }
   syncListeners.forEach((l) => l(status));
 }
 
 export async function pushSharedSettings(): Promise<{ ok: boolean; error?: string }> {
   try {
     notifySync("syncing");
-    const res = await fetch("/api/shared-settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        yt_api_key: getApiKey("yt_api_key"),
-        ai_api_key: getApiKey("ai_api_key"),
-        openai_api_key: getApiKey("openai_api_key"),
-        channels: getChannels(),
-        hooks: getHooks(),
-        ctas: getCTAs(),
-        thumbnailWords: getThumbnailWords(),
-        titles: getTitles(),
-        profile: getProfile(),
-        profilesList: getAllProfiles(),
-        presets: getPresets(),
-        // projects は別エンドポイント /api/projects で保存（巨大ブロブ防止）
-        tasks: getTasks(),
-        members: getMembers(),
-        myChannelDataList: getMyChannelDataList(),
-        analysisLogs: getAnalysisLogs(),
-        weeklySnapshots: getWeeklySnapshots(),
-        performanceRecords: getPerformanceRecords(),
-        winningPatternsList: getWinningPatternsList(),
-        ideas: getIdeas(),
-        ideaRulesList: getIdeaRulesList(),
-        aiInsights: getAIInsights(),
-        myChannels: typeof window !== "undefined"
-          ? JSON.parse(localStorage.getItem(MY_CHANNELS_KEY) || "[]")
-          : [],
-      }),
-    });
-    if (!res.ok) {
-      notifySync("error");
-      const err = await res.json().catch(() => ({}));
-      return { ok: false, error: err.error || `保存に失敗しました (HTTP ${res.status})` };
+
+    // 全データを「キー単位の独立リクエスト」で送る。
+    // 1回にまとめると aiInsights / analysisLogs 等が肥大して
+    // "Failed to fetch" (proxy切断) を引き起こすため、項目ごとに分割。
+    const payloadParts: Record<string, unknown> = {
+      yt_api_key: getApiKey("yt_api_key"),
+      ai_api_key: getApiKey("ai_api_key"),
+      openai_api_key: getApiKey("openai_api_key"),
+      channels: getChannels(),
+      hooks: getHooks(),
+      ctas: getCTAs(),
+      thumbnailWords: getThumbnailWords(),
+      titles: getTitles(),
+      profile: getProfile(),
+      profilesList: getAllProfiles(),
+      presets: getPresets(),
+      // projects は別エンドポイント /api/projects で保存（巨大ブロブ防止）
+      tasks: getTasks(),
+      members: getMembers(),
+      myChannelDataList: getMyChannelDataList(),
+      analysisLogs: getAnalysisLogs(),
+      weeklySnapshots: getWeeklySnapshots(),
+      performanceRecords: getPerformanceRecords(),
+      winningPatternsList: getWinningPatternsList(),
+      ideas: getIdeas(),
+      ideaRulesList: getIdeaRulesList(),
+      aiInsights: getAIInsights(),
+      myChannels: typeof window !== "undefined"
+        ? JSON.parse(localStorage.getItem(MY_CHANNELS_KEY) || "[]")
+        : [],
+    };
+
+    const failedKeys: { key: string; size: number; error: string }[] = [];
+    for (const [key, value] of Object.entries(payloadParts)) {
+      const body = JSON.stringify({ [key]: value });
+      try {
+        const r = await fetch("/api/shared-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          failedKeys.push({ key, size: body.length, error: err.error || `HTTP ${r.status}` });
+          continue;
+        }
+        const d = await r.json().catch(() => ({}));
+        if (Array.isArray(d.failed) && d.failed.length > 0) {
+          failedKeys.push(...d.failed);
+        }
+      } catch (e) {
+        failedKeys.push({ key, size: body.length, error: String(e).slice(0, 200) });
+      }
     }
-    const data = await res.json().catch(() => ({}));
-    if (Array.isArray(data.failed) && data.failed.length > 0) {
-      notifySync("error");
-      const detail = data.failed
-        .map((f: { key: string; size: number; error: string }) => `${f.key}(${Math.round(f.size / 1024)}KB)`)
+
+    if (failedKeys.length > 0) {
+      const detail = failedKeys
+        .slice(0, 3)
+        .map((f) => `${f.key}(${Math.round(f.size / 1024)}KB)`)
         .join(", ");
-      console.error("[shared-sync] 一部のデータの同期に失敗:", data.failed);
-      return { ok: false, error: `一部のデータが同期できませんでした: ${detail}` };
+      const more = failedKeys.length > 3 ? ` 他${failedKeys.length - 3}件` : "";
+      const msg = `${failedKeys.length}個の項目で同期失敗: ${detail}${more}`;
+      notifySync("error", msg);
+      return { ok: false, error: msg };
     }
+
     // プロジェクト（台本）は専用エンドポイント /api/projects に
     // **チャンク分割**して送る（リクエストボディが巨大化して経路で潰されるのを防ぐ）。
     // 旧実装は全プロジェクトを1リクエストにまとめており、台本が貯まると
@@ -512,24 +548,27 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       }
 
       if (failedProjects.length > 0) {
-        notifySync("error");
         const detail = failedProjects
           .slice(0, 3) // エラーメッセージは長くなりすぎないように先頭3件のみ
           .map((f) => `${f.id}(${Math.round(f.size / 1024)}KB)`)
           .join(", ");
         const more = failedProjects.length > 3 ? ` 他${failedProjects.length - 3}件` : "";
-        return { ok: false, error: `${failedProjects.length}件のプロジェクト同期に失敗: ${detail}${more}` };
+        const msg = `${failedProjects.length}件のプロジェクト同期に失敗: ${detail}${more}`;
+        notifySync("error", msg);
+        return { ok: false, error: msg };
       }
     } catch (e) {
-      notifySync("error");
-      return { ok: false, error: `プロジェクト同期に失敗: ${String(e)}` };
+      const msg = `プロジェクト同期例外: ${String(e).slice(0, 200)}`;
+      notifySync("error", msg);
+      return { ok: false, error: msg };
     }
 
     notifySync("synced");
     console.log("[shared-sync] pushed settings to server");
     return { ok: true };
   } catch (e) {
-    notifySync("error");
-    return { ok: false, error: String(e) };
+    const msg = `push例外: ${String(e).slice(0, 200)}`;
+    notifySync("error", msg);
+    return { ok: false, error: msg };
   }
 }

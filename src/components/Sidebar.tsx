@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { getApiKey } from "@/lib/channel-store";
 import { getTaskManager } from "@/lib/analysis-task-manager";
-import { onSyncStatus } from "@/lib/shared-sync";
+import { onSyncStatus, getLastSyncError } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
 
 const navItems = [
@@ -200,7 +200,19 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               <span className="text-sidebar-text/60 truncate">分析中({analysisActive}) {analysisProgress}</span>
             </div>
           )}
-          <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+          <div
+            className="flex items-center gap-2 pt-1 border-t border-white/10 cursor-help"
+            title={syncStatus === "error" ? `エラー詳細: ${getLastSyncError() || "(詳細不明)"}\nクリックでクリップボードにコピー` : ""}
+            onClick={() => {
+              if (syncStatus === "error") {
+                const err = getLastSyncError();
+                if (err) {
+                  navigator.clipboard?.writeText(err).catch(() => {});
+                  alert(`同期エラー詳細:\n\n${err}`);
+                }
+              }
+            }}
+          >
             <span className={`w-2 h-2 rounded-full ${
               syncStatus === "syncing" ? "bg-blue-400 animate-pulse" :
               syncStatus === "synced" ? "bg-green-400" :
