@@ -808,7 +808,7 @@ function QualityCheckPanel({
 
       {!r && !checking && (
         <p className="text-sm text-gray-500">
-          ルール遵守 / 元ネタとの比較 / 勝ちパターン / 構成密度 / タイトル整合性 の5観点で台本を評価します。
+          元ネタ要素の継承 / CTAロジック / LINE鑑定の強度 / 重複・矛盾 / マーケター総合 などの観点で台本を評価し、元ネタとの比較マトリクスを表示します。
         </p>
       )}
 
@@ -840,9 +840,62 @@ function QualityCheckPanel({
             )}
           </div>
 
+          {/* ===== サマリー（常時表示）: 8観点の信号機 + 要改善の比較行だけ ===== */}
+          {/* 8観点バッジ横並び */}
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {r.categories.map((cat: QualityCheckCategory, ci: number) => {
+              const worst = cat.items.some((it) => it.status === "fail")
+                ? "fail" : cat.items.some((it) => it.status === "warn") ? "warn" : "pass";
+              const icon = worst === "fail" ? "🔴" : worst === "warn" ? "🟡" : "🟢";
+              // カテゴリ名から接頭辞(A. 等)を除いた短縮名
+              const shortName = cat.name.replace(/^[A-H]\.\s*/, "");
+              return (
+                <button key={ci}
+                  onClick={() => { if (!showDetail) onToggleDetail(); }}
+                  title={shortName}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border ${
+                    worst === "fail" ? "bg-red-50 border-red-200 text-red-700"
+                    : worst === "warn" ? "bg-amber-50 border-amber-200 text-amber-700"
+                    : "bg-green-50 border-green-200 text-green-700"
+                  }`}>
+                  <span>{icon}</span>
+                  <span className="truncate max-w-[8rem]">{shortName}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 要改善の比較行だけ（⚠️/❌）を常時表示 */}
+          {r.comparison && r.comparison.some((row) => row.verdict !== "good") && (
+            <div className="mb-3">
+              <p className="text-xs font-medium text-gray-500 mb-1.5">
+                改善が必要な要素（{r.comparison.filter((row) => row.verdict !== "good").length}件）
+              </p>
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-xs border-collapse">
+                  <tbody>
+                    {r.comparison.filter((row) => row.verdict !== "good").map((row: QualityComparisonRow, ri: number) => (
+                      <tr key={ri} className="border-b border-gray-100 last:border-0">
+                        <td className="px-2 py-1.5 font-medium text-gray-700 whitespace-nowrap">{row.element}</td>
+                        <td className="px-2 py-1.5 text-center text-gray-500 whitespace-nowrap">元: {row.source}</td>
+                        <td className="px-2 py-1.5 text-center text-gray-500 whitespace-nowrap">生成: {row.generated}</td>
+                        <td className="px-2 py-1.5">
+                          <span className="whitespace-nowrap">
+                            {row.verdict === "warn" ? "⚠️" : "❌"}{row.note ? ` ${row.note}` : ""}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ===== 詳細（折りたたみ）: 比較マトリクス全行 + 8観点の各項目 ===== */}
           {showDetail && r.comparison && r.comparison.length > 0 && (
             <div className="mb-4">
-              <h4 className="text-sm font-semibold mb-2">📊 元ネタ比較マトリクス</h4>
+              <h4 className="text-sm font-semibold mb-2">📊 元ネタ比較マトリクス（全{r.comparison.length}要素）</h4>
               <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="w-full text-xs border-collapse">
                   <thead>
