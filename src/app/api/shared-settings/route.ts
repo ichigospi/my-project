@@ -22,18 +22,24 @@ export async function GET() {
     const auth = await requireAuth();
     if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    // キーごとに個別取得。巨大化した1キー(shared_projects等)が読めなくても、
-    // APIキー・チャンネル等の重要な設定は確実に返す。
+    // キーごとに並列取得。巨大化した1キーが読めなくても他は確実に返す耐障害性を維持しつつ、
+    // 並列化で従来の「25キー × 順次 100ms = 2.5秒+」を 1リクエスト分のRTTに圧縮する。
     const map: Record<string, string> = {};
     const skipped: { key: string; error: string }[] = [];
-    for (const key of SHARED_KEYS) {
-      try {
-        const row = await prisma.appSetting.findUnique({ where: { key } });
-        if (row) map[key] = row.value;
-      } catch (e) {
-        console.error(`GET /api/shared-settings: key "${key}" failed to read`, e);
-        skipped.push({ key, error: String(e).slice(0, 200) });
-      }
+    const results = await Promise.all(
+      SHARED_KEYS.map(async (key) => {
+        try {
+          const row = await prisma.appSetting.findUnique({ where: { key } });
+          return { key, value: row?.value, error: null as string | null };
+        } catch (e) {
+          console.error(`GET /api/shared-settings: key "${key}" failed to read`, e);
+          return { key, value: undefined, error: String(e).slice(0, 200) };
+        }
+      })
+    );
+    for (const r of results) {
+      if (r.value !== undefined && r.value !== null) map[r.key] = r.value;
+      if (r.error) skipped.push({ key: r.key, error: r.error });
     }
 
     // 値が壊れていても全体を落とさないための安全パース
