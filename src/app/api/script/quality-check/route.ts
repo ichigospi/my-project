@@ -171,7 +171,14 @@ passed は items 全部が "pass" のときのみ true。
 - 軽め: C(文字数)
 - 「H/E/A/D/G のいずれかが fail」なら overallScore は 5 以下になる
 - 全カテゴリ pass なら 9 以上
-- 細かいフォーマット問題だけで 7 を割らない`;
+- 細かいフォーマット問題だけで 7 を割らない
+
+【出力量の制約 - 必ず厳守（応答が長すぎるとタイムアウトする）】
+- 各カテゴリの items は「warn / fail の項目を優先」して列挙する。pass の項目は最大2件まで、comment も「問題なし」程度に短く。
+- 各 item の comment は要点のみ、最大60字。長い原文引用はしない（該当箇所は短い抜粋のみ）。
+- suggestion は warn / fail の項目だけ、1文・最大50字。
+- comparison の source / generated の補足は最大15字、note は最大12字。
+- 全体としてコンパクトな応答を保つこと。冗長な説明は不要。`;
 
 function buildUserPrompt(p: {
   script: string;
