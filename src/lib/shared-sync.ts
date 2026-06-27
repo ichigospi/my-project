@@ -164,14 +164,27 @@ function mergeProfile(local: ChannelProfile, server: ChannelProfile | null): Cha
   };
 }
 
-export async function pullSharedSettings(): Promise<void> {
-  try {
-    notifySync("syncing");
-    const res = await fetch("/api/shared-settings");
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => "");
-      notifySync("error", `pull失敗: GET /api/shared-settings HTTP ${res.status} ${errBody.slice(0, 120)}`);
-      return;
+// 直近の成功した pull の時刻 / 進行中の pull Promise を保持し、
+// 短時間内の重複呼び出しを抑止する（複数ページがマウント時に pull するため）
+let lastPullAt = 0;
+let inFlightPull: Promise<void> | null = null;
+const PULL_CACHE_MS = 30_000; // 30秒以内の再pullはスキップ
+
+export async function pullSharedSettings(opts?: { force?: boolean }): Promise<void> {
+  const now = Date.now();
+  // 進行中の pull があればそれを待つ（重複fetchの完全抑止）
+  if (inFlightPull) return inFlightPull;
+  // 直近 PULL_CACHE_MS 内に成功していたらスキップ（明示 force のときだけ無視）
+  if (!opts?.force && now - lastPullAt < PULL_CACHE_MS) return;
+
+  inFlightPull = (async () => {
+    try {
+      notifySync("syncing");
+      const res = await fetch("/api/shared-settings");
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        notifySync("error", `pull失敗: GET /api/shared-settings HTTP ${res.status} ${errBody.slice(0, 120)}`);
+        return;
     }
     const data = await res.json();
 
@@ -407,12 +420,17 @@ export async function pullSharedSettings(): Promise<void> {
       }
     }
 
-    notifySync("synced");
-    console.log("[shared-sync] pulled & merged settings from server");
-  } catch (e) {
-    notifySync("error", `pull例外: ${String(e).slice(0, 200)}`);
-    console.error("[shared-sync] pull failed:", e);
-  }
+      notifySync("synced");
+      console.log("[shared-sync] pulled & merged settings from server");
+      lastPullAt = Date.now();
+    } catch (e) {
+      notifySync("error", `pull例外: ${String(e).slice(0, 200)}`);
+      console.error("[shared-sync] pull failed:", e);
+    } finally {
+      inFlightPull = null;
+    }
+  })();
+  return inFlightPull;
 }
 
 // 同期ステータス通知
