@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
+import { pullSharedSettings } from "@/lib/shared-sync";
 import { getPresetFor, getPerformanceRecordsByChannel } from "@/lib/project-store";
 import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
@@ -54,6 +55,12 @@ function getSectionStats(text: string): { name: string; chars: number }[] {
 const CHARS_PER_MINUTE = 250;
 
 export default function StepScript({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
+  // 台本生成時に共通ルール/NG表現が古い/空のままだと別チャンネルの世界観が混入するため、
+  // マウント時に必ず共有設定をpullしてlocalStorageを最新化する
+  useEffect(() => {
+    pullSharedSettings().catch(() => { /* pull失敗時もローカル分で続行 */ });
+  }, []);
+
   const [generating, setGenerating] = useState(false);
   const [convertingTelop, setConvertingTelop] = useState(false);
   const [suggestingThumb, setSuggestingThumb] = useState(false);
