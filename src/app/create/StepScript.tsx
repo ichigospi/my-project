@@ -199,29 +199,70 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const preset = getPresetFor(project.genre as Genre, project.style as Style, project.channelId);
       const winningPatterns = getWinningPatternsByChannel(project.channelId || "");
 
-      const res = await fetch("/api/script/quality-check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          script: project.generatedScript,
-          title: project.title || "",
-          profile, preset, winningPatterns,
-          referenceAnalyses: referenceAnalyses.map((a) => ({
-            videoTitle: a.videoTitle,
-            views: a.views,
-            analysisResult: a.analysisResult,
-            transcript: a.transcript,
-          })),
-          aiApiKey,
-        }),
+      const body = JSON.stringify({
+        script: project.generatedScript,
+        title: project.title || "",
+        profile, preset, winningPatterns,
+        referenceAnalyses: referenceAnalyses.map((a) => ({
+          videoTitle: a.videoTitle,
+          views: a.views,
+          analysisResult: a.analysisResult,
+          transcript: a.transcript,
+        })),
+        aiApiKey,
       });
-      const data = await res.json();
-      if (data.error) { setError(data.error); return; }
+
+      // Railway proxy が "upstream error"(プレーンテキスト) を返すと res.json() が
+      // 失敗するため、text() で受けて safe parse。upstream/5xx は自動リトライ。
+      let data: Record<string, unknown> | null = null;
+      let lastErr = "";
+      for (let attempt = 0; attempt < 4; attempt++) {
+        let httpStatus = 0;
+        let parseErr: string | null = null;
+        try {
+          const res = await fetch("/api/script/quality-check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+          });
+          httpStatus = res.status;
+          const raw = await res.text();
+          try { data = JSON.parse(raw); }
+          catch { parseErr = raw.slice(0, 120) || "(空レスポンス)"; }
+        } catch (e) {
+          parseErr = `通信エラー: ${String(e).slice(0, 100)}`;
+        }
+
+        // パース失敗 or 5xx は upstream タイムアウト → リトライ
+        if (parseErr || httpStatus >= 500) {
+          lastErr = parseErr || `HTTP ${httpStatus}`;
+          if (attempt < 3) {
+            setError(`品質チェック リトライ中... (${attempt + 1}/4: ${lastErr})`);
+            await new Promise((r) => setTimeout(r, 8000 * (attempt + 1)));
+            continue;
+          }
+          setError(`品質チェックがタイムアウトしました（4回失敗）: ${lastErr}`);
+          return;
+        }
+        // retryable フラグ(APIの混雑)もリトライ
+        if (data && (data as { retryable?: boolean }).retryable) {
+          if (attempt < 3) {
+            setError(`AI混雑のためリトライ中... (${attempt + 1}/4)`);
+            await new Promise((r) => setTimeout(r, 8000 * (attempt + 1)));
+            continue;
+          }
+        }
+        break;
+      }
+
+      if (!data) { setError(`品質チェックに失敗しました: ${lastErr}`); return; }
+      if (data.error) { setError(data.error as string); return; }
+      setError("");
       const result: QualityCheckResult = {
-        categories: data.categories || [],
-        comparison: data.comparison || [],
-        overallScore: data.overallScore || 0,
-        topPriority: data.topPriority || "",
+        categories: (data.categories as QualityCheckCategory[]) || [],
+        comparison: (data.comparison as QualityComparisonRow[]) || [],
+        overallScore: (data.overallScore as number) || 0,
+        topPriority: (data.topPriority as string) || "",
         checkedAt: new Date().toISOString(),
         scriptHash: simpleHash(project.generatedScript),
       };
