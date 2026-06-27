@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// 8観点+比較マトリクスの生成は出力が大きく時間がかかるため、関数のタイムアウトを延長
+export const maxDuration = 300;
+
 interface RefAnalysis {
   videoTitle?: string;
   views?: number;
