@@ -18,11 +18,17 @@ export default function PresetsPage() {
   const [tab, setTab] = useState<"common" | "presets">("common");
 
   useEffect(() => {
+    const channelId = activeChannel?.id || "";
+    // 先に localStorage から即座に表示（pull完了を待たない）
+    setPresets(getPresetsByChannel(channelId));
+    setProfileState(getProfileByChannel(channelId));
+    setAnalysesState(getAnalyses());
+    // 後でサーバーから最新を取って上書き
     pullSharedSettings().then(() => {
-      setPresets(getPresetsByChannel(activeChannel?.id || ""));
-      setProfileState(getProfileByChannel(activeChannel?.id || ""));
+      setPresets(getPresetsByChannel(channelId));
+      setProfileState(getProfileByChannel(channelId));
       setAnalysesState(getAnalyses());
-    });
+    }).catch(() => { /* pull失敗時もローカル表示は維持 */ });
   }, [activeChannel]);
 
   const handleSavePreset = () => {
