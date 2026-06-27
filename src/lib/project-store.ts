@@ -35,8 +35,18 @@ export interface QualityCheckCategory {
   items: QualityCheckItem[];
 }
 
+// 元ネタ vs 生成台本 の伸び要素 比較マトリクスの1行
+export interface QualityComparisonRow {
+  element: string;             // ハマり要素名（例: 選民訴求、離脱防止）
+  source: string;              // 元ネタの評価（◎/○/△/× + 補足）
+  generated: string;          // 生成台本の評価（◎/○/△/× + 補足）
+  verdict: "good" | "warn" | "bad";  // 総合評価（✅/⚠️/❌ の表示用）
+  note?: string;               // 評価コメント（例:「ここが弱い」「強み」）
+}
+
 export interface QualityCheckResult {
   categories: QualityCheckCategory[];
+  comparison?: QualityComparisonRow[];  // 元ネタ比較マトリクス
   overallScore: number;        // 0-10
   topPriority: string;         // 最優先で直すべきポイント
   checkedAt: string;
