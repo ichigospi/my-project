@@ -1,7 +1,6 @@
 "use client";
 
 import { GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
-import { useChannel } from "@/lib/channel-context";
 import type { ScriptProject, Genre, Style } from "@/lib/project-store";
 
 const STYLE_ICONS: Record<Style, string> = {
@@ -13,16 +12,12 @@ const STYLE_ICONS: Record<Style, string> = {
 const STYLE_DESCRIPTIONS: Record<Style, string> = {
   healing: "癒し・瞑想・エネルギーワーク",
   education: "知識・解説・啓蒙",
-  tarot: "3つの山から直感で選ぶカード鑑定",
+  tarot: "リーディング進行型のカード鑑定",
 };
 
 export default function StepGenre({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
-  const { activeChannel } = useChannel();
-
-  // タロット系は アリサ チャンネルのみ表示
-  const isArisa = (activeChannel?.name || "").includes("アリサ");
-  const visibleStyles = (Object.entries(STYLE_LABELS) as [Style, string][])
-    .filter(([key]) => key !== "tarot" || isArisa);
+  // 全スタイルを常時表示(チャンネル別の出し分けは廃止)
+  const visibleStyles = Object.entries(STYLE_LABELS) as [Style, string][];
   const gridCols = visibleStyles.length === 3 ? "grid-cols-3" : "grid-cols-2";
 
   return (
