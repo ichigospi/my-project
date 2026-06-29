@@ -539,7 +539,18 @@ export function getPresets(): ScriptRulePreset[] {
   if (typeof window === "undefined") return DEFAULT_PRESETS;
   const stored = localStorage.getItem(PRESETS_KEY);
   if (!stored) { localStorage.setItem(PRESETS_KEY, JSON.stringify(DEFAULT_PRESETS)); return DEFAULT_PRESETS; }
-  return JSON.parse(stored);
+  const saved: ScriptRulePreset[] = JSON.parse(stored);
+  // DEFAULT_PRESETS に後から追加された共有プリセット(タロット等)を補完する。
+  // 既存ユーザーは古い6プリセットだけ localStorage に持っているため、
+  // 共有プリセット(channelId なし)で localStorage に無い id を足す。
+  const savedIds = new Set(saved.map((p) => p.id));
+  const missingDefaults = DEFAULT_PRESETS.filter((d) => !savedIds.has(d.id));
+  if (missingDefaults.length > 0) {
+    const merged = [...saved, ...missingDefaults];
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(merged));
+    return merged;
+  }
+  return saved;
 }
 
 export function savePreset(preset: ScriptRulePreset) {
