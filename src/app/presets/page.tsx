@@ -163,10 +163,11 @@ export default function PresetsPage() {
                 )}
               </div>
               <h3 className="font-semibold mb-2">{p.name}</h3>
-              <p className="text-sm text-gray-600 line-clamp-2 mb-3">{p.rules}</p>
+              <p className="text-sm text-gray-600 line-clamp-4 mb-3 whitespace-pre-wrap">{p.rules}</p>
               <div className="flex items-center gap-4 text-xs text-gray-400">
                 <span>目標: {p.targetWordCount}文字</span>
-                <span>フック: {p.hookPattern.substring(0, 15)}...</span>
+                <span>ルール: {(p.rules || "").length.toLocaleString()}字</span>
+                <span className="text-accent">クリックで全文編集 →</span>
               </div>
             </div>
           ))}
@@ -175,7 +176,7 @@ export default function PresetsPage() {
 
       {/* カテゴリ別プリセット編集 */}
       {tab === "presets" && editing && (
-        <div className="max-w-2xl">
+        <div className="max-w-4xl">
           <button onClick={() => setEditing(null)} className="text-accent text-sm font-medium mb-4 flex items-center gap-1 hover:underline">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             一覧に戻る
@@ -188,14 +189,15 @@ export default function PresetsPage() {
             <h2 className="text-lg font-bold">{editing.name}</h2>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">台本ルール</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">台本ルール（構成の全文。AIが台本生成時にこの内容を適用します）</label>
+              <p className="text-xs text-gray-400 mb-1.5">{(editing.rules || "").length.toLocaleString()}文字</p>
               <textarea value={editing.rules} onChange={(e) => setEditing({ ...editing, rules: e.target.value })}
-                rows={4} className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm" />
+                rows={24} className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm leading-relaxed font-mono resize-y" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">台本生成プロンプト</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">台本生成プロンプト（AIへの役割指示・1〜数文）</label>
               <textarea value={editing.prompt} onChange={(e) => setEditing({ ...editing, prompt: e.target.value })}
-                rows={3} className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm" />
+                rows={5} className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm leading-relaxed resize-y" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
