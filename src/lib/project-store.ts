@@ -53,6 +53,12 @@ export interface QualityCheckResult {
   scriptHash?: string;         // チェック時の台本ハッシュ（変更検知用）
 }
 
+// 分割出力の1パート
+export interface ScriptSegment {
+  script: string;
+  qualityCheckResult?: QualityCheckResult;
+}
+
 export interface ScriptProject {
   id: string;
   genre: Genre;
@@ -75,6 +81,10 @@ export interface ScriptProject {
   scriptReviewNote?: string;
   // 台本品質チェック結果（step6 完了後）
   qualityCheckResult?: QualityCheckResult;
+  // 分割出力（1〜3回）。splitCount>1 のとき scriptSegments にパートを保持し、
+  // generatedScript はその結合結果。各パートごとに品質チェック・修正ができる。
+  splitCount?: number;
+  scriptSegments?: ScriptSegment[];
   createdAt: string;
   updatedAt: string;
 }
