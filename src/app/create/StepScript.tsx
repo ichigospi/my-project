@@ -256,7 +256,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           const raw = await res.text();
           try { data = JSON.parse(raw); } catch { parseErr = raw.slice(0, 120) || "(空レスポンス)"; }
         } catch (e) { parseErr = `通信エラー: ${String(e).slice(0, 100)}`; }
-        if (parseErr || httpStatus >= 500) {
+        // JSONとして読めない場合のみ真のタイムアウトとしてリトライ。JSON付きのエラーはそのまま表示する。
+        if (parseErr && !data) {
           lastErr = parseErr || `HTTP ${httpStatus}`;
           if (attempt < 3) { setError(`パート${idx + 1}チェック リトライ中... (${attempt + 1}/4)`); await new Promise((r) => setTimeout(r, 6000 * (attempt + 1))); continue; }
           setError(`パート${idx + 1}のチェックがタイムアウト: ${lastErr}`); return;

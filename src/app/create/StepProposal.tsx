@@ -47,7 +47,9 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
           const raw = await res.text();
           try { data = JSON.parse(raw); } catch { parseErr = raw.slice(0, 120) || "(空レスポンス)"; }
         } catch (e) { parseErr = `通信エラー: ${String(e).slice(0, 100)}`; }
-        if (parseErr || httpStatus >= 500) {
+        // JSONとして読めない(=Railwayの"upstream error"プレーンテキスト等)場合のみ真のタイムアウトとしてリトライ。
+        // JSON付きのエラー(500でも data.error あり)はそのまま下で表示し、原因を隠さない。
+        if (parseErr && !data) {
           lastErr = parseErr || `HTTP ${httpStatus}`;
           if (attempt < 3) { setError(`骨組みチェック リトライ中... (${attempt + 1}/4)`); await new Promise((r) => setTimeout(r, 6000 * (attempt + 1))); continue; }
           setError(`骨組みチェックがタイムアウトしました: ${lastErr}`); return;
