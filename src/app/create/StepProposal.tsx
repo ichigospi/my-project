@@ -8,7 +8,7 @@ import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import type { ScriptProject } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
-import type { Genre, Style } from "@/lib/project-store";
+import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
 export default function StepProposal({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const [analyses, setAnalyses] = useState<ScriptAnalysis[]>([]);
@@ -18,6 +18,57 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   const [error, setError] = useState("");
   const [viewTab, setViewTab] = useState<"skeleton" | "analyses">("skeleton");
   const [promptText, setPromptText] = useState("");
+  const [checkingSkeleton, setCheckingSkeleton] = useState(false);
+  const [skeletonCheck, setSkeletonCheck] = useState<QualityCheckResult | null>(null);
+
+  // 骨組みの品質チェック（構成ルール遵守・元台本ズレ）
+  const handleSkeletonCheck = async () => {
+    if (!skeleton.trim()) { setError("先に骨組みを生成してください"); return; }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    setCheckingSkeleton(true);
+    setError("");
+    try {
+      const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
+      const referenceAnalyses = analyses.map((a) => ({
+        videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult,
+      }));
+      const body = JSON.stringify({ skeleton, referenceAnalyses, rulesText, style: project.style, aiApiKey });
+      let data: Record<string, unknown> | null = null;
+      let lastErr = "";
+      for (let attempt = 0; attempt < 4; attempt++) {
+        let httpStatus = 0;
+        let parseErr: string | null = null;
+        try {
+          const res = await fetch("/api/script/quality-check-skeleton", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body,
+          });
+          httpStatus = res.status;
+          const raw = await res.text();
+          try { data = JSON.parse(raw); } catch { parseErr = raw.slice(0, 120) || "(空レスポンス)"; }
+        } catch (e) { parseErr = `通信エラー: ${String(e).slice(0, 100)}`; }
+        if (parseErr || httpStatus >= 500) {
+          lastErr = parseErr || `HTTP ${httpStatus}`;
+          if (attempt < 3) { setError(`骨組みチェック リトライ中... (${attempt + 1}/4)`); await new Promise((r) => setTimeout(r, 6000 * (attempt + 1))); continue; }
+          setError(`骨組みチェックがタイムアウトしました: ${lastErr}`); return;
+        }
+        if (data && (data as { retryable?: boolean }).retryable) {
+          if (attempt < 3) { setError(`AI混雑のためリトライ中... (${attempt + 1}/4)`); await new Promise((r) => setTimeout(r, 6000 * (attempt + 1))); continue; }
+        }
+        break;
+      }
+      if (!data) { setError(`骨組みチェックに失敗しました: ${lastErr}`); return; }
+      if (data.error) { setError(data.error as string); return; }
+      setError("");
+      setSkeletonCheck({
+        categories: (data.categories as QualityCheckCategory[]) || [],
+        overallScore: (data.overallScore as number) || 0,
+        topPriority: (data.topPriority as string) || "",
+        checkedAt: new Date().toISOString(),
+      });
+    } catch { setError("骨組みチェックに失敗しました"); }
+    finally { setCheckingSkeleton(false); }
+  };
 
   useEffect(() => {
     const all = getAnalyses();
@@ -296,6 +347,56 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 骨組みの品質チェック */}
+      {skeleton && (
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-3">
+            <button onClick={handleSkeletonCheck} disabled={checkingSkeleton}
+              className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+              {checkingSkeleton ? "骨組みをチェック中..." : "🔍 骨組みの品質チェック"}
+            </button>
+            <span className="text-xs text-gray-400">構成ルール遵守・元台本からのズレを確認</span>
+          </div>
+
+          {skeletonCheck && (
+            <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="font-bold">骨組み品質チェック <span className="text-accent">{skeletonCheck.overallScore} / 10</span></p>
+                <button onClick={() => setSkeletonCheck(null)} className="text-xs text-gray-400 hover:text-gray-600">閉じる</button>
+              </div>
+              {skeletonCheck.topPriority && (
+                <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                  <p className="text-xs font-medium text-amber-800 mb-1">最優先で直すべき</p>
+                  <p className="text-sm text-amber-900">{skeletonCheck.topPriority}</p>
+                </div>
+              )}
+              <div className="space-y-3">
+                {skeletonCheck.categories.map((cat, ci) => (
+                  <div key={ci} className="border border-gray-100 rounded-lg p-3">
+                    <p className="text-sm font-semibold mb-2">{cat.name}</p>
+                    <div className="space-y-1.5">
+                      {cat.items.map((it, ii) => (
+                        <div key={ii} className="flex gap-2 text-sm">
+                          <span>{it.status === "pass" ? "🟢" : it.status === "warn" ? "🟡" : "🔴"}</span>
+                          <div className="flex-1">
+                            <span className="text-gray-700">{it.name}</span>
+                            {it.comment && <p className="text-xs text-gray-500 mt-0.5">{it.comment}</p>}
+                            {it.status !== "pass" && it.suggestion && (
+                              <p className="text-xs text-purple-700 mt-0.5">→ {it.suggestion}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-3">※ 指摘があれば、上の「AIへの指示」に修正内容を書いて骨組みを再生成してください。</p>
+            </div>
+          )}
         </div>
       )}
 

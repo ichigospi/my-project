@@ -9,7 +9,7 @@ import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
-import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow } from "@/lib/project-store";
+import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow, ScriptSegment } from "@/lib/project-store";
 
 // 簡易ハッシュ（チェック時の台本と現在の台本が一致するか判定用）
 function simpleHash(s: string): string {
@@ -51,6 +51,39 @@ function getSectionStats(text: string): { name: string; chars: number }[] {
   return sections;
 }
 
+// 骨組み(マークダウン)を n 個の連続グループに分割する（分割出力モード用）
+// セクション見出しを境界に、なるべく文字数が均等になるよう連続したまとまりで分ける
+function splitSkeletonText(skeleton: string, n: number): string[] {
+  if (n <= 1) return [skeleton];
+  const parts = skeleton.split(SECTION_HEADER_RE).filter((p) => p.trim());
+  if (parts.length <= 1) {
+    // 見出しが無い骨組みは行数で等分にフォールバック
+    const lines = skeleton.split("\n");
+    const per = Math.ceil(lines.length / n);
+    const out: string[] = [];
+    for (let i = 0; i < n; i++) out.push(lines.slice(i * per, (i + 1) * per).join("\n"));
+    return out.filter((p) => p.trim());
+  }
+  const total = parts.reduce((s, p) => s + p.length, 0);
+  const target = total / n;
+  const groups: string[] = [];
+  let cur = "";
+  let curLen = 0;
+  let made = 0;
+  for (let i = 0; i < parts.length; i++) {
+    cur += parts[i];
+    curLen += parts[i].length;
+    const remainingGroups = n - made - 1;
+    const remainingParts = parts.length - i - 1;
+    if (made < n - 1 && curLen >= target && remainingParts >= remainingGroups) {
+      groups.push(cur);
+      cur = ""; curLen = 0; made++;
+    }
+  }
+  if (cur.trim()) groups.push(cur);
+  return groups;
+}
+
 // 推定動画尺（千代婆ベース: 後で調整、デフォルト250文字/分）
 const CHARS_PER_MINUTE = 250;
 
@@ -74,6 +107,12 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [checkingQuality, setCheckingQuality] = useState(false);
   const [showQualityDetail, setShowQualityDetail] = useState(true);
   const [syncDone, setSyncDone] = useState(false);
+
+  // 分割出力（出力回数 1〜3）
+  const [splitCount, setSplitCount] = useState(project.splitCount || 1);
+  const [segmentChecking, setSegmentChecking] = useState<number | null>(null);
+  const [segmentRevising, setSegmentRevising] = useState<number | null>(null);
+  const [segmentReviseNote, setSegmentReviseNote] = useState<Record<number, string>>({});
 
   // 一致率チェック
   const [similarities, setSimilarities] = useState<{ title: string; rate: number }[]>([]);
@@ -132,9 +171,160 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
-      else if (data.script) { onUpdate({ ...project, generatedScript: data.script, status: "completed" }); }
+      else if (data.script) { onUpdate({ ...project, generatedScript: data.script, status: "completed", scriptSegments: undefined, splitCount: 1 }); }
     } catch { setError("台本生成に失敗"); }
     finally { setGenerating(false); }
+  };
+
+  // 元ネタ分析の整形（分割生成・パートチェックで共用）
+  const buildRefs = () => getAnalyses()
+    .filter((a) => project.analyses?.includes(a.id))
+    .map((a) => ({ videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult }));
+
+  // 分割出力：骨組みを count 分割し、前パートを文脈に「続き」を順に生成
+  const handleGenerateSplit = async (count: number) => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    if (!project.structureProposal?.concept) { setError("構成提案（骨組み）がありません"); return; }
+
+    if (project.generatedScript) setScriptHistory((prev) => [...prev, project.generatedScript]);
+
+    setGenerating(true);
+    setError("");
+    const preset = getPresetFor(project.genre, project.style, project.channelId);
+    const referenceAnalyses = buildRefs();
+    const channelProfile = getProfileByChannel(project.channelId || "");
+    const additionalNotes = preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${preset.targetWordCount}文字\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "";
+    const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
+    const skeletonParts = splitSkeletonText(project.structureProposal.concept, count);
+
+    const segments: ScriptSegment[] = [];
+    let combined = "";
+    try {
+      for (let i = 0; i < skeletonParts.length; i++) {
+        setError(`パート ${i + 1}/${skeletonParts.length} を生成中...`);
+        const res = await fetch("/api/script/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            proposal: project.structureProposal, channelProfile, style: project.style, topic: project.title,
+            additionalNotes, rulesText, referenceAnalyses, aiApiKey,
+            segment: { index: i, total: skeletonParts.length, skeletonPart: skeletonParts[i], previousScript: combined },
+          }),
+        });
+        const data = await res.json();
+        if (data.error) { setError(`パート${i + 1}の生成に失敗: ${data.error}`); return; }
+        const part = (data.script || "").trim();
+        segments.push({ script: part });
+        combined = combined ? `${combined}\n\n${part}` : part;
+        // 逐次反映（途中でも見える）
+        onUpdate({ ...project, generatedScript: combined, scriptSegments: [...segments], splitCount: count, status: "completed" });
+      }
+      setError("");
+    } catch { setError("分割生成に失敗しました"); }
+    finally { setGenerating(false); }
+  };
+
+  // 生成ボタン：出力回数に応じて単発 or 分割
+  const handleGenerateMain = () => {
+    if (splitCount <= 1) handleGenerate();
+    else handleGenerateSplit(splitCount);
+  };
+
+  // パートごとの品質チェック（軽量・パート向け観点）
+  const handleSegmentCheck = async (idx: number) => {
+    const segs = project.scriptSegments;
+    if (!segs || !segs[idx]) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    setSegmentChecking(idx);
+    setError("");
+    try {
+      const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
+      const previousScript = segs.slice(0, idx).map((s) => s.script).join("\n\n");
+      const body = JSON.stringify({
+        segmentScript: segs[idx].script, partIndex: idx, partTotal: segs.length,
+        previousScript, referenceAnalyses: buildRefs(), rulesText, style: project.style, aiApiKey,
+      });
+      let data: Record<string, unknown> | null = null;
+      let lastErr = "";
+      for (let attempt = 0; attempt < 4; attempt++) {
+        let httpStatus = 0; let parseErr: string | null = null;
+        try {
+          const res = await fetch("/api/script/quality-check-segment", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+          httpStatus = res.status;
+          const raw = await res.text();
+          try { data = JSON.parse(raw); } catch { parseErr = raw.slice(0, 120) || "(空レスポンス)"; }
+        } catch (e) { parseErr = `通信エラー: ${String(e).slice(0, 100)}`; }
+        if (parseErr || httpStatus >= 500) {
+          lastErr = parseErr || `HTTP ${httpStatus}`;
+          if (attempt < 3) { setError(`パート${idx + 1}チェック リトライ中... (${attempt + 1}/4)`); await new Promise((r) => setTimeout(r, 6000 * (attempt + 1))); continue; }
+          setError(`パート${idx + 1}のチェックがタイムアウト: ${lastErr}`); return;
+        }
+        if (data && (data as { retryable?: boolean }).retryable) {
+          if (attempt < 3) { setError(`AI混雑のためリトライ中... (${attempt + 1}/4)`); await new Promise((r) => setTimeout(r, 6000 * (attempt + 1))); continue; }
+        }
+        break;
+      }
+      if (!data) { setError(`パート${idx + 1}のチェックに失敗: ${lastErr}`); return; }
+      if (data.error) { setError(data.error as string); return; }
+      setError("");
+      const result: QualityCheckResult = {
+        categories: (data.categories as QualityCheckCategory[]) || [],
+        overallScore: (data.overallScore as number) || 0,
+        topPriority: (data.topPriority as string) || "",
+        checkedAt: new Date().toISOString(),
+        scriptHash: simpleHash(segs[idx].script),
+      };
+      const newSegs = segs.map((s, i) => (i === idx ? { ...s, qualityCheckResult: result } : s));
+      onUpdate({ ...project, scriptSegments: newSegs });
+      pushSharedSettings();
+    } catch { setError(`パート${idx + 1}のチェックに失敗しました`); }
+    finally { setSegmentChecking(null); }
+  };
+
+  // パートごとの修正（差分パッチ方式の revise を流用）。修正後はそのパートのチェック結果を破棄し結合台本を更新
+  const handleSegmentRevise = async (idx: number) => {
+    const segs = project.scriptSegments;
+    if (!segs || !segs[idx]) return;
+    const note = segmentReviseNote[idx];
+    if (!note?.trim()) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    setSegmentRevising(idx);
+    setError("");
+    try {
+      const res = await fetch("/api/script/revise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: segs[idx].script, revisionNote: note, referenceAnalyses: buildRefs(), aiApiKey }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+      if (data.script) {
+        const revised = (data.script as string).split("---修正箇所---")[0].trim();
+        const newSegs = segs.map((s, i) => (i === idx ? { script: revised } : s));
+        const combined = newSegs.map((s) => s.script).join("\n\n");
+        onUpdate({ ...project, scriptSegments: newSegs, generatedScript: combined });
+        setSegmentReviseNote((p) => ({ ...p, [idx]: "" }));
+      }
+    } catch { setError(`パート${idx + 1}の修正に失敗しました`); }
+    finally { setSegmentRevising(null); }
+  };
+
+  // パートのチェック指摘を、そのパートの修正指示欄に転記する
+  const handleSegmentApplyFix = (idx: number) => {
+    const qc = project.scriptSegments?.[idx]?.qualityCheckResult;
+    if (!qc) return;
+    const issues: string[] = [];
+    for (const cat of qc.categories) {
+      for (const it of cat.items) {
+        if (it.status !== "pass" && it.suggestion) issues.push(`【${cat.name} - ${it.name}】\n  問題: ${it.comment}\n  修正案: ${it.suggestion}`);
+      }
+    }
+    if (issues.length === 0) { setError("このパートに修正が必要な指摘はありません"); return; }
+    const note = `以下の指摘箇所「だけ」を最小差分で修正してください。\n\n【絶対ルール】\n・このリストに無い箇所は1文字たりとも変えないこと\n・指摘箇所以外の言い回し・並び順・改行は元のまま維持\n\n【修正すべき指摘】\n${issues.join("\n\n")}`;
+    setSegmentReviseNote((p) => ({ ...p, [idx]: note }));
   };
 
   // 修正指示で台本を修正
@@ -392,14 +582,31 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 
       {!project.generatedScript && (
         <div className="text-center py-12">
-          <button onClick={handleGenerate} disabled={generating}
+          {/* 出力回数（分割）セレクタ */}
+          <div className="mb-5">
+            <p className="text-sm text-gray-500 mb-2">出力回数（分割数）</p>
+            <div className="inline-flex gap-2">
+              {[1, 2, 3].map((n) => (
+                <button key={n} onClick={() => setSplitCount(n)}
+                  className={`w-12 h-10 rounded-lg text-sm font-medium border ${splitCount === n ? "bg-accent text-white border-accent" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
+                  {n}回
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              {splitCount === 1
+                ? "一括で全文を生成します"
+                : `骨組みを${splitCount}分割し、前のパートを引き継ぎながら順に生成。各パートごとに品質チェック・修正ができます`}
+            </p>
+          </div>
+          <button onClick={handleGenerateMain} disabled={generating}
             className="px-8 py-4 rounded-xl bg-accent text-white text-lg font-medium hover:bg-accent/90 disabled:opacity-50">
             {generating ? (
               <span className="flex items-center gap-2">
                 <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                台本を生成中...
+                {splitCount > 1 ? "分割生成中..." : "台本を生成中..."}
               </span>
-            ) : "台本を生成する"}
+            ) : (splitCount > 1 ? `${splitCount}回に分けて生成する` : "台本を生成する")}
           </button>
         </div>
       )}
@@ -474,6 +681,86 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             )}
           </div>
 
+          {/* 分割パート（各パートごとに品質チェック・修正） */}
+          {project.scriptSegments && project.scriptSegments.length > 1 && (
+            <div className="space-y-4">
+              <p className="text-sm font-semibold text-gray-700">分割パート（各パートごとにチェック・修正できます）</p>
+              {project.scriptSegments.map((seg, idx) => {
+                const total = project.scriptSegments!.length;
+                const label = idx === 0 ? "前半" : idx === total - 1 ? "終盤" : "中盤";
+                const qc = seg.qualityCheckResult;
+                return (
+                  <div key={idx} className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
+                    <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+                      <p className="text-sm font-semibold">パート{idx + 1}/{total}（{label}）<span className="text-xs text-gray-400 ml-2">{pureTextLength(seg.script)}文字</span></p>
+                      <button onClick={() => handleSegmentCheck(idx)} disabled={segmentChecking === idx}
+                        className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50">
+                        {segmentChecking === idx ? "チェック中..." : qc ? "再チェック" : "🔍 品質チェック"}
+                      </button>
+                    </div>
+                    <div className="p-3 relative">
+                      {segmentRevising === idx && (
+                        <div className="absolute inset-0 bg-white/80 rounded flex items-center justify-center z-10">
+                          <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      )}
+                      <textarea value={seg.script}
+                        onChange={(e) => {
+                          const newSegs = project.scriptSegments!.map((s, i) => (i === idx ? { ...s, script: e.target.value } : s));
+                          onUpdate({ ...project, scriptSegments: newSegs, generatedScript: newSegs.map((s) => s.script).join("\n\n") });
+                        }}
+                        rows={8} className="w-full text-sm leading-7 outline-none resize-y" />
+
+                      {/* パートの品質チェック結果 */}
+                      {qc && (
+                        <div className="mt-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-bold">パート品質 <span className="text-accent">{qc.overallScore}/10</span></p>
+                          </div>
+                          {qc.topPriority && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">最優先: {qc.topPriority}</p>}
+                          <div className="space-y-1.5">
+                            {qc.categories.map((cat, ci) => (
+                              <div key={ci}>
+                                <p className="text-xs font-semibold text-gray-600">{cat.name}</p>
+                                {cat.items.map((it, ii) => (
+                                  <div key={ii} className="flex gap-1.5 text-xs ml-2">
+                                    <span>{it.status === "pass" ? "🟢" : it.status === "warn" ? "🟡" : "🔴"}</span>
+                                    <div className="flex-1">
+                                      <span className="text-gray-700">{it.name}</span>
+                                      {it.comment && <span className="text-gray-500"> — {it.comment}</span>}
+                                      {it.status !== "pass" && it.suggestion && <p className="text-purple-700">→ {it.suggestion}</p>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* パートの修正指示 */}
+                      <div className="mt-3 flex gap-2">
+                        <textarea value={segmentReviseNote[idx] || ""}
+                          onChange={(e) => setSegmentReviseNote((p) => ({ ...p, [idx]: e.target.value }))}
+                          placeholder={`パート${idx + 1}への修正指示（このパートだけを差分修正します）`}
+                          rows={2} className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent resize-none" />
+                        <button onClick={() => handleSegmentRevise(idx)} disabled={segmentRevising === idx || !segmentReviseNote[idx]?.trim()}
+                          className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end">
+                          {segmentRevising === idx ? "修正中..." : "修正"}
+                        </button>
+                      </div>
+                      {qc && (
+                        <button onClick={() => handleSegmentApplyFix(idx)}
+                          className="mt-2 text-xs text-blue-600 hover:underline">指摘を修正指示に転記</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <p className="text-xs text-gray-400">※ 下の「台本本体」は各パートを結合した最終版です（パートを編集すると自動で反映されます）。</p>
+            </div>
+          )}
+
           {/* 台本本体 */}
           <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 relative">
             {/* 修正中オーバーレイ */}
@@ -494,7 +781,13 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                   className={`px-3 py-1.5 rounded-lg text-xs ${syncDone ? "bg-green-500 text-white" : "bg-blue-500 text-white hover:bg-blue-600"} disabled:opacity-50`}>
                   {syncing ? "同期中..." : syncDone ? "同期済み" : "同期"}
                 </button>
-                <button onClick={handleGenerate} disabled={generating} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">
+                <select value={splitCount} onChange={(e) => setSplitCount(Number(e.target.value))}
+                  className="px-2 py-1.5 rounded-lg border border-gray-200 text-xs bg-white" title="出力回数（分割数）">
+                  <option value={1}>1回出力</option>
+                  <option value={2}>2分割</option>
+                  <option value={3}>3分割</option>
+                </select>
+                <button onClick={handleGenerateMain} disabled={generating} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">
                   {generating ? "生成中..." : "再生成"}
                 </button>
               </div>

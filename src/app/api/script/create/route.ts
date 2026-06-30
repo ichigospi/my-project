@@ -51,6 +51,7 @@ ${blocks.join("\n\n")}
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey, rulesText, referenceAnalyses } = body;
+  const segment: { index: number; total: number; skeletonPart?: string; previousScript?: string } | undefined = body.segment;
 
   if (!aiApiKey) {
     return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
@@ -279,6 +280,31 @@ H. クロージング
 - 参考動画/骨組みに登場する別の人物名（例: アリサ, エリサ, かぐら 等）が出てきても **絶対にそのまま使わない**
 - 参考動画固有のキャラクターストーリー（特定人物との対話シーン等）はチャンネル独自のキャラ・対象者語りに置き換える`;
 
+  // 分割出力モード：台本を total 回に分けて生成する際の、今回パート専用の追加指示
+  let segmentDirective = "";
+  if (segment && segment.total > 1) {
+    const { index, total, skeletonPart, previousScript } = segment;
+    const isFirst = index === 0;
+    const isLast = index === total - 1;
+    const perPart = Math.round(7000 / total);
+    segmentDirective = `
+
+=============================
+【分割出力モード（最優先・必達）】
+- この台本は全${total}回に分けて出力します。今回は第${index + 1}回目（${index + 1}/${total}）です。
+- 下記【今回書く範囲】に該当する骨組みセクションだけを台本化してください。範囲外のセクションは絶対に書かないこと。
+- ${isFirst ? "これは台本の最初のパートです。冒頭の選民フック（おめでとう/選ばれた等）から書き始めること。" : "これは続きのパートです。冒頭の挨拶・自己紹介・選民フックの再導入はしない（すでに前のパートで済んでいる）。前回の最後の流れから自然に続く形で書き始めること。"}
+- ${isLast ? "これは最終パートです。終盤クロージング・無料鑑定への重CTA・締めの挨拶まで完全に書ききること。" : "これは途中のパートです。動画を締めくくるクロージング・最後の重CTA・締めの挨拶はまだ書かない（最終パートで書く）。今回の範囲の内容で自然に区切ること。"}
+- 前のパートと同じ文・同じ内容を繰り返さない。トーン・世界観・人物像・語り口は前のパートと完全に一致させること。
+- 台本本文のみを出力。「第${index + 1}パート」などの見出しやメタ的な注記は書かない。
+- このパートの目標文字数: 約${perPart}文字（全体を${total}分割した1パート分）。
+${skeletonPart ? `\n【今回書く範囲（骨組み抜粋）】\n${skeletonPart}` : ""}
+${previousScript ? `\n【前のパートまでに生成済みの台本（続きを書くための文脈。これを繰り返さず、ここから自然に続けること）】\n${previousScript}` : ""}
+=============================`;
+  }
+
+  const fullPrompt = prompt + segmentDirective;
+
   try {
     let text = "";
 
@@ -295,7 +321,7 @@ H. クロージング
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
             max_tokens: 16000,
-            messages: [{ role: "user", content: prompt }],
+            messages: [{ role: "user", content: fullPrompt }],
           }),
         });
         if (res.status === 429 || res.status === 529) {
@@ -317,7 +343,7 @@ H. クロージング
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
         body: JSON.stringify({
           model: "gpt-4o",
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: fullPrompt }],
           max_tokens: 16000,
         }),
       });
