@@ -115,6 +115,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [segmentReviseNote, setSegmentReviseNote] = useState<Record<number, string>>({});
   // パートQCの指摘ごとの「転記対象から外す」状態（key = "segIdx:catIdx:itemIdx"。デフォルトは含める=未除外）
   const [excludedFixes, setExcludedFixes] = useState<Record<string, boolean>>({});
+  // 全体QC（8観点）の指摘ごとの除外状態（key = "catIdx-itemIdx"。デフォルトは含める）
+  const [mainExcludedFixes, setMainExcludedFixes] = useState<Record<string, boolean>>({});
 
   // 一致率チェック
   const [similarities, setSimilarities] = useState<{ title: string; rate: number }[]>([]);
@@ -497,14 +499,15 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const r = project.qualityCheckResult;
     if (!r) return;
     const issues: string[] = [];
-    for (const cat of r.categories) {
-      for (const item of cat.items) {
-        if (item.status !== "pass" && item.suggestion) {
+    r.categories.forEach((cat, ci) => {
+      cat.items.forEach((item, ii) => {
+        // チェックを外した（excluded）指摘は転記しない
+        if (item.status !== "pass" && item.suggestion && !mainExcludedFixes[`${ci}-${ii}`]) {
           issues.push(`【${cat.name} - ${item.name}】\n  問題: ${item.comment}\n  修正案: ${item.suggestion}`);
         }
-      }
-    }
-    if (issues.length === 0) { setError("修正が必要な項目がありません"); return; }
+      });
+    });
+    if (issues.length === 0) { setError("転記する指摘が選択されていません（チェックを確認してください）"); return; }
     // AIに「指摘箇所だけ最小差分で修正」と明確に指示
     // pass項目を全部列挙すると逆に冗長で AI が混乱するため、ルールだけ書いて任せる
     const note = `以下の指摘箇所「だけ」を最小差分で修正してください。\n\n` +
@@ -865,6 +868,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               onCheck={handleQualityCheck}
               onApplyFix={handleApplyQualityFix}
               currentScriptHash={simpleHash(project.generatedScript || "")}
+              excludedFixes={mainExcludedFixes}
+              onToggleExclude={(key) => setMainExcludedFixes((p) => ({ ...p, [key]: !p[key] }))}
             />
           ) : (
             <p className="text-xs text-gray-400">※ 全体の品質チェックは全パート生成後に表示されます（今は各パートごとのチェックを使ってください）。</p>
@@ -1052,7 +1057,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 }
 
 function QualityCheckPanel({
-  project, onUpdate, checking, showDetail, onToggleDetail, onCheck, onApplyFix, currentScriptHash,
+  project, onUpdate, checking, showDetail, onToggleDetail, onCheck, onApplyFix, currentScriptHash, excludedFixes, onToggleExclude,
 }: {
   project: ScriptProject;
   onUpdate: (p: ScriptProject) => void;
@@ -1062,6 +1067,8 @@ function QualityCheckPanel({
   onCheck: () => void;
   onApplyFix: () => void;
   currentScriptHash: string;
+  excludedFixes: Record<string, boolean>;
+  onToggleExclude: (key: string) => void;
 }) {
   const r = project.qualityCheckResult;
   const stale = r?.scriptHash && r.scriptHash !== currentScriptHash;
@@ -1330,8 +1337,14 @@ function QualityCheckPanel({
                   if (editingKey === key) {
                     return <div key={ii}>{editForm()}</div>;
                   }
+                  const checkable = item.status !== "pass" && !!item.suggestion;
                   return (
                     <div key={ii} className="group flex items-start gap-2 text-sm">
+                      {checkable ? (
+                        <input type="checkbox" checked={!excludedFixes[key]}
+                          onChange={() => onToggleExclude(key)}
+                          className="mt-1 accent-purple-600 cursor-pointer shrink-0" title="この指摘を修正指示に含める" />
+                      ) : <span className="w-3 shrink-0" />}
                       {statusBadge(item.status)}
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-700">{item.name}</p>
@@ -1365,9 +1378,9 @@ function QualityCheckPanel({
           <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-100">
             <button onClick={onApplyFix}
               className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200">
-              指摘をAIに反映してもらう
+              ✔ チェックした指摘を修正指示に転記
             </button>
-            <span className="text-xs text-gray-400">※ 編集後の指摘内容を「修正指示」に転記します</span>
+            <span className="text-xs text-gray-400">※ チェックを外した指摘は転記されません（デフォルトは全てON）</span>
           </div>
         </>
       )}
