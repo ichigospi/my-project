@@ -113,6 +113,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [segmentChecking, setSegmentChecking] = useState<number | null>(null);
   const [segmentRevising, setSegmentRevising] = useState<number | null>(null);
   const [segmentReviseNote, setSegmentReviseNote] = useState<Record<number, string>>({});
+  // パートQCの指摘ごとの「転記対象から外す」状態（key = "segIdx:catIdx:itemIdx"。デフォルトは含める=未除外）
+  const [excludedFixes, setExcludedFixes] = useState<Record<string, boolean>>({});
 
   // 一致率チェック
   const [similarities, setSimilarities] = useState<{ title: string; rate: number }[]>([]);
@@ -338,12 +340,15 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const qc = project.scriptSegments?.[idx]?.qualityCheckResult;
     if (!qc) return;
     const issues: string[] = [];
-    for (const cat of qc.categories) {
-      for (const it of cat.items) {
-        if (it.status !== "pass" && it.suggestion) issues.push(`【${cat.name} - ${it.name}】\n  問題: ${it.comment}\n  修正案: ${it.suggestion}`);
-      }
-    }
-    if (issues.length === 0) { setError("このパートに修正が必要な指摘はありません"); return; }
+    qc.categories.forEach((cat, ci) => {
+      cat.items.forEach((it, ii) => {
+        // チェックを外した（excluded=true）指摘は転記しない。pass・suggestion無しも除外
+        if (it.status !== "pass" && it.suggestion && !excludedFixes[`${idx}:${ci}:${ii}`]) {
+          issues.push(`【${cat.name} - ${it.name}】\n  問題: ${it.comment}\n  修正案: ${it.suggestion}`);
+        }
+      });
+    });
+    if (issues.length === 0) { setError("転記する指摘が選択されていません（チェックを確認してください）"); return; }
     const note = `以下の指摘箇所「だけ」を最小差分で修正してください。\n\n【絶対ルール】\n・このリストに無い箇所は1文字たりとも変えないこと\n・指摘箇所以外の言い回し・並び順・改行は元のまま維持\n\n【修正すべき指摘】\n${issues.join("\n\n")}`;
     setSegmentReviseNote((p) => ({ ...p, [idx]: note }));
   };
@@ -745,16 +750,25 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                             {qc.categories.map((cat, ci) => (
                               <div key={ci}>
                                 <p className="text-xs font-semibold text-gray-600">{cat.name}</p>
-                                {cat.items.map((it, ii) => (
-                                  <div key={ii} className="flex gap-1.5 text-xs ml-2">
-                                    <span>{it.status === "pass" ? "🟢" : it.status === "warn" ? "🟡" : "🔴"}</span>
-                                    <div className="flex-1">
-                                      <span className="text-gray-700">{it.name}</span>
-                                      {it.comment && <span className="text-gray-500"> — {it.comment}</span>}
-                                      {it.status !== "pass" && it.suggestion && <p className="text-purple-700">→ {it.suggestion}</p>}
+                                {cat.items.map((it, ii) => {
+                                  const fixKey = `${idx}:${ci}:${ii}`;
+                                  const checkable = it.status !== "pass" && !!it.suggestion;
+                                  return (
+                                    <div key={ii} className="flex gap-1.5 text-xs ml-2">
+                                      {checkable ? (
+                                        <input type="checkbox" checked={!excludedFixes[fixKey]}
+                                          onChange={() => setExcludedFixes((p) => ({ ...p, [fixKey]: !p[fixKey] }))}
+                                          className="mt-0.5 accent-accent cursor-pointer" title="この指摘を修正指示に含める" />
+                                      ) : <span className="w-3 shrink-0" />}
+                                      <span>{it.status === "pass" ? "🟢" : it.status === "warn" ? "🟡" : "🔴"}</span>
+                                      <div className="flex-1">
+                                        <span className="text-gray-700">{it.name}</span>
+                                        {it.comment && <span className="text-gray-500"> — {it.comment}</span>}
+                                        {it.status !== "pass" && it.suggestion && <p className="text-purple-700">→ {it.suggestion}</p>}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             ))}
                           </div>
@@ -762,20 +776,22 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                       )}
 
                       {/* パートの修正指示 */}
-                      <div className="mt-3 flex gap-2">
+                      <div className="mt-3">
+                        {qc && (
+                          <button onClick={() => handleSegmentApplyFix(idx)}
+                            className="mb-2 text-xs text-blue-600 hover:underline">✔ チェックした指摘を修正指示に転記</button>
+                        )}
                         <textarea value={segmentReviseNote[idx] || ""}
                           onChange={(e) => setSegmentReviseNote((p) => ({ ...p, [idx]: e.target.value }))}
                           placeholder={`パート${idx + 1}への修正指示（このパートだけを差分修正します）`}
-                          rows={2} className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent resize-none" />
-                        <button onClick={() => handleSegmentRevise(idx)} disabled={segmentRevising === idx || !segmentReviseNote[idx]?.trim()}
-                          className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end">
-                          {segmentRevising === idx ? "修正中..." : "修正"}
-                        </button>
+                          rows={8} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent resize-y leading-6" />
+                        <div className="flex justify-end mt-2">
+                          <button onClick={() => handleSegmentRevise(idx)} disabled={segmentRevising === idx || !segmentReviseNote[idx]?.trim()}
+                            className="px-5 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
+                            {segmentRevising === idx ? "修正中..." : "このパートを修正"}
+                          </button>
+                        </div>
                       </div>
-                      {qc && (
-                        <button onClick={() => handleSegmentApplyFix(idx)}
-                          className="mt-2 text-xs text-blue-600 hover:underline">指摘を修正指示に転記</button>
-                      )}
                     </div>
                   </div>
                 );
@@ -868,7 +884,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             <div className="flex gap-3">
               <textarea value={revisionNote} onChange={(e) => setRevisionNote(e.target.value)}
                 placeholder="例: 冒頭のフックをもっと強くして / CTAの部分を予祝形式に変えて / 文法を修正して"
-                rows={2} className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none" disabled={revising} />
+                rows={8} className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none resize-y leading-6" disabled={revising} />
               <button onClick={handleRevise} disabled={revising || !revisionNote.trim()}
                 className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end min-w-24">
                 {revising ? (
