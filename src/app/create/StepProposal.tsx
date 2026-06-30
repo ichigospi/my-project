@@ -20,6 +20,57 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   const [promptText, setPromptText] = useState("");
   const [checkingSkeleton, setCheckingSkeleton] = useState(false);
   const [skeletonCheck, setSkeletonCheck] = useState<QualityCheckResult | null>(null);
+  const [applyingFix, setApplyingFix] = useState(false);
+  const [fixNote, setFixNote] = useState("");
+  const [fixSummary, setFixSummary] = useState("");
+
+  // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
+  const applySkeletonFix = async (revisionNote: string) => {
+    if (!revisionNote.trim()) return;
+    if (!skeleton.trim()) { setError("骨組みがありません"); return; }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    setApplyingFix(true);
+    setError("");
+    setFixSummary("");
+    try {
+      const res = await fetch("/api/script/revise-skeleton", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skeleton, revisionNote, aiApiKey }),
+      });
+      const raw = await res.text();
+      let data: Record<string, unknown> | null = null;
+      try { data = JSON.parse(raw); } catch { setError(`修正に失敗しました（応答が不正）: ${raw.slice(0, 120)}`); return; }
+      if (data?.error) { setError(data.error as string); return; }
+      if (typeof data?.skeleton === "string") {
+        setSkeleton(data.skeleton);
+        if (project.structureProposal) {
+          onUpdate({ ...project, structureProposal: { ...project.structureProposal, concept: data.skeleton } });
+        }
+        setFixSummary((data.summary as string) || "");
+        // 内容が変わったので古いチェック結果は破棄（再チェックを促す）
+        setSkeletonCheck(null);
+        setFixNote("");
+      }
+    } catch { setError("骨組みの修正に失敗しました"); }
+    finally { setApplyingFix(false); }
+  };
+
+  // チェック結果の指摘(非pass)を加筆／削除の修正指示に整形して反映
+  const handleApplySkeletonFindings = () => {
+    if (!skeletonCheck) return;
+    const issues: string[] = [];
+    for (const cat of skeletonCheck.categories) {
+      for (const it of cat.items) {
+        if (it.status !== "pass" && it.suggestion) {
+          issues.push(`【${cat.name} - ${it.name}】\n  問題: ${it.comment}\n  対応（加筆 or 削除）: ${it.suggestion}`);
+        }
+      }
+    }
+    if (issues.length === 0) { setError("反映が必要な指摘はありません"); return; }
+    const note = `以下の指摘箇所「だけ」を、加筆または違反箇所の削除でピンポイントに直してください。\n\n【絶対ルール】\n・全文を書き直さない\n・このリストに無い箇所は1文字も変えない\n・直し方は加筆（不足要素の追加）か削除（違反・重複の除去）のみ\n\n【対応すべき指摘】\n${issues.join("\n\n")}`;
+    applySkeletonFix(note);
+  };
 
   // 骨組みの品質チェック（構成ルール遵守・元台本ズレ）
   const handleSkeletonCheck = async () => {
@@ -396,9 +447,35 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-gray-400 mt-3">※ 指摘があれば、上の「AIへの指示」に修正内容を書いて骨組みを再生成してください。</p>
+              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-3">
+                <button onClick={handleApplySkeletonFindings} disabled={applyingFix}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                  {applyingFix ? "反映中..." : "🔧 指摘を骨組みに反映（加筆・違反箇所の削除）"}
+                </button>
+                <span className="text-xs text-gray-400">全文出力し直しではなく、指摘箇所だけを差分修正します</span>
+              </div>
             </div>
           )}
+
+          {/* 加筆・削除の自由指示（差分修正） */}
+          <div className="mt-4 bg-card-bg rounded-xl shadow-sm border border-gray-100 p-4">
+            <label className="text-xs font-medium text-gray-500 mb-2 block">加筆・削除で修正（差分／全文は作り直しません）</label>
+            <div className="flex gap-2">
+              <textarea value={fixNote} onChange={(e) => setFixNote(e.target.value)}
+                placeholder="例: ❷のコメントCTAを削除して社会的証明だけ残す / 終盤に放置リスクのブロックを加筆 / ❹に時間軸予言を一文追加"
+                rows={2} className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent resize-none" />
+              <button onClick={() => applySkeletonFix(fixNote)} disabled={applyingFix || !fixNote.trim()}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 shrink-0 self-end">
+                {applyingFix ? "反映中..." : "加筆・削除"}
+              </button>
+            </div>
+            {fixSummary && (
+              <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                <p className="text-xs font-medium text-emerald-800 mb-1">適用した修正</p>
+                <pre className="text-xs text-emerald-900 whitespace-pre-wrap font-sans">{fixSummary}</pre>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
