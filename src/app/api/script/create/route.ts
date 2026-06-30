@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// 6,500〜7,500文字級の台本生成は出力トークン・所要時間ともに大きいため実行上限を延長
+export const maxDuration = 300;
+
 interface RefAnalysis {
   videoTitle?: string;
   channelName?: string;
@@ -291,7 +294,7 @@ H. クロージング
           },
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
-            max_tokens: 8192,
+            max_tokens: 16000,
             messages: [{ role: "user", content: prompt }],
           }),
         });
@@ -315,7 +318,7 @@ H. クロージング
         body: JSON.stringify({
           model: "gpt-4o",
           messages: [{ role: "user", content: prompt }],
-          max_tokens: 8192,
+          max_tokens: 16000,
         }),
       });
       if (!res.ok) {

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// 骨組み出力は最大16Kトークンと長く生成に時間がかかるため、関数の実行上限を延長する
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText } = body;
@@ -186,7 +189,7 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
         res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "content-type": "application/json", "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 16000, messages: [{ role: "user", content: prompt }] }),
         });
         if (res.status === 429 || res.status === 529) {
           if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
@@ -201,7 +204,7 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 4096 }),
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 16000 }),
       });
       if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message }, { status: res.status }); }
       text = (await res.json()).choices?.[0]?.message?.content || "";
