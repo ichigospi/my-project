@@ -9,7 +9,7 @@ import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
-import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow, ScriptSegment } from "@/lib/project-store";
+import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow } from "@/lib/project-store";
 
 // 簡易ハッシュ（チェック時の台本と現在の台本が一致するか判定用）
 function simpleHash(s: string): string {
@@ -181,54 +181,74 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     .filter((a) => project.analyses?.includes(a.id))
     .map((a) => ({ videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult }));
 
-  // 分割出力：骨組みを count 分割し、前パートを文脈に「続き」を順に生成
-  const handleGenerateSplit = async (count: number) => {
-    const aiApiKey = getApiKey("ai_api_key");
-    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
-    if (!project.structureProposal?.concept) { setError("構成提案（骨組み）がありません"); return; }
+  // 計画上の総パート数（骨組みと出力回数で決まる。逐次生成の途中でも一定）
+  const plannedTotalParts = () => {
+    const concept = project.structureProposal?.concept || "";
+    const count = project.splitCount || splitCount;
+    if (count <= 1 || !concept) return 1;
+    return splitSkeletonText(concept, count).length;
+  };
 
-    if (project.generatedScript) setScriptHistory((prev) => [...prev, project.generatedScript]);
-
-    setGenerating(true);
-    setError("");
+  // 分割出力：指定インデックスのパートだけを生成して返す（前パートを文脈に続きを書く）
+  const generateSegmentText = async (index: number, previousScript: string, aiApiKey: string, count: number): Promise<string | null> => {
     const preset = getPresetFor(project.genre, project.style, project.channelId);
-    const referenceAnalyses = buildRefs();
     const channelProfile = getProfileByChannel(project.channelId || "");
     const additionalNotes = preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${preset.targetWordCount}文字\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "";
     const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
-    const skeletonParts = splitSkeletonText(project.structureProposal.concept, count);
+    const parts = splitSkeletonText(project.structureProposal?.concept || "", count);
+    const res = await fetch("/api/script/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        proposal: project.structureProposal, channelProfile, style: project.style, topic: project.title,
+        additionalNotes, rulesText, referenceAnalyses: buildRefs(), aiApiKey,
+        segment: { index, total: parts.length, skeletonPart: parts[index], previousScript },
+      }),
+    });
+    const data = await res.json();
+    if (data.error) { setError(`パート${index + 1}の生成に失敗: ${data.error}`); return null; }
+    return (data.script || "").trim();
+  };
 
-    const segments: ScriptSegment[] = [];
-    let combined = "";
+  // 生成ボタン：単発、または分割の「パート1」を生成（分割は以降「次のパート」で続ける）
+  const handleGenerateMain = async () => {
+    if (splitCount <= 1) { handleGenerate(); return; }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    if (!project.structureProposal?.concept) { setError("構成提案（骨組み）がありません"); return; }
+    if (project.generatedScript) setScriptHistory((prev) => [...prev, project.generatedScript]);
+    setGenerating(true);
+    setError("パート1を生成中...");
     try {
-      for (let i = 0; i < skeletonParts.length; i++) {
-        setError(`パート ${i + 1}/${skeletonParts.length} を生成中...`);
-        const res = await fetch("/api/script/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            proposal: project.structureProposal, channelProfile, style: project.style, topic: project.title,
-            additionalNotes, rulesText, referenceAnalyses, aiApiKey,
-            segment: { index: i, total: skeletonParts.length, skeletonPart: skeletonParts[i], previousScript: combined },
-          }),
-        });
-        const data = await res.json();
-        if (data.error) { setError(`パート${i + 1}の生成に失敗: ${data.error}`); return; }
-        const part = (data.script || "").trim();
-        segments.push({ script: part });
-        combined = combined ? `${combined}\n\n${part}` : part;
-        // 逐次反映（途中でも見える）
-        onUpdate({ ...project, generatedScript: combined, scriptSegments: [...segments], splitCount: count, status: "completed" });
-      }
+      const part = await generateSegmentText(0, "", aiApiKey, splitCount);
+      if (part == null) return;
+      onUpdate({ ...project, generatedScript: part, scriptSegments: [{ script: part }], splitCount, status: "completed" });
       setError("");
     } catch { setError("分割生成に失敗しました"); }
     finally { setGenerating(false); }
   };
 
-  // 生成ボタン：出力回数に応じて単発 or 分割
-  const handleGenerateMain = () => {
-    if (splitCount <= 1) handleGenerate();
-    else handleGenerateSplit(splitCount);
+  // 次のパートを生成（前パートまでを文脈に続きを書く）
+  const handleGenerateNextSegment = async () => {
+    const segs = project.scriptSegments || [];
+    const count = project.splitCount || splitCount;
+    const parts = splitSkeletonText(project.structureProposal?.concept || "", count);
+    const index = segs.length;
+    if (index >= parts.length) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    setGenerating(true);
+    setError(`パート${index + 1}/${parts.length}を生成中...`);
+    try {
+      const previousScript = segs.map((s) => s.script).join("\n\n");
+      const part = await generateSegmentText(index, previousScript, aiApiKey, count);
+      if (part == null) return;
+      const newSegs = [...segs, { script: part }];
+      const combined = newSegs.map((s) => s.script).join("\n\n");
+      onUpdate({ ...project, scriptSegments: newSegs, generatedScript: combined, status: "completed" });
+      setError("");
+    } catch { setError("パート生成に失敗しました"); }
+    finally { setGenerating(false); }
   };
 
   // パートごとの品質チェック（軽量・パート向け観点）
@@ -243,7 +263,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
       const previousScript = segs.slice(0, idx).map((s) => s.script).join("\n\n");
       const body = JSON.stringify({
-        segmentScript: segs[idx].script, partIndex: idx, partTotal: segs.length,
+        segmentScript: segs[idx].script, partIndex: idx, partTotal: plannedTotalParts(),
         previousScript, referenceAnalyses: buildRefs(), rulesText, style: project.style, aiApiKey,
       });
       let data: Record<string, unknown> | null = null;
@@ -597,7 +617,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             <p className="text-xs text-gray-400 mt-2">
               {splitCount === 1
                 ? "一括で全文を生成します"
-                : `骨組みを${splitCount}分割し、前のパートを引き継ぎながら順に生成。各パートごとに品質チェック・修正ができます`}
+                : `骨組みを${splitCount}分割。まずパート1を生成し、品質チェック・修正してから「次のパート」を生成（前パートを引き継いで続きを書きます）`}
             </p>
           </div>
           <button onClick={handleGenerateMain} disabled={generating}
@@ -605,9 +625,9 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             {generating ? (
               <span className="flex items-center gap-2">
                 <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {splitCount > 1 ? "分割生成中..." : "台本を生成中..."}
+                {splitCount > 1 ? "パート1を生成中..." : "台本を生成中..."}
               </span>
-            ) : (splitCount > 1 ? `${splitCount}回に分けて生成する` : "台本を生成する")}
+            ) : (splitCount > 1 ? `パート1を生成する（全${splitCount}分割）` : "台本を生成する")}
           </button>
         </div>
       )}
@@ -682,12 +702,14 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             )}
           </div>
 
-          {/* 分割パート（各パートごとに品質チェック・修正） */}
-          {project.scriptSegments && project.scriptSegments.length > 1 && (
+          {/* 分割パート（パート1→チェック/修正→次のパート、と逐次に進める） */}
+          {project.scriptSegments && project.scriptSegments.length >= 1 && (project.splitCount || 1) > 1 && (
             <div className="space-y-4">
-              <p className="text-sm font-semibold text-gray-700">分割パート（各パートごとにチェック・修正できます）</p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-700">分割パート（{project.scriptSegments.length}/{plannedTotalParts()} 生成済み・各パートをチェック/修正してから次へ）</p>
+              </div>
               {project.scriptSegments.map((seg, idx) => {
-                const total = project.scriptSegments!.length;
+                const total = plannedTotalParts();
                 const label = idx === 0 ? "前半" : idx === total - 1 ? "終盤" : "中盤";
                 const qc = seg.qualityCheckResult;
                 return (
@@ -758,6 +780,22 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                   </div>
                 );
               })}
+
+              {/* 次のパートを生成（前パートを引き継ぐ） */}
+              {project.scriptSegments.length < plannedTotalParts() && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
+                  <p className="text-sm text-emerald-900">
+                    パート{project.scriptSegments.length}までを確認・修正できました。次は<strong>パート{project.scriptSegments.length + 1}/{plannedTotalParts()}</strong>（{project.scriptSegments.length}までの続き）を生成します。
+                  </p>
+                  <button onClick={handleGenerateNextSegment} disabled={generating}
+                    className="px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 shrink-0">
+                    {generating ? "生成中..." : `▶ 次のパートを生成`}
+                  </button>
+                </div>
+              )}
+              {project.scriptSegments.length >= plannedTotalParts() && (
+                <p className="text-xs text-emerald-700">✅ 全パート生成済み。下の「台本本体」が結合した最終版です（全体の品質チェックもできます）。</p>
+              )}
               <p className="text-xs text-gray-400">※ 下の「台本本体」は各パートを結合した最終版です（パートを編集すると自動で反映されます）。</p>
             </div>
           )}
@@ -800,17 +838,21 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
           </div>
 
-          {/* 品質チェック */}
-          <QualityCheckPanel
-            project={project}
-            onUpdate={onUpdate}
-            checking={checkingQuality}
-            showDetail={showQualityDetail}
-            onToggleDetail={() => setShowQualityDetail(!showQualityDetail)}
-            onCheck={handleQualityCheck}
-            onApplyFix={handleApplyQualityFix}
-            currentScriptHash={simpleHash(project.generatedScript || "")}
-          />
+          {/* 全体の品質チェック（分割が未完了の間は混乱を避けるため隠す） */}
+          {((project.splitCount || 1) <= 1 || (project.scriptSegments?.length || 0) >= plannedTotalParts()) ? (
+            <QualityCheckPanel
+              project={project}
+              onUpdate={onUpdate}
+              checking={checkingQuality}
+              showDetail={showQualityDetail}
+              onToggleDetail={() => setShowQualityDetail(!showQualityDetail)}
+              onCheck={handleQualityCheck}
+              onApplyFix={handleApplyQualityFix}
+              currentScriptHash={simpleHash(project.generatedScript || "")}
+            />
+          ) : (
+            <p className="text-xs text-gray-400">※ 全体の品質チェックは全パート生成後に表示されます（今は各パートごとのチェックを使ってください）。</p>
+          )}
 
           {/* 修正指示欄 */}
           <div className={`bg-card-bg rounded-xl p-5 shadow-sm border ${revising ? "border-accent" : "border-accent/20"}`}>
