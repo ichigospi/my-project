@@ -105,7 +105,7 @@ ${segmentScript}`;
         res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "content-type": "application/json", "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
         });
         if (res.status === 429 || res.status === 529) {
           if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
@@ -120,7 +120,7 @@ ${segmentScript}`;
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 4096, response_format: { type: "json_object" } }),
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 8000, response_format: { type: "json_object" } }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res.status }); }
       raw = (await res.json()).choices?.[0]?.message?.content || "";
