@@ -51,7 +51,7 @@ ${blocks.join("\n\n")}
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey, rulesText, referenceAnalyses } = body;
-  const segment: { index: number; total: number; skeletonPart?: string; previousScript?: string } | undefined = body.segment;
+  const segment: { index: number; total: number; skeletonPart?: string; previousScript?: string; partTargetChars?: number; totalTargetChars?: number } | undefined = body.segment;
 
   if (!aiApiKey) {
     return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
@@ -286,7 +286,11 @@ H. クロージング
     const { index, total, skeletonPart, previousScript } = segment;
     const isFirst = index === 0;
     const isLast = index === total - 1;
-    const perPart = Math.round(7000 / total);
+    // 総目標文字数はフロントから受け取る（プリセットの目標文字数）。無ければ控えめに5200。
+    const totalTarget = segment.totalTargetChars && segment.totalTargetChars > 0 ? segment.totalTargetChars : 5200;
+    // このパートの割当（骨組みの分量比で重み付けした値をフロントから受け取る。無ければ均等割り）
+    const perPart = segment.partTargetChars && segment.partTargetChars > 0 ? segment.partTargetChars : Math.round(totalTarget / total);
+    const perPartCap = Math.round(perPart * 1.1);
     segmentDirective = `
 
 =============================
@@ -297,7 +301,13 @@ H. クロージング
 - ${isLast ? "これは最終パートです。終盤クロージング・無料鑑定への重CTA・締めの挨拶まで完全に書ききること。" : "これは途中のパートです。動画を締めくくるクロージング・最後の重CTA・締めの挨拶はまだ書かない（最終パートで書く）。今回の範囲の内容で自然に区切ること。"}
 - 前のパートと同じ文・同じ内容を繰り返さない。トーン・世界観・人物像・語り口は前のパートと完全に一致させること。
 - 台本本文のみを出力。「第${index + 1}パート」などの見出しやメタ的な注記は書かない。
-- このパートの目標文字数: 約${perPart}文字（全体を${total}分割した1パート分）。
+
+【文字数の割当（超過厳禁・最優先）】
+- 台本全体は約${totalTarget}文字に収めます。このパートの割当は「約${perPart}文字」、上限は「${perPartCap}文字」です。
+- ${perPartCap}文字を絶対に超えないこと。超えそうな場合は、水増し・冗長な言い換え・同じ主張の繰り返しを削って割当内に収める。
+- 骨組みや他の指示に「目標6,500〜7,500文字」等の総文字数が書かれていても、それは無視し、この割当（約${perPart}文字／上限${perPartCap}文字）を最優先する。
+- 【過度な肉付けの禁止】1つの要素を長々と説明し直さない。骨組みに書かれた各セクションを、割当文字数に収まる密度で1回ずつ表現する。分割しているからといってパートを膨らませない（各パートの合計が総目標を超える原因になる）。
+- どの一文も役割（欲求喚起／離脱防止／信頼構築／行動喚起）を持たせ、役割の無い装飾文・前置き・一般論は書かない。
 ${skeletonPart ? `\n【今回書く範囲（骨組み抜粋）】\n${skeletonPart}` : ""}
 ${previousScript ? `\n【前のパートまでに生成済みの台本（続きを書くための文脈。これを繰り返さず、ここから自然に続けること）】\n${previousScript}` : ""}
 =============================`;
