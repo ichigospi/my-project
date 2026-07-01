@@ -200,13 +200,17 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const additionalNotes = preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${preset.targetWordCount}文字\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "";
     const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
     const parts = splitSkeletonText(project.structureProposal?.concept || "", count);
+    // 総目標文字数（プリセット）を、骨組みの各パートの分量比で重み付けして per-part に配分
+    const totalTargetChars = preset?.targetWordCount || 5200;
+    const totalLen = parts.reduce((s, p) => s + p.length, 0) || 1;
+    const partTargetChars = Math.round(totalTargetChars * ((parts[index]?.length || 0) / totalLen));
     const res = await fetch("/api/script/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         proposal: project.structureProposal, channelProfile, style: project.style, topic: project.title,
         additionalNotes, rulesText, referenceAnalyses: buildRefs(), aiApiKey,
-        segment: { index, total: parts.length, skeletonPart: parts[index], previousScript },
+        segment: { index, total: parts.length, skeletonPart: parts[index], previousScript, partTargetChars, totalTargetChars },
       }),
     });
     const data = await res.json();
