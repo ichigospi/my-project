@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { getApiKey } from "@/lib/channel-store";
+import { getAiModel } from "@/lib/ai-model";
 import { getAnalyses, getProfileByChannel } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
@@ -36,7 +37,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     try {
       const res = await fetch("/api/script/revise-skeleton", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ skeleton, revisionNote, aiApiKey }),
+        body: JSON.stringify({ skeleton, revisionNote, aiApiKey, aiModel: getAiModel("generate") }),
       });
       const raw = await res.text();
       let data: Record<string, unknown> | null = null;
@@ -84,7 +85,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       const referenceAnalyses = analyses.map((a) => ({
         videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult,
       }));
-      const body = JSON.stringify({ skeleton, referenceAnalyses, rulesText, style: project.style, aiApiKey });
+      const body = JSON.stringify({ skeleton, referenceAnalyses, rulesText, style: project.style, aiApiKey, aiModel: getAiModel("check") });
       let data: Record<string, unknown> | null = null;
       let lastErr = "";
       for (let attempt = 0; attempt < 4; attempt++) {
@@ -143,7 +144,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           analyses, style: project.style, topic: project.title,
-          channelProfile: getProfileByChannel(project.channelId || ""), aiApiKey,
+          channelProfile: getProfileByChannel(project.channelId || ""), aiApiKey, aiModel: getAiModel("generate"),
           userPrompt: promptText || undefined,
           currentSkeleton: skeleton || undefined,
           rulesText,

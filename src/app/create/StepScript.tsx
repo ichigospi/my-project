@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getApiKey } from "@/lib/channel-store";
+import { getAiModel } from "@/lib/ai-model";
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { pullSharedSettings } from "@/lib/shared-sync";
 import { getPresetFor, getPerformanceRecordsByChannel } from "@/lib/project-store";
@@ -176,6 +177,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)),
           referenceAnalyses,
           aiApiKey,
+          aiModel: getAiModel("generate"),
         }),
       });
       const data = await res.json();
@@ -214,7 +216,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         proposal: project.structureProposal, channelProfile, style: project.style, topic: project.title,
-        additionalNotes, rulesText, referenceAnalyses: buildRefs(), aiApiKey,
+        additionalNotes, rulesText, referenceAnalyses: buildRefs(), aiApiKey, aiModel: getAiModel("generate"),
         segment: { index, total: parts.length, skeletonPart: parts[index], previousScript, partTargetChars, totalTargetChars },
       }),
     });
@@ -277,7 +279,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const previousScript = segs.slice(0, idx).map((s) => s.script).join("\n\n");
       const body = JSON.stringify({
         segmentScript: segs[idx].script, partIndex: idx, partTotal: plannedTotalParts(),
-        previousScript, referenceAnalyses: buildRefs(), rulesText, style: project.style, aiApiKey,
+        previousScript, referenceAnalyses: buildRefs(), rulesText, style: project.style, aiApiKey, aiModel: getAiModel("check"),
       });
       let data: Record<string, unknown> | null = null;
       let lastErr = "";
@@ -331,7 +333,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const res = await fetch("/api/script/revise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: segs[idx].script, revisionNote: note, referenceAnalyses: buildRefs(), aiApiKey }),
+        body: JSON.stringify({ script: segs[idx].script, revisionNote: note, referenceAnalyses: buildRefs(), aiApiKey, aiModel: getAiModel("generate") }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); return; }
@@ -400,7 +402,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const res = await fetch("/api/script/revise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: project.generatedScript, revisionNote, referenceAnalyses, aiApiKey }),
+        body: JSON.stringify({ script: project.generatedScript, revisionNote, referenceAnalyses, aiApiKey, aiModel: getAiModel("generate") }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
@@ -451,6 +453,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           transcript: a.transcript,
         })),
         aiApiKey,
+        aiModel: getAiModel("check"),
       });
 
       // Railway proxy が "upstream error"(プレーンテキスト) を返すと res.json() が
