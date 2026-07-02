@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
+import { getAiModel, setAiModel, AI_MODEL_OPTIONS, type AiModelId } from "@/lib/ai-model";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
 
@@ -29,6 +30,8 @@ function SettingsContent() {
   const [youtubeApiKey, setYoutubeApiKey] = useState("");
   const [aiApiKey, setAiApiKeyState] = useState("");
   const [openaiApiKey, setOpenaiApiKeyState] = useState("");
+  const [aiModelGenerate, setAiModelGenerate] = useState<AiModelId>("claude-sonnet-4-6");
+  const [aiModelCheck, setAiModelCheck] = useState<AiModelId>("claude-sonnet-4-6");
   const [saved, setSaved] = useState(false);
   const [channelCount, setChannelCount] = useState(0);
   const [testingYt, setTestingYt] = useState(false);
@@ -78,6 +81,8 @@ function SettingsContent() {
       setOpenaiApiKeyState(getApiKey("openai_api_key"));
       setChannelCount(getChannels().length);
     });
+    setAiModelGenerate(getAiModel("generate"));
+    setAiModelCheck(getAiModel("check"));
     setOauthClientId(localStorage.getItem("oauth_client_id") || "");
     setOauthClientSecret(localStorage.getItem("oauth_client_secret") || "");
     if (localStorage.getItem("oauth_refresh_token")) setOauthStatus("connected");
@@ -230,6 +235,8 @@ function SettingsContent() {
     setApiKey("yt_api_key", youtubeApiKey);
     setApiKey("ai_api_key", aiApiKey);
     setApiKey("openai_api_key", openaiApiKey);
+    setAiModel("generate", aiModelGenerate);
+    setAiModel("check", aiModelCheck);
     // サーバーにも共有設定を保存
     pushSharedSettings();
     setSaved(true);
@@ -334,6 +341,38 @@ function SettingsContent() {
               className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
               {showAiKey ? "隠す" : "表示"}
             </button>
+          </div>
+        </div>
+
+        {/* AIモデル選択 */}
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-semibold mb-1">AIモデル（Claude使用時）</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            台本の「生成」と「品質チェック」で使うモデルを別々に選べます。OpenAIキー使用時はGPT-4o固定でこの設定は影響しません。
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">生成用モデル（骨組み・台本・修正）</label>
+              <select value={aiModelGenerate} onChange={(e) => setAiModelGenerate(e.target.value as AiModelId)}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-white">
+                {AI_MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">{AI_MODEL_OPTIONS.find((o) => o.id === aiModelGenerate)?.desc}</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">チェック用モデル（品質チェック・骨組みチェック）</label>
+              <select value={aiModelCheck} onChange={(e) => setAiModelCheck(e.target.value as AiModelId)}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-white">
+                {AI_MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">{AI_MODEL_OPTIONS.find((o) => o.id === aiModelCheck)?.desc}</p>
+            </div>
+          </div>
+          <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+            <p className="text-xs text-blue-800">
+              おすすめ: 生成用=Opus 4.8 または Fable 5（品質重視）、チェック用=Sonnet 4.6（評価はこれで十分）。
+              Fable 5 は生成に時間がかかるため、分割出力との併用を推奨。この設定はこのブラウザに保存されます（メンバーごとに設定可能）。
+            </p>
           </div>
         </div>
 

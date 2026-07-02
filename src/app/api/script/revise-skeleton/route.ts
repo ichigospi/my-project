@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 
 // 骨組み(構成案)を、全文を書き直さずに「加筆／違反箇所の削除」の差分パッチで修正する。
 // モデルには find→replace のパッチJSONだけを出させ、サーバ側で元の骨組みに適用する。
@@ -37,6 +38,7 @@ function applyOneEdit(text: string, find: string, replace: string): string | nul
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { skeleton, revisionNote, aiApiKey } = body as { skeleton: string; revisionNote: string; aiApiKey: string };
+  const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが必要です" }, { status: 400 });
   if (!skeleton || !revisionNote) return NextResponse.json({ error: "骨組みと修正指示が必要です" }, { status: 400 });
@@ -86,8 +88,8 @@ ${skeleton}`;
       for (let attempt = 0; attempt < 3; attempt++) {
         res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { "content-type": "application/json", "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 12000, messages: [{ role: "user", content: prompt }] }),
+          headers: anthropicHeaders(aiApiKey, aiModel),
+          body: JSON.stringify({ model: aiModel, max_tokens: 12000, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
         });
         if (res.status === 429 || res.status === 529) {
           if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
@@ -97,7 +99,7 @@ ${skeleton}`;
         break;
       }
       if (!res!.ok) { const e = await res!.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res!.status }); }
-      text = (await res!.json()).content?.[0]?.text || "";
+      text = ((await res!.json()).content || []).filter((b: { type?: string }) => b.type === "text").map((b: { text?: string }) => b.text || "").join("");
     } else {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",

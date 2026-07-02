@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 
 // 骨組み(構成)を構成ルール遵守・元台本ズレの観点で評価する。
 // 出力は台本品質チェックと同じ QualityCheckResult 形（categories/overallScore/topPriority）で返し、
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
       style?: string;
       aiApiKey: string;
     };
+    const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
 
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
     if (!skeleton?.trim()) return NextResponse.json({ error: "骨組みがありません" }, { status: 400 });
@@ -132,8 +134,8 @@ ${skeleton}`;
       for (let attempt = 0; attempt < 3; attempt++) {
         res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { "content-type": "application/json", "x-api-key": aiApiKey, "anthropic-version": "2023-06-01" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: userPrompt }] }),
+          headers: anthropicHeaders(aiApiKey, aiModel),
+          body: JSON.stringify({ model: aiModel, max_tokens: 8000, messages: [{ role: "user", content: userPrompt }], ...anthropicExtraBody(aiModel) }),
         });
         if (res.status === 429 || res.status === 529) {
           if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
@@ -143,7 +145,7 @@ ${skeleton}`;
         break;
       }
       if (!res!.ok) { const e = await res!.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res!.status }); }
-      raw = (await res!.json()).content?.[0]?.text || "";
+      raw = ((await res!.json()).content || []).filter((b: { type?: string }) => b.type === "text").map((b: { text?: string }) => b.text || "").join("");
     } else {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",

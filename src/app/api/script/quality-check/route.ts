@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 
 // 8観点+比較マトリクスの生成は出力が大きく時間がかかるため、関数のタイムアウトを延長
 export const maxDuration = 300;
@@ -281,20 +282,17 @@ function parseJSON(text: string): Record<string, unknown> | null {
   return null;
 }
 
-async function callAnthropic(aiApiKey: string, userPrompt: string): Promise<string> {
+async function callAnthropic(aiApiKey: string, userPrompt: string, aiModel: ReturnType<typeof resolveAiModel>): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": aiApiKey,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: anthropicHeaders(aiApiKey, aiModel),
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: aiModel,
         max_tokens: 8000,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt + "\n\nJSONのみ出力してください。{ から始めてください。" }],
+        ...anthropicExtraBody(aiModel),
       }),
     });
     if (res.status === 429 || res.status === 529) {
@@ -307,7 +305,7 @@ async function callAnthropic(aiApiKey: string, userPrompt: string): Promise<stri
       throw new Error(err?.error?.message || `API error (${res.status})`);
     }
     const data = await res.json();
-    return data.content?.[0]?.text || "";
+    return ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("");
   }
   throw new Error("リトライ上限");
 }
@@ -360,7 +358,8 @@ export async function POST(request: NextRequest) {
     });
 
     const isAnthropic = aiApiKey.startsWith("sk-ant-");
-    const raw = isAnthropic ? await callAnthropic(aiApiKey, userPrompt) : await callOpenAI(aiApiKey, userPrompt);
+    const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
+    const raw = isAnthropic ? await callAnthropic(aiApiKey, userPrompt, aiModel) : await callOpenAI(aiApiKey, userPrompt);
     const parsed = parseJSON(raw);
     if (!parsed) {
       return NextResponse.json({ error: "AI応答の解析に失敗しました", raw }, { status: 500 });
