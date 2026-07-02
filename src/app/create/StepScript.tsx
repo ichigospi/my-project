@@ -346,6 +346,20 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     finally { setSegmentRevising(null); }
   };
 
+  // 出力を最初からやり直す：台本・分割パート・チェック結果をクリアし、出力回数の選択画面に戻す
+  // （現在の台本は履歴に退避するので、必要なら履歴から復元できる）
+  const handleResetOutput = () => {
+    if (!window.confirm("台本の出力を最初からやり直しますか？\n現在の台本・分割パート・品質チェック結果はクリアされます（台本は履歴に保存されます）。")) return;
+    if (project.generatedScript) setScriptHistory((prev) => [...prev, project.generatedScript]);
+    setExcludedFixes({});
+    setMainExcludedFixes({});
+    setSegmentReviseNote({});
+    setRevisionNote("");
+    setRevisionSummary("");
+    setError("");
+    onUpdate({ ...project, generatedScript: "", scriptSegments: undefined, qualityCheckResult: undefined, telopScript: null, status: "script" });
+  };
+
   // パートのチェック指摘を、そのパートの修正指示欄に転記する
   const handleSegmentApplyFix = (idx: number) => {
     const qc = project.scriptSegments?.[idx]?.qualityCheckResult;
@@ -724,6 +738,10 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-700">分割パート（{project.scriptSegments.length}/{plannedTotalParts()} 生成済み・各パートをチェック/修正してから次へ）</p>
+                <button onClick={handleResetOutput} disabled={generating}
+                  className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs hover:bg-red-50 disabled:opacity-50 shrink-0">
+                  🔄 最初からやり直す
+                </button>
               </div>
               {project.scriptSegments.map((seg, idx) => {
                 const total = plannedTotalParts();
@@ -856,6 +874,10 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                 </select>
                 <button onClick={handleGenerateMain} disabled={generating} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">
                   {generating ? "生成中..." : "再生成"}
+                </button>
+                <button onClick={handleResetOutput} disabled={generating}
+                  className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs hover:bg-red-50 disabled:opacity-50">
+                  🔄 やり直す
                 </button>
               </div>
             </div>
