@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
+import { recordUsage } from "@/lib/usage-tracker";
 
 // 骨組み出力は最大16Kトークンと長く生成に時間がかかるため、関数の実行上限を延長する
 export const maxDuration = 300;
@@ -206,6 +207,7 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
       }
       if (!res!.ok) { const e = await res!.json(); return NextResponse.json({ error: e.error?.message }, { status: res!.status }); }
       const data = await res!.json();
+      recordUsage({ model: data.model || aiModel, usage: data.usage });
       text = (data.content || []).filter((b: { type?: string }) => b.type === "text").map((b: { text?: string }) => b.text || "").join("");
     } else {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -214,7 +216,9 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
         body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 16000 }),
       });
       if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message }, { status: res.status }); }
-      text = (await res.json()).choices?.[0]?.message?.content || "";
+      const odata = await res.json();
+      recordUsage({ model: "gpt-4o", usage: odata.usage });
+      text = odata.choices?.[0]?.message?.content || "";
     }
 
     return NextResponse.json({ skeleton: text });

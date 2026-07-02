@@ -369,10 +369,11 @@ function SettingsContent() {
             </div>
           </div>
           <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-            <p className="text-xs text-blue-800">
-              おすすめ: 生成用=Opus 4.8 または Fable 5（品質重視）、チェック用=Sonnet 4.6（評価はこれで十分）。
-              Fable 5 は生成に時間がかかるため、分割出力との併用を推奨。この設定はこのブラウザに保存されます（メンバーごとに設定可能）。
-            </p>
+            <p className="text-xs font-medium text-blue-800 mb-1">モデルの目安（料金は入力/出力 100万トークンあたり）</p>
+            <ul className="text-xs text-blue-800 space-y-0.5 list-disc list-inside">
+              {AI_MODEL_OPTIONS.map((o) => <li key={o.id}><strong>{o.label}</strong>：{o.desc}</li>)}
+            </ul>
+            <p className="text-xs text-blue-700 mt-2">この設定はこのブラウザに保存されます（メンバーごとに設定可能）。使用料は「API使用料」ページで確認できます。</p>
           </div>
         </div>
 
