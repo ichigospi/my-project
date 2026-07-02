@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
+import { recordUsage } from "@/lib/usage-tracker";
 
 // 8観点+比較マトリクスの生成は出力が大きく時間がかかるため、関数のタイムアウトを延長
 export const maxDuration = 300;
@@ -305,6 +306,7 @@ async function callAnthropic(aiApiKey: string, userPrompt: string, aiModel: Retu
       throw new Error(err?.error?.message || `API error (${res.status})`);
     }
     const data = await res.json();
+    recordUsage({ model: data.model || aiModel, usage: data.usage });
     return ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("");
   }
   throw new Error("リトライ上限");
@@ -329,6 +331,7 @@ async function callOpenAI(aiApiKey: string, userPrompt: string): Promise<string>
     throw new Error(err?.error?.message || `API error (${res.status})`);
   }
   const data = await res.json();
+  recordUsage({ model: "gpt-4o", usage: data.usage });
   return data.choices?.[0]?.message?.content || "";
 }
 

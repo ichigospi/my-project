@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
+import { recordUsage } from "@/lib/usage-tracker";
 
 // 骨組み(構成)を構成ルール遵守・元台本ズレの観点で評価する。
 // 出力は台本品質チェックと同じ QualityCheckResult 形（categories/overallScore/topPriority）で返し、
@@ -145,7 +146,9 @@ ${skeleton}`;
         break;
       }
       if (!res!.ok) { const e = await res!.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res!.status }); }
-      raw = ((await res!.json()).content || []).filter((b: { type?: string }) => b.type === "text").map((b: { text?: string }) => b.text || "").join("");
+      const data = await res!.json();
+      recordUsage({ model: data.model || aiModel, usage: data.usage });
+      raw = ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("");
     } else {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -153,7 +156,9 @@ ${skeleton}`;
         body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: userPrompt }], max_tokens: 8000, response_format: { type: "json_object" } }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res.status }); }
-      raw = (await res.json()).choices?.[0]?.message?.content || "";
+      const odata = await res.json();
+      recordUsage({ model: "gpt-4o", usage: odata.usage });
+      raw = odata.choices?.[0]?.message?.content || "";
     }
 
     const parsed = parseJSON(raw);

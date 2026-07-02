@@ -8,9 +8,9 @@ export type AiModelId = (typeof ALLOWED_AI_MODELS)[number];
 export const DEFAULT_AI_MODEL: AiModelId = "claude-sonnet-4-6";
 
 export const AI_MODEL_OPTIONS: { id: AiModelId; label: string; desc: string }[] = [
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6（標準）", desc: "速度・コスト・品質のバランス型。$3/$15 per 100万トークン" },
-  { id: "claude-opus-4-8", label: "Claude Opus 4.8（高品質）", desc: "文章の質・指示追従が一段上。コスト約1.7倍・やや低速。$5/$25" },
-  { id: "claude-fable-5", label: "Claude Fable 5（最上位）", desc: "最高品質。コスト約3倍超・生成に時間がかかる。$10/$50。拒否時はOpus 4.8へ自動フォールバック" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6（$3/$15）", desc: "バランス型。チェック用はこれで十分" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8（$5/$25）", desc: "文章の質・指示追従が一段上。生成用のおすすめ" },
+  { id: "claude-fable-5", label: "Claude Fable 5（$10/$50）", desc: "最高品質だが生成に時間がかかる（1リクエスト数分かかることも）。分割出力との併用推奨" },
 ];
 
 export type AiModelPurpose = "generate" | "check";
