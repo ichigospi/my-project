@@ -44,7 +44,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 字幕の自動取得
+  // 字幕の自動取得（metaOnly=1 のときは動画情報だけ返してスキップ：URL追加などの軽量用途向け）
+  if (request.nextUrl.searchParams.get("metaOnly") === "1") {
+    return NextResponse.json({ ...videoInfo, transcript: "", transcriptError: "" });
+  }
+
   let transcript = "";
   let transcriptError = "";
 
