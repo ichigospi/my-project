@@ -44,6 +44,24 @@ type ScoredVideo = ReferenceVideo & {
   genreMatch?: number;
 };
 
+// YouTube URLまたは動画IDから videoId を抽出（watch?v= / youtu.be / shorts / embed / live / 生ID対応）
+function parseYoutubeVideoId(input: string): string | null {
+  const s = input.trim();
+  if (/^[\w-]{11}$/.test(s)) return s;
+  try {
+    const u = new URL(s);
+    if (u.hostname === "youtu.be" || u.hostname === "www.youtu.be") {
+      const id = u.pathname.slice(1).split("/")[0];
+      return /^[\w-]{11}$/.test(id) ? id : null;
+    }
+    const v = u.searchParams.get("v");
+    if (v && /^[\w-]{11}$/.test(v)) return v;
+    const m = u.pathname.match(/\/(shorts|embed|live)\/([\w-]{11})/);
+    if (m) return m[2];
+  } catch { /* URLとして解釈できない */ }
+  return null;
+}
+
 export default function StepReferences({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const [videos, setVideos] = useState<ScoredVideo[]>(project.referenceVideos.length > 0 ? project.referenceVideos : []);
   const [loading, setLoading] = useState(false);
@@ -225,6 +243,46 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
     }
   };
 
+  // URL直接入力で参考動画を追加
+  const [urlInput, setUrlInput] = useState("");
+  const [addingUrl, setAddingUrl] = useState(false);
+  const handleAddByUrl = async () => {
+    const videoId = parseYoutubeVideoId(urlInput);
+    if (!videoId) { setError("YouTubeのURLまたは動画IDを認識できませんでした（例: https://www.youtube.com/watch?v=xxxx）"); return; }
+    if (selectedCount >= 3) { setError("参考動画は最大3本までです。既存の選択を外してから追加してください"); return; }
+    const existing = videos.find((v) => v.videoId === videoId);
+    if (existing) {
+      if (!existing.selected) toggleSelect(videoId);
+      setUrlInput("");
+      setError("");
+      return;
+    }
+    const ytApiKey = getApiKey("yt_api_key");
+    if (!ytApiKey) { setError("YouTube APIキーを設定してください"); return; }
+    setAddingUrl(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({ videoId, apiKey: ytApiKey, metaOnly: "1" });
+      const res = await fetch(`/api/youtube/transcript?${params}`);
+      const d = await res.json();
+      if (!d?.title) { setError("動画情報を取得できませんでした。URLが正しいか確認してください"); return; }
+      const ref: ScoredVideo = {
+        videoId,
+        title: d.title,
+        channelName: d.channelTitle || "不明",
+        views: typeof d.views === "number" ? d.views : 0,
+        thumbnailUrl: d.thumbnailUrl || "",
+        duration: d.duration,
+        publishedAt: d.publishedAt,
+        selected: true,
+      };
+      setVideos((prev) => [ref, ...prev]);
+      setFetched(true);
+      setUrlInput("");
+    } catch { setError("動画情報の取得に失敗しました"); }
+    finally { setAddingUrl(false); }
+  };
+
   // 分析済み一覧の重複を videoId で除去（最新 + スコア高い方を優先）
   const dedupedAnalyzedVideos = useMemo(() => {
     const byVideoId = new Map<string, ScriptAnalysis>();
@@ -267,6 +325,25 @@ export default function StepReferences({ project, onUpdate }: { project: ScriptP
           className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px ${tab === "analyzed" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
           分析済みから選ぶ（{dedupedAnalyzedVideos.length}件）
         </button>
+      </div>
+
+      {/* URL直接入力で追加 */}
+      <div className="mb-4 bg-card-bg rounded-xl p-4 shadow-sm border border-gray-100">
+        <label className="text-xs font-medium text-gray-500 mb-2 block">URLで直接追加（検索に出ない動画も参考にできます）</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !addingUrl && urlInput.trim()) handleAddByUrl(); }}
+            placeholder="https://www.youtube.com/watch?v=xxxx / youtu.be/xxxx / 動画ID"
+            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent"
+          />
+          <button onClick={handleAddByUrl} disabled={addingUrl || !urlInput.trim()}
+            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0">
+            {addingUrl ? "取得中..." : "追加"}
+          </button>
+        </div>
       </div>
 
       {/* 選択中の表示 */}
