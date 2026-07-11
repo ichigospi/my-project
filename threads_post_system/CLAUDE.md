@@ -101,7 +101,10 @@ threads_post_system/
 本システムは `x_post_system/` から独立して運用する。
 ただしプラットフォーム非依存の原則(フック設計・教育の考え方など)は
 `x_post_system/knowledge_common/` を副読本として参照してよい。
-Threads特有の作法は必ず `knowledge/threads_principles.md` を優先する。
+自アカが占いスピ系のため、`x_post_system/knowledge_spiritual/teachings.md`
+(占いスピ系教材)も③⑤⑥は副読本として参照すること。
+Threads特有の作法は必ず `knowledge/threads_principles.md` を優先し、
+X前提の記述(タグ運用・RT文化など)はそのまま持ち込まない。
 
 ## 立ち上げロードマップ(統括が進捗を管理し、完了したらチェックを付ける)
 
