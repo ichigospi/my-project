@@ -15,7 +15,7 @@ import {
   getMyChannelDataList, saveMyChannelData,
   getAnalysisLogs, getWeeklySnapshots, getPerformanceRecords,
   type HookEntry, type CTAEntry, type ThumbnailWordEntry, type TitleEntry,
-  type ScriptProject, type ProductionTask, type MyChannelData,
+  type ScriptProject, type ProductionTask, type MyChannelData, type ScriptRulePreset,
   type AnalysisLog, type WeeklySnapshot, type PerformanceRecord,
 } from "./project-store";
 import {
@@ -227,6 +227,9 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
           "fortune_yt_winning_patterns_list",
           "fortune_yt_idea_rules_list",
           "fortune_yt_presets",
+          // チャンネル設計（プロフィール）。ここが漏れているとID統一後に
+          // getProfileByChannel が空を返し、台本生成が参考動画の人物像に乗っ取られる
+          "fortune_yt_profiles",
         ]) {
           applyMigrationToStorageKey(k, channelMigrations);
         }
@@ -280,20 +283,38 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
     }
 
     // チャンネル別プロフィール: channelId毎にマージ
+    // 受信側にもID統一の書き換えを適用する（サーバーに古いIDで保存された
+    // プロフィールが、統一後のIDと別枠で残り続けるのを防ぐ）
     if (Array.isArray(data.profilesList) && data.profilesList.length > 0) {
-      const localList = getAllProfiles();
-      for (const incoming of data.profilesList as ChannelProfile[]) {
+      for (const incoming of migrate(data.profilesList as ChannelProfile[])) {
         const key = incoming.channelId || "";
-        const existing = localList.find((p) => (p.channelId || "") === key);
+        const existing = getAllProfiles().find((p) => (p.channelId || "") === key);
         const merged = mergeProfile(existing || incoming, incoming);
         saveProfileByChannel({ ...merged, channelId: key });
       }
     }
 
-    // プリセット: マージ
+    // プロフィールの重複行を整理（ID統一の結果、同じchannelIdが複数行になった場合、
+    // 中身が埋まっている方を残す）
+    {
+      const all = getAllProfiles();
+      const byKey = new Map<string, ChannelProfile>();
+      for (const p of all) {
+        const key = p.channelId || "";
+        const prev = byKey.get(key);
+        if (!prev) { byKey.set(key, p); continue; }
+        const filled = (x: ChannelProfile) => [x.channelName, x.concept, x.tone, x.commonRules].filter(Boolean).length;
+        byKey.set(key, filled(p) > filled(prev) ? p : prev);
+      }
+      if (byKey.size !== all.length) {
+        localStorage.setItem("fortune_yt_profiles", JSON.stringify([...byKey.values()]));
+      }
+    }
+
+    // プリセット: マージ（受信側もID統一を適用）
     if (data.presets?.length > 0) {
       const localPresets = getPresets();
-      for (const sp of data.presets) {
+      for (const sp of migrate(data.presets as ScriptRulePreset[])) {
         if (!localPresets.some((lp) => lp.id === sp.id)) {
           savePreset(sp);
         }
@@ -332,9 +353,15 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
 
     // 自チャンネルデータ(YouTube情報): チャンネル毎にupsert
     // 新形式 myChannelDataList が優先、無ければ旧 myChannel(singular)を1件として扱う
-    const incomingMyChData: MyChannelData[] = Array.isArray(data.myChannelDataList)
+    const incomingMyChDataRaw: MyChannelData[] = Array.isArray(data.myChannelDataList)
       ? data.myChannelDataList
       : data.myChannel ? [data.myChannel] : [];
+    // internalChannelId にもID統一を適用
+    const incomingMyChData = incomingMyChDataRaw.map((d) =>
+      d.internalChannelId && channelMigrations[d.internalChannelId]
+        ? { ...d, internalChannelId: channelMigrations[d.internalChannelId] }
+        : d
+    );
     if (incomingMyChData.length > 0) {
       const localList = getMyChannelDataList();
       for (const incoming of incomingMyChData) {
@@ -374,9 +401,11 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
 
     // 勝ちパターン(チャンネル別): updatedAt新しい方を採用してチャンネル毎にupsert
     // 新形式 winningPatternsList が優先、無ければ旧 winningPatterns(singular)を1件として扱う
-    const incomingWP: WinningPatterns[] = Array.isArray(data.winningPatternsList)
-      ? data.winningPatternsList
-      : data.winningPatterns ? [data.winningPatterns] : [];
+    const incomingWP: WinningPatterns[] = migrate(
+      Array.isArray(data.winningPatternsList)
+        ? data.winningPatternsList
+        : data.winningPatterns ? [data.winningPatterns] : []
+    );
     if (incomingWP.length > 0) {
       const localList = getWinningPatternsList();
       for (const incoming of incomingWP) {
@@ -397,9 +426,11 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
 
     // 企画ルール(チャンネル別): channelId毎にupsert（ローカル分が空っぽならサーバー優先）
     // 新形式 ideaRulesList が優先、無ければ旧 ideaRules(singular)を1件として扱う
-    const incomingIR: IdeaRules[] = Array.isArray(data.ideaRulesList)
-      ? data.ideaRulesList
-      : data.ideaRules ? [data.ideaRules] : [];
+    const incomingIR: IdeaRules[] = migrate(
+      Array.isArray(data.ideaRulesList)
+        ? data.ideaRulesList
+        : data.ideaRules ? [data.ideaRules] : []
+    );
     if (incomingIR.length > 0) {
       const localList = getIdeaRulesList();
       for (const incoming of incomingIR) {

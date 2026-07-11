@@ -510,8 +510,10 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
 
 function ProfileWarning({ channelId }: { channelId?: string }) {
   const [warn, setWarn] = useState<string | null>(null);
+  const [narratorName, setNarratorName] = useState("");
   useEffect(() => {
     const profile = getProfileByChannel(channelId || "");
+    setNarratorName(profile.channelName || "");
     const missing: string[] = [];
     if (!profile.channelName) missing.push("チャンネル名");
     if (!profile.concept) missing.push("コンセプト");
@@ -522,7 +524,15 @@ function ProfileWarning({ channelId }: { channelId?: string }) {
       setWarn(null);
     }
   }, [channelId]);
-  if (!warn) return null;
+  if (!warn) {
+    // 問題がなくても「どの語り手で生成されるか」を常時表示（別チャンネルのプロフィール混入を一目で検知）
+    return (
+      <p className="mb-6 text-xs text-gray-500">
+        語り手プロフィール: <span className="font-semibold text-gray-700">{narratorName || "（未設定）"}</span>
+        <span className="text-gray-400 ml-1">— この設計で骨組み・台本を生成します。名前が違う場合はチャンネル選択かチャンネル設計を確認してください。</span>
+      </p>
+    );
+  }
   return (
     <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3">
       <span className="text-xl">⚠️</span>
