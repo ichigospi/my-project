@@ -1424,15 +1424,26 @@ function QualityCheckPanel({
 
 function ScriptProfileWarning({ channelId }: { channelId?: string }) {
   const [warn, setWarn] = useState<string | null>(null);
+  const [narratorName, setNarratorName] = useState("");
   useEffect(() => {
     const profile = getProfileByChannel(channelId || "");
+    setNarratorName(profile.channelName || "");
     const missing: string[] = [];
     if (!profile.channelName) missing.push("チャンネル名");
     if (!profile.concept) missing.push("コンセプト");
     if (!profile.tone) missing.push("口調");
     setWarn(missing.length > 0 ? `未設定: ${missing.join(" / ")}` : null);
   }, [channelId]);
-  if (!warn) return null;
+  if (!warn) {
+    // 問題がなくても「どの語り手で生成されるか」を常時表示する
+    // （チャンネルIDズレで別チャンネルのプロフィールが使われる事故を一目で検知できるように）
+    return (
+      <p className="mb-4 text-xs text-gray-500">
+        語り手プロフィール: <span className="font-semibold text-gray-700">{narratorName || "（未設定）"}</span>
+        <span className="text-gray-400 ml-1">— このチャンネル設計で台本を生成します。名前が違う場合はチャンネル選択かチャンネル設計を確認してください。</span>
+      </p>
+    );
+  }
   return (
     <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-3">
       <span>⚠️</span>
