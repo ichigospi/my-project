@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { getApiKey } from "@/lib/channel-store";
 import { getTaskManager } from "@/lib/analysis-task-manager";
-import { onSyncStatus, getLastSyncError } from "@/lib/shared-sync";
+import { onSyncStatus, getLastSyncError, pushSharedSettings } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
 
 const navItems = [
@@ -109,6 +109,8 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               const name = prompt("新しいチャンネル名:", activeChannel.name);
               if (name && name.trim() && name.trim() !== activeChannel.name) {
                 renameChannel(activeChannel.id, name.trim());
+                // リネームを即サーバーへ同期（他端末に旧名が残って重複表示になるのを防ぐ）
+                setTimeout(() => { pushSharedSettings(); }, 300);
               }
             }}
             disabled={!activeChannel}
