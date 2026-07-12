@@ -38,13 +38,17 @@ function mergeMyChannelsByName(
   local: MyChannel[],
   server: MyChannel[]
 ): { merged: MyChannel[]; idMigrations: Record<string, string> } {
-  // まず同一IDの重複を解消する（サーバー優先）。
+  // まず同一IDの重複を解消する。
   // リネーム（例: 金華→きん婆）すると、他端末では「旧名(ID:X)」と「新名(ID:X)」が
   // 同じIDで並んでしまい、セレクタで新名を選んでも旧名が表示される不具合になる。
-  // 同じIDは同じチャンネルなので、最後にpushされた状態＝サーバー側の名前を正とする。
+  // 同じIDは同じチャンネルなので1つに統一する。優先順位は
+  //   1. updatedAt（リネーム時刻）が新しい方 … 古いリストを持つ端末のpushで巻き戻らないように
+  //   2. どちらも無ければサーバー側
   const byId = new Map<string, MyChannel>();
   for (const ch of [...server, ...local]) {
-    if (!byId.has(ch.id)) byId.set(ch.id, ch);
+    const prev = byId.get(ch.id);
+    if (!prev) { byId.set(ch.id, ch); continue; }
+    if ((ch.updatedAt || "") > (prev.updatedAt || "")) byId.set(ch.id, ch);
   }
   const all = [...byId.values()];
   const byName = new Map<string, MyChannel[]>();

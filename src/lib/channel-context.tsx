@@ -6,6 +6,7 @@ export interface MyChannel {
   name: string;
   handle?: string;
   createdAt: string;
+  updatedAt?: string; // リネーム時刻。同期マージで「新しい名前が勝つ」判定に使う
 }
 
 interface ChannelContextType {
@@ -128,7 +129,7 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
     const trimmed = newName.trim();
     if (!trimmed) return;
     setChannels((prev) => {
-      const next = prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c));
+      const next = prev.map((c) => (c.id === id ? { ...c, name: trimmed, updatedAt: new Date().toISOString() } : c));
       // push（サーバー同期）が直後に走ってもリネーム後のリストを読めるよう、即時に永続化する
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;

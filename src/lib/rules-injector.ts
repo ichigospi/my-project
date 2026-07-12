@@ -1,5 +1,5 @@
 // AIプロンプトに自動注入するルールを構築するヘルパー
-import { getProfile, getAnalyses, type ChannelProfile } from "./script-analysis-store";
+import { getProfile, getProfileByChannel, getAnalyses, type ChannelProfile } from "./script-analysis-store";
 import { getPresetFor, type Genre, type Style } from "./project-store";
 import { getWinningPatternsByChannel } from "./winning-patterns-store";
 
@@ -13,7 +13,10 @@ export interface InjectedRules {
 }
 
 export function buildInjectedRules(genre?: Genre, style?: Style, channelId?: string): InjectedRules {
-  const profile = getProfile();
+  // チャンネル指定があれば必ずそのチャンネルの設計を使う。
+  // 旧実装は常に単一プロフィール(getProfile=旧チャンネルの設計)を読んでいたため、
+  // 別チャンネルの共通ルール・NG表現・世界観（アリサ等）が全チャンネルの生成に混入していた。
+  const profile = channelId ? getProfileByChannel(channelId) : getProfile();
   const preset = genre && style ? getPresetFor(genre, style, channelId) : undefined;
 
   const channelContext = buildChannelContext(profile);
