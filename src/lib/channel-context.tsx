@@ -127,7 +127,12 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
   const renameChannel = (id: string, newName: string) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    setChannels((prev) => prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c)));
+    setChannels((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c));
+      // push（サーバー同期）が直後に走ってもリネーム後のリストを読めるよう、即時に永続化する
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
   };
 
   const removeChannel = (id: string) => {
