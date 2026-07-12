@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ===== ユーザー & 認証 =====
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  hashedPassword String
+  role           String   @default("editor") // owner, admin, editor, viewer
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model AppSetting {
+  key   String @id
+  value String
+}
+
+// ===== アカウント（恋愛・金運など運用単位） =====
+model Account {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#8b5cf6")
+  sortOrder Int      @default(0)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  contacts  Contact[]
+  events    FunnelEvent[]
+  sales     Sale[]
+  templates Template[]
+  launches  Launch[]
+}
+
+// ===== リスト（1人1行。UTAGE連携時に個人単位で入る。手入力集計時は使わない） =====
+model Contact {
+  id           String   @id @default(cuid())
+  accountId    String
+  account      Account  @relation(fields: [accountId], references: [id])
+  externalId   String? // UTAGEの読者ID / LINE userId
+  displayName  String   @default("")
+  source       String   @default("other") // threads, insta, x, youtube, other
+  registeredAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  events FunnelEvent[]
+
+  @@index([accountId, registeredAt])
+  @@unique([accountId, externalId])
+}
+
+// ===== ファネルイベント =====
+// stage: list_in, free_apply, free_sent, paid_purchase, upsell_purchase, course_purchase
+// 自動連携は count=1 で1行ずつ、手入力は「この日にまとめてN件」を count=N の1行で表す
+model FunnelEvent {
+  id         String   @id @default(cuid())
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id])
+  contactId  String?
+  contact    Contact? @relation(fields: [contactId], references: [id])
+  stage      String
+  source     String? // list_in のときの流入媒体: threads, insta, x, youtube, other
+  count      Int      @default(1)
+  occurredOn String // YYYY-MM-DD（集計軸。タイムゾーン事故を避けるため文字列で持つ）
+  templateVersionId String?
+  templateVersion   TemplateVersion? @relation(fields: [templateVersionId], references: [id])
+  launchId   String?
+  launch     Launch?  @relation(fields: [launchId], references: [id])
+  note       String   @default("")
+  ingestedVia String  @default("manual") // manual, utage_webhook, csv, base_sync
+  createdAt  DateTime @default(now())
+
+  @@index([accountId, occurredOn])
+  @@index([stage, occurredOn])
+}
+
+// ===== 売上 =====
+// category: paid_reading(有料鑑定), upsell(アップセル), course(講座), repeat(リピート), launch(ローンチ), other
+model Sale {
+  id         String   @id @default(cuid())
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id])
+  category   String
+  productName String  @default("")
+  amount     Int // 円
+  quantity   Int      @default(1)
+  occurredOn String // YYYY-MM-DD
+  templateVersionId String?
+  templateVersion   TemplateVersion? @relation(fields: [templateVersionId], references: [id])
+  launchId   String?
+  launch     Launch?  @relation(fields: [launchId], references: [id])
+  externalId String? // BASEの注文ID等（重複取込防止）
+  note       String   @default("")
+  ingestedVia String  @default("manual") // manual, base_sync, utage_webhook, csv
+  createdAt  DateTime @default(now())
+
+  @@index([accountId, occurredOn])
+  @@index([category, occurredOn])
+  @@unique([ingestedVia, externalId])
+}
+
+// ===== テンプレ管理（Phase 2） =====
+// type: reading(鑑定文), evergreen(エバー配信), repeat(リピーター定期), launch(ローンチ配信)
+model Template {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id])
+  type      String
+  name      String
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  versions TemplateVersion[]
+}
+
+model TemplateVersion {
+  id         String    @id @default(cuid())
+  templateId String
+  template   Template  @relation(fields: [templateId], references: [id])
+  label      String    @default("v1")
+  content    String // 本文（PDFの場合は概要と保管場所メモ）
+  abGroup    String? // ABテスト時のグループ名（A / B）
+  activeFrom DateTime  @default(now())
+  activeTo   DateTime?
+  createdAt  DateTime  @default(now())
+
+  events FunnelEvent[]
+  sales  Sale[]
+}
+
+// ===== ローンチ（Phase 4） =====
+model Launch {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id])
+  name        String
+  productName String   @default("")
+  startOn     String // YYYY-MM-DD
+  endOn       String // YYYY-MM-DD
+  goalAmount  Int      @default(0)
+  memo        String   @default("")
+  createdAt   DateTime @default(now())
+
+  events FunnelEvent[]
+  sales  Sale[]
+}
+
+// ===== AI分析レポート（Phase 4） =====
+model AiReport {
+  id        String   @id @default(cuid())
+  scope     String   @default("all") // 分析対象の説明
+  input     String // 分析に渡した集計JSON（再現・学習用）
+  content   String // 分析結果
+  feedback  String   @default("") // ユーザーの所感・実際どうだったか（次回分析のコンテキストに含める）
+  createdAt DateTime @default(now())
+}
