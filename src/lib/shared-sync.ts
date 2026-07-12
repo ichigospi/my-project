@@ -38,7 +38,15 @@ function mergeMyChannelsByName(
   local: MyChannel[],
   server: MyChannel[]
 ): { merged: MyChannel[]; idMigrations: Record<string, string> } {
-  const all = [...local, ...server];
+  // まず同一IDの重複を解消する（サーバー優先）。
+  // リネーム（例: 金華→きん婆）すると、他端末では「旧名(ID:X)」と「新名(ID:X)」が
+  // 同じIDで並んでしまい、セレクタで新名を選んでも旧名が表示される不具合になる。
+  // 同じIDは同じチャンネルなので、最後にpushされた状態＝サーバー側の名前を正とする。
+  const byId = new Map<string, MyChannel>();
+  for (const ch of [...server, ...local]) {
+    if (!byId.has(ch.id)) byId.set(ch.id, ch);
+  }
+  const all = [...byId.values()];
   const byName = new Map<string, MyChannel[]>();
   for (const ch of all) {
     const key = ch.name || "";
@@ -203,10 +211,17 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
     // ※ projects/tasks/hooks 等のマージ「前」に走らせる必要がある
     let channelMigrations: Record<string, string> = {};
     if (Array.isArray(data.myChannels) && data.myChannels.length > 0) {
-      const localMyCh: MyChannel[] = JSON.parse(localStorage.getItem(MY_CHANNELS_KEY) || "[]");
+      const prevJson = localStorage.getItem(MY_CHANNELS_KEY) || "[]";
+      const localMyCh: MyChannel[] = JSON.parse(prevJson);
       const { merged: mergedCh, idMigrations } = mergeMyChannelsByName(localMyCh, data.myChannels);
-      localStorage.setItem(MY_CHANNELS_KEY, JSON.stringify(mergedCh));
+      const mergedJson = JSON.stringify(mergedCh);
+      localStorage.setItem(MY_CHANNELS_KEY, mergedJson);
       channelMigrations = idMigrations;
+      // リスト内容が変わった場合（ID重複の解消・リネーム反映など）は、
+      // ID移行が無くてもChannelProviderに再読込を促す
+      if (mergedJson !== prevJson && Object.keys(channelMigrations).length === 0) {
+        window.dispatchEvent(new Event("fortune_yt_my_channels_updated"));
+      }
 
       // アクティブチャンネルが書き換え対象なら追従
       const activeId = localStorage.getItem(ACTIVE_CHANNEL_KEY) || "";
