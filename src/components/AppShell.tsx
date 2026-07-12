@@ -7,8 +7,8 @@ import Sidebar from "./Sidebar";
 import LaunchSidebar from "./LaunchSidebar";
 import { pullSharedSettings } from "@/lib/shared-sync";
 
-const NO_SIDEBAR_PATHS = ["/login", "/setup", "/register", "/sales", "/notif"];
-const MOBILE_FULLSCREEN_PATHS = ["/sales", "/notif"];
+const NO_SIDEBAR_PATHS = ["/login", "/setup", "/register", "/sales", "/notif", "/biz-dashboard"];
+const MOBILE_FULLSCREEN_PATHS = ["/sales", "/notif", "/biz-dashboard"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
