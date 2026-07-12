@@ -54,6 +54,13 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
     let loaded: MyChannel[];
     if (storedChannels) {
       loaded = JSON.parse(storedChannels);
+      // 同一IDの重複（リネーム同期の名残）を除去。後の要素＝サーバー由来を優先して残す
+      const byId = new Map<string, MyChannel>();
+      for (const c of loaded) byId.set(c.id, c);
+      if (byId.size !== loaded.length) {
+        loaded = [...byId.values()];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(loaded));
+      }
     } else {
       // No channels yet - create default
       const def = createDefaultChannel();
