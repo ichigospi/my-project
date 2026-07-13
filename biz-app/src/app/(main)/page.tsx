@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon, ICONS } from "@/components/icons";
 import { PeriodTabs, CustomRangeInputs, AccountChips } from "@/components/FilterBar";
@@ -165,6 +165,20 @@ export default function DashboardPage() {
 
   const { accounts } = useAccounts();
   const { current, previous, loading, refresh } = useSummary(period, account, customFrom, customTo);
+
+  // BASE接続済みなら1時間おきに注文を自動同期（新規取込があれば表示を更新）
+  useEffect(() => {
+    fetch("/api/base/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ifStale: true }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && !d.skipped) refresh();
+      })
+      .catch(() => {});
+  }, [refresh]);
 
   const s = current;
   const p = previous;
