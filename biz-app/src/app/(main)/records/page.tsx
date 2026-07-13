@@ -29,6 +29,14 @@ const STAGE_LABELS: Record<string, string> = {
   list_in: "リストイン",
   free_apply: "無料鑑定申込",
   free_sent: "鑑定送付",
+  template_sent: "テンプレ配信",
+};
+
+type TemplateLite = {
+  id: string;
+  accountId: string;
+  name: string;
+  versions: { id: string; label: string; activeTo: string | null }[];
 };
 
 const inputClass =
@@ -53,6 +61,8 @@ export default function RecordsPage() {
   const [productName, setProductName] = useState("");
   const [amount, setAmount] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const [templateVersionId, setTemplateVersionId] = useState("");
+  const [templates, setTemplates] = useState<TemplateLite[]>([]);
   const [sSaving, setSSaving] = useState(false);
 
   // ---- 履歴 ----
@@ -67,6 +77,10 @@ export default function RecordsPage() {
     fetch("/api/sales")
       .then((r) => r.json())
       .then((d) => setSales((d.sales ?? []).slice(0, 50)))
+      .catch(() => {});
+    fetch("/api/templates")
+      .then((r) => r.json())
+      .then((d) => setTemplates(d.templates ?? []))
       .catch(() => {});
   }, []);
   useEffect(reloadHistory, [reloadHistory]);
@@ -120,6 +134,7 @@ export default function RecordsPage() {
         productName,
         amount: Number(amount),
         quantity: Number(quantity) || 1,
+        templateVersionId: templateVersionId || null,
       }),
     });
     setSSaving(false);
@@ -267,6 +282,22 @@ export default function RecordsPage() {
               <label className="text-xs text-gray-500">件数</label>
               <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} className={inputClass} />
             </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">どのテンプレから？（任意・テンプレ別成績の計測に使われます）</label>
+            <select value={templateVersionId} onChange={(e) => setTemplateVersionId(e.target.value)} className={inputClass}>
+              <option value="">紐付けない</option>
+              {templates
+                .filter((t) => t.accountId === sAccountEffective)
+                .map((t) =>
+                  t.versions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {t.name} / {v.label}
+                      {v.activeTo === null ? "（運用中）" : ""}
+                    </option>
+                  ))
+                )}
+            </select>
           </div>
           <button
             type="submit"

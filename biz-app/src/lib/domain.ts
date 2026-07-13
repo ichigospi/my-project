@@ -39,6 +39,19 @@ export const CATEGORY_TO_STAGE: Partial<Record<SaleCategoryKey, StageKey>> = {
   course: "course_purchase",
 };
 
+export const TEMPLATE_TYPES = [
+  { key: "reading", label: "鑑定文" },
+  { key: "evergreen", label: "エバー配信" },
+  { key: "repeat", label: "リピーター定期" },
+  { key: "launch", label: "ローンチ配信" },
+] as const;
+
+export type TemplateTypeKey = (typeof TEMPLATE_TYPES)[number]["key"];
+
+export function templateTypeLabel(key: string): string {
+  return TEMPLATE_TYPES.find((t) => t.key === key)?.label ?? key;
+}
+
 export function sourceLabel(key: string): string {
   return SOURCES.find((s) => s.key === key)?.label ?? key;
 }

@@ -9,6 +9,7 @@ import { Icon, ICONS } from "./icons";
 const NAV_ITEMS = [
   { href: "/", label: "ダッシュボード", icon: ICONS.chart },
   { href: "/sales", label: "売上内訳", icon: ICONS.pie },
+  { href: "/templates", label: "テンプレ", icon: ICONS.doc },
   { href: "/records", label: "実績入力", icon: ICONS.pencil },
   { href: "/settings", label: "設定", icon: ICONS.gear },
 ];
