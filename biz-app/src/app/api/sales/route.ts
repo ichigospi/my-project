@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   const auth = await requireAuth("editor");
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const { date, accountId, category, productName, amount, quantity, note, templateVersionId } =
+  const { date, accountId, category, productName, amount, quantity, note, templateVersionId, launchId } =
     await req.json();
   if (!date || !accountId) {
     return NextResponse.json({ error: "日付とアカウントは必須です" }, { status: 400 });
@@ -53,6 +53,7 @@ export async function POST(req: Request) {
       occurredOn: date,
       note: note?.trim() || "",
       templateVersionId: templateVersionId || null,
+      launchId: launchId || null,
     },
   });
   return NextResponse.json({ sale });

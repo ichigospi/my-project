@@ -166,6 +166,39 @@ for (const account of accounts) {
   }
 }
 
+// ===== ローンチ（振り返りサンプル: 45〜31日前に開催、講座売上を紐付け）=====
+for (const account of accounts) {
+  const scale = account.name === "恋愛" ? 1.0 : 0.6;
+  const priceScale = account.name === "恋愛" ? 1.0 : 1.4;
+  const launchId = nextId("ln");
+  const start = new Date(today);
+  start.setDate(start.getDate() - 45);
+  const end = new Date(today);
+  end.setDate(end.getDate() - 31);
+
+  await db.execute({
+    sql: `INSERT INTO Launch (id, accountId, name, productName, startOn, endOn, goalAmount, memo, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    args: [
+      launchId,
+      account.id,
+      `${account.name}講座ローンチ`,
+      `${account.name}実践講座`,
+      fmt(start),
+      fmt(end),
+      Math.round(800000 * scale),
+      "サンプルローンチ（シード投入）",
+    ],
+  });
+
+  const launchSalesCount = Math.round(6 * scale) + 2;
+  for (let i = 0; i < launchSalesCount; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + randInt(7, 13));
+    saleRows.push([nextId("sl"), account.id, "launch", `${account.name}実践講座`, Math.round(98000 * priceScale), 1, fmt(d), null, launchId]);
+  }
+}
+
 for (const [id, accountId, stage, source, count, date, templateVersionId] of eventRows) {
   await db.execute({
     sql: `INSERT INTO FunnelEvent (id, accountId, stage, source, count, occurredOn, templateVersionId, note, ingestedVia, createdAt)
@@ -174,11 +207,11 @@ for (const [id, accountId, stage, source, count, date, templateVersionId] of eve
   });
 }
 
-for (const [id, accountId, category, productName, amount, quantity, date, templateVersionId] of saleRows) {
+for (const [id, accountId, category, productName, amount, quantity, date, templateVersionId, launchId] of saleRows) {
   await db.execute({
-    sql: `INSERT INTO Sale (id, accountId, category, productName, amount, quantity, occurredOn, templateVersionId, note, ingestedVia, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 'csv', datetime('now'))`,
-    args: [id, accountId, category, productName, amount, quantity, date, templateVersionId],
+    sql: `INSERT INTO Sale (id, accountId, category, productName, amount, quantity, occurredOn, templateVersionId, launchId, note, ingestedVia, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'csv', datetime('now'))`,
+    args: [id, accountId, category, productName, amount, quantity, date, templateVersionId, launchId ?? null],
   });
 }
 
