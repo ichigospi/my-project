@@ -28,6 +28,7 @@ export interface ScriptAnalysis {
   category: "healing" | "education" | "other";
   tags: string[];
   createdAt: string;
+  updatedAt?: string; // 同期マージで「新しい方が勝つ」判定に使う（サーバー行にも存在）
   score?: AnalysisScore;
 }
 
@@ -71,6 +72,7 @@ export interface ScriptProposal {
   proposal: ProposalResult | null;
   generatedScript: string;
   createdAt: string;
+  updatedAt?: string; // 同期マージで「新しい方が勝つ」判定に使う
 }
 
 export interface ProposalResult {
@@ -149,18 +151,25 @@ export function getAnalyses(): ScriptAnalysis[] {
 }
 
 export function saveAnalysis(analysis: ScriptAnalysis): ScriptAnalysis[] {
+  const stamped: ScriptAnalysis = { ...analysis, updatedAt: new Date().toISOString() };
   const analyses = getAnalyses();
-  const idx = analyses.findIndex((a) => a.id === analysis.id);
+  const idx = analyses.findIndex((a) => a.id === stamped.id);
   if (idx >= 0) {
-    analyses[idx] = analysis;
+    analyses[idx] = stamped;
   } else {
-    analyses.unshift(analysis);
+    analyses.unshift(stamped);
   }
   if (typeof window !== "undefined") {
-    localStorage.setItem(ANALYSES_KEY, JSON.stringify(analyses));
+    try {
+      localStorage.setItem(ANALYSES_KEY, JSON.stringify(analyses));
+    } catch (e) {
+      // 容量不足(QuotaExceeded)等でローカル保存に失敗しても、サーバー送信は必ず行う
+      // （次回の同期pullでサーバーから復元される）
+      console.error("[sync] localStorage save failed (server sync continues):", e);
+    }
   }
-  // DB同期（非同期）
-  syncAnalysisToServer(analysis);
+  // DB同期（非同期・リトライ付き）
+  syncAnalysisToServer(stamped);
   return analyses;
 }
 
@@ -219,17 +228,22 @@ export function getProposals(): ScriptProposal[] {
 }
 
 export function saveProposal(proposal: ScriptProposal): ScriptProposal[] {
+  const stamped = { ...proposal, updatedAt: new Date().toISOString() } as ScriptProposal;
   const proposals = getProposals();
-  const idx = proposals.findIndex((p) => p.id === proposal.id);
+  const idx = proposals.findIndex((p) => p.id === stamped.id);
   if (idx >= 0) {
-    proposals[idx] = proposal;
+    proposals[idx] = stamped;
   } else {
-    proposals.unshift(proposal);
+    proposals.unshift(stamped);
   }
   if (typeof window !== "undefined") {
-    localStorage.setItem(PROPOSALS_KEY, JSON.stringify(proposals));
+    try {
+      localStorage.setItem(PROPOSALS_KEY, JSON.stringify(proposals));
+    } catch (e) {
+      console.error("[sync] localStorage save failed (server sync continues):", e);
+    }
   }
-  syncProposalToServer(proposal);
+  syncProposalToServer(stamped);
   return proposals;
 }
 
@@ -329,16 +343,19 @@ export async function syncFromServer(): Promise<{ analyses: ScriptAnalysis[]; pr
       localStorage.setItem(PROPOSALS_KEY, JSON.stringify(mergedProposals));
     }
 
-    // ローカルのみのデータをサーバーにアップロード
-    const serverAnalysisIds = new Set(serverAnalyses.map((a) => a.id));
-    const serverProposalIds = new Set(serverProposals.map((p) => p.id));
+    // ローカルの方が新しい/サーバーに無いデータをサーバーへアップロード
+    // （過去に送信失敗した完成版を自動で回復させる）
+    const serverAnalysisById = new Map(serverAnalyses.map((a) => [a.id, a]));
+    const serverProposalById = new Map(serverProposals.map((p) => [p.id, p]));
 
     let uploadCount = 0;
     for (const a of localAnalyses) {
-      if (!serverAnalysisIds.has(a.id)) { syncAnalysisToServer(a); uploadCount++; }
+      const sv = serverAnalysisById.get(a.id);
+      if (!sv || itemTime(a) > itemTime(sv)) { syncAnalysisToServer(a); uploadCount++; }
     }
     for (const p of localProposals) {
-      if (!serverProposalIds.has(p.id)) { syncProposalToServer(p); uploadCount++; }
+      const sv = serverProposalById.get(p.id);
+      if (!sv || itemTime(p) > itemTime(sv)) { syncProposalToServer(p); uploadCount++; }
     }
     if (uploadCount > 0) console.log(`[sync] uploading ${uploadCount} local-only items to server`);
 
@@ -349,11 +366,19 @@ export async function syncFromServer(): Promise<{ analyses: ScriptAnalysis[]; pr
   }
 }
 
-function mergeData<T extends { id: string; createdAt: string }>(local: T[], server: T[]): T[] {
+// 「新しい方が勝つ」マージ。
+// 旧実装は同一IDでサーバー優先だったため、AI分析後の完成版がサーバーに届く前に
+// 失敗していると、次のpullで古い（書き起こしのみ等の）サーバー版に上書きされて
+// 「分析済みが消える」データ退行が起きていた。
+function itemTime<T extends { createdAt: string; updatedAt?: string }>(x: T): number {
+  return new Date(x.updatedAt || x.createdAt || 0).getTime();
+}
+function mergeData<T extends { id: string; createdAt: string; updatedAt?: string }>(local: T[], server: T[]): T[] {
   const merged = new Map<string, T>();
   for (const item of server) merged.set(item.id, item);
   for (const item of local) {
-    if (!merged.has(item.id)) merged.set(item.id, item);
+    const existing = merged.get(item.id);
+    if (!existing || itemTime(item) > itemTime(existing)) merged.set(item.id, item);
   }
   return Array.from(merged.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -362,14 +387,26 @@ function mergeData<T extends { id: string; createdAt: string }>(local: T[], serv
 
 // --- 非同期サーバー同期ヘルパー ---
 
+// 5xx・通信エラーは最大3回リトライして送信する（分析データ消失の防止）
+async function postJsonWithRetry(url: string, body: unknown, label: string) {
+  const json = JSON.stringify(body);
+  let lastErr = "";
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: json });
+      if (r.ok) return;
+      lastErr = `HTTP ${r.status}: ${(await r.text().catch(() => "")).slice(0, 120)}`;
+      if (r.status < 500) break; // 4xxは再試行しない
+    } catch (e) {
+      lastErr = String(e).slice(0, 120);
+    }
+    if (i < 2) await new Promise((res) => setTimeout(res, 800 * (i + 1)));
+  }
+  console.error(`[sync] ${label} failed after retries:`, lastErr);
+}
+
 function syncAnalysisToServer(analysis: ScriptAnalysis) {
-  fetch("/api/analyses", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(analysis),
-  }).then(async (r) => {
-    if (!r.ok) console.error("[sync] save analysis failed:", await r.text());
-  }).catch((e) => console.error("[sync] save analysis error:", e));
+  void postJsonWithRetry("/api/analyses", analysis, "save analysis");
 }
 
 function deleteAnalysisFromServer(id: string) {
@@ -381,13 +418,7 @@ function deleteAnalysisFromServer(id: string) {
 }
 
 function syncProposalToServer(proposal: ScriptProposal) {
-  fetch("/api/proposals", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(proposal),
-  }).then(async (r) => {
-    if (!r.ok) console.error("[sync] save proposal failed:", await r.text());
-  }).catch((e) => console.error("[sync] save proposal error:", e));
+  void postJsonWithRetry("/api/proposals", proposal, "save proposal");
 }
 
 function deleteProposalFromServer(id: string) {
