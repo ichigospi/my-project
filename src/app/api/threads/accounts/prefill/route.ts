@@ -2,7 +2,7 @@
 // ① URLをサーバー側でフェッチしてog:タグ・埋め込みJSONから情報抽出 → AI推定
 // ② フェッチできない場合は 422 を返し、クライアントは貼り付けテキストでの再実行を促す
 import { NextRequest, NextResponse } from "next/server";
-import { callThreadsAI, extractJson, resolveThreadsAiModel } from "@/lib/threads-ai";
+import { callThreadsAI, extractJson, parseDataUrlImage, resolveThreadsAiModel, type ThreadsAiImage } from "@/lib/threads-ai";
 import {
   PREFILL_SYSTEM,
   buildPrefillInstruction,
@@ -87,7 +87,7 @@ async function fetchProfile(handle: string): Promise<ProfileData | null> {
 }
 
 // POST /api/threads/accounts/prefill
-// Body: { url?, pastedText?, aiApiKey, model? }
+// Body: { url?, pastedText?, images?: string[](data URL), aiApiKey, model? }
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -96,11 +96,17 @@ export async function POST(request: NextRequest) {
       pastedText?: string;
       aiApiKey: string;
     };
+    // スクリーンショット（data URL）→ API用画像に変換
+    const images: ThreadsAiImage[] = (Array.isArray(body.images) ? (body.images as string[]) : [])
+      .map(parseDataUrlImage)
+      .filter((i): i is ThreadsAiImage => i !== null)
+      .slice(0, 5);
+
     if (!aiApiKey) {
       return NextResponse.json({ error: "APIキーが未設定です" }, { status: 400 });
     }
-    if (!url?.trim() && !pastedText?.trim()) {
-      return NextResponse.json({ error: "URLか貼り付けテキストのどちらかが必要です" }, { status: 400 });
+    if (!url?.trim() && !pastedText?.trim() && images.length === 0) {
+      return NextResponse.json({ error: "URL・スクショ・貼り付けテキストのいずれかが必要です" }, { status: 400 });
     }
 
     const handle = url ? parseHandle(url.trim()) : null;
@@ -108,18 +114,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "URLからハンドルを読み取れませんでした（例: https://www.threads.net/@xxx）" }, { status: 400 });
     }
 
-    // URL指定時はプロフィールをフェッチ
+    // URL指定時はプロフィールをフェッチ（スクショがある場合はフェッチ失敗しても続行）
     let profile: ProfileData | null = null;
     if (handle) {
       profile = await fetchProfile(handle);
     }
 
-    // フェッチ失敗 + 貼り付けもない → クライアントに貼り付けを促す
-    if (!profile && !pastedText?.trim()) {
+    // フェッチ失敗 + スクショも貼り付けもない → クライアントにスクショ/貼り付けを促す
+    if (!profile && !pastedText?.trim() && images.length === 0) {
       return NextResponse.json(
         {
           error:
-            "プロフィールを自動取得できませんでした（Threads側のアクセス制限の可能性）。プロフィール文と投稿数件をコピーして貼り付けてください。",
+            "プロフィールを自動取得できませんでした（Threads側のアクセス制限の可能性）。プロフィール画面のスクショを追加するか、プロフィール文と投稿数件を貼り付けてください。",
           needPaste: true,
           handle,
         },
@@ -136,6 +142,7 @@ export async function POST(request: NextRequest) {
         posts: profile?.posts,
         pastedText: pastedText?.trim() || undefined,
       }),
+      images,
       model: resolveThreadsAiModel(body.model),
       maxTokens: 2048,
     });
@@ -155,6 +162,7 @@ export async function POST(request: NextRequest) {
         bioFound: Boolean(profile?.bio),
         postCount: profile?.posts.length ?? 0,
         pasted: Boolean(pastedText?.trim()),
+        imageCount: images.length,
       },
     });
   } catch (e) {

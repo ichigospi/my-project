@@ -22,16 +22,30 @@ export function resolveThreadsAiModel(m?: string): ThreadsAiModel {
     : DEFAULT_THREADS_AI_MODEL;
 }
 
+export interface ThreadsAiImage {
+  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+  data: string; // base64（data:プレフィックスなし）
+}
+
 export interface ThreadsAiOptions {
   // 安定コンテキスト（キャッシュされる）
   systemPrompt: string;
   knowledgeContext?: string;
   // 可変部分
   userInstruction?: string;
+  // スクリーンショット等の画像（userInstructionと一緒に送る）
+  images?: ThreadsAiImage[];
   // マルチターン（壁打ちチャット用）。指定時は userInstruction より優先
   messages?: { role: "user" | "assistant"; content: string }[];
   model?: ThreadsAiModel;
   maxTokens?: number;
+}
+
+// data URL（data:image/png;base64,xxx）をAPI用の画像オブジェクトに変換。不正なら null
+export function parseDataUrlImage(dataUrl: string): ThreadsAiImage | null {
+  const m = dataUrl.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) return null;
+  return { mediaType: m[1] as ThreadsAiImage["mediaType"], data: m[2] };
 }
 
 export interface ThreadsAiResponse {
@@ -84,10 +98,20 @@ export async function callThreadsAI(
     systemBlocks[0].cache_control = { type: "ephemeral" };
   }
 
-  const messages: Anthropic.MessageParam[] =
-    options.messages && options.messages.length > 0
-      ? options.messages
-      : [{ role: "user", content: options.userInstruction ?? "" }];
+  let messages: Anthropic.MessageParam[];
+  if (options.messages && options.messages.length > 0) {
+    messages = options.messages;
+  } else if (options.images && options.images.length > 0) {
+    // 画像 + テキストの複合メッセージ（スクショ読み取り用）
+    const content: Anthropic.ContentBlockParam[] = options.images.map((img) => ({
+      type: "image" as const,
+      source: { type: "base64" as const, media_type: img.mediaType, data: img.data },
+    }));
+    content.push({ type: "text", text: options.userInstruction ?? "" });
+    messages = [{ role: "user", content }];
+  } else {
+    messages = [{ role: "user", content: options.userInstruction ?? "" }];
+  }
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {

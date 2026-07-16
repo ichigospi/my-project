@@ -40,6 +40,29 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+// 画像ファイルを縮小してdata URL化（スクショ読み取り用。長辺maxDimpxのJPEGに圧縮）
+export async function filesToDataUrls(files: File[], maxDim = 1600, maxCount = 5): Promise<string[]> {
+  const targets = files.filter((f) => f.type.startsWith("image/")).slice(0, maxCount);
+  const results: string[] = [];
+  for (const file of targets) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      results.push(canvas.toDataURL("image/jpeg", 0.85));
+      bitmap.close();
+    } catch {
+      continue;
+    }
+  }
+  return results;
+}
+
 // 数値の表示用フォーマット（12000 → 1.2万）
 export function fmtNum(n: number): string {
   if (n >= 10000) return `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}万`;
