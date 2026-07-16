@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useThreadsAccountId } from "@/lib/threads-account";
-import { api } from "@/lib/threads-client";
+import { api, getAiKey, getThreadsModel } from "@/lib/threads-client";
 
 interface Account {
   id: string;
@@ -33,6 +33,12 @@ export default function ThreadsAccountsPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // URL自動入力
+  const [prefillUrl, setPrefillUrl] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [showPaste, setShowPaste] = useState(false);
+  const [prefilling, setPrefilling] = useState(false);
+  const [prefillMsg, setPrefillMsg] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -48,8 +54,64 @@ export default function ThreadsAccountsPage() {
 
   const notifyUpdated = () => window.dispatchEvent(new CustomEvent("threads-accounts-updated"));
 
+  interface PrefillResponse {
+    prefill: { name: string; concept: string; logic: string; target: string; tone: Record<string, string> };
+    handle: string | null;
+    source: { fetched: boolean; postCount: number };
+  }
+
+  const runPrefill = async () => {
+    const aiApiKey = getAiKey();
+    if (!aiApiKey) {
+      setPrefillMsg("エラー: AI APIキーが未設定です");
+      return;
+    }
+    if (!prefillUrl.trim() && !pasteText.trim()) {
+      setPrefillMsg("URLを入力するか、プロフィール文を貼り付けてください");
+      return;
+    }
+    setPrefilling(true);
+    setPrefillMsg("");
+    try {
+      const res = await api<PrefillResponse>("/api/threads/accounts/prefill", {
+        method: "POST",
+        body: JSON.stringify({
+          url: prefillUrl.trim() || undefined,
+          pastedText: pasteText.trim() || undefined,
+          aiApiKey,
+          model: getThreadsModel(),
+        }),
+      });
+      setForm((f) => ({
+        ...f,
+        name: res.prefill.name || f.name,
+        handle: res.handle || f.handle,
+        concept: res.prefill.concept || f.concept,
+        logic: res.prefill.logic || f.logic,
+        target: res.prefill.target || f.target,
+        tone: { ...f.tone, ...Object.fromEntries(Object.entries(res.prefill.tone ?? {}).filter(([, v]) => v)) },
+      }));
+      setPrefillMsg(
+        res.source.fetched
+          ? `✅ プロフィールから自動入力しました（投稿${res.source.postCount}件を参照）。内容を確認・修正して保存してください`
+          : "✅ 貼り付け内容から自動入力しました。内容を確認・修正して保存してください",
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setPrefillMsg(`エラー: ${msg}`);
+      // 自動取得に失敗したら貼り付け欄を開く
+      if (msg.includes("自動取得できません")) setShowPaste(true);
+    } finally {
+      setPrefilling(false);
+    }
+  };
+
   const startEdit = (a: Account | null) => {
     setError("");
+    setPrefillUrl("");
+    setPasteText("");
+    setShowPaste(false);
+    setPrefillMsg("");
     if (!a) {
       setForm({ ...emptyForm, tone: {} });
       setEditing("new");
@@ -174,7 +236,43 @@ export default function ThreadsAccountsPage() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setEditing(null)}>
           <div className="bg-neutral-900 rounded-2xl w-full max-w-2xl p-6 space-y-4 my-8" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-neutral-100">{editing === "new" ? "アカウント追加" : "アカウント編集"}</h3>
-            {error && <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">{error}</div>}
+            {error && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-sm text-rose-300">{error}</div>}
+
+            {/* URL自動入力 */}
+            <div className="bg-neutral-800/60 border border-neutral-700 rounded-xl p-3 space-y-2">
+              <span className="text-xs font-bold text-neutral-200">🔮 URLから自動入力</span>
+              <div className="flex gap-2">
+                <input
+                  value={prefillUrl}
+                  onChange={(e) => setPrefillUrl(e.target.value)}
+                  className="flex-1 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+                  placeholder="https://www.threads.net/@あなたのアカウント"
+                />
+                <button
+                  onClick={runPrefill}
+                  disabled={prefilling}
+                  className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {prefilling ? "解析中..." : "自動入力"}
+                </button>
+              </div>
+              <button onClick={() => setShowPaste(!showPaste)} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
+                {showPaste ? "貼り付け欄を閉じる" : "URLで取れない場合はこちら（プロフィール文＋投稿を貼り付け）"}
+              </button>
+              {showPaste && (
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  rows={6}
+                  className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-xs"
+                  placeholder={"Threadsアプリでプロフィール文と投稿2〜3件をコピーして、まとめてここに貼り付け → 自動入力"}
+                />
+              )}
+              {prefillMsg && (
+                <p className={`text-[11px] ${prefillMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{prefillMsg}</p>
+              )}
+              <p className="text-[10px] text-neutral-600">AIがプロフィールと投稿からコンセプト・投稿ロジック・口調を推定して下のフォームを埋めます。推定なので保存前に軽く直すのがおすすめ。</p>
+            </div>
 
             <div className="grid md:grid-cols-2 gap-3">
               <label className="block">

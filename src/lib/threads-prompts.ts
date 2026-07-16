@@ -299,6 +299,61 @@ export function buildChatSystemPrompt(params: {
 // ⑤ AI考察下書き
 // ============================================================
 
+// ============================================================
+// ⑥ アカウント情報の自動入力（プロフィール→コンセプト等の推定）
+// ============================================================
+
+export const PREFILL_SYSTEM = `あなたはSNSアカウント分析の専門家です。
+Threadsアカウントのプロフィール情報・投稿サンプルから、そのアカウントの運用設計を推定してJSONで返してください。
+
+出力形式（JSONのみを出力）:
+{
+  "name": "アカウントの表示名（プロフィールから。不明なら空文字）",
+  "concept": "誰に・何を・どう届けるアカウントかを2-3文で",
+  "logic": "投稿の勝ちパターン・構成の傾向を2-3文で（投稿サンプルがある場合のみ具体的に。無ければ発信ジャンルから一般的な定石を提案）",
+  "target": "想定ターゲット像を1-2文で",
+  "tone": {
+    "一人称": "投稿から読み取れる一人称（不明なら空文字）",
+    "語尾": "文体・語尾の特徴（例: 断定調 / です・ます調）",
+    "絵文字": "絵文字の使い方の傾向",
+    "改行": "改行・空行の使い方の傾向"
+  }
+}
+
+注意:
+- 投稿サンプルが無い場合、toneの各項目は空文字にする（憶測で埋めない）
+- conceptとtargetはプロフィール文からの推定でよいが、簡潔に`;
+
+export function buildPrefillInstruction(params: {
+  handle?: string;
+  profileName?: string;
+  bio?: string;
+  posts?: string[];
+  pastedText?: string;
+}): string {
+  const lines: string[] = [];
+  if (params.handle) lines.push(`ハンドル: @${params.handle}`);
+  if (params.profileName) lines.push(`表示名: ${params.profileName}`);
+  if (params.bio) lines.push(`プロフィール文: ${params.bio}`);
+  if (params.posts && params.posts.length > 0) {
+    lines.push(`\n投稿サンプル（${params.posts.length}件）:`);
+    params.posts.forEach((p, i) => lines.push(`【${i + 1}】\n${p}\n`));
+  }
+  if (params.pastedText) {
+    lines.push(`\nユーザーが貼り付けたプロフィール・投稿テキスト:\n${params.pastedText}`);
+  }
+  lines.push("\nこのアカウントの運用設計を推定してください。");
+  return lines.join("\n");
+}
+
+export interface PrefillResult {
+  name: string;
+  concept: string;
+  logic: string;
+  target: string;
+  tone: Record<string, string>;
+}
+
 export const INSIGHT_SYSTEM = `あなたはThreads運用の分析者です。投稿の実績データを見て、考察の下書きを作ります。
 - オマージュ元の実績と自投稿の実績を比較し、何が効いた/効かなかったかを推測する
 - 次の投稿に活かせる示唆を1-2個出す
