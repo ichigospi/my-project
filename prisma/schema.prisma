@@ -349,6 +349,175 @@ model XDailyPlan {
   @@index([date])
 }
 
+// ===== Threadsポストツール（Xツールとは完全独立） =====
+
+// 自アカウント（切替単位）。Threads APIは使わない方針のためトークン類は持たない
+model ThreadsAccount {
+  id        String   @id @default(cuid())
+  name      String                    // 表示名
+  handle    String   @unique
+  // 投稿の土台（生成時に必ず注入）
+  concept   String   @default("")     // コンセプト
+  logic     String   @default("")     // 投稿ロジック（勝ちパターンの言語化）
+  target    String   @default("")
+  tone      String   @default("{}")   // 口調JSON: 一人称/語尾/絵文字/改行
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  competitors ThreadsCompetitor[]
+  drafts      ThreadsPostDraft[]
+}
+
+// ノウハウ・投稿ルール（accountId=null は全アカ共通）
+model ThreadsKnowledge {
+  id         String   @id @default(cuid())
+  accountId  String?
+  type       String                        // "rule" | "knowhow" | "teaching" | "memo"
+  title      String   @default("")
+  content    String
+  tags       String   @default("[]")
+  isInjected Boolean  @default(true)       // 生成プロンプトへ自動注入するか
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([accountId, type])
+}
+
+// 競合アカウント
+model ThreadsCompetitor {
+  id        String   @id @default(cuid())
+  accountId String                        // どの自アカのベンチマークか
+  handle    String
+  name      String   @default("")
+  note      String   @default("")
+  priority  Int      @default(0)          // 重点ベンチマーク順
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account ThreadsAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  posts   ThreadsCompetitorPost[]
+
+  @@unique([accountId, handle])
+}
+
+// 収集した競合投稿
+model ThreadsCompetitorPost {
+  id              String   @id @default(cuid())
+  competitorId    String
+  postUrl         String   @default("")
+  content         String
+  mediaUrls       String   @default("[]")
+  likes           Int      @default(0)
+  replies         Int      @default(0)
+  reposts         Int      @default(0)
+  quotes          Int      @default(0)
+  views           Int      @default(0)      // 手動入力用（公開値は取れないため）
+  followerCountAt Int      @default(0)      // 収集時の競合フォロワー数（伸び率算出用）
+  postedAt        DateTime?
+  collectedAt     DateTime @default(now())
+  source          String   @default("manual") // "manual" | "keyword_api" | "scraper"
+  // AI自動分類
+  planType        String   @default("")     // 企画タイプ
+  hookType        String   @default("")
+  structureJson   String   @default("{}")   // フック/展開/締めの構造分解
+  isHot           Boolean  @default(false)  // 伸び判定
+
+  competitor ThreadsCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+
+  @@index([competitorId])
+  @@index([planType])
+  @@index([isHot])
+}
+
+// フック・企画・CTAライブラリ（typeで統一管理）
+model ThreadsLibraryItem {
+  id           String   @id @default(cuid())
+  accountId    String?                    // null=共通
+  type         String                     // "hook" | "plan" | "cta"
+  title        String
+  content      String                     // フック文/企画骨子/CTA文
+  sourcePostId String?                    // 抽出元の競合投稿
+  tags         String   @default("[]")
+  strength     Int      @default(3)       // 1-5 主観評価
+  useCount     Int      @default(0)
+  note         String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([accountId, type])
+}
+
+// 投稿管理の中核
+model ThreadsPostDraft {
+  id             String   @id @default(cuid())
+  accountId      String
+  // 参考投稿A/B（スナップショット保存: 元が消えても残す）
+  refAPostId     String?
+  refASnapshot   String   @default("{}")
+  refBPostId     String?
+  refBSnapshot   String   @default("{}")
+  // 生成
+  content        String   @default("")     // オマージュ投稿案（手動編集可）
+  generationMeta String   @default("{}")   // 使用フック/CTA/企画、合成モード、モデル、類似度
+  mediaUrls      String   @default("[]")
+  // 運用（投稿の公開はスマホから手動）
+  status         String   @default("draft") // draft|approved|scheduled|published|rejected
+  approvedById   String?
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  postUrl        String   @default("")     // 手動投稿後に貼るURL（計測キー）
+  // 計測（Phase 1は手動入力、Phase 2でスクレイパー自動化。viewsは常に手動）
+  views          Int      @default(0)
+  likes          Int      @default(0)
+  replies        Int      @default(0)
+  reposts        Int      @default(0)
+  quotes         Int      @default(0)
+  metricsUpdatedAt DateTime?
+  // 振り返り
+  insight        String   @default("")     // 考察
+  ownerComment   String   @default("")     // オーナーコメント
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  account   ThreadsAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  chats     ThreadsChatMessage[]
+  snapshots ThreadsMetricSnapshot[]
+
+  @@index([accountId, status])
+  @@index([scheduledAt])
+}
+
+// 壁打ちチャット（投稿案ごと）
+model ThreadsChatMessage {
+  id        String   @id @default(cuid())
+  draftId   String
+  role      String                        // "user" | "assistant"
+  content   String
+  createdAt DateTime @default(now())
+
+  draft ThreadsPostDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([draftId])
+}
+
+// 計測の時系列スナップショット
+model ThreadsMetricSnapshot {
+  id         String   @id @default(cuid())
+  draftId    String
+  capturedAt DateTime @default(now())
+  views      Int      @default(0)
+  likes      Int      @default(0)
+  replies    Int      @default(0)
+  reposts    Int      @default(0)
+  quotes     Int      @default(0)
+
+  draft ThreadsPostDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([draftId])
+}
+
 // Xポストツール設定
 model XSettings {
   id              String   @id @default(cuid())

@@ -62,6 +62,34 @@ const sqls = [
 
   `CREATE TABLE IF NOT EXISTS "XSettings" ("id" TEXT NOT NULL PRIMARY KEY, "genre" TEXT NOT NULL, "postsPerDay" INTEGER NOT NULL DEFAULT 5, "educationConfig" TEXT NOT NULL DEFAULT '{}', "sequenceConfig" TEXT NOT NULL DEFAULT '{}', "spiceEnabled" BOOLEAN NOT NULL DEFAULT true, "defaultModel" TEXT NOT NULL DEFAULT 'claude-sonnet-4-6', "xApiBearerToken" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "XSettings_genre_key" ON "XSettings"("genre")`,
+
+  // ===== Threadsポストツール（Xツールとは完全独立） =====
+  `CREATE TABLE IF NOT EXISTS "ThreadsAccount" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "handle" TEXT NOT NULL, "concept" TEXT NOT NULL DEFAULT '', "logic" TEXT NOT NULL DEFAULT '', "target" TEXT NOT NULL DEFAULT '', "tone" TEXT NOT NULL DEFAULT '{}', "isActive" BOOLEAN NOT NULL DEFAULT true, "sortOrder" INTEGER NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ThreadsAccount_handle_key" ON "ThreadsAccount"("handle")`,
+
+  `CREATE TABLE IF NOT EXISTS "ThreadsKnowledge" ("id" TEXT NOT NULL PRIMARY KEY, "accountId" TEXT, "type" TEXT NOT NULL, "title" TEXT NOT NULL DEFAULT '', "content" TEXT NOT NULL, "tags" TEXT NOT NULL DEFAULT '[]', "isInjected" BOOLEAN NOT NULL DEFAULT true, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsKnowledge_accountId_type_idx" ON "ThreadsKnowledge"("accountId", "type")`,
+
+  `CREATE TABLE IF NOT EXISTS "ThreadsCompetitor" ("id" TEXT NOT NULL PRIMARY KEY, "accountId" TEXT NOT NULL, "handle" TEXT NOT NULL, "name" TEXT NOT NULL DEFAULT '', "note" TEXT NOT NULL DEFAULT '', "priority" INTEGER NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "ThreadsCompetitor_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "ThreadsAccount" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ThreadsCompetitor_accountId_handle_key" ON "ThreadsCompetitor"("accountId", "handle")`,
+
+  `CREATE TABLE IF NOT EXISTS "ThreadsCompetitorPost" ("id" TEXT NOT NULL PRIMARY KEY, "competitorId" TEXT NOT NULL, "postUrl" TEXT NOT NULL DEFAULT '', "content" TEXT NOT NULL, "mediaUrls" TEXT NOT NULL DEFAULT '[]', "likes" INTEGER NOT NULL DEFAULT 0, "replies" INTEGER NOT NULL DEFAULT 0, "reposts" INTEGER NOT NULL DEFAULT 0, "quotes" INTEGER NOT NULL DEFAULT 0, "views" INTEGER NOT NULL DEFAULT 0, "followerCountAt" INTEGER NOT NULL DEFAULT 0, "postedAt" DATETIME, "collectedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "source" TEXT NOT NULL DEFAULT 'manual', "planType" TEXT NOT NULL DEFAULT '', "hookType" TEXT NOT NULL DEFAULT '', "structureJson" TEXT NOT NULL DEFAULT '{}', "isHot" BOOLEAN NOT NULL DEFAULT false, CONSTRAINT "ThreadsCompetitorPost_competitorId_fkey" FOREIGN KEY ("competitorId") REFERENCES "ThreadsCompetitor" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsCompetitorPost_competitorId_idx" ON "ThreadsCompetitorPost"("competitorId")`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsCompetitorPost_planType_idx" ON "ThreadsCompetitorPost"("planType")`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsCompetitorPost_isHot_idx" ON "ThreadsCompetitorPost"("isHot")`,
+
+  `CREATE TABLE IF NOT EXISTS "ThreadsLibraryItem" ("id" TEXT NOT NULL PRIMARY KEY, "accountId" TEXT, "type" TEXT NOT NULL, "title" TEXT NOT NULL, "content" TEXT NOT NULL, "sourcePostId" TEXT, "tags" TEXT NOT NULL DEFAULT '[]', "strength" INTEGER NOT NULL DEFAULT 3, "useCount" INTEGER NOT NULL DEFAULT 0, "note" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsLibraryItem_accountId_type_idx" ON "ThreadsLibraryItem"("accountId", "type")`,
+
+  `CREATE TABLE IF NOT EXISTS "ThreadsPostDraft" ("id" TEXT NOT NULL PRIMARY KEY, "accountId" TEXT NOT NULL, "refAPostId" TEXT, "refASnapshot" TEXT NOT NULL DEFAULT '{}', "refBPostId" TEXT, "refBSnapshot" TEXT NOT NULL DEFAULT '{}', "content" TEXT NOT NULL DEFAULT '', "generationMeta" TEXT NOT NULL DEFAULT '{}', "mediaUrls" TEXT NOT NULL DEFAULT '[]', "status" TEXT NOT NULL DEFAULT 'draft', "approvedById" TEXT, "scheduledAt" DATETIME, "publishedAt" DATETIME, "postUrl" TEXT NOT NULL DEFAULT '', "views" INTEGER NOT NULL DEFAULT 0, "likes" INTEGER NOT NULL DEFAULT 0, "replies" INTEGER NOT NULL DEFAULT 0, "reposts" INTEGER NOT NULL DEFAULT 0, "quotes" INTEGER NOT NULL DEFAULT 0, "metricsUpdatedAt" DATETIME, "insight" TEXT NOT NULL DEFAULT '', "ownerComment" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "ThreadsPostDraft_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "ThreadsAccount" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsPostDraft_accountId_status_idx" ON "ThreadsPostDraft"("accountId", "status")`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsPostDraft_scheduledAt_idx" ON "ThreadsPostDraft"("scheduledAt")`,
+
+  `CREATE TABLE IF NOT EXISTS "ThreadsChatMessage" ("id" TEXT NOT NULL PRIMARY KEY, "draftId" TEXT NOT NULL, "role" TEXT NOT NULL, "content" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "ThreadsChatMessage_draftId_fkey" FOREIGN KEY ("draftId") REFERENCES "ThreadsPostDraft" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsChatMessage_draftId_idx" ON "ThreadsChatMessage"("draftId")`,
+
+  `CREATE TABLE IF NOT EXISTS "ThreadsMetricSnapshot" ("id" TEXT NOT NULL PRIMARY KEY, "draftId" TEXT NOT NULL, "capturedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "views" INTEGER NOT NULL DEFAULT 0, "likes" INTEGER NOT NULL DEFAULT 0, "replies" INTEGER NOT NULL DEFAULT 0, "reposts" INTEGER NOT NULL DEFAULT 0, "quotes" INTEGER NOT NULL DEFAULT 0, CONSTRAINT "ThreadsMetricSnapshot_draftId_fkey" FOREIGN KEY ("draftId") REFERENCES "ThreadsPostDraft" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsMetricSnapshot_draftId_idx" ON "ThreadsMetricSnapshot"("draftId")`,
 ];
 
 for (const sql of sqls) {
