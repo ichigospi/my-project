@@ -9,7 +9,7 @@ import { getPresetFor, getPerformanceRecordsByChannel } from "@/lib/project-stor
 import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
-import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
+import { buildInjectedRules, formatRulesForPrompt, withChannelVocabRules } from "@/lib/rules-injector";
 import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow } from "@/lib/project-store";
 
 // 簡易ハッシュ（チェック時の台本と現在の台本が一致するか判定用）
@@ -438,7 +438,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       // 元ネタの分析データを取得
       const allAnalyses = getAnalyses();
       const referenceAnalyses = allAnalyses.filter((a) => project.analyses?.includes(a.id));
-      const profile = getProfileByChannel(project.channelId || "");
+      // チャンネル固有語彙ルール（氣流・神氣等）を共通ルールに合成してチェックに渡す
+      const profile = withChannelVocabRules(getProfileByChannel(project.channelId || ""));
       const preset = getPresetFor(project.genre as Genre, project.style as Style, project.channelId);
       const winningPatterns = getWinningPatternsByChannel(project.channelId || "");
 
