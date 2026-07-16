@@ -184,6 +184,20 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               </svg>
               Xポストツールへ
             </Link>
+            <Link
+              href="/threads"
+              onClick={onNavigate}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                pathname.startsWith("/threads")
+                  ? "bg-sidebar-active text-white"
+                  : "text-sidebar-text/50 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 21a9 9 0 100-18 9 9 0 000 18z M15.5 12.5c0 2.5-1.5 4.5-3.5 4.5s-3.5-2-3.5-4.5S10 8 12 8c1.5 0 2.8 1 3.3 2.5" />
+              </svg>
+              Threadsツールへ
+            </Link>
           </div>
         )}
       </nav>
