@@ -90,6 +90,8 @@ const sqls = [
 
   `CREATE TABLE IF NOT EXISTS "ThreadsMetricSnapshot" ("id" TEXT NOT NULL PRIMARY KEY, "draftId" TEXT NOT NULL, "capturedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "views" INTEGER NOT NULL DEFAULT 0, "likes" INTEGER NOT NULL DEFAULT 0, "replies" INTEGER NOT NULL DEFAULT 0, "reposts" INTEGER NOT NULL DEFAULT 0, "quotes" INTEGER NOT NULL DEFAULT 0, CONSTRAINT "ThreadsMetricSnapshot_draftId_fkey" FOREIGN KEY ("draftId") REFERENCES "ThreadsPostDraft" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`,
   `CREATE INDEX IF NOT EXISTS "ThreadsMetricSnapshot_draftId_idx" ON "ThreadsMetricSnapshot"("draftId")`,
+
+  `CREATE TABLE IF NOT EXISTS "ThreadsToolSettings" ("id" TEXT NOT NULL PRIMARY KEY, "apifyToken" TEXT NOT NULL DEFAULT '', "apifyActorId" TEXT NOT NULL DEFAULT '', "openaiApiKey" TEXT NOT NULL DEFAULT '', "scraperEnabled" BOOLEAN NOT NULL DEFAULT false, "metricsTiming" TEXT NOT NULL DEFAULT '[1,24,72,168]', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 ];
 
 for (const sql of sqls) {
