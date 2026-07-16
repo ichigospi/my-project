@@ -937,6 +937,9 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
           </div>
 
+          {/* 元台本と壁打ちチャット */}
+          <ScriptChatPanel project={project} />
+
           {/* 修正箇所サマリー */}
           {revisionSummary && (
             <div className="bg-green-50 rounded-xl p-5 border border-green-200">
@@ -1418,6 +1421,145 @@ function QualityCheckPanel({
             <span className="text-xs text-gray-400">※ チェックを外した指摘は転記されません（デフォルトは全てON）</span>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// 元台本と比較しながら台本を壁打ちするチャット。
+// 生成台本・骨組み・元台本の書き起こし全文を文脈として持ち、
+// 「元台本ではどうだった？」「ヒーリングまでの文字数は？」等に答える。
+function ScriptChatPanel({ project }: { project: ScriptProject }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [chatError, setChatError] = useState("");
+
+  const send = async () => {
+    const q = input.trim();
+    if (!q || sending) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setChatError("AI APIキーを設定してください"); return; }
+    const newMessages = [...messages, { role: "user" as const, content: q }];
+    setMessages(newMessages);
+    setInput("");
+    setSending(true);
+    setChatError("");
+    try {
+      const referenceAnalyses = getAnalyses()
+        .filter((a) => project.analyses?.includes(a.id))
+        .map((a) => ({
+          videoTitle: a.videoTitle, channelName: a.channelName, views: a.views,
+          transcript: a.transcript,
+          analysisResult: a.analysisResult ? { overallPattern: a.analysisResult.overallPattern } : null,
+        }));
+      const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
+      const res = await fetch("/api/script/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: newMessages,
+          script: project.generatedScript,
+          skeleton: project.structureProposal?.concept,
+          title: project.title,
+          style: project.style,
+          rulesText,
+          referenceAnalyses,
+          aiApiKey,
+          aiModel: getAiModel("check"),
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { setChatError(data.error); setMessages(messages); return; }
+      setMessages([...newMessages, { role: "assistant", content: data.reply as string }]);
+    } catch {
+      setChatError("送信に失敗しました。もう一度お試しください");
+      setMessages(messages);
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
+      <button onClick={() => setOpen(!open)} className="w-full p-5 flex items-center justify-between text-left">
+        <div>
+          <h3 className="font-semibold text-sm">💬 元台本と壁打ち</h3>
+          <p className="text-xs text-gray-500 mt-0.5">元台本の書き起こしと生成台本を見比べながらAIに質問できます（例:「ヒーリングまでの文字数、元台本では？」）</p>
+        </div>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5">
+          {/* 履歴 */}
+          {messages.length > 0 && (
+            <div className="mb-3 space-y-3 max-h-96 overflow-y-auto pr-1">
+              {messages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] rounded-xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                    m.role === "user" ? "bg-accent text-white" : "bg-gray-50 border border-gray-100 text-gray-800"
+                  }`}>
+                    {m.content}
+                  </div>
+                </div>
+              ))}
+              {sending && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-400">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-3 h-3 border-2 border-gray-300 border-t-accent rounded-full animate-spin" />
+                      元台本を確認中...
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* よくある質問チップ（履歴が空のときだけ） */}
+          {messages.length === 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {[
+                "ヒーリングパート開始までの文字数を元台本と比較して",
+                "冒頭のCTAの入れ方、元台本ではどうだった？",
+                "元台本の変化の過程（部位と内側の変化の対応）を整理して",
+                "生成台本と元台本で構成の順番に違いはある？",
+              ].map((s) => (
+                <button key={s} onClick={() => setInput(s)}
+                  className="px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {chatError && <p className="text-danger text-xs mb-2">{chatError}</p>}
+
+          {/* 入力 */}
+          <div className="flex gap-2">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
+              }}
+              placeholder="例: ここ、元台本ではどうだったっけ？（Enterで送信 / Shift+Enterで改行）"
+              rows={2}
+              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent resize-none"
+              disabled={sending}
+            />
+            <button onClick={send} disabled={sending || !input.trim()}
+              className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end">
+              送信
+            </button>
+          </div>
+          {messages.length > 0 && (
+            <button onClick={() => { setMessages([]); setChatError(""); }}
+              className="mt-2 text-xs text-gray-400 hover:text-gray-600">履歴をクリア</button>
+          )}
+        </div>
       )}
     </div>
   );
