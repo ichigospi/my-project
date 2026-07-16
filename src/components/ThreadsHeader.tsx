@@ -50,18 +50,18 @@ export default function ThreadsHeader() {
   }, [accounts, accountId, setAccountId]);
 
   return (
-    <header className="border-b border-gray-200 bg-white sticky top-0 z-20">
+    <header className="border-b border-neutral-800 bg-black sticky top-0 z-20">
       <div className="px-4 md:px-6 py-3 flex flex-wrap items-center gap-4 justify-between">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Threadsポストツール</h1>
-          <p className="text-xs text-gray-500">競合分析 × オマージュ作成 × 反応計測</p>
+          <h1 className="text-lg font-bold text-neutral-100">Threadsポストツール</h1>
+          <p className="text-xs text-neutral-500">競合分析 × オマージュ作成 × 反応計測</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">アカウント:</span>
+          <span className="text-xs text-neutral-500">アカウント:</span>
           {accounts.length === 0 ? (
             <Link
               href="/threads/accounts"
-              className="text-xs px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700"
+              className="text-xs px-3 py-1.5 rounded-lg bg-white text-black hover:bg-neutral-200"
             >
               + アカウントを登録
             </Link>
@@ -69,7 +69,7 @@ export default function ThreadsHeader() {
             <select
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-900 min-w-40"
+              className="text-sm border border-neutral-700 bg-neutral-900 text-neutral-100 rounded-lg px-3 py-1.5 min-w-40"
             >
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -80,7 +80,7 @@ export default function ThreadsHeader() {
           )}
         </div>
       </div>
-      <nav className="px-2 md:px-4 flex overflow-x-auto border-t border-gray-100">
+      <nav className="px-2 md:px-4 flex overflow-x-auto border-t border-neutral-800">
         {tabs.map((tab) => {
           const isActive = tab.exact
             ? pathname === tab.href
@@ -91,8 +91,8 @@ export default function ThreadsHeader() {
               href={tab.href}
               className={`flex items-center gap-1.5 px-3 md:px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                 isActive
-                  ? "border-teal-500 text-teal-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300"
+                  ? "border-white text-white"
+                  : "border-transparent text-neutral-400 hover:text-white hover:border-neutral-600"
               }`}
             >
               <span>{tab.emoji}</span>
@@ -100,6 +100,12 @@ export default function ThreadsHeader() {
             </Link>
           );
         })}
+        <Link
+          href="/"
+          className="ml-auto flex items-center px-3 md:px-4 py-2.5 text-xs whitespace-nowrap text-neutral-600 hover:text-neutral-300 transition-colors"
+        >
+          YTツールへ →
+        </Link>
       </nav>
     </header>
   );

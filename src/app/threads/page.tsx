@@ -56,41 +56,41 @@ export default function ThreadsDashboardPage() {
   return (
     <main className="px-4 md:px-6 py-6 max-w-6xl mx-auto space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">ダッシュボード</h2>
-        <p className="text-sm text-gray-600 mt-1">
+        <h2 className="text-2xl font-bold text-neutral-100">ダッシュボード</h2>
+        <p className="text-sm text-neutral-400 mt-1">
           伸びている競合投稿を取り込み、型を保ったままオマージュ作成し、反応を計測するツールです。
         </p>
       </div>
 
       {!accountId && (
-        <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-sm text-teal-900">
+        <div className="bg-neutral-800/60 border border-neutral-700 rounded-xl p-4 text-sm text-neutral-200">
           まずは <Link href="/threads/accounts" className="font-bold underline">アカウント管理</Link> で運用アカウントを登録してください。
         </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {cards.map((c) => (
-          <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="text-xs text-gray-500">
+          <div key={c.label} className="bg-neutral-900 rounded-xl border border-neutral-800 p-4">
+            <div className="text-xs text-neutral-500">
               {c.emoji} {c.label}
             </div>
-            <div className="text-2xl font-bold text-gray-900 mt-1">{c.value}</div>
+            <div className="text-2xl font-bold text-neutral-100 mt-1">{c.value}</div>
           </div>
         ))}
       </div>
 
       {stats && stats.upcoming.length > 0 && (
-        <div className="bg-white rounded-xl border border-amber-200 p-4">
-          <h3 className="text-sm font-bold text-gray-900 mb-3">⏰ 48時間以内の投稿予定（スマホから手動投稿）</h3>
+        <div className="bg-neutral-900 rounded-xl border border-amber-500/30 p-4">
+          <h3 className="text-sm font-bold text-neutral-100 mb-3">⏰ 48時間以内の投稿予定（スマホから手動投稿）</h3>
           <div className="space-y-2">
             {stats.upcoming.map((u) => (
               <Link
                 key={u.id}
                 href={`/threads/posts?draftId=${u.id}`}
-                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 border border-gray-100"
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-neutral-800 border border-neutral-800"
               >
-                <span className="text-xs font-bold text-amber-600 whitespace-nowrap">{fmtDate(u.scheduledAt)}</span>
-                <span className="text-sm text-gray-700 truncate">{u.content.slice(0, 60) || "（本文未設定）"}</span>
+                <span className="text-xs font-bold text-amber-400 whitespace-nowrap">{fmtDate(u.scheduledAt)}</span>
+                <span className="text-sm text-neutral-300 truncate">{u.content.slice(0, 60) || "（本文未設定）"}</span>
               </Link>
             ))}
           </div>
@@ -102,16 +102,16 @@ export default function ThreadsDashboardPage() {
           <Link
             key={f.href}
             href={f.href}
-            className="bg-white rounded-xl border border-gray-200 p-4 hover:border-teal-300 hover:shadow-sm transition-all"
+            className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 hover:border-neutral-500 hover:shadow-sm transition-all"
           >
-            <div className="font-bold text-gray-900">{f.title}</div>
-            <div className="text-xs text-gray-500 mt-1">{f.desc}</div>
+            <div className="font-bold text-neutral-100">{f.title}</div>
+            <div className="text-xs text-neutral-500 mt-1">{f.desc}</div>
           </Link>
         ))}
       </div>
 
-      <div className="bg-gray-100 rounded-xl p-4 text-xs text-gray-600 space-y-1">
-        <p className="font-bold text-gray-700">運用フロー</p>
+      <div className="bg-neutral-800 rounded-xl p-4 text-xs text-neutral-400 space-y-1">
+        <p className="font-bold text-neutral-300">運用フロー</p>
         <p>① ベンチマークで競合の伸び投稿を取り込む（貼り付けでAIが自動整理・分類） → ② リサーチで参考投稿を選ぶ → ③ 作成でオマージュ生成 + 壁打ち → ④ 投稿管理で承認・予定日時をセット → ⑤ 予定時刻にスマホでコピーして手動投稿 → ⑥ URL登録 + 実績入力 → 考察</p>
       </div>
     </main>

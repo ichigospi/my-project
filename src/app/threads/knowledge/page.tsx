@@ -102,51 +102,51 @@ export default function ThreadsKnowledgePage() {
     <main className="px-4 md:px-6 py-6 max-w-4xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">ノウハウ・投稿ルール</h2>
-          <p className="text-sm text-gray-600 mt-1">「注入ON」の項目はオマージュ生成のプロンプトに自動で入ります。</p>
+          <h2 className="text-2xl font-bold text-neutral-100">ノウハウ・投稿ルール</h2>
+          <p className="text-sm text-neutral-400 mt-1">「注入ON」の項目はオマージュ生成のプロンプトに自動で入ります。</p>
         </div>
-        <button onClick={() => startEdit(null)} className="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 whitespace-nowrap">
+        <button onClick={() => startEdit(null)} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-neutral-200 whitespace-nowrap">
           + 追加
         </button>
       </div>
 
-      <div className="inline-flex rounded-lg bg-gray-100 p-1 flex-wrap">
+      <div className="inline-flex rounded-lg bg-neutral-800 p-1 flex-wrap">
         {TYPE_TABS.map((t) => (
           <button
             key={t.value}
             onClick={() => setType(t.value)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${type === t.value ? "bg-white text-gray-900 shadow" : "text-gray-600 hover:text-gray-900"}`}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${type === t.value ? "bg-neutral-900 text-neutral-100 shadow" : "text-neutral-400 hover:text-white"}`}
           >
             {t.label}
           </button>
         ))}
       </div>
-      {currentTab && <p className="text-xs text-gray-500 -mt-2">{currentTab.desc}</p>}
+      {currentTab && <p className="text-xs text-neutral-500 -mt-2">{currentTab.desc}</p>}
 
       {error && !editing && <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">{error}</div>}
 
       <div className="space-y-3">
         {items.map((item) => (
-          <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-4">
+          <div key={item.id} className="bg-neutral-900 rounded-xl border border-neutral-800 p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-gray-900 text-sm">{item.title || "（無題）"}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.accountId ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600"}`}>
+                  <span className="font-bold text-neutral-100 text-sm">{item.title || "（無題）"}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.accountId ? "bg-indigo-500/20 text-indigo-300" : "bg-neutral-800 text-neutral-400"}`}>
                     {item.accountId ? "このアカ専用" : "全アカ共通"}
                   </span>
-                  {item.isInjected && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">注入ON</span>}
+                  {item.isInjected && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">注入ON</span>}
                 </div>
-                <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap line-clamp-4">{item.content}</p>
+                <p className="text-xs text-neutral-400 mt-1.5 whitespace-pre-wrap line-clamp-4">{item.content}</p>
               </div>
               <div className="flex gap-2 shrink-0">
-                <button onClick={() => toggleInjected(item)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 whitespace-nowrap">
+                <button onClick={() => toggleInjected(item)} className="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800 whitespace-nowrap">
                   注入{item.isInjected ? "OFF" : "ON"}
                 </button>
-                <button onClick={() => startEdit(item)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
+                <button onClick={() => startEdit(item)} className="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800">
                   編集
                 </button>
-                <button onClick={() => remove(item)} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50">
+                <button onClick={() => remove(item)} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-500/40 text-rose-400 hover:bg-rose-500/10">
                   削除
                 </button>
               </div>
@@ -154,52 +154,52 @@ export default function ThreadsKnowledgePage() {
           </div>
         ))}
         {items.length === 0 && (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">
+          <div className="bg-neutral-900 rounded-xl border border-dashed border-neutral-700 p-8 text-center text-sm text-neutral-500">
             まだ登録がありません。
           </div>
         )}
       </div>
 
       {editing && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setEditing(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 space-y-4 my-8" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900">
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setEditing(null)}>
+          <div className="bg-neutral-900 rounded-2xl w-full max-w-2xl p-6 space-y-4 my-8" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-neutral-100">
               {currentTab?.label}を{editing === "new" ? "追加" : "編集"}
             </h3>
             {error && <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">{error}</div>}
             <label className="block">
-              <span className="text-xs font-medium text-gray-700">タイトル</span>
+              <span className="text-xs font-medium text-neutral-300">タイトル</span>
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
                 placeholder="例: 冒頭2行のルール"
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-gray-700">内容 *</span>
+              <span className="text-xs font-medium text-neutral-300">内容 *</span>
               <textarea
                 value={form.content}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
                 rows={10}
-                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"
+                className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm font-mono"
               />
             </label>
             <div className="flex items-center gap-5">
-              <label className="flex items-center gap-2 text-sm text-gray-700">
+              <label className="flex items-center gap-2 text-sm text-neutral-300">
                 <input type="checkbox" checked={form.shared} onChange={(e) => setForm({ ...form, shared: e.target.checked })} />
                 全アカウント共通
               </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
+              <label className="flex items-center gap-2 text-sm text-neutral-300">
                 <input type="checkbox" checked={form.isInjected} onChange={(e) => setForm({ ...form, isInjected: e.target.checked })} />
                 生成時に注入する
               </label>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setEditing(null)} className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+              <button onClick={() => setEditing(null)} className="px-4 py-2 rounded-lg border border-neutral-700 text-sm text-neutral-300 hover:bg-neutral-800">
                 キャンセル
               </button>
-              <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
+              <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-neutral-200 disabled:opacity-50">
                 {saving ? "保存中..." : "保存"}
               </button>
             </div>

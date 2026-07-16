@@ -47,9 +47,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const hideSidebar = NO_SIDEBAR_PATHS.some((p) => pathname.startsWith(p)) || !session;
   const isMobileFullscreen = MOBILE_FULLSCREEN_PATHS.some((p) => pathname.startsWith(p));
   const isLaunch = pathname.startsWith("/launch");
+  // Threadsツールは独立したフルスクリーンUI（YTツールのサイドバーを出さない）
+  const isThreads = pathname.startsWith("/threads");
   const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
-  if (hideSidebar) {
+  if (hideSidebar || isThreads) {
     return <main className="flex-1 overflow-auto">{children}</main>;
   }
 
