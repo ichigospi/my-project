@@ -86,9 +86,9 @@ export function parseSnapshot(json: string | undefined): RefSnapshotView | null 
 }
 
 export const DRAFT_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
-  draft: { label: "下書き", cls: "bg-gray-100 text-gray-700" },
-  approved: { label: "承認済", cls: "bg-blue-100 text-blue-700" },
-  scheduled: { label: "予約中", cls: "bg-amber-100 text-amber-700" },
-  published: { label: "投稿済", cls: "bg-emerald-100 text-emerald-700" },
-  rejected: { label: "却下", cls: "bg-rose-100 text-rose-700" },
+  draft: { label: "下書き", cls: "bg-neutral-800 text-neutral-300" },
+  approved: { label: "承認済", cls: "bg-blue-500/20 text-blue-300" },
+  scheduled: { label: "予約中", cls: "bg-amber-500/20 text-amber-300" },
+  published: { label: "投稿済", cls: "bg-emerald-500/20 text-emerald-300" },
+  rejected: { label: "却下", cls: "bg-rose-500/20 text-rose-300" },
 };
