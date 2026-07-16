@@ -15,6 +15,8 @@ const tabs = [
   { href: "/threads/library", label: "ライブラリ", emoji: "🧲" },
   { href: "/threads/create", label: "作成", emoji: "✏️" },
   { href: "/threads/posts", label: "投稿管理", emoji: "📋" },
+  { href: "/threads/analytics", label: "分析", emoji: "📊" },
+  { href: "/threads/settings", label: "設定", emoji: "⚙️" },
 ];
 
 export default function ThreadsHeader() {

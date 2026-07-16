@@ -502,6 +502,18 @@ model ThreadsChatMessage {
   @@index([draftId])
 }
 
+// Threadsツール設定（1レコードのみ。キーはサーバー側に保管）
+model ThreadsToolSettings {
+  id             String   @id @default(cuid())
+  apifyToken     String   @default("")     // スクレイパー（Phase 2）
+  apifyActorId   String   @default("")
+  openaiApiKey   String   @default("")     // 画像生成（Phase 2）
+  scraperEnabled Boolean  @default(false)
+  metricsTiming  String   @default("[1,24,72,168]") // 計測タイミング(時間)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 // 計測の時系列スナップショット
 model ThreadsMetricSnapshot {
   id         String   @id @default(cuid())
