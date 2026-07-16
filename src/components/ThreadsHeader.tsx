@@ -56,29 +56,39 @@ export default function ThreadsHeader() {
           <h1 className="text-lg font-bold text-neutral-100">Threadsポストツール</h1>
           <p className="text-xs text-neutral-500">競合分析 × オマージュ作成 × 反応計測</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-neutral-500">アカウント:</span>
-          {accounts.length === 0 ? (
+        {accounts.length === 0 ? (
+          <Link
+            href="/threads/accounts"
+            className="text-xs px-3 py-1.5 rounded-full bg-white text-black hover:bg-neutral-200"
+          >
+            + アカウントを登録
+          </Link>
+        ) : (
+          // アカウント切替: ワンクリックのピル型トグル（選択中=白）
+          <div className="flex items-center gap-1.5 overflow-x-auto max-w-full md:max-w-[60vw]">
+            {accounts.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setAccountId(a.id)}
+                title={`@${a.handle}`}
+                className={`px-4 py-1.5 text-sm font-bold rounded-full whitespace-nowrap border transition-colors ${
+                  a.id === accountId
+                    ? "bg-white text-black border-white shadow"
+                    : "bg-neutral-900 text-neutral-300 border-neutral-700 hover:border-neutral-400 hover:text-white"
+                }`}
+              >
+                {a.name}
+              </button>
+            ))}
             <Link
               href="/threads/accounts"
-              className="text-xs px-3 py-1.5 rounded-lg bg-white text-black hover:bg-neutral-200"
+              title="アカウントを追加・編集"
+              className="px-3 py-1.5 text-sm rounded-full border border-dashed border-neutral-700 text-neutral-500 hover:text-neutral-200 hover:border-neutral-500 whitespace-nowrap"
             >
-              + アカウントを登録
+              ＋
             </Link>
-          ) : (
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className="text-sm border border-neutral-700 bg-neutral-900 text-neutral-100 rounded-lg px-3 py-1.5 min-w-40"
-            >
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}（@{a.handle}）
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       <nav className="px-2 md:px-4 flex overflow-x-auto border-t border-neutral-800">
         {tabs.map((tab) => {
