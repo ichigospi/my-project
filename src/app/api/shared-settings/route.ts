@@ -103,9 +103,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const updates: { key: string; value: string }[] = [];
 
-    if (body.yt_api_key !== undefined) updates.push({ key: "shared_yt_api_key", value: body.yt_api_key });
-    if (body.ai_api_key !== undefined) updates.push({ key: "shared_ai_api_key", value: body.ai_api_key });
-    if (body.openai_api_key !== undefined) updates.push({ key: "shared_openai_api_key", value: body.openai_api_key });
+    // APIキーは空文字での上書きを受け付けない（キー未設定の端末のpushが
+    // 全員の共有キーを消してしまう事故の防止）
+    if (body.yt_api_key) updates.push({ key: "shared_yt_api_key", value: body.yt_api_key });
+    if (body.ai_api_key) updates.push({ key: "shared_ai_api_key", value: body.ai_api_key });
+    if (body.openai_api_key) updates.push({ key: "shared_openai_api_key", value: body.openai_api_key });
     if (body.channels !== undefined) updates.push({ key: "shared_channels", value: JSON.stringify(body.channels) });
     if (body.hooks !== undefined) updates.push({ key: "shared_hooks", value: JSON.stringify(body.hooks) });
     if (body.ctas !== undefined) updates.push({ key: "shared_ctas", value: JSON.stringify(body.ctas) });

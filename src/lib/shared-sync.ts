@@ -192,10 +192,18 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
   inFlightPull = (async () => {
     try {
       notifySync("syncing");
-      const res = await fetch("/api/shared-settings");
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => "");
-        notifySync("error", `pull失敗: GET /api/shared-settings HTTP ${res.status} ${errBody.slice(0, 120)}`);
+      // 一時的な失敗（5xx・通信断）は最大3回リトライ
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          res = await fetch("/api/shared-settings");
+          if (res.ok || res.status < 500) break;
+        } catch { res = null; }
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+      }
+      if (!res || !res.ok) {
+        const errBody = res ? await res.text().catch(() => "") : "(接続できません)";
+        notifySync("error", `pull失敗: GET /api/shared-settings ${res ? `HTTP ${res.status}` : ""} ${errBody.slice(0, 120)}（3回再試行済み）`);
         return;
     }
     const data = await res.json();
@@ -505,6 +513,41 @@ function notifySync(status: "syncing" | "synced" | "error", errorDetail?: string
   syncListeners.forEach((l) => l(status));
 }
 
+// ===== push の堅牢化 =====
+// 前回push成功時の内容ハッシュ。変更が無いキーはスキップして
+// リクエスト数を減らし、同期失敗の確率とサーバー負荷を下げる。
+const PUSH_HASH_PREFIX = "sync_push_hash_";
+function contentHash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return `${s.length}_${h}`;
+}
+
+// POSTを最大3回リトライ（5xx・通信エラーのみ）。401は即中断シグナルとして返す。
+async function postWithRetry(
+  url: string,
+  body: string,
+  attempts = 3
+): Promise<{ ok: boolean; status: number; data: Record<string, unknown>; error?: string }> {
+  let lastErr = "";
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      if (r.status === 401) {
+        return { ok: false, status: 401, data: {}, error: "セッション切れ（再ログインが必要）" };
+      }
+      const d = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok) return { ok: true, status: r.status, data: d };
+      lastErr = (d as { error?: string }).error || `HTTP ${r.status}`;
+      if (r.status < 500) return { ok: false, status: r.status, data: d, error: lastErr }; // 4xxは再試行しない
+    } catch (e) {
+      lastErr = `通信エラー: ${String(e).slice(0, 120)}`;
+    }
+    if (i < attempts - 1) await new Promise((res) => setTimeout(res, 700 * (i + 1)));
+  }
+  return { ok: false, status: 0, data: {}, error: lastErr };
+}
+
 export async function pushSharedSettings(): Promise<{ ok: boolean; error?: string }> {
   try {
     notifySync("syncing");
@@ -542,34 +585,40 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
 
     const failedKeys: { key: string; size: number; error: string }[] = [];
     for (const [key, value] of Object.entries(payloadParts)) {
+      // 空のAPIキーは送らない（サーバーの共有キーを空文字で潰さない）
+      if ((key === "yt_api_key" || key === "ai_api_key" || key === "openai_api_key") && !value) continue;
       const body = JSON.stringify({ [key]: value });
-      try {
-        const r = await fetch("/api/shared-settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-        });
-        if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          failedKeys.push({ key, size: body.length, error: err.error || `HTTP ${r.status}` });
-          continue;
-        }
-        const d = await r.json().catch(() => ({}));
-        if (Array.isArray(d.failed) && d.failed.length > 0) {
-          failedKeys.push(...d.failed);
-        }
-      } catch (e) {
-        failedKeys.push({ key, size: body.length, error: String(e).slice(0, 200) });
+      // 前回push成功時から変更が無いキーはスキップ（差分push）
+      const hashKey = PUSH_HASH_PREFIX + key;
+      const h = contentHash(body);
+      if (localStorage.getItem(hashKey) === h) continue;
+
+      const r = await postWithRetry("/api/shared-settings", body);
+      if (r.status === 401) {
+        // 認証切れは以降のリクエストも全部失敗するため即中断し、原因を明示する
+        const msg = "セッションが切れています。ページを再読み込みしてログインし直してください（同期は中断しました。データはこの端末に保存されています）";
+        notifySync("error", msg);
+        return { ok: false, error: msg };
       }
+      if (!r.ok) {
+        failedKeys.push({ key, size: body.length, error: r.error || "不明なエラー" });
+        continue;
+      }
+      if (Array.isArray(r.data.failed) && (r.data.failed as unknown[]).length > 0) {
+        failedKeys.push(...(r.data.failed as { key: string; size: number; error: string }[]));
+        continue;
+      }
+      localStorage.setItem(hashKey, h);
     }
 
     if (failedKeys.length > 0) {
+      // 「なぜ」失敗したかを必ず表示する（原因調査のため）
       const detail = failedKeys
-        .slice(0, 3)
-        .map((f) => `${f.key}(${Math.round(f.size / 1024)}KB)`)
-        .join(", ");
-      const more = failedKeys.length > 3 ? ` 他${failedKeys.length - 3}件` : "";
-      const msg = `${failedKeys.length}個の項目で同期失敗: ${detail}${more}`;
+        .slice(0, 2)
+        .map((f) => `${f.key}(${Math.round(f.size / 1024)}KB): ${f.error}`)
+        .join(" / ");
+      const more = failedKeys.length > 2 ? ` 他${failedKeys.length - 2}件` : "";
+      const msg = `${failedKeys.length}個の項目で同期失敗: ${detail}${more}（自動で3回まで再試行済み。次回のpushで再送されます）`;
       notifySync("error", msg);
       return { ok: false, error: msg };
     }
@@ -579,47 +628,58 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
     // 旧実装は全プロジェクトを1リクエストにまとめており、台本が貯まると
     // proxy で切られて "Failed to fetch" になっていた。
     try {
+      // 前回push成功時から変更が無いプロジェクトはスキップ（差分push）。
+      // 台本が貯まるほどリクエストが膨らみ同期失敗の主因になっていたため、
+      // 変更分だけ送ることで通常時は0〜数件に抑える。
       const allProjects = getProjects();
+      const projectHashes = new Map<string, string>();
+      const changedProjects = allProjects.filter((p) => {
+        const h = contentHash(JSON.stringify(p));
+        projectHashes.set(p.id, h);
+        return localStorage.getItem(PUSH_HASH_PREFIX + "project_" + p.id) !== h;
+      });
       const CHUNK_SIZE = 3; // 1リクエストあたりのプロジェクト数（生成台本込みで安全な数）
       const failedProjects: { id: string; size: number; error: string }[] = [];
 
-      for (let i = 0; i < allProjects.length; i += CHUNK_SIZE) {
-        const chunk = allProjects.slice(i, i + CHUNK_SIZE);
+      for (let i = 0; i < changedProjects.length; i += CHUNK_SIZE) {
+        const chunk = changedProjects.slice(i, i + CHUNK_SIZE);
         const chunkIdx = Math.floor(i / CHUNK_SIZE) + 1;
-        const totalChunks = Math.ceil(allProjects.length / CHUNK_SIZE);
-        try {
-          const pjRes = await fetch("/api/projects", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projects: chunk }),
-          });
-          if (!pjRes.ok) {
-            const err = await pjRes.json().catch(() => ({}));
-            const reason = err.error || `HTTP ${pjRes.status}`;
-            console.error(`[shared-sync] project chunk ${chunkIdx}/${totalChunks} failed:`, reason);
-            for (const p of chunk) {
-              failedProjects.push({ id: p.id, size: JSON.stringify(p).length, error: reason });
-            }
-            continue;
-          }
-          const pjData = await pjRes.json().catch(() => ({}));
-          if (Array.isArray(pjData.failed) && pjData.failed.length > 0) {
-            failedProjects.push(...pjData.failed);
-          }
-        } catch (e) {
-          const reason = String(e).slice(0, 200);
-          console.error(`[shared-sync] project chunk ${chunkIdx}/${totalChunks} threw:`, reason);
+        const totalChunks = Math.ceil(changedProjects.length / CHUNK_SIZE);
+        const r = await postWithRetry("/api/projects", JSON.stringify({ projects: chunk }));
+        if (r.status === 401) {
+          const msg = "セッションが切れています。ページを再読み込みしてログインし直してください（同期は中断しました）";
+          notifySync("error", msg);
+          return { ok: false, error: msg };
+        }
+        if (!r.ok) {
+          const reason = r.error || "不明なエラー";
+          console.error(`[shared-sync] project chunk ${chunkIdx}/${totalChunks} failed:`, reason);
           for (const p of chunk) {
             failedProjects.push({ id: p.id, size: JSON.stringify(p).length, error: reason });
+          }
+          continue;
+        }
+        const failedIds = new Set(
+          Array.isArray(r.data.failed)
+            ? (r.data.failed as { id: string }[]).map((f) => f.id)
+            : []
+        );
+        if (Array.isArray(r.data.failed) && (r.data.failed as unknown[]).length > 0) {
+          failedProjects.push(...(r.data.failed as { id: string; size: number; error: string }[]));
+        }
+        // 成功したプロジェクトだけハッシュを記録（失敗分は次回pushで再送される）
+        for (const p of chunk) {
+          if (!failedIds.has(p.id)) {
+            localStorage.setItem(PUSH_HASH_PREFIX + "project_" + p.id, projectHashes.get(p.id) || "");
           }
         }
       }
 
       if (failedProjects.length > 0) {
         const detail = failedProjects
-          .slice(0, 3) // エラーメッセージは長くなりすぎないように先頭3件のみ
-          .map((f) => `${f.id}(${Math.round(f.size / 1024)}KB)`)
-          .join(", ");
+          .slice(0, 2) // エラーメッセージは長くなりすぎないように先頭2件のみ
+          .map((f) => `${f.id}(${Math.round(f.size / 1024)}KB): ${f.error}`)
+          .join(" / ");
         const more = failedProjects.length > 3 ? ` 他${failedProjects.length - 3}件` : "";
         const msg = `${failedProjects.length}件のプロジェクト同期に失敗: ${detail}${more}`;
         notifySync("error", msg);
