@@ -12,6 +12,27 @@ export interface InjectedRules {
   winningPatterns: string;
 }
 
+// チャンネル固有の語彙ルール。設計データの同期状態に依存せず、コード側で必ず注入する。
+// 対象チャンネルの判定は語り手プロフィールのチャンネル名で行う。
+export function channelVocabRules(profile: ChannelProfile): string {
+  if ((profile.channelName || "").includes("きん婆")) {
+    return `【きん婆固有の語彙ルール（必達）】
+- エネルギーの流れは「気脈」とは絶対に書かない。必ず「氣流」と書く
+  （例:「氣流が詰まって邪気が発生しとる」「氣流が整うて、金運が流れ込みはじめる」）
+- 白蛇様の「加護」「ご加護」とは言わない。必ず「神氣」と書く
+  （例:「白蛇様の神氣に包まれとる」「白蛇様の神氣を受け取りよし」）
+- この2語（氣流・神氣）はきん婆の世界観の核となる独自用語。台本全体で一貫して使うこと`;
+  }
+  return "";
+}
+
+// プロフィールの共通ルールに語彙ルールを合成して返す（品質チェックへ渡す用）
+export function withChannelVocabRules(profile: ChannelProfile): ChannelProfile {
+  const vocab = channelVocabRules(profile);
+  if (!vocab) return profile;
+  return { ...profile, commonRules: [profile.commonRules?.trim(), vocab].filter(Boolean).join("\n\n") };
+}
+
 export function buildInjectedRules(genre?: Genre, style?: Style, channelId?: string): InjectedRules {
   // チャンネル指定があれば必ずそのチャンネルの設計を使う。
   // 旧実装は常に単一プロフィール(getProfile=旧チャンネルの設計)を読んでいたため、
@@ -20,7 +41,7 @@ export function buildInjectedRules(genre?: Genre, style?: Style, channelId?: str
   const preset = genre && style ? getPresetFor(genre, style, channelId) : undefined;
 
   const channelContext = buildChannelContext(profile);
-  const commonRules = profile.commonRules?.trim() || "";
+  const commonRules = [profile.commonRules?.trim(), channelVocabRules(profile)].filter(Boolean).join("\n\n");
   const ngExpressions = profile.ngExpressions?.trim() || "";
   const categoryRules = preset ? `${preset.rules}\n\nフックパターン: ${preset.hookPattern}\nCTAパターン: ${preset.ctaPattern}` : "";
   const referenceExamples = buildReferenceExamples(profile);
