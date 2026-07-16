@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useThreadsAccountId } from "@/lib/threads-account";
-import { api, fmtDate, getAiKey, getThreadsModel } from "@/lib/threads-client";
+import { api, filesToDataUrls, fmtDate, getAiKey, getThreadsModel } from "@/lib/threads-client";
 
 interface Competitor {
   id: string;
@@ -24,6 +24,7 @@ export default function ThreadsCompetitorsPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [importTarget, setImportTarget] = useState<Competitor | null>(null);
   const [raw, setRaw] = useState("");
+  const [importImages, setImportImages] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState("");
   const [error, setError] = useState("");
@@ -78,7 +79,7 @@ export default function ThreadsCompetitorsPage() {
   };
 
   const runImport = async () => {
-    if (!importTarget || !raw.trim()) return;
+    if (!importTarget || (!raw.trim() && importImages.length === 0)) return;
     const aiApiKey = getAiKey();
     if (!aiApiKey) {
       setImportResult("エラー: AI APIキーが未設定です。設定ページで登録してください。");
@@ -89,10 +90,17 @@ export default function ThreadsCompetitorsPage() {
     try {
       const res = await api<{ createdCount: number; classified: number }>("/api/threads/competitor-posts/parse", {
         method: "POST",
-        body: JSON.stringify({ competitorId: importTarget.id, raw, aiApiKey, model: getThreadsModel() }),
+        body: JSON.stringify({
+          competitorId: importTarget.id,
+          raw: raw.trim() || undefined,
+          images: importImages.length > 0 ? importImages : undefined,
+          aiApiKey,
+          model: getThreadsModel(),
+        }),
       });
       setImportResult(`✅ ${res.createdCount}件を取り込み、${res.classified}件を自動分類しました`);
       setRaw("");
+      setImportImages([]);
       await load();
     } catch (e) {
       setImportResult(`エラー: ${e instanceof Error ? e.message : String(e)}`);
@@ -138,6 +146,7 @@ export default function ThreadsCompetitorsPage() {
                   onClick={() => {
                     setImportTarget(c);
                     setImportResult("");
+                    setImportImages([]);
                   }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-white text-black font-medium hover:bg-neutral-200"
                 >
@@ -199,15 +208,46 @@ export default function ThreadsCompetitorsPage() {
           <div className="bg-neutral-900 rounded-2xl w-full max-w-2xl p-6 space-y-4 my-8" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-neutral-100">@{importTarget.handle} の投稿を取り込む</h3>
             <p className="text-xs text-neutral-400">
-              Threadsの画面から投稿をコピーして貼り付けてください（複数投稿まとめてOK）。
-              いいね・コメント数などの数字が含まれていればAIが自動で拾います。投稿URLも一緒に貼ると後で追いやすくなります。
+              <span className="font-bold text-neutral-200">スクショ推奨:</span> Threads画面のスクショを選ぶだけで、AIが投稿本文といいね・コメント数を読み取ります（最大5枚）。
+              テキストのコピペでもOK。両方入れると両方読みます。
             </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
+                📷 スクショを選択
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length === 0) return;
+                    const urls = await filesToDataUrls(files);
+                    setImportImages((prev) => [...prev, ...urls].slice(0, 5));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {importImages.length > 0 && (
+                <>
+                  <div className="flex gap-1.5">
+                    {importImages.map((src, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={i} src={src} alt={`スクショ${i + 1}`} className="h-12 w-12 object-cover rounded border border-neutral-600" />
+                    ))}
+                  </div>
+                  <button onClick={() => setImportImages([])} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
+                    クリア
+                  </button>
+                </>
+              )}
+            </div>
             <textarea
               value={raw}
               onChange={(e) => setRaw(e.target.value)}
-              rows={14}
+              rows={8}
               className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm font-mono"
-              placeholder={"例:\n\n会社員のまま月10万稼ぐ人がやってる3つのこと\n①…\n②…\n③…\nいいね1,234 コメント56 再投稿78\nhttps://www.threads.net/@xxx/post/yyy\n\n---（複数投稿を続けて貼ってOK）"}
+              placeholder={"（テキスト派はこちら）\n\n会社員のまま月10万稼ぐ人がやってる3つのこと\n①…\n②…\n③…\nいいね1,234 コメント56 再投稿78\nhttps://www.threads.net/@xxx/post/yyy\n\n---（複数投稿を続けて貼ってOK）"}
             />
             {importResult && (
               <div className={`rounded-lg p-3 text-sm ${importResult.startsWith("✅") ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300" : "bg-rose-500/10 border border-rose-500/30 text-rose-300"}`}>
@@ -220,7 +260,7 @@ export default function ThreadsCompetitorsPage() {
               </button>
               <button
                 onClick={runImport}
-                disabled={importing || !raw.trim()}
+                disabled={importing || (!raw.trim() && importImages.length === 0)}
                 className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-neutral-200 disabled:opacity-50"
               >
                 {importing ? "AIが整理中...（数十秒かかります）" : "取り込む"}

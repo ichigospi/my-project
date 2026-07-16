@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useThreadsAccountId } from "@/lib/threads-account";
-import { api, getAiKey, getThreadsModel } from "@/lib/threads-client";
+import { api, filesToDataUrls, getAiKey, getThreadsModel } from "@/lib/threads-client";
 
 interface Account {
   id: string;
@@ -33,8 +33,9 @@ export default function ThreadsAccountsPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // URL自動入力
+  // URL/スクショ自動入力
   const [prefillUrl, setPrefillUrl] = useState("");
+  const [prefillImages, setPrefillImages] = useState<string[]>([]);
   const [pasteText, setPasteText] = useState("");
   const [showPaste, setShowPaste] = useState(false);
   const [prefilling, setPrefilling] = useState(false);
@@ -66,8 +67,8 @@ export default function ThreadsAccountsPage() {
       setPrefillMsg("エラー: AI APIキーが未設定です");
       return;
     }
-    if (!prefillUrl.trim() && !pasteText.trim()) {
-      setPrefillMsg("URLを入力するか、プロフィール文を貼り付けてください");
+    if (!prefillUrl.trim() && !pasteText.trim() && prefillImages.length === 0) {
+      setPrefillMsg("URL・スクショ・貼り付けのいずれかを入れてください");
       return;
     }
     setPrefilling(true);
@@ -78,6 +79,7 @@ export default function ThreadsAccountsPage() {
         body: JSON.stringify({
           url: prefillUrl.trim() || undefined,
           pastedText: pasteText.trim() || undefined,
+          images: prefillImages.length > 0 ? prefillImages : undefined,
           aiApiKey,
           model: getThreadsModel(),
         }),
@@ -94,7 +96,9 @@ export default function ThreadsAccountsPage() {
       setPrefillMsg(
         res.source.fetched
           ? `✅ プロフィールから自動入力しました（投稿${res.source.postCount}件を参照）。内容を確認・修正して保存してください`
-          : "✅ 貼り付け内容から自動入力しました。内容を確認・修正して保存してください",
+          : prefillImages.length > 0
+            ? `✅ スクショ${prefillImages.length}枚から自動入力しました。内容を確認・修正して保存してください`
+            : "✅ 貼り付け内容から自動入力しました。内容を確認・修正して保存してください",
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -109,6 +113,7 @@ export default function ThreadsAccountsPage() {
   const startEdit = (a: Account | null) => {
     setError("");
     setPrefillUrl("");
+    setPrefillImages([]);
     setPasteText("");
     setShowPaste(false);
     setPrefillMsg("");
@@ -238,15 +243,48 @@ export default function ThreadsAccountsPage() {
             <h3 className="text-lg font-bold text-neutral-100">{editing === "new" ? "アカウント追加" : "アカウント編集"}</h3>
             {error && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-sm text-rose-300">{error}</div>}
 
-            {/* URL自動入力 */}
+            {/* URL/スクショ自動入力 */}
             <div className="bg-neutral-800/60 border border-neutral-700 rounded-xl p-3 space-y-2">
-              <span className="text-xs font-bold text-neutral-200">🔮 URLから自動入力</span>
+              <span className="text-xs font-bold text-neutral-200">🔮 自動入力（スクショ推奨）</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
+                  📷 プロフのスクショを選択
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      if (files.length === 0) return;
+                      setPrefillMsg("");
+                      const urls = await filesToDataUrls(files);
+                      setPrefillImages((prev) => [...prev, ...urls].slice(0, 5));
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {prefillImages.length > 0 && (
+                  <>
+                    <div className="flex gap-1.5">
+                      {prefillImages.map((src, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={i} src={src} alt={`スクショ${i + 1}`} className="h-10 w-10 object-cover rounded border border-neutral-600" />
+                      ))}
+                    </div>
+                    <button onClick={() => setPrefillImages([])} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
+                      クリア
+                    </button>
+                  </>
+                )}
+              </div>
+              <p className="text-[10px] text-neutral-500">プロフィール画面＋投稿が写ったスクショを最大5枚。投稿も写っていると口調まで推定できます。</p>
               <div className="flex gap-2">
                 <input
                   value={prefillUrl}
                   onChange={(e) => setPrefillUrl(e.target.value)}
                   className="flex-1 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
-                  placeholder="https://www.threads.net/@あなたのアカウント"
+                  placeholder="URLでも可: https://www.threads.net/@あなたのアカウント"
                 />
                 <button
                   onClick={runPrefill}
@@ -257,7 +295,7 @@ export default function ThreadsAccountsPage() {
                 </button>
               </div>
               <button onClick={() => setShowPaste(!showPaste)} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
-                {showPaste ? "貼り付け欄を閉じる" : "URLで取れない場合はこちら（プロフィール文＋投稿を貼り付け）"}
+                {showPaste ? "貼り付け欄を閉じる" : "テキスト貼り付けで入力する場合はこちら"}
               </button>
               {showPaste && (
                 <textarea

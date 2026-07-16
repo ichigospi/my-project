@@ -1,7 +1,7 @@
 // 貼り付けテキストをAIでパースして競合投稿として一括登録 → 続けて自動分類
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { callThreadsAI, extractJson, resolveThreadsAiModel } from "@/lib/threads-ai";
+import { callThreadsAI, extractJson, parseDataUrlImage, resolveThreadsAiModel, type ThreadsAiImage } from "@/lib/threads-ai";
 import {
   PASTE_PARSE_SYSTEM,
   CLASSIFY_SYSTEM,
@@ -12,17 +12,23 @@ import {
 } from "@/lib/threads-prompts";
 
 // POST /api/threads/competitor-posts/parse
-// Body: { competitorId, raw, aiApiKey, model?, autoClassify? }
+// Body: { competitorId, raw?, images?: string[](data URL), aiApiKey, model?, autoClassify? }
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { competitorId, raw, aiApiKey } = body as {
       competitorId: string;
-      raw: string;
+      raw?: string;
       aiApiKey: string;
     };
-    if (!competitorId || !raw?.trim()) {
-      return NextResponse.json({ error: "competitorId と raw は必須" }, { status: 400 });
+    // スクリーンショット（data URL）→ API用画像に変換
+    const images: ThreadsAiImage[] = (Array.isArray(body.images) ? (body.images as string[]) : [])
+      .map(parseDataUrlImage)
+      .filter((i): i is ThreadsAiImage => i !== null)
+      .slice(0, 5);
+
+    if (!competitorId || (!raw?.trim() && images.length === 0)) {
+      return NextResponse.json({ error: "competitorId と、貼り付けテキストかスクショのどちらかは必須" }, { status: 400 });
     }
     if (!aiApiKey) {
       return NextResponse.json({ error: "APIキーが未設定です" }, { status: 400 });
@@ -34,10 +40,14 @@ export async function POST(request: NextRequest) {
 
     const model = resolveThreadsAiModel(body.model);
 
-    // ① パース
+    // ① パース（テキスト・スクショどちらでも）
+    const today = new Date().toISOString().slice(0, 10);
     const parseRes = await callThreadsAI(aiApiKey, {
       systemPrompt: PASTE_PARSE_SYSTEM,
-      userInstruction: buildPasteParseInstruction(raw, new Date().toISOString().slice(0, 10)),
+      userInstruction: raw?.trim()
+        ? buildPasteParseInstruction(raw, today)
+        : `今日の日付: ${today}\n\nスクリーンショットに写っている投稿をすべて分解してください。`,
+      images,
       model,
       maxTokens: 8192,
     });
