@@ -154,9 +154,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "推定結果をパースできませんでした。再実行してください" }, { status: 422 });
     }
 
+    // ハンドルはURL指定を優先し、無ければAIがスクショ等から読み取ったものを使う
+    const resolvedHandle = handle || (prefill.handle ? prefill.handle.replace(/^@/, "") : null);
+
     return NextResponse.json({
       prefill,
-      handle,
+      handle: resolvedHandle,
       source: {
         fetched: Boolean(profile),
         bioFound: Boolean(profile?.bio),
