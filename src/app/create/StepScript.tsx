@@ -85,9 +85,9 @@ function splitSkeletonText(skeleton: string, n: number): string[] {
   return groups;
 }
 
-// 目標文字数は4,000〜5,000字に収める。保存済みプリセットが古い値(5,000超)でもクランプする
+// 目標文字数は4,500〜5,000字に収める。保存済みプリセットが範囲外でもクランプする
 function clampTargetChars(n?: number): number {
-  return Math.max(4000, Math.min(n || 4500, 5000));
+  return Math.max(4500, Math.min(n || 4750, 5000));
 }
 
 // 推定動画尺（千代婆ベース: 後で調整、デフォルト250文字/分）
@@ -173,7 +173,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           channelProfile: getProfileByChannel(project.channelId || ""),
           style: project.style,
           topic: project.title,
-          additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount)}文字（4,000〜5,000字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
+          additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount)}文字（4,500〜5,000字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)),
           referenceAnalyses,
           aiApiKey,
@@ -204,7 +204,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const generateSegmentText = async (index: number, previousScript: string, aiApiKey: string, count: number): Promise<string | null> => {
     const preset = getPresetFor(project.genre, project.style, project.channelId);
     const channelProfile = getProfileByChannel(project.channelId || "");
-    const additionalNotes = preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount)}文字（4,000〜5,000字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "";
+    const additionalNotes = preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount)}文字（4,500〜5,000字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "";
     const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
     const parts = splitSkeletonText(project.structureProposal?.concept || "", count);
     // 総目標文字数（プリセット）を、骨組みの各パートの分量比で重み付けして per-part に配分
