@@ -28,6 +28,10 @@ export default function ThreadsCompetitorsPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState("");
   const [error, setError] = useState("");
+  // 競合追加のスクショ自動入力
+  const [compImages, setCompImages] = useState<string[]>([]);
+  const [compPrefilling, setCompPrefilling] = useState(false);
+  const [compPrefillMsg, setCompPrefillMsg] = useState("");
 
   const load = useCallback(async () => {
     if (!accountId) return;
@@ -42,8 +46,44 @@ export default function ThreadsCompetitorsPage() {
     load();
   }, [load]);
 
+  const runCompPrefill = async () => {
+    const aiApiKey = getAiKey();
+    if (!aiApiKey) {
+      setCompPrefillMsg("エラー: AI APIキーが未設定です");
+      return;
+    }
+    if (compImages.length === 0) {
+      setCompPrefillMsg("プロフィールのスクショを選択してください");
+      return;
+    }
+    setCompPrefilling(true);
+    setCompPrefillMsg("");
+    try {
+      const res = await api<{ prefill: { handle: string; name: string; note: string }; handle: string | null }>(
+        "/api/threads/accounts/prefill",
+        {
+          method: "POST",
+          body: JSON.stringify({ target: "competitor", images: compImages, aiApiKey, model: getThreadsModel() }),
+        },
+      );
+      setForm((f) => ({
+        ...f,
+        handle: res.handle || f.handle,
+        name: res.prefill.name || f.name,
+        note: res.prefill.note || f.note,
+      }));
+      setCompPrefillMsg("✅ スクショから自動入力しました。確認して保存してください");
+    } catch (e) {
+      setCompPrefillMsg(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCompPrefilling(false);
+    }
+  };
+
   const startEdit = (c: Competitor | null) => {
     setError("");
+    setCompImages([]);
+    setCompPrefillMsg("");
     if (!c) {
       setForm({ ...emptyForm });
       setEditing("new");
@@ -177,7 +217,50 @@ export default function ThreadsCompetitorsPage() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setEditing(null)}>
           <div className="bg-neutral-900 rounded-2xl w-full max-w-lg p-6 space-y-4 my-8" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-neutral-100">{editing === "new" ? "競合を追加" : "競合を編集"}</h3>
-            {error && <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">{error}</div>}
+            {error && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-sm text-rose-300">{error}</div>}
+
+            {/* スクショ自動入力 */}
+            <div className="bg-neutral-800/60 border border-neutral-700 rounded-xl p-3 space-y-2">
+              <span className="text-xs font-bold text-neutral-200">🔮 スクショから自動入力</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
+                  📷 プロフのスクショを選択
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      if (files.length === 0) return;
+                      setCompPrefillMsg("");
+                      const urls = await filesToDataUrls(files);
+                      setCompImages((prev) => [...prev, ...urls].slice(0, 5));
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {compImages.length > 0 && (
+                  <div className="flex gap-1.5">
+                    {compImages.map((src, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={i} src={src} alt={`スクショ${i + 1}`} className="h-10 w-10 object-cover rounded border border-neutral-600" />
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={runCompPrefill}
+                  disabled={compPrefilling || compImages.length === 0}
+                  className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {compPrefilling ? "解析中..." : "自動入力"}
+                </button>
+              </div>
+              {compPrefillMsg && (
+                <p className={`text-[11px] ${compPrefillMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{compPrefillMsg}</p>
+              )}
+            </div>
+
             <label className="block">
               <span className="text-xs font-medium text-neutral-300">ハンドル *（@なし）</span>
               <input value={form.handle} onChange={(e) => setForm({ ...form, handle: e.target.value })} className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm" />

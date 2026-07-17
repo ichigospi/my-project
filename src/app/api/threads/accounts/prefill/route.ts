@@ -5,8 +5,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { callThreadsAI, extractJson, parseDataUrlImage, resolveThreadsAiModel, type ThreadsAiImage } from "@/lib/threads-ai";
 import {
   PREFILL_SYSTEM,
+  COMPETITOR_PREFILL_SYSTEM,
   buildPrefillInstruction,
   type PrefillResult,
+  type CompetitorPrefillResult,
 } from "@/lib/threads-prompts";
 
 interface ProfileData {
@@ -87,7 +89,8 @@ async function fetchProfile(handle: string): Promise<ProfileData | null> {
 }
 
 // POST /api/threads/accounts/prefill
-// Body: { url?, pastedText?, images?: string[](data URL), aiApiKey, model? }
+// Body: { url?, pastedText?, images?: string[](data URL), target?: "account"|"competitor", aiApiKey, model? }
+// target=competitor の場合は ハンドル・名前・メモ だけの軽量推定を返す
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -96,6 +99,7 @@ export async function POST(request: NextRequest) {
       pastedText?: string;
       aiApiKey: string;
     };
+    const isCompetitor = body.target === "competitor";
     // スクリーンショット（data URL）→ API用画像に変換
     const images: ThreadsAiImage[] = (Array.isArray(body.images) ? (body.images as string[]) : [])
       .map(parseDataUrlImage)
@@ -134,7 +138,7 @@ export async function POST(request: NextRequest) {
     }
 
     const res = await callThreadsAI(aiApiKey, {
-      systemPrompt: PREFILL_SYSTEM,
+      systemPrompt: isCompetitor ? COMPETITOR_PREFILL_SYSTEM : PREFILL_SYSTEM,
       userInstruction: buildPrefillInstruction({
         handle: handle ?? undefined,
         profileName: profile?.profileName,
@@ -149,7 +153,7 @@ export async function POST(request: NextRequest) {
     if (res.error) {
       return NextResponse.json({ error: res.error, retryable: res.retryable }, { status: res.retryable ? 503 : 500 });
     }
-    const prefill = extractJson<PrefillResult>(res.text);
+    const prefill = extractJson<PrefillResult | CompetitorPrefillResult>(res.text);
     if (!prefill) {
       return NextResponse.json({ error: "推定結果をパースできませんでした。再実行してください" }, { status: 422 });
     }
