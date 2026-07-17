@@ -112,15 +112,30 @@ export async function runActorAndGetItems(
 
 // 一般的なThreadsスクレイパーActorの入力形式をまとめてカバー
 // includeReplies=false のとき、Actorごとに異なるリプライ除外フラグをまとめて渡す（未知フィールドは無視される）
+// 件数指定のフィールド名はActor作者ごとにバラバラなので、当たりそうな名前を総当たりで入れる
+// （未知フィールドはActor側で無視されるため害はない）
+function limitFields(limit: number, handleCount: number): Record<string, number> {
+  return {
+    resultsLimit: limit,
+    postsPerSource: limit,
+    maxPosts: limit,
+    maxResults: limit,
+    limit: limit,
+    postLimit: limit,
+    maxPostsPerProfile: limit,
+    maxPostsPerUser: limit,
+    resultsPerPage: limit,
+    maxItems: limit * Math.max(1, handleCount),
+  };
+}
+
 export function buildActorInput(handles: string[], limitPerHandle = 25, includeReplies = false): Record<string, unknown> {
   const urls = handles.map((h) => `https://www.threads.net/@${h}`);
   const base: Record<string, unknown> = {
     usernames: handles,
     urls,
     startUrls: urls.map((url) => ({ url })),
-    resultsLimit: limitPerHandle,
-    maxItems: limitPerHandle * handles.length,
-    postsPerSource: limitPerHandle,
+    ...limitFields(limitPerHandle, handles.length),
   };
   if (!includeReplies) {
     base.onlyPosts = true;
@@ -163,11 +178,12 @@ export async function runThreadsScrapeWithFallback(
   );
   const urls = handles.map((h) => `https://www.threads.net/@${h}`);
   const replyFlags = includeReplies ? {} : { onlyPosts: true, includeReplies: false, scrapeReplies: false };
+  const limits = limitFields(limitPerHandle, handles.length);
   const inputVariants: { label: string; input: Record<string, unknown> }[] = [
     { label: "combined", input: buildActorInput(handles, limitPerHandle, includeReplies) },
-    { label: "urls", input: { urls, resultsLimit: limitPerHandle, ...replyFlags } },
-    { label: "startUrls", input: { startUrls: urls.map((url) => ({ url })), resultsLimit: limitPerHandle, ...replyFlags } },
-    { label: "usernames", input: { usernames: handles, resultsLimit: limitPerHandle, ...replyFlags } },
+    { label: "urls", input: { urls, ...limits, ...replyFlags } },
+    { label: "startUrls", input: { startUrls: urls.map((url) => ({ url })), ...limits, ...replyFlags } },
+    { label: "usernames", input: { usernames: handles, ...limits, ...replyFlags } },
   ];
 
   for (const actorId of candidates) {
@@ -185,10 +201,10 @@ export async function runThreadsScrapeWithFallback(
       }
       const items = normalizeItems(run.items, includeReplies);
       if (items.length > 0) {
-        log.push(`${actorId} (${variant.label}): ${items.length}件取得 ✅`);
+        log.push(`${actorId} (${variant.label}): 生${run.items.length}件→有効${items.length}件 ✅`);
         return { items, actorUsed: actorId, log };
       }
-      log.push(`${actorId} (${variant.label}): 実行成功したが0件`);
+      log.push(`${actorId} (${variant.label}): 実行成功したが0件（生${run.items.length}件）`);
       // 0件は入力が効いていない可能性 → 次のバリエーションへ
     }
   }
