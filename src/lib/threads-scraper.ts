@@ -111,15 +111,24 @@ export async function runActorAndGetItems(
 }
 
 // 一般的なThreadsスクレイパーActorの入力形式をまとめてカバー
-export function buildActorInput(handles: string[], limitPerHandle = 25): Record<string, unknown> {
+// includeReplies=false のとき、Actorごとに異なるリプライ除外フラグをまとめて渡す（未知フィールドは無視される）
+export function buildActorInput(handles: string[], limitPerHandle = 25, includeReplies = false): Record<string, unknown> {
   const urls = handles.map((h) => `https://www.threads.net/@${h}`);
-  return {
+  const base: Record<string, unknown> = {
     usernames: handles,
     urls,
     startUrls: urls.map((url) => ({ url })),
     resultsLimit: limitPerHandle,
     maxItems: limitPerHandle * handles.length,
+    postsPerSource: limitPerHandle,
   };
+  if (!includeReplies) {
+    base.onlyPosts = true;
+    base.includeReplies = false;
+    base.scrapeReplies = false;
+    base.replies = false;
+  }
+  return base;
 }
 
 // Actorが存在するか（メタデータ取得は無料）
@@ -146,17 +155,19 @@ export async function runThreadsScrapeWithFallback(
   preferredActorId: string | null,
   handles: string[],
   limitPerHandle = 25,
+  includeReplies = false,
 ): Promise<ScrapeAttemptResult> {
   const log: string[] = [];
   const candidates = Array.from(
     new Set([preferredActorId, ...ACTOR_CANDIDATES].filter((a): a is string => Boolean(a))),
   );
   const urls = handles.map((h) => `https://www.threads.net/@${h}`);
+  const replyFlags = includeReplies ? {} : { onlyPosts: true, includeReplies: false, scrapeReplies: false };
   const inputVariants: { label: string; input: Record<string, unknown> }[] = [
-    { label: "combined", input: buildActorInput(handles, limitPerHandle) },
-    { label: "urls", input: { urls, resultsLimit: limitPerHandle } },
-    { label: "startUrls", input: { startUrls: urls.map((url) => ({ url })), resultsLimit: limitPerHandle } },
-    { label: "usernames", input: { usernames: handles, resultsLimit: limitPerHandle } },
+    { label: "combined", input: buildActorInput(handles, limitPerHandle, includeReplies) },
+    { label: "urls", input: { urls, resultsLimit: limitPerHandle, ...replyFlags } },
+    { label: "startUrls", input: { startUrls: urls.map((url) => ({ url })), resultsLimit: limitPerHandle, ...replyFlags } },
+    { label: "usernames", input: { usernames: handles, resultsLimit: limitPerHandle, ...replyFlags } },
   ];
 
   for (const actorId of candidates) {
@@ -172,7 +183,7 @@ export async function runThreadsScrapeWithFallback(
         if (/input|schema|invalid|required/i.test(run.error)) continue;
         break;
       }
-      const items = normalizeItems(run.items);
+      const items = normalizeItems(run.items, includeReplies);
       if (items.length > 0) {
         log.push(`${actorId} (${variant.label}): ${items.length}件取得 ✅`);
         return { items, actorUsed: actorId, log };
@@ -240,12 +251,27 @@ function parsePostedAt(obj: Record<string, unknown>): Date | null {
   return null;
 }
 
-// Actorの生アイテムを共通形式へ。本文が取れないものは捨てる
-export function normalizeItems(raw: unknown[]): NormalizedScrapedPost[] {
+// このアイテムがリプライ（返信）投稿か判定
+function isReplyItem(obj: Record<string, unknown>): boolean {
+  for (const k of ["isReply", "is_reply", "isReplyPost"]) {
+    if (obj[k] === true) return true;
+  }
+  for (const k of ["replyToId", "reply_to_id", "inReplyToId", "in_reply_to", "parentPostId", "parent_post_id", "replyTo", "reply_to"]) {
+    const v = obj[k];
+    if (v && v !== "" && v !== "0") return true;
+  }
+  const type = obj.postType ?? obj.post_type ?? obj.type;
+  if (typeof type === "string" && /reply|comment/i.test(type)) return true;
+  return false;
+}
+
+// Actorの生アイテムを共通形式へ。本文が取れないものは捨てる。includeReplies=false ならリプライを除外
+export function normalizeItems(raw: unknown[], includeReplies = true): NormalizedScrapedPost[] {
   const results: NormalizedScrapedPost[] = [];
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
     const obj = r as Record<string, unknown>;
+    if (!includeReplies && isReplyItem(obj)) continue;
     const content =
       pickStr(obj, ["text", "content", "caption", "body"]) ||
       pickNested(obj, [["post", "caption", "text"], ["caption", "text"], ["thread", "text"]]);

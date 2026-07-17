@@ -104,6 +104,8 @@ const alters = [
   `ALTER TABLE "XCompetitor" ADD COLUMN "isSelf" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "ThreadsToolSettings" ADD COLUMN "lastCollectAt" DATETIME`,
   `ALTER TABLE "ThreadsToolSettings" ADD COLUMN "lastMetricsAt" DATETIME`,
+  `ALTER TABLE "ThreadsToolSettings" ADD COLUMN "collectLimit" INTEGER NOT NULL DEFAULT 25`,
+  `ALTER TABLE "ThreadsToolSettings" ADD COLUMN "includeReplies" BOOLEAN NOT NULL DEFAULT false`,
 ];
 for (const sql of alters) {
   try {

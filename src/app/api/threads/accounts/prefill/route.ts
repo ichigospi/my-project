@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
       if (!profile) {
         const settings = await prisma.threadsToolSettings.findFirst();
         if (settings?.apifyToken) {
-          const run = await runThreadsScrapeWithFallback(settings.apifyToken, settings.apifyActorId || null, [handle], 15);
+          const run = await runThreadsScrapeWithFallback(settings.apifyToken, settings.apifyActorId || null, [handle], 15, false);
           const items = run.items.filter((i) => !i.authorHandle || i.authorHandle === handle);
           if (items.length > 0) {
             profile = {

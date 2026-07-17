@@ -23,6 +23,8 @@ export async function GET() {
       apifyActorId: s.apifyActorId,
       openaiApiKeyMasked: mask(s.openaiApiKey),
       scraperEnabled: s.scraperEnabled,
+      collectLimit: s.collectLimit,
+      includeReplies: s.includeReplies,
       metricsTiming: s.metricsTiming,
       lastCollectAt: s.lastCollectAt,
       lastMetricsAt: s.lastMetricsAt,
@@ -52,6 +54,11 @@ export async function PATCH(request: NextRequest) {
     }
     if (typeof body.apifyActorId === "string") data.apifyActorId = body.apifyActorId;
     if (typeof body.scraperEnabled === "boolean") data.scraperEnabled = body.scraperEnabled;
+    if (typeof body.includeReplies === "boolean") data.includeReplies = body.includeReplies;
+    if (body.collectLimit !== undefined) {
+      const n = Number(body.collectLimit);
+      if (n >= 1 && n <= 200) data.collectLimit = Math.floor(n);
+    }
     if (typeof body.metricsTiming === "string") {
       try {
         const arr = JSON.parse(body.metricsTiming);

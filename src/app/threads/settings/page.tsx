@@ -8,6 +8,8 @@ interface Settings {
   apifyActorId: string;
   openaiApiKeyMasked: string;
   scraperEnabled: boolean;
+  collectLimit: number;
+  includeReplies: boolean;
   metricsTiming: string;
   lastCollectAt: string | null;
   lastMetricsAt: string | null;
@@ -42,6 +44,25 @@ export default function ThreadsSettingsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const saveCollectLimit = async (value: number) => {
+    try {
+      await api("/api/threads/settings", { method: "PATCH", body: JSON.stringify({ collectLimit: value }) });
+      await load();
+    } catch (e) {
+      setScraperMsg(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const saveIncludeReplies = async (value: boolean) => {
+    setSettings((s) => (s ? { ...s, includeReplies: value } : s));
+    try {
+      await api("/api/threads/settings", { method: "PATCH", body: JSON.stringify({ includeReplies: value }) });
+      await load();
+    } catch (e) {
+      setScraperMsg(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   const toggleScraper = async () => {
     if (!settings) return;
@@ -165,6 +186,36 @@ export default function ThreadsSettingsPage() {
             placeholder="例: xxx/threads-scraper"
           />
         </label>
+
+        {/* 収集オプション */}
+        <div className="border-t border-neutral-800 pt-3 space-y-3">
+          <label className="block">
+            <span className="text-xs font-medium text-neutral-300">
+              1アカウントあたりの収集件数: <span className="text-neutral-100 font-bold">{settings?.collectLimit ?? 25}件</span>
+            </span>
+            <input
+              type="range"
+              min={10}
+              max={200}
+              step={5}
+              value={settings?.collectLimit ?? 25}
+              onChange={(e) => setSettings((s) => (s ? { ...s, collectLimit: Number(e.target.value) } : s))}
+              onMouseUp={(e) => saveCollectLimit(Number((e.target as HTMLInputElement).value))}
+              onTouchEnd={(e) => saveCollectLimit(Number((e.target as HTMLInputElement).value))}
+              className="mt-1 w-full accent-white"
+            />
+            <span className="text-[10px] text-neutral-600">多いほど過去に遡れます（Threadsは日付指定不可のため件数で調整）。増やすほどApifyの消費が増えます。</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-neutral-300">
+            <input
+              type="checkbox"
+              checked={settings?.includeReplies ?? false}
+              onChange={(e) => saveIncludeReplies(e.target.checked)}
+            />
+            リプライ（返信）投稿も収集する
+            <span className="text-[10px] text-neutral-600">（OFF推奨: オリジナル投稿だけ集めます）</span>
+          </label>
+        </div>
 
         {/* 稼働制御 */}
         <div className="border-t border-neutral-800 pt-3 space-y-2">

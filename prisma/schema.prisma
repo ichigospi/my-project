@@ -509,6 +509,8 @@ model ThreadsToolSettings {
   apifyActorId   String   @default("")
   openaiApiKey   String   @default("")     // 画像生成（Phase 2）
   scraperEnabled Boolean  @default(false)
+  collectLimit   Int      @default(25)              // 1アカウントあたりの収集件数（増やすほど過去に遡る）
+  includeReplies Boolean  @default(false)           // リプライ投稿も収集するか
   metricsTiming  String   @default("[1,24,72,168]") // 計測タイミング(時間)
   lastCollectAt  DateTime?                          // 最後に競合収集を実行した時刻
   lastMetricsAt  DateTime?                          // 最後に自投稿計測を実行した時刻
