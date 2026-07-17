@@ -12,7 +12,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     const body = await request.json().catch(() => ({}));
-    const summary = await collectCompetitorPosts(body.accountId || undefined);
+    const summary = await collectCompetitorPosts({
+      accountId: body.accountId || undefined,
+      competitorId: body.competitorId || undefined,
+    });
     return NextResponse.json(summary);
   } catch (e) {
     console.error("POST /api/threads/scraper/collect", e);

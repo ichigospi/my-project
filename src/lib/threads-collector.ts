@@ -38,7 +38,8 @@ async function rememberWorkingActor(settingsId: string, currentActorId: string, 
 
 // ===== 競合の自動収集 =====
 
-export async function collectCompetitorPosts(accountId?: string): Promise<CollectSummary> {
+// accountId指定でそのアカウントの全競合、competitorId指定で1競合だけ収集
+export async function collectCompetitorPosts(opts?: { accountId?: string; competitorId?: string }): Promise<CollectSummary> {
   const summary: CollectSummary = { handles: 0, itemsReturned: 0, created: 0, classified: 0, errors: [] };
   const settings = await getScraperSettings();
   if (!settings) {
@@ -46,12 +47,17 @@ export async function collectCompetitorPosts(accountId?: string): Promise<Collec
     return summary;
   }
 
+  const where = opts?.competitorId
+    ? { id: opts.competitorId }
+    : opts?.accountId
+      ? { accountId: opts.accountId }
+      : { account: { isActive: true } };
   const competitors = await prisma.threadsCompetitor.findMany({
-    where: accountId ? { accountId } : { account: { isActive: true } },
+    where,
     include: { posts: { select: { postUrl: true, content: true, likes: true } } },
   });
   if (competitors.length === 0) {
-    summary.errors.push("競合が登録されていません");
+    summary.errors.push("対象の競合が見つかりません");
     return summary;
   }
 
