@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { callThreadsAI, extractJson, parseDataUrlImage, resolveThreadsAiModel, type ThreadsAiImage } from "@/lib/threads-ai";
-import { DEFAULT_ACTOR_ID, buildActorInput, normalizeItems, runActorAndGetItems } from "@/lib/threads-scraper";
+import { runThreadsScrapeWithFallback } from "@/lib/threads-scraper";
 import {
   PREFILL_SYSTEM,
   COMPETITOR_PREFILL_SYSTEM,
@@ -126,20 +126,15 @@ export async function POST(request: NextRequest) {
     // URL指定時はプロフィールをフェッチ（スクショがある場合はフェッチ失敗しても続行）
     let profile: ProfileData | null = null;
     let scraped = false;
+    let scrapeError = "";
     if (handle) {
       profile = await fetchProfile(handle);
       // 直接フェッチが弾かれた場合、Apifyトークンがあればスクレイパー経由で投稿を取得
       if (!profile) {
         const settings = await prisma.threadsToolSettings.findFirst();
         if (settings?.apifyToken) {
-          const run = await runActorAndGetItems(
-            settings.apifyToken,
-            settings.apifyActorId || DEFAULT_ACTOR_ID,
-            buildActorInput([handle], 15),
-          );
-          const items = normalizeItems(run.items).filter(
-            (i) => !i.authorHandle || i.authorHandle === handle,
-          );
+          const run = await runThreadsScrapeWithFallback(settings.apifyToken, settings.apifyActorId || null, [handle], 15);
+          const items = run.items.filter((i) => !i.authorHandle || i.authorHandle === handle);
           if (items.length > 0) {
             profile = {
               profileName: "",
@@ -147,17 +142,27 @@ export async function POST(request: NextRequest) {
               posts: items.slice(0, 10).map((i) => i.content),
             };
             scraped = true;
+            // 動いたActorを保存
+            if (run.actorUsed && run.actorUsed !== settings.apifyActorId) {
+              await prisma.threadsToolSettings.update({
+                where: { id: settings.id },
+                data: { apifyActorId: run.actorUsed },
+              });
+            }
+          } else {
+            scrapeError = run.error ?? "スクレイパーが0件を返しました";
           }
+        } else {
+          scrapeError = "Apifyトークン未登録のためスクレイパー経由は試行できません";
         }
       }
     }
 
-    // 取得失敗 + スクショも貼り付けもない → クライアントにスクショ/貼り付けを促す
+    // 取得失敗 + スクショも貼り付けもない → クライアントにスクショ/貼り付けを促す（失敗理由も表示）
     if (!profile && !pastedText?.trim() && images.length === 0) {
       return NextResponse.json(
         {
-          error:
-            "プロフィールを自動取得できませんでした。プロフィール画面のスクショを追加するか、プロフィール文と投稿数件を貼り付けてください。",
+          error: `プロフィールを自動取得できませんでした。スクショを追加するか、テキストを貼り付けてください。${scrapeError ? `【詳細】${scrapeError}` : ""}`,
           needPaste: true,
           handle,
         },

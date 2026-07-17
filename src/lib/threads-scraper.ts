@@ -4,6 +4,13 @@
 
 export const DEFAULT_ACTOR_ID = "apify/threads-scraper";
 
+// Actor候補（上から順に存在チェック→実行を試す。動いたものが設定に保存される）
+export const ACTOR_CANDIDATES = [
+  "apify/threads-scraper",
+  "curious_coder/threads-scraper",
+  "epctex/threads-scraper",
+];
+
 const APIFY_BASE = "https://api.apify.com/v2";
 
 export interface NormalizedScrapedPost {
@@ -112,6 +119,73 @@ export function buildActorInput(handles: string[], limitPerHandle = 25): Record<
     startUrls: urls.map((url) => ({ url })),
     resultsLimit: limitPerHandle,
     maxItems: limitPerHandle * handles.length,
+  };
+}
+
+// Actorが存在するか（メタデータ取得は無料）
+async function actorExists(token: string, actorId: string): Promise<boolean> {
+  try {
+    const res = await apifyFetch(token, `/acts/${actorId.replace("/", "~")}`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface ScrapeAttemptResult {
+  items: NormalizedScrapedPost[];
+  actorUsed: string | null;
+  error?: string;
+  log: string[];
+}
+
+// Actor候補と入力バリエーションを順に試し、投稿が取れた組み合わせを返す。
+// どのActor・入力で失敗したかを log に残す（画面に出してデバッグ可能にする）
+export async function runThreadsScrapeWithFallback(
+  token: string,
+  preferredActorId: string | null,
+  handles: string[],
+  limitPerHandle = 25,
+): Promise<ScrapeAttemptResult> {
+  const log: string[] = [];
+  const candidates = Array.from(
+    new Set([preferredActorId, ...ACTOR_CANDIDATES].filter((a): a is string => Boolean(a))),
+  );
+  const urls = handles.map((h) => `https://www.threads.net/@${h}`);
+  const inputVariants: { label: string; input: Record<string, unknown> }[] = [
+    { label: "combined", input: buildActorInput(handles, limitPerHandle) },
+    { label: "urls", input: { urls, resultsLimit: limitPerHandle } },
+    { label: "startUrls", input: { startUrls: urls.map((url) => ({ url })), resultsLimit: limitPerHandle } },
+    { label: "usernames", input: { usernames: handles, resultsLimit: limitPerHandle } },
+  ];
+
+  for (const actorId of candidates) {
+    if (!(await actorExists(token, actorId))) {
+      log.push(`${actorId}: 存在しない（スキップ）`);
+      continue;
+    }
+    for (const variant of inputVariants) {
+      const run = await runActorAndGetItems(token, actorId, variant.input);
+      if (run.error) {
+        log.push(`${actorId} (${variant.label}): ${run.error}`);
+        // 入力形式の問題なら次のバリエーションを試す。それ以外（課金・権限等）は次のActorへ
+        if (/input|schema|invalid|required/i.test(run.error)) continue;
+        break;
+      }
+      const items = normalizeItems(run.items);
+      if (items.length > 0) {
+        log.push(`${actorId} (${variant.label}): ${items.length}件取得 ✅`);
+        return { items, actorUsed: actorId, log };
+      }
+      log.push(`${actorId} (${variant.label}): 実行成功したが0件`);
+      // 0件は入力が効いていない可能性 → 次のバリエーションへ
+    }
+  }
+  return {
+    items: [],
+    actorUsed: null,
+    error: `投稿を取得できませんでした。試行ログ: ${log.join(" / ") || "候補Actorなし"}`,
+    log,
   };
 }
 

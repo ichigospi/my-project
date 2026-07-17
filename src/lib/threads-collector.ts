@@ -3,11 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { callThreadsAI, extractJson } from "@/lib/threads-ai";
 import { CLASSIFY_SYSTEM, buildClassifyInstruction, type ClassifyResult } from "@/lib/threads-prompts";
 import {
-  DEFAULT_ACTOR_ID,
-  buildActorInput,
   extractPostCode,
-  normalizeItems,
-  runActorAndGetItems,
+  runThreadsScrapeWithFallback,
   type NormalizedScrapedPost,
 } from "@/lib/threads-scraper";
 
@@ -29,7 +26,14 @@ export interface MetricsSummary {
 async function getScraperSettings() {
   const s = await prisma.threadsToolSettings.findFirst();
   if (!s?.apifyToken) return null;
-  return { ...s, actorId: s.apifyActorId || DEFAULT_ACTOR_ID };
+  return s;
+}
+
+// 動いたActorを設定に保存（次回からフォールバック探索をスキップ）
+async function rememberWorkingActor(settingsId: string, currentActorId: string, actorUsed: string | null) {
+  if (actorUsed && actorUsed !== currentActorId) {
+    await prisma.threadsToolSettings.update({ where: { id: settingsId }, data: { apifyActorId: actorUsed } });
+  }
 }
 
 // ===== 競合の自動収集 =====
@@ -61,12 +65,13 @@ export async function collectCompetitorPosts(accountId?: string): Promise<Collec
   const handles = Array.from(handleMap.keys());
   summary.handles = handles.length;
 
-  const run = await runActorAndGetItems(settings.apifyToken, settings.actorId, buildActorInput(handles));
+  const run = await runThreadsScrapeWithFallback(settings.apifyToken, settings.apifyActorId || null, handles);
   if (run.error) {
     summary.errors.push(run.error);
     return summary;
   }
-  const items = normalizeItems(run.items);
+  await rememberWorkingActor(settings.id, settings.apifyActorId, run.actorUsed);
+  const items = run.items;
   summary.itemsReturned = items.length;
 
   // ハンドルごとに振り分け → 重複排除して登録
@@ -209,12 +214,13 @@ export async function collectOwnMetrics(): Promise<MetricsSummary> {
   // 対象draftのアカウントハンドルをまとめてスクレイプ
   const handles = Array.from(new Set(targets.map((d) => d.account.handle)));
   summary.handles = handles.length;
-  const run = await runActorAndGetItems(settings.apifyToken, settings.actorId, buildActorInput(handles, 50));
+  const run = await runThreadsScrapeWithFallback(settings.apifyToken, settings.apifyActorId || null, handles, 50);
   if (run.error) {
     summary.errors.push(run.error);
     return summary;
   }
-  const items = normalizeItems(run.items);
+  await rememberWorkingActor(settings.id, settings.apifyActorId, run.actorUsed);
+  const items = run.items;
   summary.itemsReturned = items.length;
 
   // 投稿コードで突合

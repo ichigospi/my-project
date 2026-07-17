@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
-import { testApifyConnection, DEFAULT_ACTOR_ID } from "@/lib/threads-scraper";
+import { testApifyConnection } from "@/lib/threads-scraper";
 
 export async function POST() {
   try {
@@ -22,7 +22,7 @@ export async function POST() {
       ok: true,
       username: result.username,
       plan: result.plan,
-      actorId: settings.apifyActorId || DEFAULT_ACTOR_ID,
+      actorId: settings.apifyActorId || "未確定（初回実行時に候補から自動選択）",
     });
   } catch (e) {
     console.error("POST /api/threads/scraper/test", e);
