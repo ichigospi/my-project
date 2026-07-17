@@ -21,6 +21,7 @@ export interface NormalizedScrapedPost {
   replies: number;
   reposts: number;
   quotes: number;
+  views: number;
   postedAt: Date | null;
 }
 
@@ -356,6 +357,7 @@ export function normalizeItems(raw: unknown[], includeReplies = true): Normalize
       replies: pickNum(obj, ["repliesCount", "commentsCount", "replies", "comments", "replyCount", "reply_count"]),
       reposts: pickNum(obj, ["repostsCount", "reposts", "repostCount", "repost_count", "reshareCount"]),
       quotes: pickNum(obj, ["quotesCount", "quotes", "quoteCount", "quote_count"]),
+      views: pickNum(obj, ["viewsCount", "views", "viewCount", "view_count", "impressions", "impressionsCount", "playCount", "reach"]),
       postedAt: parsePostedAt(obj),
     });
   }

@@ -117,6 +117,7 @@ export async function collectCompetitorPosts(opts?: { accountId?: string; compet
           replies: item.replies,
           reposts: item.reposts,
           quotes: item.quotes,
+          views: item.views,
           postedAt: item.postedAt,
           source: "scraper",
         },

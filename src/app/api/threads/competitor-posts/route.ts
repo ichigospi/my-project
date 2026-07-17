@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
     if (planType) where.planType = planType;
     if (hot === "1") where.isHot = true;
     if (q) where.content = { contains: q };
+    // 閲覧数の下限フィルタ
+    const minViews = Number(searchParams.get("minViews") || 0);
+    if (minViews > 0) where.views = { gte: minViews };
 
     const orderBy =
       sort === "likes"
@@ -46,7 +49,46 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    return NextResponse.json({ total, page, pageSize: PAGE_SIZE, posts });
+    // 直近10投稿の中央値に対する倍率を計算（リプは収集時点で除外済み）
+    // viewsが取れていればviews基準、取れていなければlikes基準
+    const competitorIds = Array.from(new Set(posts.map((p) => p.competitorId)));
+    const baselineMap = new Map<string, { medianViews: number; medianLikes: number }>();
+    await Promise.all(
+      competitorIds.map(async (cid) => {
+        const recent = await prisma.threadsCompetitorPost.findMany({
+          where: { competitorId: cid },
+          orderBy: [{ postedAt: "desc" }, { collectedAt: "desc" }],
+          take: 10,
+          select: { views: true, likes: true },
+        });
+        const median = (arr: number[]) => {
+          const s = arr.filter((n) => n > 0).sort((a, b) => a - b);
+          return s.length === 0 ? 0 : s[Math.floor(s.length / 2)];
+        };
+        baselineMap.set(cid, {
+          medianViews: median(recent.map((r) => r.views)),
+          medianLikes: median(recent.map((r) => r.likes)),
+        });
+      }),
+    );
+
+    const postsWithMultiplier = posts.map((p) => {
+      const base = baselineMap.get(p.competitorId);
+      let multiplier: number | null = null;
+      let multiplierBasis: "views" | "likes" | null = null;
+      if (base) {
+        if (base.medianViews > 0 && p.views > 0) {
+          multiplier = Math.round((p.views / base.medianViews) * 10) / 10;
+          multiplierBasis = "views";
+        } else if (base.medianLikes > 0 && p.likes > 0) {
+          multiplier = Math.round((p.likes / base.medianLikes) * 10) / 10;
+          multiplierBasis = "likes";
+        }
+      }
+      return { ...p, multiplier, multiplierBasis };
+    });
+
+    return NextResponse.json({ total, page, pageSize: PAGE_SIZE, posts: postsWithMultiplier });
   } catch (e) {
     console.error("GET /api/threads/competitor-posts", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
