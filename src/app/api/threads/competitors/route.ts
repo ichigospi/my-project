@@ -43,6 +43,10 @@ export async function POST(request: NextRequest) {
         name: body.name ?? "",
         note: body.note ?? "",
         priority: Number(body.priority ?? 0),
+        collectLimit:
+          body.collectLimit === null || body.collectLimit === undefined || body.collectLimit === ""
+            ? null
+            : Math.min(200, Math.max(1, Number(body.collectLimit))),
       },
     });
     return NextResponse.json(competitor);

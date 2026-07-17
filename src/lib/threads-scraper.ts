@@ -156,6 +156,48 @@ async function actorExists(token: string, actorId: string): Promise<boolean> {
   }
 }
 
+// Actorのinput schemaをApify APIから取得し、件数指定フィールド名を特定する
+// （Actorごとにフィールド名が違うため、推測ではなく実際のスキーマから読む）
+async function fetchActorSchemaInfo(
+  token: string,
+  actorId: string,
+): Promise<{ exists: boolean; limitField?: string; integerFields: string[] }> {
+  try {
+    const escaped = actorId.replace("/", "~");
+    const actRes = await apifyFetch(token, `/acts/${escaped}`);
+    if (!actRes.ok) return { exists: false, integerFields: [] };
+    const actData = (await actRes.json()) as {
+      data?: { taggedBuilds?: { latest?: { buildId?: string } } };
+    };
+    const buildId = actData.data?.taggedBuilds?.latest?.buildId;
+    if (!buildId) return { exists: true, integerFields: [] };
+
+    const buildRes = await apifyFetch(token, `/acts/${escaped}/builds/${buildId}`);
+    if (!buildRes.ok) return { exists: true, integerFields: [] };
+    const buildData = (await buildRes.json()) as { data?: { inputSchema?: unknown } };
+    let schema = buildData.data?.inputSchema;
+    if (typeof schema === "string") {
+      try {
+        schema = JSON.parse(schema);
+      } catch {
+        return { exists: true, integerFields: [] };
+      }
+    }
+    const props = (schema as { properties?: Record<string, { type?: string }> })?.properties ?? {};
+    const integerFields = Object.entries(props)
+      .filter(([, def]) => def.type === "integer" || def.type === "number")
+      .map(([key]) => key);
+    // 件数っぽい名前を優先度順に探す
+    const limitField =
+      integerFields.find((k) => /resultslimit|maxposts|maxresults|postlimit|postspersource/i.test(k)) ??
+      integerFields.find((k) => /limit|max|count|results|per.?source/i.test(k)) ??
+      undefined;
+    return { exists: true, limitField, integerFields };
+  } catch {
+    return { exists: false, integerFields: [] };
+  }
+}
+
 export interface ScrapeAttemptResult {
   items: NormalizedScrapedPost[];
   actorUsed: string | null;
@@ -179,18 +221,28 @@ export async function runThreadsScrapeWithFallback(
   const urls = handles.map((h) => `https://www.threads.net/@${h}`);
   const replyFlags = includeReplies ? {} : { onlyPosts: true, includeReplies: false, scrapeReplies: false };
   const limits = limitFields(limitPerHandle, handles.length);
-  const inputVariants: { label: string; input: Record<string, unknown> }[] = [
-    { label: "combined", input: buildActorInput(handles, limitPerHandle, includeReplies) },
-    { label: "urls", input: { urls, ...limits, ...replyFlags } },
-    { label: "startUrls", input: { startUrls: urls.map((url) => ({ url })), ...limits, ...replyFlags } },
-    { label: "usernames", input: { usernames: handles, ...limits, ...replyFlags } },
-  ];
 
   for (const actorId of candidates) {
-    if (!(await actorExists(token, actorId))) {
+    // Actorの入力仕様をAPIから読み、正しい件数フィールドを特定する
+    const schemaInfo = await fetchActorSchemaInfo(token, actorId);
+    if (!schemaInfo.exists) {
       log.push(`${actorId}: 存在しない（スキップ）`);
       continue;
     }
+    // スキーマで見つけた件数フィールドを最優先で反映（総当たりの名前も保険で残す）
+    const schemaLimits: Record<string, number> = { ...limits };
+    if (schemaInfo.limitField) {
+      schemaLimits[schemaInfo.limitField] = limitPerHandle;
+      log.push(`${actorId}: 件数フィールド=${schemaInfo.limitField} に${limitPerHandle}を指定`);
+    } else if (schemaInfo.integerFields.length > 0) {
+      log.push(`${actorId}: 件数フィールド不明（整数項目: ${schemaInfo.integerFields.join(",")}）`);
+    }
+    const inputVariants: { label: string; input: Record<string, unknown> }[] = [
+      { label: "combined", input: { ...buildActorInput(handles, limitPerHandle, includeReplies), ...schemaLimits } },
+      { label: "urls", input: { urls, ...schemaLimits, ...replyFlags } },
+      { label: "startUrls", input: { startUrls: urls.map((url) => ({ url })), ...schemaLimits, ...replyFlags } },
+      { label: "usernames", input: { usernames: handles, ...schemaLimits, ...replyFlags } },
+    ];
     for (const variant of inputVariants) {
       const run = await runActorAndGetItems(token, actorId, variant.input);
       if (run.error) {

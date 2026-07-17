@@ -14,6 +14,7 @@ export interface CollectSummary {
   created: number;
   classified: number;
   errors: string[];
+  log?: string[]; // スクレイパーの試行ログ（デバッグ用）
 }
 
 export interface MetricsSummary {
@@ -71,13 +72,19 @@ export async function collectCompetitorPosts(opts?: { accountId?: string; compet
   const handles = Array.from(handleMap.keys());
   summary.handles = handles.length;
 
+  // 収集件数: 競合ごとの設定があればその最大値、なければ全体設定を使う
+  // （スクレイパーは全ハンドル共通の件数指定のため、対象競合の最大値を採用）
+  const perCompetitorLimits = competitors.map((c) => c.collectLimit).filter((n): n is number => typeof n === "number");
+  const effectiveLimit = perCompetitorLimits.length > 0 ? Math.max(...perCompetitorLimits, settings.collectLimit) : settings.collectLimit;
+
   const run = await runThreadsScrapeWithFallback(
     settings.apifyToken,
     settings.apifyActorId || null,
     handles,
-    settings.collectLimit,
+    effectiveLimit,
     settings.includeReplies,
   );
+  summary.log = run.log;
   if (run.error) {
     summary.errors.push(run.error);
     return summary;

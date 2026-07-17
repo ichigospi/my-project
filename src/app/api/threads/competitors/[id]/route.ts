@@ -13,6 +13,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     if (typeof body.handle === "string") data.handle = body.handle.replace(/^@/, "");
     if (body.priority !== undefined) data.priority = Number(body.priority);
+    if (body.collectLimit !== undefined) {
+      data.collectLimit =
+        body.collectLimit === null || body.collectLimit === ""
+          ? null
+          : Math.min(200, Math.max(1, Number(body.collectLimit)));
+    }
 
     const competitor = await prisma.threadsCompetitor.update({ where: { id }, data });
     return NextResponse.json(competitor);
