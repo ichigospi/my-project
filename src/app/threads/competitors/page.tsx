@@ -28,6 +28,9 @@ export default function ThreadsCompetitorsPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState("");
   const [error, setError] = useState("");
+  // スクレイパー収集（競合ごと）
+  const [collectingId, setCollectingId] = useState<string | null>(null);
+  const [collectMsg, setCollectMsg] = useState<{ id: string; text: string } | null>(null);
   // 競合追加のURL/スクショ自動入力
   const [compUrl, setCompUrl] = useState("");
   const [compImages, setCompImages] = useState<string[]>([]);
@@ -157,13 +160,36 @@ export default function ThreadsCompetitorsPage() {
     }
   };
 
+  const collectOne = async (c: Competitor) => {
+    setCollectingId(c.id);
+    setCollectMsg({ id: c.id, text: "スクレイパーで収集中...（1〜3分かかります）" });
+    try {
+      const res = await api<{ itemsReturned: number; created: number; classified: number; errors: string[] }>(
+        "/api/threads/scraper/collect",
+        { method: "POST", body: JSON.stringify({ competitorId: c.id }) },
+      );
+      setCollectMsg({
+        id: c.id,
+        text:
+          res.errors.length > 0
+            ? `⚠️ ${res.errors.join(" / ")}`
+            : `✅ ${res.itemsReturned}件取得 → 新規${res.created}件を登録、${res.classified}件を自動分類`,
+      });
+      await load();
+    } catch (e) {
+      setCollectMsg({ id: c.id, text: `エラー: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setCollectingId(null);
+    }
+  };
+
   return (
     <main className="px-4 md:px-6 py-6 max-w-4xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-neutral-100">ベンチマーク（競合）</h2>
           <p className="text-sm text-neutral-400 mt-1">
-            競合を登録し、伸びている投稿をコピペで取り込みます。AIが本文と数値を自動で整理・分類します。
+            競合ごとに「🔄自動収集」でスクレイパーが投稿を取得します（件数は⚙️設定で調整）。スクショ/貼り付けの「📥手動取込」も併用可。
           </p>
         </div>
         <button onClick={() => startEdit(null)} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-neutral-200 whitespace-nowrap">
@@ -191,14 +217,21 @@ export default function ThreadsCompetitorsPage() {
               </div>
               <div className="flex gap-2 shrink-0 flex-wrap">
                 <button
+                  onClick={() => collectOne(c)}
+                  disabled={collectingId !== null}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-white text-black font-bold hover:bg-neutral-200 disabled:opacity-50"
+                >
+                  {collectingId === c.id ? "収集中..." : "🔄 自動収集"}
+                </button>
+                <button
                   onClick={() => {
                     setImportTarget(c);
                     setImportResult("");
                     setImportImages([]);
                   }}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-white text-black font-medium hover:bg-neutral-200"
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800"
                 >
-                  📥 投稿を取り込む
+                  📥 手動取込
                 </button>
                 <Link href={`/threads/research?competitorId=${c.id}`} className="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800">
                   投稿を見る
@@ -211,6 +244,11 @@ export default function ThreadsCompetitorsPage() {
                 </button>
               </div>
             </div>
+            {collectMsg?.id === c.id && (
+              <p className={`text-[11px] mt-2 ${collectMsg.text.startsWith("✅") ? "text-emerald-300" : collectMsg.text.startsWith("⚠️") ? "text-amber-300" : collectMsg.text.startsWith("エラー") ? "text-rose-300" : "text-neutral-400"}`}>
+                {collectMsg.text}
+              </p>
+            )}
           </div>
         ))}
         {competitors.length === 0 && (
