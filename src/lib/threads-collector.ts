@@ -65,7 +65,13 @@ export async function collectCompetitorPosts(accountId?: string): Promise<Collec
   const handles = Array.from(handleMap.keys());
   summary.handles = handles.length;
 
-  const run = await runThreadsScrapeWithFallback(settings.apifyToken, settings.apifyActorId || null, handles);
+  const run = await runThreadsScrapeWithFallback(
+    settings.apifyToken,
+    settings.apifyActorId || null,
+    handles,
+    settings.collectLimit,
+    settings.includeReplies,
+  );
   if (run.error) {
     summary.errors.push(run.error);
     return summary;
