@@ -11,11 +11,12 @@ interface Competitor {
   name: string;
   note: string;
   priority: number;
+  collectLimit: number | null;
   _count?: { posts: number };
   posts?: { collectedAt: string }[];
 }
 
-const emptyForm = { handle: "", name: "", note: "", priority: 0 };
+const emptyForm = { handle: "", name: "", note: "", priority: 0, collectLimit: "" as number | "" };
 
 export default function ThreadsCompetitorsPage() {
   const [accountId] = useThreadsAccountId();
@@ -30,7 +31,8 @@ export default function ThreadsCompetitorsPage() {
   const [error, setError] = useState("");
   // スクレイパー収集（競合ごと）
   const [collectingId, setCollectingId] = useState<string | null>(null);
-  const [collectMsg, setCollectMsg] = useState<{ id: string; text: string } | null>(null);
+  const [collectMsg, setCollectMsg] = useState<{ id: string; text: string; log?: string[] } | null>(null);
+  const [showLog, setShowLog] = useState(false);
   // 競合追加のURL/スクショ自動入力
   const [compUrl, setCompUrl] = useState("");
   const [compImages, setCompImages] = useState<string[]>([]);
@@ -99,7 +101,7 @@ export default function ThreadsCompetitorsPage() {
       setForm({ ...emptyForm });
       setEditing("new");
     } else {
-      setForm({ handle: c.handle, name: c.name, note: c.note, priority: c.priority });
+      setForm({ handle: c.handle, name: c.name, note: c.note, priority: c.priority, collectLimit: c.collectLimit ?? "" });
       setEditing(c.id);
     }
   };
@@ -164,16 +166,18 @@ export default function ThreadsCompetitorsPage() {
     setCollectingId(c.id);
     setCollectMsg({ id: c.id, text: "スクレイパーで収集中...（1〜3分かかります）" });
     try {
-      const res = await api<{ itemsReturned: number; created: number; classified: number; errors: string[] }>(
+      const res = await api<{ itemsReturned: number; created: number; classified: number; errors: string[]; log?: string[] }>(
         "/api/threads/scraper/collect",
         { method: "POST", body: JSON.stringify({ competitorId: c.id }) },
       );
+      setShowLog(false);
       setCollectMsg({
         id: c.id,
         text:
           res.errors.length > 0
             ? `⚠️ ${res.errors.join(" / ")}`
             : `✅ ${res.itemsReturned}件取得 → 新規${res.created}件を登録、${res.classified}件を自動分類`,
+        log: res.log,
       });
       await load();
     } catch (e) {
@@ -213,6 +217,7 @@ export default function ThreadsCompetitorsPage() {
                 <p className="text-[11px] text-neutral-500 mt-1">
                   収集 {c._count?.posts ?? 0}件
                   {c.posts?.[0] && ` / 最終取込 ${fmtDate(c.posts[0].collectedAt)}`}
+                  {` / 取得件数 ${c.collectLimit ?? "既定"}`}
                 </p>
               </div>
               <div className="flex gap-2 shrink-0 flex-wrap">
@@ -245,9 +250,23 @@ export default function ThreadsCompetitorsPage() {
               </div>
             </div>
             {collectMsg?.id === c.id && (
-              <p className={`text-[11px] mt-2 ${collectMsg.text.startsWith("✅") ? "text-emerald-300" : collectMsg.text.startsWith("⚠️") ? "text-amber-300" : collectMsg.text.startsWith("エラー") ? "text-rose-300" : "text-neutral-400"}`}>
-                {collectMsg.text}
-              </p>
+              <div className="mt-2">
+                <p className={`text-[11px] ${collectMsg.text.startsWith("✅") ? "text-emerald-300" : collectMsg.text.startsWith("⚠️") ? "text-amber-300" : collectMsg.text.startsWith("エラー") ? "text-rose-300" : "text-neutral-400"}`}>
+                  {collectMsg.text}
+                </p>
+                {collectMsg.log && collectMsg.log.length > 0 && (
+                  <>
+                    <button onClick={() => setShowLog(!showLog)} className="text-[10px] text-neutral-500 hover:text-neutral-300 underline mt-1">
+                      {showLog ? "詳細を閉じる" : "詳細ログを見る"}
+                    </button>
+                    {showLog && (
+                      <pre className="mt-1 text-[10px] text-neutral-400 whitespace-pre-wrap bg-neutral-950 rounded-lg p-2 border border-neutral-800 overflow-x-auto">
+                        {collectMsg.log.join("\n")}
+                      </pre>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -324,6 +343,19 @@ export default function ThreadsCompetitorsPage() {
             <label className="block">
               <span className="text-xs font-medium text-neutral-300">メモ（なぜベンチマークするか等）</span>
               <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={2} className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-300">取得件数（この競合を自動収集するときの件数）</span>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={form.collectLimit}
+                onChange={(e) => setForm({ ...form, collectLimit: e.target.value === "" ? "" : Number(e.target.value) })}
+                className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+                placeholder="空欄 = 設定の既定値を使う"
+              />
+              <span className="text-[10px] text-neutral-600">多いほど過去に遡れます。伸びてる大手は多め、投稿頻度の低いアカは少なめ、のように使い分けできます。</span>
             </label>
             <label className="flex items-center gap-2 text-sm text-neutral-300">
               <input type="checkbox" checked={form.priority > 0} onChange={(e) => setForm({ ...form, priority: e.target.checked ? 1 : 0 })} />

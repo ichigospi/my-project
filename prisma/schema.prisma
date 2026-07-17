@@ -390,11 +390,12 @@ model ThreadsCompetitor {
   id        String   @id @default(cuid())
   accountId String                        // どの自アカのベンチマークか
   handle    String
-  name      String   @default("")
-  note      String   @default("")
-  priority  Int      @default(0)          // 重点ベンチマーク順
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  name         String   @default("")
+  note         String   @default("")
+  priority     Int      @default(0)        // 重点ベンチマーク順
+  collectLimit Int?                        // この競合の収集件数（null=設定の既定を使用）
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   account ThreadsAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   posts   ThreadsCompetitorPost[]
