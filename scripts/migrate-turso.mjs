@@ -102,6 +102,8 @@ for (const sql of sqls) {
 // 後付けの ALTER TABLE — 失敗しても継続（既に追加済みなら "duplicate column" エラーが出るので無視）
 const alters = [
   `ALTER TABLE "XCompetitor" ADD COLUMN "isSelf" BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE "ThreadsToolSettings" ADD COLUMN "lastCollectAt" DATETIME`,
+  `ALTER TABLE "ThreadsToolSettings" ADD COLUMN "lastMetricsAt" DATETIME`,
 ];
 for (const sql of alters) {
   try {
