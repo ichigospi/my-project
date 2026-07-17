@@ -221,6 +221,7 @@ export async function runThreadsScrapeWithFallback(
   includeReplies = false,
 ): Promise<ScrapeAttemptResult> {
   const log: string[] = [];
+  let rawDumped = false; // 生データの構造ダンプは全体で1回だけ
   const candidates = Array.from(
     new Set([preferredActorId, ...ACTOR_CANDIDATES].filter((a): a is string => Boolean(a))),
   );
@@ -277,6 +278,24 @@ export async function runThreadsScrapeWithFallback(
         return { items, actorUsed: actorId, log };
       }
       log.push(`${actorId} (${variant.label}): 実行成功したが0件（生${run.items.length}件）`);
+      // 生データはあるのに有効0件 → 項目名が想定と違う。実際の構造をログに出す（1回だけ）
+      if (run.items.length > 0 && !rawDumped) {
+        const firstRaw = run.items.find((r) => r && typeof r === "object");
+        if (firstRaw) {
+          const obj = firstRaw as Record<string, unknown>;
+          log.push(`【生データ項目名】${Object.keys(obj).join(", ")}`);
+          // 各値を短く（本文がどのキーに入っているか特定するため）
+          const sample = Object.entries(obj)
+            .map(([k, v]) => {
+              let s = typeof v === "object" ? JSON.stringify(v) : String(v);
+              if (s.length > 60) s = s.slice(0, 60) + "…";
+              return `${k}=${s}`;
+            })
+            .join(" | ");
+          log.push(`【生データ中身】${sample}`);
+          rawDumped = true;
+        }
+      }
       // 0件は入力が効いていない可能性 → 次のバリエーションへ
     }
   }
