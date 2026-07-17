@@ -28,7 +28,8 @@ export default function ThreadsCompetitorsPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState("");
   const [error, setError] = useState("");
-  // 競合追加のスクショ自動入力
+  // 競合追加のURL/スクショ自動入力
+  const [compUrl, setCompUrl] = useState("");
   const [compImages, setCompImages] = useState<string[]>([]);
   const [compPrefilling, setCompPrefilling] = useState(false);
   const [compPrefillMsg, setCompPrefillMsg] = useState("");
@@ -52,8 +53,8 @@ export default function ThreadsCompetitorsPage() {
       setCompPrefillMsg("エラー: AI APIキーが未設定です");
       return;
     }
-    if (compImages.length === 0) {
-      setCompPrefillMsg("プロフィールのスクショを選択してください");
+    if (compImages.length === 0 && !compUrl.trim()) {
+      setCompPrefillMsg("URLを入れるか、プロフィールのスクショを選択してください");
       return;
     }
     setCompPrefilling(true);
@@ -63,7 +64,13 @@ export default function ThreadsCompetitorsPage() {
         "/api/threads/accounts/prefill",
         {
           method: "POST",
-          body: JSON.stringify({ target: "competitor", images: compImages, aiApiKey, model: getThreadsModel() }),
+          body: JSON.stringify({
+            target: "competitor",
+            url: compUrl.trim() || undefined,
+            images: compImages.length > 0 ? compImages : undefined,
+            aiApiKey,
+            model: getThreadsModel(),
+          }),
         },
       );
       setForm((f) => ({
@@ -82,6 +89,7 @@ export default function ThreadsCompetitorsPage() {
 
   const startEdit = (c: Competitor | null) => {
     setError("");
+    setCompUrl("");
     setCompImages([]);
     setCompPrefillMsg("");
     if (!c) {
@@ -219,9 +227,15 @@ export default function ThreadsCompetitorsPage() {
             <h3 className="text-lg font-bold text-neutral-100">{editing === "new" ? "競合を追加" : "競合を編集"}</h3>
             {error && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-sm text-rose-300">{error}</div>}
 
-            {/* スクショ自動入力 */}
+            {/* URL/スクショ自動入力 */}
             <div className="bg-neutral-800/60 border border-neutral-700 rounded-xl p-3 space-y-2">
-              <span className="text-xs font-bold text-neutral-200">🔮 スクショから自動入力</span>
+              <span className="text-xs font-bold text-neutral-200">🔮 自動入力（URL or スクショ）</span>
+              <input
+                value={compUrl}
+                onChange={(e) => setCompUrl(e.target.value)}
+                className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+                placeholder="https://www.threads.net/@競合のアカウント"
+              />
               <div className="flex items-center gap-2 flex-wrap">
                 <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
                   📷 プロフのスクショを選択
@@ -250,10 +264,10 @@ export default function ThreadsCompetitorsPage() {
                 )}
                 <button
                   onClick={runCompPrefill}
-                  disabled={compPrefilling || compImages.length === 0}
+                  disabled={compPrefilling || (compImages.length === 0 && !compUrl.trim())}
                   className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 disabled:opacity-50 whitespace-nowrap"
                 >
-                  {compPrefilling ? "解析中..." : "自動入力"}
+                  {compPrefilling ? "解析中...（URLの場合1〜2分）" : "自動入力"}
                 </button>
               </div>
               {compPrefillMsg && (
