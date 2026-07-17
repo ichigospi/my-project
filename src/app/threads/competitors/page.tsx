@@ -206,19 +206,22 @@ export default function ThreadsCompetitorsPage() {
       <div className="space-y-3">
         {competitors.map((c) => (
           <div key={c.id} className="bg-neutral-900 rounded-xl border border-neutral-800 p-4">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-neutral-100">@{c.handle}</span>
-                  {c.name && <span className="text-sm text-neutral-500">{c.name}</span>}
-                  {c.priority > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">重点</span>}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3 min-w-0">
+                {/* ハンドル頭文字のアバター */}
+                <div className="w-9 h-9 shrink-0 rounded-full bg-neutral-700 flex items-center justify-center text-sm font-bold text-neutral-200 uppercase">
+                  {(c.name || c.handle).charAt(0)}
                 </div>
-                {c.note && <p className="text-xs text-neutral-400 mt-1">{c.note}</p>}
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  収集 {c._count?.posts ?? 0}件
-                  {c.posts?.[0] && ` / 最終取込 ${fmtDate(c.posts[0].collectedAt)}`}
-                  {` / 取得件数 ${c.collectLimit ?? "既定"}`}
-                </p>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-neutral-100 truncate">{c.name || `@${c.handle}`}</span>
+                    {c.priority > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">重点</span>}
+                  </div>
+                  <div className="text-[11px] text-neutral-500">
+                    @{c.handle}
+                    <span className="text-neutral-600"> ・ 収集{c._count?.posts ?? 0}件</span>
+                  </div>
+                </div>
               </div>
               <div className="flex gap-2 shrink-0 flex-wrap">
                 <button
