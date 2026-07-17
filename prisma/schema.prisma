@@ -510,6 +510,8 @@ model ThreadsToolSettings {
   openaiApiKey   String   @default("")     // 画像生成（Phase 2）
   scraperEnabled Boolean  @default(false)
   metricsTiming  String   @default("[1,24,72,168]") // 計測タイミング(時間)
+  lastCollectAt  DateTime?                          // 最後に競合収集を実行した時刻
+  lastMetricsAt  DateTime?                          // 最後に自投稿計測を実行した時刻
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }

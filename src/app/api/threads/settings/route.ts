@@ -24,6 +24,8 @@ export async function GET() {
       openaiApiKeyMasked: mask(s.openaiApiKey),
       scraperEnabled: s.scraperEnabled,
       metricsTiming: s.metricsTiming,
+      lastCollectAt: s.lastCollectAt,
+      lastMetricsAt: s.lastMetricsAt,
       updatedAt: s.updatedAt,
     });
   } catch (e) {
