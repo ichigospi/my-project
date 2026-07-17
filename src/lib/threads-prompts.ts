@@ -358,6 +358,23 @@ export interface PrefillResult {
   tone: Record<string, string>;
 }
 
+// 競合登録用の軽量版（ハンドル・名前・メモだけ推定）
+export const COMPETITOR_PREFILL_SYSTEM = `あなたはSNSアカウント分析の専門家です。
+Threadsアカウントのプロフィール情報（テキストまたはスクリーンショット画像）から、ベンチマーク登録用の情報を読み取ってJSONで返してください。
+
+出力形式（JSONのみを出力）:
+{
+  "handle": "@なしのハンドル（@xxx 表記から読み取る。不明なら空文字）",
+  "name": "アカウントの表示名（不明なら空文字）",
+  "note": "何者か・発信ジャンル・強み（フォロワー規模が分かれば含める）を2-3文で"
+}`;
+
+export interface CompetitorPrefillResult {
+  handle: string;
+  name: string;
+  note: string;
+}
+
 export const INSIGHT_SYSTEM = `あなたはThreads運用の分析者です。投稿の実績データを見て、考察の下書きを作ります。
 - オマージュ元の実績と自投稿の実績を比較し、何が効いた/効かなかったかを推測する
 - 次の投稿に活かせる示唆を1-2個出す
