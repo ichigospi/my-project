@@ -255,6 +255,20 @@ export async function runThreadsScrapeWithFallback(
       const items = normalizeItems(run.items, includeReplies);
       if (items.length > 0) {
         log.push(`${actorId} (${variant.label}): 生${run.items.length}件→有効${items.length}件 ✅`);
+        // 診断: Actorが返す生データのフィールド名一覧（views取得可否の確認用）
+        const firstRaw = run.items.find((r) => r && typeof r === "object");
+        if (firstRaw) {
+          const keys = Object.keys(firstRaw as Record<string, unknown>);
+          log.push(`Actorの返却フィールド: ${keys.join(", ")}`);
+          // views系の値があれば具体値も出す
+          const obj = firstRaw as Record<string, unknown>;
+          const viewLike = keys.filter((k) => /view|impress|play|reach|seen/i.test(k));
+          if (viewLike.length > 0) {
+            log.push(`閲覧数っぽい項目: ${viewLike.map((k) => `${k}=${JSON.stringify(obj[k])}`).join(", ")}`);
+          } else {
+            log.push("閲覧数っぽい項目: なし（このActorは閲覧数を返していません）");
+          }
+        }
         return { items, actorUsed: actorId, log };
       }
       log.push(`${actorId} (${variant.label}): 実行成功したが0件（生${run.items.length}件）`);
