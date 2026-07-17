@@ -58,7 +58,7 @@ export default function ThreadsAccountsPage() {
   interface PrefillResponse {
     prefill: { name: string; concept: string; logic: string; target: string; tone: Record<string, string> };
     handle: string | null;
-    source: { fetched: boolean; postCount: number };
+    source: { fetched: boolean; scraped?: boolean; postCount: number };
   }
 
   const runPrefill = async () => {
@@ -95,7 +95,7 @@ export default function ThreadsAccountsPage() {
       }));
       setPrefillMsg(
         res.source.fetched
-          ? `✅ プロフィールから自動入力しました（投稿${res.source.postCount}件を参照）。内容を確認・修正して保存してください`
+          ? `✅ ${res.source.scraped ? "スクレイパー経由で" : "プロフィールから"}自動入力しました（投稿${res.source.postCount}件を参照）。内容を確認・修正して保存してください`
           : prefillImages.length > 0
             ? `✅ スクショ${prefillImages.length}枚から自動入力しました。内容を確認・修正して保存してください`
             : "✅ 貼り付け内容から自動入力しました。内容を確認・修正して保存してください",
@@ -291,7 +291,7 @@ export default function ThreadsAccountsPage() {
                   disabled={prefilling}
                   className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 disabled:opacity-50 whitespace-nowrap"
                 >
-                  {prefilling ? "解析中..." : "自動入力"}
+                  {prefilling ? "解析中...（URLの場合1〜2分）" : "自動入力"}
                 </button>
               </div>
               <button onClick={() => setShowPaste(!showPaste)} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
