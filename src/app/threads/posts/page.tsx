@@ -223,6 +223,51 @@ function DraftDrawer({
   const [ownerComment, setOwnerComment] = useState(draft.ownerComment);
   const [busy, setBusy] = useState("");
   const [copied, setCopied] = useState(false);
+  // 画像（一覧APIは軽量化のためmediaUrlsを持たないので、詳細から取得）
+  const [images, setImages] = useState<string[]>([]);
+  const [imageStyle, setImageStyle] = useState("");
+  const [imageMsg, setImageMsg] = useState("");
+
+  const loadImages = useCallback(async () => {
+    try {
+      const detail = await api<{ mediaUrls: string }>(`/api/threads/drafts/${draft.id}`);
+      setImages(JSON.parse(detail.mediaUrls || "[]") as string[]);
+    } catch {
+      // ignore
+    }
+  }, [draft.id]);
+
+  useEffect(() => {
+    loadImages();
+  }, [loadImages]);
+
+  const genImage = async () => {
+    const aiApiKey = getAiKey();
+    if (!aiApiKey) {
+      setImageMsg("エラー: AI APIキーが未設定です");
+      return;
+    }
+    setBusy("image");
+    setImageMsg("");
+    try {
+      const res = await api<{ image: string; description: string }>(`/api/threads/drafts/${draft.id}/image`, {
+        method: "POST",
+        body: JSON.stringify({ aiApiKey, model: getThreadsModel(), styleInstruction: imageStyle }),
+      });
+      setImages((prev) => [...prev, res.image]);
+      setImageMsg(`✅ 生成しました: ${res.description}`);
+    } catch (e) {
+      setImageMsg(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const removeImage = async (index: number) => {
+    const next = images.filter((_, i) => i !== index);
+    setImages(next);
+    await api(`/api/threads/drafts/${draft.id}`, { method: "PATCH", body: JSON.stringify({ mediaUrls: JSON.stringify(next) }) });
+  };
 
   const refA = parseSnapshot(draft.refASnapshot);
   const refB = parseSnapshot(draft.refBSnapshot);
@@ -321,6 +366,52 @@ function DraftDrawer({
             className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
           />
           <p className="text-[11px] text-neutral-500">{content.length}文字（編集は自動保存）</p>
+        </div>
+
+        {/* 画像生成 */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 space-y-2">
+          <span className="text-xs font-bold text-neutral-300">🎨 画像（投稿と一緒にアップする用）</span>
+          {images.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {images.map((src, i) => (
+                <div key={i} className="relative group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={`画像${i + 1}`} className="h-24 w-24 object-cover rounded-lg border border-neutral-700" />
+                  <div className="absolute inset-0 hidden group-hover:flex items-center justify-center gap-1.5 bg-black/60 rounded-lg">
+                    <a
+                      href={src}
+                      download={`threads-image-${i + 1}.jpg`}
+                      className="text-[10px] px-2 py-1 rounded bg-white text-black font-bold"
+                    >
+                      保存
+                    </a>
+                    <button onClick={() => removeImage(i)} className="text-[10px] px-2 py-1 rounded bg-rose-600 text-white font-bold">
+                      削除
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={imageStyle}
+              onChange={(e) => setImageStyle(e.target.value)}
+              className="flex-1 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-2 py-1.5 text-xs"
+              placeholder="スタイル指定（任意）例: 温かい写真調 / 和風イラスト"
+            />
+            <button
+              onClick={genImage}
+              disabled={busy === "image"}
+              className="text-xs px-3 py-1.5 rounded-lg bg-white text-black font-bold hover:bg-neutral-200 disabled:opacity-50 whitespace-nowrap"
+            >
+              {busy === "image" ? "生成中...（1分弱）" : "🎨 画像を生成"}
+            </button>
+          </div>
+          {imageMsg && (
+            <p className={`text-[11px] ${imageMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{imageMsg}</p>
+          )}
+          <p className="text-[10px] text-neutral-600">投稿本文からAIが画像プロンプトを作り、OpenAI（設定画面のキー）で生成します。スマホ投稿時は「保存」して一緒にアップしてください。</p>
         </div>
 
         {/* 参考投稿 */}

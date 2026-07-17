@@ -404,6 +404,43 @@ export function buildInsightInstruction(params: {
 }
 
 // ============================================================
+// ⑦ 画像生成用プロンプトの作成（Claudeが投稿本文から画像プロンプトを書く）
+// ============================================================
+
+export const IMAGE_PROMPT_SYSTEM = `あなたはSNS投稿用の画像プロンプト作成の専門家です。
+Threads投稿の本文を渡すので、その投稿に添える画像を生成するためのプロンプト（英語）を作ってください。
+
+ルール:
+- 画像内に文字・テキストは入れない（画像生成AIは文字が苦手なため）
+- 投稿の雰囲気・感情・テーマを視覚的なモチーフで表現する
+- スマホのフィードで目を引く、明快で美しい構図にする
+- 写真調かイラスト調かは投稿のトーンに合わせる（ユーザーがスタイル指定した場合はそれに従う）
+
+出力形式（JSONのみを出力）:
+{
+  "prompt": "英語の画像生成プロンプト（1段落）",
+  "description": "どんな画像になるかの日本語説明（1文）"
+}`;
+
+export function buildImagePromptInstruction(content: string, styleInstruction?: string): string {
+  const lines: string[] = [];
+  lines.push("## 投稿本文");
+  lines.push("```");
+  lines.push(content);
+  lines.push("```");
+  if (styleInstruction?.trim()) {
+    lines.push(`\n## スタイル指定\n${styleInstruction.trim()}`);
+  }
+  lines.push("\nこの投稿に添える画像のプロンプトを作ってください。");
+  return lines.join("\n");
+}
+
+export interface ImagePromptResult {
+  prompt: string;
+  description: string;
+}
+
+// ============================================================
 // 類似度チェック（完コピ検出）
 // ============================================================
 
