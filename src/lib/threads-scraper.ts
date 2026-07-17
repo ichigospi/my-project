@@ -57,16 +57,21 @@ export async function testApifyConnection(token: string): Promise<{ ok: boolean;
 }
 
 // Actorを起動し、完了を待ってデータセットを取得する
+// runTimeoutSecs: Apify側の実行タイムアウト（短いとTIMED-OUTで途中終了する）
+// memoryMbytes: 割り当てメモリ（大きいほどCPUが増えて速く終わる＝タイムアウトしにくい）
 export async function runActorAndGetItems(
   token: string,
   actorId: string,
   input: Record<string, unknown>,
-  timeoutMs = 240000,
+  timeoutMs = 360000,
+  runTimeoutSecs = 300,
+  memoryMbytes = 2048,
 ): Promise<{ items: unknown[]; error?: string }> {
   try {
     // Actor IDの "user/actor-name" は "user~actor-name" 形式に変換
     const escaped = actorId.replace("/", "~");
-    const startRes = await apifyFetch(token, `/acts/${escaped}/runs`, {
+    // Apifyの実行タイムアウト・メモリをクエリで明示（既定が短いActorのTIMED-OUT対策）
+    const startRes = await apifyFetch(token, `/acts/${escaped}/runs?timeout=${runTimeoutSecs}&memory=${memoryMbytes}`, {
       method: "POST",
       body: JSON.stringify(input),
     });
