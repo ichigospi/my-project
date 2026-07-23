@@ -439,7 +439,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const allAnalyses = getAnalyses();
       const referenceAnalyses = allAnalyses.filter((a) => project.analyses?.includes(a.id));
       // チャンネル固有語彙ルール（氣流・神氣等）を共通ルールに合成してチェックに渡す
-      const profile = withChannelVocabRules(getProfileByChannel(project.channelId || ""));
+      const profile = withChannelVocabRules(getProfileByChannel(project.channelId || ""), project.style as Style);
       const preset = getPresetFor(project.genre as Genre, project.style as Style, project.channelId);
       const winningPatterns = getWinningPatternsByChannel(project.channelId || "");
 

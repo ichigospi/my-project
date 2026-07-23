@@ -12,23 +12,52 @@ export interface InjectedRules {
   winningPatterns: string;
 }
 
-// チャンネル固有の語彙ルール。設計データの同期状態に依存せず、コード側で必ず注入する。
+// チャンネル固有ルール（語彙・匂わせ等）。設計データの同期状態に依存せず、コード側で必ず注入する。
 // 対象チャンネルの判定は語り手プロフィールのチャンネル名で行う。
-export function channelVocabRules(profile: ChannelProfile): string {
-  if ((profile.channelName || "").includes("きん婆")) {
-    return `【きん婆固有の語彙ルール（必達）】
+export function channelVocabRules(profile: ChannelProfile, style?: Style): string {
+  const name = profile.channelName || "";
+  const rules: string[] = [];
+
+  if (name.includes("きん婆")) {
+    rules.push(`【きん婆固有の語彙ルール（必達）】
 - エネルギーの流れは「気脈」とは絶対に書かない。必ず「氣流」と書く
   （例:「氣流が詰まって邪気が発生しとる」「氣流が整うて、金運が流れ込みはじめる」）
 - 白蛇様の「加護」「ご加護」とは言わない。必ず「神氣」と書く
   （例:「白蛇様の神氣に包まれとる」「白蛇様の神氣を受け取りよし」）
-- この2語（氣流・神氣）はきん婆の世界観の核となる独自用語。台本全体で一貫して使うこと`;
+- この2語（氣流・神氣）はきん婆の世界観の核となる独自用語。台本全体で一貫して使うこと`);
   }
-  return "";
+
+  // アリサ×タロット: バックエンド講座「オーダーハーモニー」の匂わせ（宣伝感ゼロで）
+  if (name.includes("アリサ") && (!style || style === "tarot")) {
+    rules.push(`【アリサ固有ルール: 講座の匂わせ（さりげなく・必達）】
+アリサはバックエンドで「オーダーハーモニー」という講座を販売している。
+コンセプト:「願いを追いかけるのではなく、叶った未来と波長を合わせるメソッド」。
+アファメーション・ポジティブ・行動など"自分を変える"従来の引き寄せとは違い、
+最初に高次元へオーダーし、その願いが叶った未来と心・思考・エネルギーを調和(Harmony)させるだけ。
+すると現実の方が自然にその波長へ近づいていく。核は「頑張るから叶うのではなく、調和したから叶う」。
+
+台本には以下の形で、宣伝感ゼロの「匂わせ」を1〜2箇所だけ入れること:
+- 講座生の成果を体験談・社会的証明として語るとき、主語でさりげなく触れる
+  （例:「私の講座生さんにも、ちょうど今のあなたと同じカードが出た方がいてね。その方、3週間後に…」）
+  ※成果の物語が主役。講座の中身の説明はしない
+- オーダーハーモニーの思想を、リーディングのメッセージとして自然に織り込む
+  （例:「願いって、追いかけるものじゃないの。叶った未来の方に、あなたの波長を合わせるだけでいいのよ」
+   「頑張るから叶うんじゃない。調和したから叶う。このカードも、そう言ってるわ」）
+- 講座名「オーダーハーモニー」を出すのは多くても1回。「ちなみに私の講座では〜」のような紹介口調は使わない
+
+【絶対禁止】
+- 講座への誘導CTA（申込み・募集・リンク案内・「詳しくは」「気になる方は」等）は一切しない。重CTAは従来通り無料鑑定のみ
+- 価格・募集時期・特典への言及
+- 匂わせを3箇所以上入れること（くどくなり宣伝感が出る）
+- 説明的な講座紹介。視聴者が「この人、講座やってるんだ」「講座生すごいな」と自分で気づく置き方にする`);
+  }
+
+  return rules.join("\n\n");
 }
 
-// プロフィールの共通ルールに語彙ルールを合成して返す（品質チェックへ渡す用）
-export function withChannelVocabRules(profile: ChannelProfile): ChannelProfile {
-  const vocab = channelVocabRules(profile);
+// プロフィールの共通ルールにチャンネル固有ルールを合成して返す（品質チェックへ渡す用）
+export function withChannelVocabRules(profile: ChannelProfile, style?: Style): ChannelProfile {
+  const vocab = channelVocabRules(profile, style);
   if (!vocab) return profile;
   return { ...profile, commonRules: [profile.commonRules?.trim(), vocab].filter(Boolean).join("\n\n") };
 }
@@ -41,7 +70,7 @@ export function buildInjectedRules(genre?: Genre, style?: Style, channelId?: str
   const preset = genre && style ? getPresetFor(genre, style, channelId) : undefined;
 
   const channelContext = buildChannelContext(profile);
-  const commonRules = [profile.commonRules?.trim(), channelVocabRules(profile)].filter(Boolean).join("\n\n");
+  const commonRules = [profile.commonRules?.trim(), channelVocabRules(profile, style)].filter(Boolean).join("\n\n");
   const ngExpressions = profile.ngExpressions?.trim() || "";
   const categoryRules = preset ? `${preset.rules}\n\nフックパターン: ${preset.hookPattern}\nCTAパターン: ${preset.ctaPattern}` : "";
   const referenceExamples = buildReferenceExamples(profile);
