@@ -283,6 +283,10 @@ export async function ingestCollectRun(params: {
   // 生データはあるのに有効0件 → 構造をログに出す（本文キー特定用）
   if (items.length === 0 && fetched.items.length > 0) {
     summary.log = [`生${fetched.items.length}件取得したが本文を抽出できず0件`, ...rawDumpLog(fetched.items)];
+  } else if (items.length > 0) {
+    // 成功時も「投稿」の生データ構造をログに残す（閲覧数が取れているか確認用）
+    const viewsGot = items.filter((it) => it.views > 0).length;
+    summary.log = [`閲覧数が取れた投稿: ${viewsGot}/${items.length}件`, ...rawDumpLog(fetched.items)];
   }
 
   const resolved = await resolveCollectTargets({ accountId: params.accountId, competitorId: params.competitorId });
