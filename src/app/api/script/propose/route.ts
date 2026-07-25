@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
+import { buildTarotDrawBlock } from "@/lib/tarot-draw";
 
 // 骨組み出力は最大16Kトークンと長く生成に時間がかかるため、関数の実行上限を延長する
 export const maxDuration = 300;
@@ -157,6 +158,9 @@ ${style === "tarot" ? `
 - チャンネル共通ルールや参考情報に【中盤】ヒーリング音楽パート/瞑想/呼吸誘導/アファメーション連打 等のヒーリング構成が書かれていても、タロットスタイルでは骨組みに採用しない。ヒーリング動画の構成にしてはいけない。
 - 元ネタ(参考動画)がカードを引きながらリーディングしているなら、その「カードを順に引いて読み解く」流れを必ずトレースする。
 - 山選択(A/B/C)は使わず、1人の視聴者に向けた単一リーディングとして構成する。
+
+${buildTarotDrawBlock()}
+- 骨組みの各カードセクションには、上記の抽選カード名（正位置/逆位置込み）を必ず明記すること。
 ` : ""}
 ${rulesText || ""}
 ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}

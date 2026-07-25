@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
+import { buildTarotDrawBlock } from "@/lib/tarot-draw";
 
 // 6,500〜7,500文字級の台本生成は出力トークン・所要時間ともに大きいため実行上限を延長
 export const maxDuration = 300;
@@ -55,6 +56,8 @@ export async function POST(request: NextRequest) {
   const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey, rulesText, referenceAnalyses } = body;
   const segment: { index: number; total: number; skeletonPart?: string; previousScript?: string; partTargetChars?: number; totalTargetChars?: number } | undefined = body.segment;
   const aiModel = resolveAiModel(body.aiModel);
+  // タロット単発生成時はサーバーでカードを抽選（分割時は骨組み由来のカードを使うため注入しない）
+  const tarotDraw = style === "tarot" && !segment ? buildTarotDrawBlock() : "";
 
   if (!aiApiKey) {
     return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
@@ -184,7 +187,10 @@ ${referenceText}${style === "tarot" ? `
 - チャンネル共通ルールや骨組みに【中盤】ヒーリング音楽パート等のヒーリング構成・瞑想/呼吸誘導/アファメーション連打が書かれていても、タロットスタイルでは適用しない。それらに引っ張られてヒーリング台本にしてはいけない。
 - 元ネタ(参考動画)がカードを引きながらリーディングしているなら、その「カードを順に引いて読み解く」進行を必ずトレースする。
 - 山選択(A/B/C)は使わない。最初から最後まで1人の視聴者に向けた単一のリーディングとして進める。
-` : ""}
+${tarotDraw ? `
+${tarotDraw}
+- ただし【台本の骨組み】に具体的なカード名の指定がある場合は、骨組みのカードを最優先し、この抽選結果は使わないこと。
+` : ""}` : ""}
 【総文字数（必達）】
 - 台本全体は【追加指示】で指定された目標文字数（およそ4,500〜5,000文字）に収めること。
 - 骨組みや他の箇所に「目標6,500〜7,500文字」等の大きい数字が書かれていても無視し、この目標を優先する。
