@@ -164,22 +164,56 @@ export default function ThreadsCompetitorsPage() {
 
   const collectOne = async (c: Competitor) => {
     setCollectingId(c.id);
-    setCollectMsg({ id: c.id, text: "スクレイパーで収集中...（1〜3分かかります）" });
+    setShowLog(false);
+    setCollectMsg({ id: c.id, text: "スクレイパーを起動中..." });
     try {
-      const res = await api<{ itemsReturned: number; created: number; classified: number; errors: string[]; log?: string[] }>(
+      // フェーズ1: 起動（すぐ返る）
+      const start = await api<{ runId?: string; datasetId?: string; error?: string; log?: string[] }>(
         "/api/threads/scraper/collect",
-        { method: "POST", body: JSON.stringify({ competitorId: c.id }) },
+        { method: "POST", body: JSON.stringify({ phase: "start", competitorId: c.id }) },
       );
-      setShowLog(false);
-      setCollectMsg({
-        id: c.id,
-        text:
-          res.errors.length > 0
-            ? `⚠️ ${res.errors.join(" / ")}`
-            : `✅ ${res.itemsReturned}件取得 → 新規${res.created}件を登録、${res.classified}件を自動分類`,
-        log: res.log,
-      });
-      await load();
+      if (start.error || !start.runId) {
+        setCollectMsg({ id: c.id, text: `⚠️ ${start.error ?? "起動に失敗しました"}`, log: start.log });
+        return;
+      }
+
+      // フェーズ2: 完了までポーリング（6秒おき・最大3分）
+      const runId = start.runId;
+      const datasetId = start.datasetId;
+      const deadline = Date.now() + 6 * 60 * 1000;
+      for (let i = 0; ; i++) {
+        await new Promise((r) => setTimeout(r, 6000));
+        setCollectMsg({ id: c.id, text: `収集中...（${(i + 1) * 6}秒経過・完了まで自動で待ちます）` });
+        const res = await api<{
+          status: "running" | "done" | "error";
+          itemsReturned: number;
+          created: number;
+          classified: number;
+          errors: string[];
+          log?: string[];
+        }>("/api/threads/scraper/collect", {
+          method: "POST",
+          body: JSON.stringify({ phase: "ingest", runId, datasetId, competitorId: c.id }),
+        });
+        if (res.status === "running") {
+          if (Date.now() > deadline) {
+            setCollectMsg({ id: c.id, text: "⚠️ 時間内に完了しませんでした。件数を減らすか、少し待って再実行してください。" });
+            return;
+          }
+          continue;
+        }
+        // done or error
+        setCollectMsg({
+          id: c.id,
+          text:
+            res.errors.length > 0
+              ? `⚠️ ${res.errors.join(" / ")}`
+              : `✅ ${res.itemsReturned}件取得 → 新規${res.created}件を登録、${res.classified}件を自動分類`,
+          log: res.log,
+        });
+        await load();
+        return;
+      }
     } catch (e) {
       setCollectMsg({ id: c.id, text: `エラー: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
