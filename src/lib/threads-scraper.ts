@@ -346,20 +346,8 @@ export async function runThreadsScrapeWithFallback(
       const items = normalizeItems(run.items, includeReplies);
       if (items.length > 0) {
         log.push(`${actorId} (${variant.label}): 生${run.items.length}件→有効${items.length}件 ✅`);
-        // 診断: Actorが返す生データのフィールド名一覧（views取得可否の確認用）
-        const firstRaw = run.items.find((r) => r && typeof r === "object");
-        if (firstRaw) {
-          const keys = Object.keys(firstRaw as Record<string, unknown>);
-          log.push(`Actorの返却フィールド: ${keys.join(", ")}`);
-          // views系の値があれば具体値も出す
-          const obj = firstRaw as Record<string, unknown>;
-          const viewLike = keys.filter((k) => /view|impress|play|reach|seen/i.test(k));
-          if (viewLike.length > 0) {
-            log.push(`閲覧数っぽい項目: ${viewLike.map((k) => `${k}=${JSON.stringify(obj[k])}`).join(", ")}`);
-          } else {
-            log.push("閲覧数っぽい項目: なし（このActorは閲覧数を返していません）");
-          }
-        }
+        // 診断: 「投稿」の生データ構造をダンプ（views取得可否の確認用）
+        log.push(...rawDumpLog(run.items));
         return { items, actorUsed: actorId, log };
       }
       log.push(`${actorId} (${variant.label}): 実行成功したが0件（生${run.items.length}件）`);
@@ -490,12 +478,31 @@ function flattenRaw(raw: unknown[]): Record<string, unknown>[] {
   return out;
 }
 
+// 生データから「投稿らしい」アイテムを1件選ぶ（プロフィール行を避け、本文を持つものを優先）
+function pickPostLikeRaw(raw: unknown[]): Record<string, unknown> | null {
+  const flat = flattenRaw(raw);
+  // 本文を持つものを最優先
+  for (const o of flat) {
+    if (
+      pickStr(o, ["text", "content", "caption", "body", "postText", "fullText", "message"]) ||
+      pickNested(o, [["caption", "text"], ["post", "text"], ["content", "text"]])
+    )
+      return o;
+  }
+  // 次に type が post/thread のもの
+  for (const o of flat) {
+    const t = o.type ?? o.postType ?? o.post_type;
+    if (typeof t === "string" && /post|thread/i.test(t)) return o;
+  }
+  return flat.find((o) => o && typeof o === "object") ?? null;
+}
+
 // 生データの構造をログ用に要約（本文・閲覧数がどのキーにあるか特定するため）
+// プロフィール行ではなく「投稿」を選んでダンプする。
 export function rawDumpLog(raw: unknown[]): string[] {
   const out: string[] = [];
-  const firstRaw = raw.find((r) => r && typeof r === "object");
-  if (!firstRaw) return out;
-  const obj = firstRaw as Record<string, unknown>;
+  const obj = pickPostLikeRaw(raw);
+  if (!obj) return out;
   out.push(`【生データ項目名】${Object.keys(obj).join(", ")}`);
   const sample = Object.entries(obj)
     .map(([k, v]) => {
@@ -505,11 +512,14 @@ export function rawDumpLog(raw: unknown[]): string[] {
     })
     .join(" | ");
   out.push(`【生データ中身】${sample}`);
-  const viewLike = Object.keys(obj).filter((k) => /view|impress|play|reach|seen/i.test(k));
+  // 誤ヒット防止: 単独の "play"/"seen" は displayName 等に一致するので除外し、閲覧数系の語のみ拾う
+  const viewLike = Object.keys(obj).filter((k) =>
+    /views?|impression|reach|(?:play|seen|watch)_?count|view_?count/i.test(k),
+  );
   if (viewLike.length > 0) {
     out.push(`閲覧数っぽい項目: ${viewLike.map((k) => `${k}=${JSON.stringify(obj[k])}`).join(", ")}`);
   } else {
-    out.push("閲覧数っぽい項目: 直下になし");
+    out.push("閲覧数っぽい項目: 見つからず");
   }
   return out;
 }
