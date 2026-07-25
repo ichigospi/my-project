@@ -545,21 +545,42 @@ export function createProject(genre: Genre, style: Style, channelId?: string): S
 }
 
 // ===== プリセット CRUD =====
+// DEFAULT_PRESETS の内容（ルール文面）を更新したらこの数値を上げる。
+// 既存端末の保存済みプリセット（組み込みIDのもの）が最新のデフォルト内容に
+// 置き換わる（置き換え前の内容はバックアップキーに退避される）。
+const PRESET_DEFAULTS_VERSION = 2;
+const PRESET_DEFAULTS_VERSION_KEY = "fortune_yt_presets_defaults_version";
+
 export function getPresets(): ScriptRulePreset[] {
   if (typeof window === "undefined") return DEFAULT_PRESETS;
   const stored = localStorage.getItem(PRESETS_KEY);
-  if (!stored) { localStorage.setItem(PRESETS_KEY, JSON.stringify(DEFAULT_PRESETS)); return DEFAULT_PRESETS; }
-  const saved: ScriptRulePreset[] = JSON.parse(stored);
+  if (!stored) {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(DEFAULT_PRESETS));
+    localStorage.setItem(PRESET_DEFAULTS_VERSION_KEY, String(PRESET_DEFAULTS_VERSION));
+    return DEFAULT_PRESETS;
+  }
+  let saved: ScriptRulePreset[] = JSON.parse(stored);
+  let changed = false;
+
+  // デフォルト内容のバージョンアップを既存端末に反映する。
+  // これが無いと、コード側でルール文面を直しても保存済みの古い文面が使われ続ける。
+  const curVer = parseInt(localStorage.getItem(PRESET_DEFAULTS_VERSION_KEY) || "1", 10);
+  if (curVer < PRESET_DEFAULTS_VERSION) {
+    localStorage.setItem(`fortune_yt_presets_backup_v${curVer}`, stored);
+    const byId = new Map(DEFAULT_PRESETS.map((d) => [d.id, d]));
+    saved = saved.map((p) => byId.get(p.id) || p);
+    localStorage.setItem(PRESET_DEFAULTS_VERSION_KEY, String(PRESET_DEFAULTS_VERSION));
+    changed = true;
+  }
+
   // DEFAULT_PRESETS に後から追加された共有プリセット(タロット等)を補完する。
-  // 既存ユーザーは古い6プリセットだけ localStorage に持っているため、
-  // 共有プリセット(channelId なし)で localStorage に無い id を足す。
   const savedIds = new Set(saved.map((p) => p.id));
   const missingDefaults = DEFAULT_PRESETS.filter((d) => !savedIds.has(d.id));
   if (missingDefaults.length > 0) {
-    const merged = [...saved, ...missingDefaults];
-    localStorage.setItem(PRESETS_KEY, JSON.stringify(merged));
-    return merged;
+    saved = [...saved, ...missingDefaults];
+    changed = true;
   }
+  if (changed) localStorage.setItem(PRESETS_KEY, JSON.stringify(saved));
   return saved;
 }
 
@@ -606,6 +627,8 @@ const TAROT_BASE_RULES = `# タロット 台本構成（ローラン式リーデ
 - 無料鑑定では「お相手の本音」や「波動を整えること」は行わない（有料鑑定の領域）。無料の役割は、あなたの波動の状態と詳しい状況を視て、今のあなたに必要な守護天使様からのメッセージを届けるところまで
 
 ## 【最優先・必須】カードの正確なリーディング
+- カード名は必ず日本語で言うこと（例:「星」「太陽」「運命の輪」「吊るされた男」「カップの2」「ワンドの5」）。
+  英語・カタカナ読み（ザ・スター／ザ・サン／ホイール・オブ・フォーチュン／ツー・オブ・カップス等）は禁止。視聴者に伝わりにくい
 - 実際に出た（指定された）カードの正位置・逆位置の正統な意味を必ず正確に読み解くこと。カードの一般的な意味から逸脱した出鱈目なリーディングは禁止
 - その上で、本台本構成（5枚の役割・順番・終盤の鑑定導線）に必ず従ってリーディングを展開すること。「カードの正確な意味」と「台本構成」は両立必須であり、どちらかを無視してはいけない
 - カード名が指定されている場合は、そのカードの意味を土台にして、構成上の各カードの役割（理想の未来／五感の具体化／常識破壊／強さ＋方向性／もう来てる）へ自然に接続する
