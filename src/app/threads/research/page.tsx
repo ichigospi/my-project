@@ -192,23 +192,11 @@ function ResearchContent() {
         </select>
         <select value={sort} onChange={(e) => setSort(e.target.value)} className="border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-2 py-1.5 text-xs">
           <option value="likes">いいね順</option>
-          <option value="views">表示回数順</option>
           <option value="recent">新しい順</option>
         </select>
         <label className="flex items-center gap-1.5 text-xs text-neutral-300">
           <input type="checkbox" checked={hotOnly} onChange={(e) => { setHotOnly(e.target.checked); setPage(1); }} />
           🔥伸びてる投稿のみ
-        </label>
-        <label className="flex items-center gap-1 text-xs text-neutral-300">
-          👁
-          <input
-            type="number"
-            min={0}
-            value={minViews}
-            onChange={(e) => { setMinViews(e.target.value); setPage(1); }}
-            className="w-20 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-2 py-1.5 text-xs"
-            placeholder="表示◯以上"
-          />
         </label>
         <span className="text-xs text-neutral-500 ml-auto">{total}件</span>
         {selected.size > 0 && (
@@ -251,7 +239,8 @@ function ResearchContent() {
                   </div>
                   <p className={`text-sm text-neutral-200 mt-2 whitespace-pre-wrap ${isOpen ? "" : "line-clamp-3"}`}>{p.content}</p>
                   <div className="flex items-center gap-3 mt-2 text-xs text-neutral-500 flex-wrap">
-                    <span>👁 {fmtNum(p.views)}</span>
+                    {/* Threadsは競合の閲覧数を公開しないため、値がある場合（手入力等）のみ表示 */}
+                    {p.views > 0 && <span>👁 {fmtNum(p.views)}</span>}
                     <span>❤️ {fmtNum(p.likes)}</span>
                     <span>💬 {fmtNum(p.replies)}</span>
                     <span>🔁 {fmtNum(p.reposts)}</span>
