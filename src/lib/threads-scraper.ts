@@ -116,6 +116,91 @@ export async function runActorAndGetItems(
   }
 }
 
+// ===== 非同期実行プリミティブ（手動UIの502対策：起動→ポーリング→取得を分離） =====
+
+// Actorを起動するだけ（完了は待たない）。runId と datasetId を返す。
+export async function startActorRun(
+  token: string,
+  actorId: string,
+  input: Record<string, unknown>,
+  runTimeoutSecs = 300,
+  memoryMbytes = 2048,
+): Promise<{ runId?: string; datasetId?: string; error?: string }> {
+  try {
+    const escaped = actorId.replace("/", "~");
+    const startRes = await apifyFetch(token, `/acts/${escaped}/runs?timeout=${runTimeoutSecs}&memory=${memoryMbytes}`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    const startData = (await startRes.json().catch(() => ({}))) as {
+      data?: { id?: string; defaultDatasetId?: string };
+      error?: { message?: string };
+    };
+    if (!startRes.ok || !startData.data?.id) {
+      return { error: `Actor起動失敗: ${startData.error?.message ?? `HTTP ${startRes.status}`}` };
+    }
+    return { runId: startData.data.id, datasetId: startData.data.defaultDatasetId };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// 実行状況を1回だけ確認（RUNNING/READY/SUCCEEDED/FAILED/ABORTED/TIMED-OUT）
+export async function getRunStatus(
+  token: string,
+  runId: string,
+): Promise<{ status: string; datasetId?: string; statusMessage?: string; error?: string }> {
+  try {
+    const runRes = await apifyFetch(token, `/actor-runs/${runId}`);
+    const runData = (await runRes.json().catch(() => ({}))) as {
+      data?: { status?: string; defaultDatasetId?: string; statusMessage?: string };
+    };
+    return {
+      status: runData.data?.status ?? "",
+      datasetId: runData.data?.defaultDatasetId,
+      statusMessage: runData.data?.statusMessage,
+    };
+  } catch (e) {
+    return { status: "", error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// データセットのアイテムを取得
+export async function fetchDatasetItems(token: string, datasetId: string): Promise<{ items: unknown[]; error?: string }> {
+  try {
+    const itemsRes = await apifyFetch(token, `/datasets/${datasetId}/items?clean=1&format=json&limit=1000`);
+    if (!itemsRes.ok) return { items: [], error: `結果取得失敗: HTTP ${itemsRes.status}` };
+    const items = (await itemsRes.json().catch(() => [])) as unknown[];
+    return { items: Array.isArray(items) ? items : [] };
+  } catch (e) {
+    return { items: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// 設定されたActor向けに入力を1つ構築する（スキーマから件数フィールドを特定）
+export async function buildInputForActor(
+  token: string,
+  actorId: string,
+  handles: string[],
+  limitPerHandle: number,
+  includeReplies: boolean,
+): Promise<{ input: Record<string, unknown>; log: string[]; exists: boolean }> {
+  const log: string[] = [];
+  const schemaInfo = await fetchActorSchemaInfo(token, actorId);
+  if (!schemaInfo.exists) {
+    log.push(`${actorId}: 存在しない`);
+    return { input: {}, log, exists: false };
+  }
+  const input = buildActorInput(handles, limitPerHandle, includeReplies);
+  if (schemaInfo.limitField) {
+    input[schemaInfo.limitField] = limitPerHandle;
+    log.push(`${actorId}: 件数フィールド=${schemaInfo.limitField} に${limitPerHandle}を指定`);
+  } else if (schemaInfo.integerFields.length > 0) {
+    log.push(`${actorId}: 件数フィールド不明（整数項目: ${schemaInfo.integerFields.join(",")}）`);
+  }
+  return { input, log, exists: true };
+}
+
 // 一般的なThreadsスクレイパーActorの入力形式をまとめてカバー
 // includeReplies=false のとき、Actorごとに異なるリプライ除外フラグをまとめて渡す（未知フィールドは無視される）
 // 件数指定のフィールド名はActor作者ごとにバラバラなので、当たりそうな名前を総当たりで入れる
@@ -372,30 +457,92 @@ function isReplyItem(obj: Record<string, unknown>): boolean {
   return false;
 }
 
-// Actorの生アイテムを共通形式へ。本文が取れないものは捨てる。includeReplies=false ならリプライを除外
-export function normalizeItems(raw: unknown[], includeReplies = true): NormalizedScrapedPost[] {
-  const results: NormalizedScrapedPost[] = [];
+// 生アイテムがプロフィール（投稿が latestPosts 等の配列にネスト）の場合、投稿単位に展開する。
+// red.cars等は「プロフィール1件＋その投稿配列」の形で返すことがあるため、フラット/ネスト両対応にする。
+const NESTED_POST_KEYS = ["latestPosts", "posts", "threads", "items", "results", "topPosts", "recentPosts", "data"];
+function flattenRaw(raw: unknown[]): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
     const obj = r as Record<string, unknown>;
+    let hadNested = false;
+    for (const nk of NESTED_POST_KEYS) {
+      const arr = obj[nk];
+      if (Array.isArray(arr) && arr.some((x) => x && typeof x === "object")) {
+        hadNested = true;
+        // プロフィール側の著者名を、投稿に著者が無ければ引き継ぐ
+        const profileUser =
+          pickStr(obj, ["username", "ownerUsername", "handle", "user_name"]) ||
+          pickNested(obj, [["user", "username"], ["owner", "username"]]);
+        for (const p of arr) {
+          if (p && typeof p === "object") {
+            const po = { ...(p as Record<string, unknown>) };
+            if (profileUser && !po.username && !po.ownerUsername && !po.authorUsername && !po.handle) {
+              po.ownerUsername = profileUser;
+            }
+            out.push(po);
+          }
+        }
+      }
+    }
+    if (!hadNested) out.push(obj);
+  }
+  return out;
+}
+
+// 生データの構造をログ用に要約（本文・閲覧数がどのキーにあるか特定するため）
+export function rawDumpLog(raw: unknown[]): string[] {
+  const out: string[] = [];
+  const firstRaw = raw.find((r) => r && typeof r === "object");
+  if (!firstRaw) return out;
+  const obj = firstRaw as Record<string, unknown>;
+  out.push(`【生データ項目名】${Object.keys(obj).join(", ")}`);
+  const sample = Object.entries(obj)
+    .map(([k, v]) => {
+      let s = typeof v === "object" ? JSON.stringify(v) : String(v);
+      if (s && s.length > 80) s = s.slice(0, 80) + "…";
+      return `${k}=${s}`;
+    })
+    .join(" | ");
+  out.push(`【生データ中身】${sample}`);
+  const viewLike = Object.keys(obj).filter((k) => /view|impress|play|reach|seen/i.test(k));
+  if (viewLike.length > 0) {
+    out.push(`閲覧数っぽい項目: ${viewLike.map((k) => `${k}=${JSON.stringify(obj[k])}`).join(", ")}`);
+  } else {
+    out.push("閲覧数っぽい項目: 直下になし");
+  }
+  return out;
+}
+
+// Actorの生アイテムを共通形式へ。本文が取れないものは捨てる。includeReplies=false ならリプライを除外
+export function normalizeItems(raw: unknown[], includeReplies = true): NormalizedScrapedPost[] {
+  const results: NormalizedScrapedPost[] = [];
+  for (const obj of flattenRaw(raw)) {
     if (!includeReplies && isReplyItem(obj)) continue;
     const content =
-      pickStr(obj, ["text", "content", "caption", "body"]) ||
-      pickNested(obj, [["post", "caption", "text"], ["caption", "text"], ["thread", "text"]]);
+      pickStr(obj, ["text", "content", "caption", "body", "postText", "post_text", "fullText", "full_text", "message", "description", "title"]) ||
+      pickNested(obj, [
+        ["post", "caption", "text"],
+        ["caption", "text"],
+        ["thread", "text"],
+        ["node", "caption", "text"],
+        ["post", "text"],
+        ["content", "text"],
+      ]);
     if (!content) continue;
     const authorHandle = (
-      pickStr(obj, ["username", "ownerUsername", "authorUsername", "handle", "user_name"]) ||
-      pickNested(obj, [["user", "username"], ["author", "username"], ["owner", "username"]])
+      pickStr(obj, ["username", "ownerUsername", "authorUsername", "handle", "user_name", "author"]) ||
+      pickNested(obj, [["user", "username"], ["author", "username"], ["owner", "username"], ["user", "handle"]])
     ).replace(/^@/, "");
     results.push({
       authorHandle,
       content,
-      postUrl: pickStr(obj, ["url", "postUrl", "link", "permalink", "threadUrl"]),
+      postUrl: pickStr(obj, ["url", "postUrl", "link", "permalink", "threadUrl", "post_url", "code"]),
       likes: pickNum(obj, ["likesCount", "likes", "likeCount", "like_count"]),
       replies: pickNum(obj, ["repliesCount", "commentsCount", "replies", "comments", "replyCount", "reply_count"]),
       reposts: pickNum(obj, ["repostsCount", "reposts", "repostCount", "repost_count", "reshareCount"]),
       quotes: pickNum(obj, ["quotesCount", "quotes", "quoteCount", "quote_count"]),
-      views: pickNum(obj, ["viewsCount", "views", "viewCount", "view_count", "impressions", "impressionsCount", "playCount", "reach"]),
+      views: pickNum(obj, ["viewsCount", "views", "viewCount", "view_count", "impressions", "impressionsCount", "playCount", "reach", "seenCount"]),
       postedAt: parsePostedAt(obj),
     });
   }
