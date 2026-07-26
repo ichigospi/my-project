@@ -555,6 +555,7 @@ model XSettings {
 model ReplyPolicy {
   id        String   @id @default(cuid())
   category  String   @default("general") // request, thanks, question, complaint, refund, heavy, spam, general
+  stage     String   @default("") // 顧客の段階: free, paid, treatment, support, course, repeat（空=全段階共通）
   title     String
   situation String   @default("") // どういう状況・メッセージのとき
   guideline String   // どう判断し、どう返すか
@@ -571,6 +572,7 @@ model ReplyPolicy {
 model ReplyExample {
   id              String   @id @default(cuid())
   category        String   @default("general")
+  stage           String   @default("") // 顧客の段階（空=全段階共通）
   customerMessage String
   replyMessage    String
   note            String   @default("")
@@ -588,6 +590,7 @@ model ReplyDraft {
   customerMessage  String
   context          String   @default("") // 過去のやりとり等の補足情報
   category         String   @default("general")
+  stage            String   @default("") // 顧客の段階
   isEscalation     Boolean  @default(false)
   escalationReason String   @default("")
   confidence       String   @default("") // high | medium | low
@@ -603,4 +606,21 @@ model ReplyDraft {
 
   @@index([status])
   @@index([customerName])
+}
+
+// あるある集: 段階×シーン別の「こういうときはこう送ろう」例文+解説
+model ReplyScenario {
+  id             String   @id @default(cuid())
+  stage          String   @default("other") // free, paid, treatment, support, course, repeat, other
+  category       String   @default("general")
+  title          String   // あるあるの状況（例: 無料鑑定後、音沙汰がない）
+  detail         String   @default("") // 状況の詳細
+  explanation    String   @default("") // なぜこう返すかの解説（マーケ・占い師視点）
+  exampleMessage String   // 例文
+  source         String   @default("manual") // builtin | manual
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([stage])
 }
