@@ -548,3 +548,59 @@ model XSettings {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+// ===== 顧客対応ツール（返信第二脳）=====
+
+// 判断ルール: 「こういう状況ではこう対応する」というオーナーの脳のトレース
+model ReplyPolicy {
+  id        String   @id @default(cuid())
+  category  String   @default("general") // request, thanks, question, complaint, refund, heavy, spam, general
+  title     String
+  situation String   @default("") // どういう状況・メッセージのとき
+  guideline String   // どう判断し、どう返すか
+  priority  Int      @default(0) // 大きいほど優先
+  isActive  Boolean  @default(true)
+  source    String   @default("manual") // manual | learned（修正差分からAI抽出）
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+}
+
+// 実例: 過去の「お客様メッセージ → 実際の返信」ペア
+model ReplyExample {
+  id              String   @id @default(cuid())
+  category        String   @default("general")
+  customerMessage String
+  replyMessage    String
+  note            String   @default("")
+  source          String   @default("manual") // manual | learned（承認済みドラフトから自動追加）
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category])
+}
+
+// 生成ドラフト: 分類・エスカレーション判定・返信案と承認フローの記録
+model ReplyDraft {
+  id               String   @id @default(cuid())
+  customerName     String   @default("")
+  customerMessage  String
+  context          String   @default("") // 過去のやりとり等の補足情報
+  category         String   @default("general")
+  isEscalation     Boolean  @default(false)
+  escalationReason String   @default("")
+  confidence       String   @default("") // high | medium | low
+  reasoning        String   @default("") // 判断根拠（どのルール・実例を使ったか）
+  usedPolicyIds    String   @default("[]") // JSON array
+  usedExampleIds   String   @default("[]") // JSON array
+  draft            String   @default("") // AI生成の返信案
+  finalReply       String   @default("") // 実際に送った文（修正後）
+  status           String   @default("draft") // draft | pending_approval | approved | sent | escalated
+  createdByName    String   @default("")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status])
+  @@index([customerName])
+}

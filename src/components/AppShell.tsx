@@ -49,9 +49,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isLaunch = pathname.startsWith("/launch");
   // Threadsツールは独立したフルスクリーンUI（YTツールのサイドバーを出さない）
   const isThreads = pathname.startsWith("/threads");
+  // 顧客対応ツールも独立したフルスクリーンUI
+  const isReply = pathname.startsWith("/reply");
   const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
-  if (hideSidebar || isThreads) {
+  if (hideSidebar || isThreads || isReply) {
     return <main className="flex-1 overflow-auto">{children}</main>;
   }
 
