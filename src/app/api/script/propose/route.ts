@@ -6,6 +6,12 @@ import { buildTarotDrawBlock } from "@/lib/tarot-draw";
 // 骨組み出力は最大16Kトークンと長く生成に時間がかかるため、関数の実行上限を延長する
 export const maxDuration = 300;
 
+
+// 日本時間の今日の日付（時期訴求の基準日として全プロンプトに注入する）
+function jstToday(): string {
+  return new Date().toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric" });
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText } = body;
@@ -110,6 +116,11 @@ ${userPrompt}
 - 元ネタは競合動画なので、このチャンネル独自の必須要素（公式LINE誘導・収益化導線・放置するとどうなるかの警告など）は含まれていない
 - 下記【チャンネル共通ルール】等で必須とされた要素は、元ネタに無くても専用セクションとして骨組みに必ず組み込むこと
 - 特に「LINE誘導ブロック」「放置危険性の警告」がルールで要求されていれば、CTA付近に独立セクションとして必ず入れる。これらが欠けた骨組みは失格
+
+【時期訴求の基準日（必達）】
+- 今日は${jstToday()}（日本時間）です。時期に関する訴求・予言（「この夏」「◯月」「3ヶ月以内」「年内」等）はすべて今日を基点にすること
+- すでに過ぎた月・時期を未来の予言として語るのは禁止（例: 7月下旬の動画で「6月、7月、8月が転換点」はNG。「8月、9月、10月」「今日からの3ヶ月」のように今日から始まる未来で語る）
+- 元ネタや骨組みに具体的な月・季節が書かれていても、そのままコピーせず今日基点の時期に置き換えること
 
 【タイトル整合性（必達）】
 - テーマ／タイトルに含まれる数字・スケール・約束（「億」「3分後」「100万人に一人」等）を、骨組みのどのセクションで・どう回収するかを設計に明記すること

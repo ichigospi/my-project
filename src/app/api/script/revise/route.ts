@@ -78,6 +78,12 @@ function applyOneEdit(script: string, find: string, replace: string): string | n
   return null;
 }
 
+
+// 日本時間の今日の日付（時期訴求の基準日として全プロンプトに注入する）
+function jstToday(): string {
+  return new Date().toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric" });
+}
+
 // 台本の修正指示を受けて「指示箇所だけ」差分パッチで修正する
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -119,6 +125,8 @@ export async function POST(request: NextRequest) {
 - edits は必要最小限の件数に絞る。1つのeditの範囲も必要な分だけに留め、広げすぎない
 - 元ネタ基準値が与えられている場合、replace の該当要素は元ネタ以上にターゲットへ刺さる具体性にする（ただし対象の範囲内だけ）
 ${referenceText}
+【現在日時】今日は${jstToday()}（日本時間）。時期の訴求を書く場合は今日を基点にし、過ぎた月を未来の予言として書かないこと。
+
 【修正指示】
 ${revisionNote}
 

@@ -122,6 +122,9 @@ G. 内容の矛盾
    - パート間で主張が食い違っていないか
      (例:「高評価が受け取るサイン」と「コメントが受け取るサイン」が同一台本内に並存)
    - 時系列・登場人物・体験談の数字に矛盾はないか
+   - 【時期訴求の基準日】未来の予言・時期訴求（「◯月」「この夏」等）が、ユーザープロンプト記載の現在日時から見て
+     未来になっているか。すでに過ぎた月・時期を未来の予言として語っていたら fail
+     （例: 7月下旬の台本で「6月、7月、8月が転換点」）。体験談など過去の話は過去でよい
    - 因果関係が壊れていないか(「A→B」と言いつつ後で「A→Bにならない」と言う等)
    発見したら fail。
 
@@ -234,6 +237,7 @@ function buildUserPrompt(p: {
 }): string {
   const lines: string[] = [];
   lines.push("【チェック対象の生成台本】");
+  lines.push(`現在日時(日本時間): ${new Date().toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric" })}`);
   lines.push(`タイトル: ${p.title || "(未設定)"}`);
   const scriptLen = p.script.replace(/\s/g, "").length;
   lines.push(`文字数(概算): ${scriptLen}`);
