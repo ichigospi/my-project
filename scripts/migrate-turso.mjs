@@ -101,6 +101,8 @@ const sqls = [
   `CREATE TABLE IF NOT EXISTS "ReplyDraft" ("id" TEXT NOT NULL PRIMARY KEY, "customerName" TEXT NOT NULL DEFAULT '', "customerMessage" TEXT NOT NULL, "context" TEXT NOT NULL DEFAULT '', "category" TEXT NOT NULL DEFAULT 'general', "isEscalation" BOOLEAN NOT NULL DEFAULT false, "escalationReason" TEXT NOT NULL DEFAULT '', "confidence" TEXT NOT NULL DEFAULT '', "reasoning" TEXT NOT NULL DEFAULT '', "usedPolicyIds" TEXT NOT NULL DEFAULT '[]', "usedExampleIds" TEXT NOT NULL DEFAULT '[]', "draft" TEXT NOT NULL DEFAULT '', "finalReply" TEXT NOT NULL DEFAULT '', "status" TEXT NOT NULL DEFAULT 'draft', "createdByName" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE INDEX IF NOT EXISTS "ReplyDraft_status_idx" ON "ReplyDraft"("status")`,
   `CREATE INDEX IF NOT EXISTS "ReplyDraft_customerName_idx" ON "ReplyDraft"("customerName")`,
+  `CREATE TABLE IF NOT EXISTS "ReplyScenario" ("id" TEXT NOT NULL PRIMARY KEY, "stage" TEXT NOT NULL DEFAULT 'other', "category" TEXT NOT NULL DEFAULT 'general', "title" TEXT NOT NULL, "detail" TEXT NOT NULL DEFAULT '', "explanation" TEXT NOT NULL DEFAULT '', "exampleMessage" TEXT NOT NULL, "source" TEXT NOT NULL DEFAULT 'manual', "isActive" BOOLEAN NOT NULL DEFAULT true, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "ReplyScenario_stage_idx" ON "ReplyScenario"("stage")`,
 ];
 
 for (const sql of sqls) {
@@ -116,6 +118,9 @@ const alters = [
   `ALTER TABLE "ThreadsToolSettings" ADD COLUMN "collectLimit" INTEGER NOT NULL DEFAULT 25`,
   `ALTER TABLE "ThreadsToolSettings" ADD COLUMN "includeReplies" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "ThreadsCompetitor" ADD COLUMN "collectLimit" INTEGER`,
+  `ALTER TABLE "ReplyPolicy" ADD COLUMN "stage" TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE "ReplyExample" ADD COLUMN "stage" TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE "ReplyDraft" ADD COLUMN "stage" TEXT NOT NULL DEFAULT ''`,
 ];
 for (const sql of alters) {
   try {

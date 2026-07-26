@@ -2,11 +2,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { REPLY_CATEGORIES, categoryLabel } from "@/lib/reply-prompts";
+import { REPLY_CATEGORIES, REPLY_STAGES, categoryLabel, stageLabel } from "@/lib/reply-prompts";
 
 interface Policy {
   id: string;
   category: string;
+  stage: string;
   title: string;
   situation: string;
   guideline: string;
@@ -15,7 +16,7 @@ interface Policy {
   source: string;
 }
 
-const EMPTY_FORM = { category: "general", title: "", situation: "", guideline: "", priority: 0 };
+const EMPTY_FORM = { category: "general", stage: "", title: "", situation: "", guideline: "", priority: 0 };
 
 export default function ReplyPoliciesPage() {
   const [policies, setPolicies] = useState<Policy[]>([]);
@@ -80,7 +81,7 @@ export default function ReplyPoliciesPage() {
 
   const startEdit = (p: Policy) => {
     setEditingId(p.id);
-    setForm({ category: p.category, title: p.title, situation: p.situation, guideline: p.guideline, priority: p.priority });
+    setForm({ category: p.category, stage: p.stage || "", title: p.title, situation: p.situation, guideline: p.guideline, priority: p.priority });
     setShowForm(true);
   };
 
@@ -111,6 +112,19 @@ export default function ReplyPoliciesPage() {
       {showForm && (
         <section className="bg-white rounded-xl shadow-sm border border-purple-200 p-5 space-y-3">
           <div className="flex gap-3">
+            <select
+              value={form.stage}
+              onChange={(e) => setForm({ ...form, stage: e.target.value })}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              title="どの段階のお客様に適用するか"
+            >
+              <option value="">全段階共通</option>
+              {REPLY_STAGES.map((st) => (
+                <option key={st.value} value={st.value}>
+                  {st.emoji} {st.label}
+                </option>
+              ))}
+            </select>
             <select
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
@@ -181,6 +195,9 @@ export default function ReplyPoliciesPage() {
                 <div className="flex-1 min-w-0 text-sm">
                   <p className="font-semibold text-gray-900">
                     {p.title}
+                    {p.stage && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-indigo-100 text-indigo-600">{stageLabel(p.stage)}</span>
+                    )}
                     {p.source === "learned" && (
                       <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-600">学習</span>
                     )}

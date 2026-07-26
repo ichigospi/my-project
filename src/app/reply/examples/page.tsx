@@ -2,11 +2,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { REPLY_CATEGORIES, categoryLabel } from "@/lib/reply-prompts";
+import { REPLY_CATEGORIES, REPLY_STAGES, categoryLabel, stageLabel } from "@/lib/reply-prompts";
 
 interface Example {
   id: string;
   category: string;
+  stage: string;
   customerMessage: string;
   replyMessage: string;
   note: string;
@@ -14,7 +15,7 @@ interface Example {
   createdAt: string;
 }
 
-const EMPTY_FORM = { category: "general", customerMessage: "", replyMessage: "", note: "" };
+const EMPTY_FORM = { category: "general", stage: "", customerMessage: "", replyMessage: "", note: "" };
 
 export default function ReplyExamplesPage() {
   const [examples, setExamples] = useState<Example[]>([]);
@@ -71,7 +72,7 @@ export default function ReplyExamplesPage() {
 
   const startEdit = (e: Example) => {
     setEditingId(e.id);
-    setForm({ category: e.category, customerMessage: e.customerMessage, replyMessage: e.replyMessage, note: e.note });
+    setForm({ category: e.category, stage: e.stage || "", customerMessage: e.customerMessage, replyMessage: e.replyMessage, note: e.note });
     setShowForm(true);
   };
 
@@ -98,17 +99,32 @@ export default function ReplyExamplesPage() {
 
       {showForm && (
         <section className="bg-white rounded-xl shadow-sm border border-purple-200 p-5 space-y-3">
-          <select
-            value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          >
-            {REPLY_CATEGORIES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.emoji} {c.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-3">
+            <select
+              value={form.stage}
+              onChange={(e) => setForm({ ...form, stage: e.target.value })}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              title="どの段階のお客様とのやりとりか"
+            >
+              <option value="">段階: 共通</option>
+              {REPLY_STAGES.map((st) => (
+                <option key={st.value} value={st.value}>
+                  {st.emoji} {st.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              {REPLY_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.emoji} {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <textarea
             value={form.customerMessage}
             onChange={(e) => setForm({ ...form, customerMessage: e.target.value })}
@@ -169,6 +185,9 @@ export default function ReplyExamplesPage() {
           <div key={e.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-semibold text-purple-600">{categoryLabel(e.category)}</span>
+              {e.stage && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-100 text-indigo-600">{stageLabel(e.stage)}</span>
+              )}
               {e.source === "learned" && (
                 <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-600">自動追加</span>
               )}

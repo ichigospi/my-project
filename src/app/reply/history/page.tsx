@@ -3,13 +3,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { categoryLabel } from "@/lib/reply-prompts";
+import { categoryLabel, stageLabel } from "@/lib/reply-prompts";
 
 interface DraftRecord {
   id: string;
   customerName: string;
   customerMessage: string;
   category: string;
+  stage: string;
   isEscalation: boolean;
   escalationReason: string;
   confidence: string;
@@ -127,6 +128,7 @@ export default function ReplyHistoryPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
+                    {d.stage && <span className="text-xs text-indigo-500">{stageLabel(d.stage)}</span>}
                     <span className="text-xs text-gray-500">{categoryLabel(d.category)}</span>
                     {d.customerName && <span className="text-xs font-medium text-gray-700">{d.customerName} さま</span>}
                     <span className="text-xs text-gray-400">

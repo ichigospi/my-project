@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
 import { callAI } from "@/lib/ai-helper";
+import { resolveAiModel } from "@/lib/ai-model";
 import { calcSimilarity } from "@/lib/similarity";
 import {
   REPLY_SETTINGS_KEY,
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { customerMessage, customerName = "", context = "", aiApiKey } = body;
+    const { customerMessage, customerName = "", context = "", stage = "", aiApiKey, model } = body;
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが必要です" }, { status: 400 });
     if (!customerMessage?.trim()) {
       return NextResponse.json({ error: "お客様のメッセージを入力してください" }, { status: 400 });
@@ -36,9 +37,14 @@ export async function POST(request: NextRequest) {
     ]);
     const settings = parseReplySettings(settingsRow?.value);
 
-    // 類似実例を選出（類似度上位。ヒットが少なければ新しい実例で補完）
+    // 類似実例を選出（類似度上位+同じ段階を優遇。ヒットが少なければ新しい実例で補完）
     const scored = allExamples
-      .map((e) => ({ e, score: calcSimilarity(customerMessage, e.customerMessage) }))
+      .map((e) => ({
+        e,
+        score:
+          calcSimilarity(customerMessage, e.customerMessage) +
+          (stage && e.stage === stage ? 0.15 : 0),
+      }))
       .sort((a, b) => b.score - a.score);
     const picked = scored.filter((s) => s.score > 0.05).slice(0, MAX_EXAMPLES).map((s) => s.e);
     for (const s of scored) {
@@ -62,16 +68,26 @@ export async function POST(request: NextRequest) {
           .map((d) => ({ customerMessage: d.customerMessage, reply: d.finalReply || d.draft }))
       : [];
 
-    const system = buildReplySystemPrompt(settings, policies);
+    // 段階指定がある場合、その段階のルール+全段階共通ルールに絞る
+    const scopedPolicies = stage
+      ? policies.filter((p) => !p.stage || p.stage === stage)
+      : policies;
+
+    const system = buildReplySystemPrompt(settings, scopedPolicies);
     const userMessage = buildReplyUserMessage({
       customerMessage,
       customerName,
       context,
+      stage,
       examples: picked,
       pastReplies,
     });
 
-    const res = await callAI(aiApiKey, userMessage, { system, maxTokens: 4096 });
+    const res = await callAI(aiApiKey, userMessage, {
+      system,
+      maxTokens: 4096,
+      model: resolveAiModel(model),
+    });
     if (res.error) {
       return NextResponse.json({ error: res.error, retryable: res.retryable }, { status: 500 });
     }
@@ -93,6 +109,7 @@ export async function POST(request: NextRequest) {
         customerName: customerName.trim(),
         customerMessage,
         context,
+        stage,
         category: result.category,
         isEscalation: result.isEscalation,
         escalationReason: result.escalationReason,
@@ -107,7 +124,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 根拠表示用に、参照されたルール・実例の中身も返す
-    const usedPolicies = policies.filter((p) => result.usedPolicyIds.includes(p.id));
+    const usedPolicies = scopedPolicies.filter((p) => result.usedPolicyIds.includes(p.id));
     const usedExamples = picked.filter((e) => result.usedExampleIds.includes(e.id));
 
     return NextResponse.json({ draft, usedPolicies, usedExamples, approvalMode: settings.approvalMode });

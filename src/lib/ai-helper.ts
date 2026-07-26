@@ -3,7 +3,7 @@
 export async function callAI(
   aiApiKey: string,
   prompt: string,
-  options?: { maxTokens?: number; system?: string }
+  options?: { maxTokens?: number; system?: string; model?: string }
 ): Promise<{ text: string; error?: string; retryable?: boolean }> {
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
   const maxTokens = options?.maxTokens || 4096;
@@ -12,7 +12,7 @@ export async function callAI(
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const body: Record<string, unknown> = {
-          model: "claude-sonnet-4-6",
+          model: options?.model || "claude-sonnet-4-6",
           max_tokens: maxTokens,
           messages: [{ role: "user", content: prompt }],
         };

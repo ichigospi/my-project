@@ -39,6 +39,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       await prisma.replyExample.create({
         data: {
           category: draft.category,
+          stage: draft.stage,
           customerMessage: draft.customerMessage,
           replyMessage: draft.finalReply,
           note: "承認済みドラフトから自動追加",

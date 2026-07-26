@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 const tabs = [
   { href: "/reply", label: "返信作成", emoji: "✉️", exact: true },
+  { href: "/reply/scenarios", label: "あるある集", emoji: "💡" },
   { href: "/reply/history", label: "履歴・承認", emoji: "📋" },
   { href: "/reply/policies", label: "判断ルール", emoji: "🧠" },
   { href: "/reply/examples", label: "実例集", emoji: "📚" },

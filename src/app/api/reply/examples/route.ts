@@ -22,12 +22,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { category = "general", customerMessage, replyMessage, note = "", source = "manual" } = body;
+    const { category = "general", stage = "", customerMessage, replyMessage, note = "", source = "manual" } = body;
     if (!customerMessage || !replyMessage) {
       return NextResponse.json({ error: "customerMessage と replyMessage は必須です" }, { status: 400 });
     }
     const example = await prisma.replyExample.create({
-      data: { category, customerMessage, replyMessage, note, source },
+      data: { category, stage, customerMessage, replyMessage, note, source },
     });
     return NextResponse.json(example);
   } catch (e) {

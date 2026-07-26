@@ -1,13 +1,16 @@
-// 返信作成: お客様メッセージを貼り付け → 分類・エスカレーション判定 → 返信案生成
+// 返信作成: ①段階を選ぶ → ②メッセージを貼る → ③生成 の3ステップ
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getApiKey } from "@/lib/channel-store";
-import { categoryLabel } from "@/lib/reply-prompts";
+import { categoryLabel, stageLabel, REPLY_STAGES } from "@/lib/reply-prompts";
+import { ALLOWED_AI_MODELS, AI_MODEL_OPTIONS, DEFAULT_AI_MODEL, type AiModelId } from "@/lib/ai-model";
 
 interface DraftRecord {
   id: string;
   category: string;
+  stage: string;
   isEscalation: boolean;
   escalationReason: string;
   confidence: string;
@@ -18,19 +21,30 @@ interface DraftRecord {
 
 interface UsedPolicy { id: string; title: string; guideline: string }
 interface UsedExample { id: string; customerMessage: string; replyMessage: string }
-
 interface RuleProposal { category: string; title: string; situation: string; guideline: string }
 
 const CONFIDENCE_BADGE: Record<string, { label: string; cls: string }> = {
-  high: { label: "確信度: 高", cls: "bg-green-100 text-green-700" },
-  medium: { label: "確信度: 中", cls: "bg-yellow-100 text-yellow-700" },
-  low: { label: "確信度: 低（要確認）", cls: "bg-red-100 text-red-700" },
+  high: { label: "確信度 高", cls: "bg-green-100 text-green-700" },
+  medium: { label: "確信度 中", cls: "bg-yellow-100 text-yellow-700" },
+  low: { label: "確信度 低（要確認）", cls: "bg-red-100 text-red-700" },
 };
 
+const MODEL_STORAGE_KEY = "reply_ai_model";
+
+function StepBadge({ n }: { n: number }) {
+  return (
+    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-purple-600 text-white text-xs font-bold shrink-0">
+      {n}
+    </span>
+  );
+}
+
 export default function ReplyCreatePage() {
+  const [stage, setStage] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerMessage, setCustomerMessage] = useState("");
   const [context, setContext] = useState("");
+  const [model, setModel] = useState<AiModelId>(DEFAULT_AI_MODEL);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -47,6 +61,18 @@ export default function ReplyCreatePage() {
 
   const [learning, setLearning] = useState(false);
   const [proposals, setProposals] = useState<RuleProposal[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (saved && (ALLOWED_AI_MODELS as readonly string[]).includes(saved)) {
+      setModel(saved as AiModelId);
+    }
+  }, []);
+
+  const changeModel = (m: AiModelId) => {
+    setModel(m);
+    localStorage.setItem(MODEL_STORAGE_KEY, m);
+  };
 
   const generate = async () => {
     const aiApiKey = getApiKey("ai_api_key");
@@ -67,7 +93,7 @@ export default function ReplyCreatePage() {
       const res = await fetch("/api/reply/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerMessage, customerName, context, aiApiKey }),
+        body: JSON.stringify({ customerMessage, customerName, context, stage, aiApiKey, model }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -114,8 +140,8 @@ export default function ReplyCreatePage() {
       setResult({ ...result, status });
       setSavedMessage(
         status === "sent"
-          ? "送信済みとして記録しました。" + (saveAsExample ? " 実例集にも追加しました。" : "")
-          : "承認依頼を出しました。オーナーが「履歴・承認」タブで確認します。",
+          ? "✓ 送信済みとして記録しました" + (saveAsExample ? "（実例集にも追加）" : "")
+          : "✓ 承認依頼を出しました。オーナーが「履歴・承認」タブで確認します",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存に失敗しました");
@@ -134,7 +160,6 @@ export default function ReplyCreatePage() {
     setLearning(true);
     setError("");
     try {
-      // 学習には最終文の保存が必要なので、先に finalReply を反映しておく
       await fetch(`/api/reply/drafts/${result.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -164,7 +189,7 @@ export default function ReplyCreatePage() {
       const res = await fetch("/api/reply/policies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...p, source: "learned" }),
+        body: JSON.stringify({ ...p, stage, source: "learned" }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -172,7 +197,7 @@ export default function ReplyCreatePage() {
         return;
       }
       setProposals((prev) => prev.filter((_, i) => i !== index));
-      setSavedMessage("ルールを追加しました");
+      setSavedMessage("✓ ルールを追加しました");
     } catch (e) {
       setError(e instanceof Error ? e.message : "ルールの追加に失敗しました");
     }
@@ -181,51 +206,134 @@ export default function ReplyCreatePage() {
   const edited = result ? finalReply.trim() !== (result.draft || "").trim() : false;
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
-      {/* 入力 */}
+    <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
+      {/* あるある集への誘導 */}
+      <Link
+        href="/reply/scenarios"
+        className="flex items-center gap-3 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 rounded-xl px-4 py-3 hover:border-purple-300 transition-colors"
+      >
+        <span className="text-xl">💡</span>
+        <span className="text-sm text-gray-700">
+          <strong>メッセージを貼らずに作りたいときは</strong> — よくあるシーンから例文を探せる「あるある集」へ
+        </span>
+        <span className="ml-auto text-purple-400">→</span>
+      </Link>
+
+      {/* STEP 1: 段階 */}
       <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-900">お客様からのメッセージ</h2>
-        <p className="text-xs text-gray-400">UTAGE・LINE・DM・メールなど、どこからのメッセージでもそのまま貼り付けでOK</p>
-        <div className="flex gap-3">
-          <input
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            placeholder="お客様の名前（任意・入れると過去のやりとりを考慮）"
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
-          />
+        <div className="flex items-center gap-2">
+          <StepBadge n={1} />
+          <h2 className="text-sm font-bold text-gray-900">どの段階のお客様?</h2>
+          <span className="text-xs text-gray-400">わからなければ「指定なし」でOK</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setStage("")}
+            className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              stage === ""
+                ? "bg-purple-600 text-white border-purple-600"
+                : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
+            }`}
+          >
+            指定なし
+          </button>
+          {REPLY_STAGES.map((s) => (
+            <button
+              key={s.value}
+              onClick={() => setStage(s.value)}
+              title={s.desc}
+              className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                stage === s.value
+                  ? "bg-purple-600 text-white border-purple-600"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
+              }`}
+            >
+              {s.emoji} {s.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* STEP 2: メッセージ */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <StepBadge n={2} />
+          <h2 className="text-sm font-bold text-gray-900">お客様のメッセージを貼り付け</h2>
         </div>
         <textarea
           value={customerMessage}
           onChange={(e) => setCustomerMessage(e.target.value)}
-          placeholder="お客様のメッセージをそのまま貼り付け"
+          placeholder="UTAGE・LINE・DM・メールなど、どこからのメッセージでもOK"
           rows={6}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
         />
-        <textarea
-          value={context}
-          onChange={(e) => setContext(e.target.value)}
-          placeholder="補足メモ（任意）: 例「昨日、神社選定鑑定を申し込まれた方です」"
-          rows={2}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
-        />
+        <details className="group">
+          <summary className="text-xs text-gray-500 cursor-pointer select-none hover:text-gray-700">
+            ＋ お客様の名前・補足メモを追加（任意）
+          </summary>
+          <div className="mt-3 space-y-2">
+            <input
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="お客様の名前（入れると過去のやりとりを考慮）"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+            />
+            <textarea
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              placeholder="補足メモ 例:「昨日、神社選定鑑定を申し込まれた方です」"
+              rows={2}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+            />
+          </div>
+        </details>
+      </section>
+
+      {/* STEP 3: 生成 */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <StepBadge n={3} />
+          <h2 className="text-sm font-bold text-gray-900">返信案を生成</h2>
+          <select
+            value={model}
+            onChange={(e) => changeModel(e.target.value as AiModelId)}
+            className="ml-auto border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white"
+            title="生成に使うAIモデル"
+          >
+            {AI_MODEL_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
           onClick={generate}
           disabled={loading}
-          className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors"
+          className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-xl py-3 text-sm transition-colors shadow-sm"
         >
-          {loading ? "分析・生成中..." : "🔮 返信案を生成"}
+          {loading ? "🔮 あなたの判断基準で考え中..." : "🔮 返信案を生成する"}
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </section>
 
       {/* 結果 */}
       {result && (
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+        <section
+          className={`rounded-xl shadow-sm border p-5 space-y-4 ${
+            result.isEscalation ? "bg-red-50 border-red-200" : "bg-white border-purple-200"
+          }`}
+        >
           <div className="flex flex-wrap items-center gap-2">
+            {result.stage && (
+              <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-700 text-xs font-semibold">
+                {stageLabel(result.stage)}
+              </span>
+            )}
             <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-700 text-xs font-semibold">
               {categoryLabel(result.category)}
             </span>
-            {CONFIDENCE_BADGE[result.confidence] && (
+            {!result.isEscalation && CONFIDENCE_BADGE[result.confidence] && (
               <span className={`px-2 py-1 rounded-md text-xs font-semibold ${CONFIDENCE_BADGE[result.confidence].cls}`}>
                 {CONFIDENCE_BADGE[result.confidence].label}
               </span>
@@ -236,8 +344,8 @@ export default function ReplyCreatePage() {
           </div>
 
           {result.isEscalation ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-2">
-              <p className="text-sm font-bold text-red-700">🚨 このメッセージはオーナー本人の対応が必要です</p>
+            <div className="space-y-2">
+              <p className="text-base font-bold text-red-700">🚨 オーナー本人の対応が必要な内容です</p>
               <p className="text-sm text-red-700">{result.escalationReason}</p>
               <p className="text-xs text-red-500">
                 AIによる返信案は作成していません。オーナーに直接共有してください（履歴・承認タブに記録済み）。
@@ -245,40 +353,29 @@ export default function ReplyCreatePage() {
             </div>
           ) : (
             <>
-              {/* 判断根拠 */}
-              <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                <p className="text-xs font-semibold text-gray-500">判断根拠</p>
-                <p className="text-sm text-gray-700">{result.reasoning}</p>
-                {usedPolicies.length > 0 && (
-                  <div className="text-xs text-gray-500">
-                    参照ルール: {usedPolicies.map((p) => p.title).join(" / ")}
-                  </div>
-                )}
-                {usedExamples.length > 0 && (
-                  <div className="text-xs text-gray-500">参考実例: {usedExamples.length}件</div>
-                )}
-              </div>
-
-              {/* 返信文（編集可能） */}
+              {/* 返信文（主役） */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500">
-                  返信文{edited && <span className="ml-2 text-purple-600">（修正あり）</span>}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-gray-500">
+                    ✉️ 返信文{edited && <span className="ml-2 text-purple-600">（修正あり）</span>}
+                  </p>
+                  <button
+                    onClick={copyFinal}
+                    className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-colors"
+                  >
+                    {copied ? "✓ コピーしました" : "📋 コピー"}
+                  </button>
+                </div>
                 <textarea
                   value={finalReply}
                   onChange={(e) => setFinalReply(e.target.value)}
                   rows={10}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  className="w-full border border-purple-200 bg-purple-50/40 rounded-lg px-3 py-2.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-purple-300"
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={copyFinal}
-                  className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  {copied ? "✓ コピーしました" : "📋 コピー"}
-                </button>
+              {/* アクション */}
+              <div className="flex flex-wrap items-center gap-2">
                 {approvalMode === "direct" ? (
                   <button
                     onClick={() => saveDraft("sent")}
@@ -296,8 +393,17 @@ export default function ReplyCreatePage() {
                     {saving ? "保存中..." : "承認依頼を出す"}
                   </button>
                 )}
+                {edited && (
+                  <button
+                    onClick={learnFromEdit}
+                    disabled={learning}
+                    className="px-4 py-2 rounded-lg border border-purple-300 text-purple-600 text-sm font-medium hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                  >
+                    {learning ? "分析中..." : "🧠 この修正から学ぶ"}
+                  </button>
+                )}
                 {approvalMode === "direct" && (
-                  <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <label className="flex items-center gap-1.5 text-xs text-gray-500 ml-auto">
                     <input
                       type="checkbox"
                       checked={saveAsExample}
@@ -306,17 +412,26 @@ export default function ReplyCreatePage() {
                     送信時に実例集へ追加
                   </label>
                 )}
-                {edited && (
-                  <button
-                    onClick={learnFromEdit}
-                    disabled={learning}
-                    className="px-4 py-2 rounded-lg border border-purple-200 text-purple-600 text-sm font-medium hover:bg-purple-50 disabled:opacity-50 transition-colors"
-                  >
-                    {learning ? "分析中..." : "🧠 この修正から学ぶ"}
-                  </button>
-                )}
               </div>
-              {savedMessage && <p className="text-sm text-green-600">{savedMessage}</p>}
+              {savedMessage && <p className="text-sm text-green-600 font-medium">{savedMessage}</p>}
+
+              {/* 判断根拠（折りたたみ） */}
+              <details className="bg-gray-50 rounded-lg">
+                <summary className="px-3 py-2 text-xs font-semibold text-gray-500 cursor-pointer select-none">
+                  🔍 なぜこの返信? （判断根拠を見る）
+                </summary>
+                <div className="px-3 pb-3 space-y-2">
+                  <p className="text-sm text-gray-700">{result.reasoning}</p>
+                  {usedPolicies.length > 0 && (
+                    <div className="text-xs text-gray-500">
+                      参照ルール: {usedPolicies.map((p) => p.title).join(" / ")}
+                    </div>
+                  )}
+                  {usedExamples.length > 0 && (
+                    <div className="text-xs text-gray-500">参考にした実例: {usedExamples.length}件</div>
+                  )}
+                </div>
+              </details>
             </>
           )}
         </section>
@@ -325,7 +440,7 @@ export default function ReplyCreatePage() {
       {/* 修正から抽出されたルール候補 */}
       {proposals.length > 0 && (
         <section className="bg-white rounded-xl shadow-sm border border-purple-200 p-5 space-y-3">
-          <h2 className="text-sm font-semibold text-purple-700">🧠 修正から抽出されたルール候補</h2>
+          <h2 className="text-sm font-bold text-purple-700">🧠 修正から抽出されたルール候補</h2>
           {proposals.map((p, i) => (
             <div key={i} className="border border-gray-100 rounded-lg p-3 flex items-start justify-between gap-3">
               <div className="text-sm">

@@ -22,6 +22,24 @@ export function categoryLabel(value: string): string {
   return c ? `${c.emoji} ${c.label}` : value;
 }
 
+// ===== 顧客の段階（カスタマージャーニー）定義 =====
+
+export const REPLY_STAGES = [
+  { value: "free", label: "無料鑑定", emoji: "🎁", desc: "無料鑑定の申込者・受取後の方" },
+  { value: "paid", label: "本鑑定", emoji: "🔮", desc: "有料鑑定の申込〜納品前後の方" },
+  { value: "treatment", label: "施術", emoji: "🌿", desc: "ヒーリング・施術系メニューの方" },
+  { value: "support", label: "伴走サポート", emoji: "🤝", desc: "継続サポート契約中の方" },
+  { value: "course", label: "講座", emoji: "📖", desc: "講座の受講生・検討中の方" },
+  { value: "repeat", label: "リピーターDM", emoji: "💜", desc: "過去に購入歴のあるお客様" },
+] as const;
+
+export type ReplyStage = (typeof REPLY_STAGES)[number]["value"];
+
+export function stageLabel(value: string): string {
+  const s = REPLY_STAGES.find((s) => s.value === value);
+  return s ? `${s.emoji} ${s.label}` : value === "other" ? "その他" : value;
+}
+
 // ===== ツール設定（AppSetting: reply_tool_settings）=====
 
 export interface ReplyToolSettings {
@@ -89,6 +107,7 @@ const BASE_PERSONA = `あなたは、占い・スピリチュアル事業を10�
 export interface PolicyForPrompt {
   id: string;
   category: string;
+  stage?: string;
   title: string;
   situation: string;
   guideline: string;
@@ -97,6 +116,7 @@ export interface PolicyForPrompt {
 export interface ExampleForPrompt {
   id: string;
   category: string;
+  stage?: string;
   customerMessage: string;
   replyMessage: string;
   note: string;
@@ -134,7 +154,8 @@ export function buildReplySystemPrompt(
   if (policies.length > 0) {
     const lines = policies.map((p) => {
       const situation = p.situation ? `状況: ${p.situation} → ` : "";
-      return `- [${p.id}] (${categoryLabel(p.category)}) ${p.title}: ${situation}${p.guideline}`;
+      const stage = p.stage ? `【${stageLabel(p.stage)}】` : "";
+      return `- [${p.id}] ${stage}(${categoryLabel(p.category)}) ${p.title}: ${situation}${p.guideline}`;
     });
     parts.push(`【オーナーの判断ルール（ベース人格より優先。IDで引用すること）】\n${lines.join("\n")}`);
   }
@@ -159,10 +180,18 @@ export function buildReplyUserMessage(opts: {
   customerMessage: string;
   customerName?: string;
   context?: string;
+  stage?: string;
   examples: ExampleForPrompt[];
   pastReplies?: { customerMessage: string; reply: string }[];
 }): string {
   const parts: string[] = [];
+
+  if (opts.stage) {
+    const s = REPLY_STAGES.find((s) => s.value === opts.stage);
+    if (s) {
+      parts.push(`【このお客様の段階】\n${s.emoji} ${s.label}（${s.desc}）。この段階に合ったトーン・案内内容で返信すること。`);
+    }
+  }
 
   if (opts.examples.length > 0) {
     const blocks = opts.examples.map(

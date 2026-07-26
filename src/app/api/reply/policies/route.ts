@@ -24,12 +24,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { category = "general", title, situation = "", guideline, priority = 0, source = "manual" } = body;
+    const { category = "general", stage = "", title, situation = "", guideline, priority = 0, source = "manual" } = body;
     if (!title || !guideline) {
       return NextResponse.json({ error: "title と guideline は必須です" }, { status: 400 });
     }
     const policy = await prisma.replyPolicy.create({
-      data: { category, title, situation, guideline, priority, source },
+      data: { category, stage, title, situation, guideline, priority, source },
     });
     return NextResponse.json(policy);
   } catch (e) {

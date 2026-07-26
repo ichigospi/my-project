@@ -11,7 +11,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const body = await request.json();
     const data: Record<string, unknown> = {};
-    for (const key of ["category", "title", "situation", "guideline", "priority", "isActive"] as const) {
+    for (const key of ["category", "stage", "title", "situation", "guideline", "priority", "isActive"] as const) {
       if (body[key] !== undefined) data[key] = body[key];
     }
     const policy = await prisma.replyPolicy.update({ where: { id }, data });
