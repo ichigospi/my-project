@@ -76,7 +76,7 @@ export default function ReplySettingsPage() {
         <textarea
           value={settings.businessNote}
           onChange={(e) => setSettings({ ...settings, businessNote: e.target.value })}
-          placeholder={"例:\n・神社選定鑑定 7,980円（申込から3日以内にUTAGEで納品）\n・返金は原則不可（規約に明記済み）\n・鑑定の追加質問は1回まで無料"}
+          placeholder={"例:\n・神社選定鑑定 7,980円（申込から3日以内に納品）\n・返金は原則不可（規約に明記済み）\n・鑑定の追加質問は1回まで無料"}
           rows={5}
           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
         />

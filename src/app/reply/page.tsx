@@ -184,7 +184,8 @@ export default function ReplyCreatePage() {
     <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
       {/* 入力 */}
       <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-900">お客様からのメッセージ（UTAGE）</h2>
+        <h2 className="text-sm font-semibold text-gray-900">お客様からのメッセージ</h2>
+        <p className="text-xs text-gray-400">UTAGE・LINE・DM・メールなど、どこからのメッセージでもそのまま貼り付けでOK</p>
         <div className="flex gap-3">
           <input
             value={customerName}
