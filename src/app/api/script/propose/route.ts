@@ -10,6 +10,16 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText } = body;
   const aiModel = resolveAiModel(body.aiModel);
+  // 主軸元ネタ（最多再生）の書き起こし文字数。±500字ルールの基準
+  const refCharCount: number | undefined = (() => {
+    const list = (analyses || []).filter((a: { transcript?: string }) => a.transcript);
+    if (list.length === 0) return undefined;
+    const primary = list.reduce(
+      (m: { views?: number }, a: { views?: number }) => ((a.views || 0) > (m.views || 0) ? a : m),
+      list[0]
+    ) as { transcript?: string };
+    return (primary.transcript || "").replace(/\s/g, "").length || undefined;
+  })();
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
 
@@ -166,16 +176,17 @@ ${buildTarotDrawBlock()}
 ${rulesText || ""}
 ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
 
-【文字数の目標（必達）】
-- 台本全体の目標文字数は「${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字」とする。これを超える分量の構成にしない（セクションを増やしすぎない・各セクションを詰め込みすぎない）。
-- 骨組みの「目標文字数」の行には必ず「${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字」と書く。6,500〜7,500文字などの大きい数字は書かない。
+【文字数の目標（必達）】${refCharCount ? `
+- 【元ネタとの文字数格差の禁止（最優先）】主軸元ネタの台本は実測 約${refCharCount}字。台本全体の目標は${refCharCount - 500}〜${refCharCount + 500}字とし、元ネタとの差が500字以上になる分量設計は禁止。骨組みの「目標文字数」の行には「約${refCharCount}字（元ネタ±500字）」と書くこと。` : `
+- 台本全体の目標文字数は「${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字」とする。骨組みの「目標文字数」の行には必ず「${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字」と書く。`}
+- これを超える分量の構成にしない（セクションを増やしすぎない・各セクションを詰め込みすぎない）。6,500〜7,500文字などの大きい数字は書かない。
 
 以下のマークダウン形式で出力してください。
 
 ---
 
 # 台本骨組み
-推定尺: ○○分 | 目標文字数: ${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字
+推定尺: ○○分 | 目標文字数: ${refCharCount ? `約${refCharCount}字（元ネタ±500字）` : `${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字`}
 
 ## ❶ セクション名（0:00-0:50）
 このセクションで伝える内容の説明（2-3文）

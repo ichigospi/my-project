@@ -67,6 +67,9 @@ C. 文字数(5000字以内)
    - 5000字以内: pass
    - 5001〜5500字: warn(目標やや超過)
    - 5500字超: fail(離脱率上昇の致命傷)
+   - 【元ネタとの文字数格差の禁止（必達）】ユーザープロンプトに「元ネタ(主軸)文字数(実測)」が記載されている場合、
+     生成台本との差が500字以上なら fail、300〜499字なら warn とする（実測値をそのまま使う。自分で数え直さない）。
+     記載が無い場合はこの項目を pass 扱いにする。
    コメントに実測の文字数を必ず含める。
 
 D. CTAロジックの自然な連結
@@ -220,7 +223,17 @@ function buildUserPrompt(p: {
   const lines: string[] = [];
   lines.push("【チェック対象の生成台本】");
   lines.push(`タイトル: ${p.title || "(未設定)"}`);
-  lines.push(`文字数(概算): ${p.script.replace(/\s/g, "").length}`);
+  const scriptLen = p.script.replace(/\s/g, "").length;
+  lines.push(`文字数(概算): ${scriptLen}`);
+  {
+    // 主軸元ネタ（最多再生）の文字数をサーバーで実測し、±500字ルールの判定材料にする
+    const withTr = p.referenceAnalyses.filter((a) => a.transcript);
+    if (withTr.length > 0) {
+      const primary = withTr.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), withTr[0]);
+      const refLen = (primary.transcript || "").replace(/\s/g, "").length;
+      lines.push(`元ネタ(主軸)文字数(実測): ${refLen} / 生成台本との差: ${Math.abs(scriptLen - refLen)}字`);
+    }
+  }
   lines.push("");
   lines.push("--- 台本本文 ---");
   lines.push(p.script);

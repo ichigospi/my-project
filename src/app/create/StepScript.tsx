@@ -183,6 +183,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           referenceAnalyses,
           aiApiKey,
           aiModel: getAiModel("generate"),
+          refCharCount: getRefCharCount(),
         }),
       });
       const data = await res.json();
@@ -190,6 +191,14 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       else if (data.script) { onUpdate({ ...project, generatedScript: data.script, status: "completed", scriptSegments: undefined, splitCount: 1 }); }
     } catch { setError("台本生成に失敗"); }
     finally { setGenerating(false); }
+  };
+
+  // 主軸元ネタ（最多再生の参考動画）の書き起こし文字数。±500字ルールの基準
+  const getRefCharCount = (): number | undefined => {
+    const refs = getAnalyses().filter((a) => project.analyses?.includes(a.id) && a.transcript);
+    if (refs.length === 0) return undefined;
+    const primary = refs.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), refs[0]);
+    return primary.transcript.replace(/\s/g, "").length;
   };
 
   // 元ネタ分析の整形（分割生成・パートチェックで共用）
@@ -213,7 +222,9 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
     const parts = splitSkeletonText(project.structureProposal?.concept || "", count);
     // 総目標文字数（プリセット）を、骨組みの各パートの分量比で重み付けして per-part に配分
-    const totalTargetChars = clampTargetChars(preset?.targetWordCount, project.style);
+    // 元ネタの文字数が分かる場合はそれを総目標に（±500字ルール）。無ければスタイル別レンジ
+    const refCharCount = getRefCharCount();
+    const totalTargetChars = refCharCount ?? clampTargetChars(preset?.targetWordCount, project.style);
     const totalLen = parts.reduce((s, p) => s + p.length, 0) || 1;
     const partTargetChars = Math.round(totalTargetChars * ((parts[index]?.length || 0) / totalLen));
     const res = await fetch("/api/script/create", {
@@ -223,6 +234,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         proposal: project.structureProposal, channelProfile, style: project.style, topic: project.title,
         additionalNotes, rulesText, referenceAnalyses: buildRefs(), aiApiKey, aiModel: getAiModel("generate"),
         segment: { index, total: parts.length, skeletonPart: parts[index], previousScript, partTargetChars, totalTargetChars },
+        refCharCount,
       }),
     });
     const data = await res.json();
