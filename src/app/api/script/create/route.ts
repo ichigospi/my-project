@@ -51,6 +51,12 @@ ${blocks.join("\n\n")}
 `;
 }
 
+
+// 日本時間の今日の日付（時期訴求の基準日として全プロンプトに注入する）
+function jstToday(): string {
+  return new Date().toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric" });
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey, rulesText, referenceAnalyses } = body;
@@ -166,6 +172,11 @@ export async function POST(request: NextRequest) {
 - 体験談は必ず本人の口調（〜しました／〜でした／〜です／〜入ってきました）で書く
 - ナレーターが第三者紹介として地の文で書く場合は「」で囲まない（「先月、ロト6で1億円当てた方からご報告が届いてます」のように地の文として扱う）
 - 「」で囲んだら本人の声、地の文ならナレーター視点、を絶対に混在させない
+
+【時期訴求の基準日（必達）】
+- 今日は${jstToday()}（日本時間）です。時期に関する訴求・予言（「この夏」「◯月」「3ヶ月以内」「年内」等）はすべて今日を基点にすること
+- すでに過ぎた月・時期を未来の予言として語るのは禁止（例: 7月下旬の動画で「6月、7月、8月が転換点」はNG。「8月、9月、10月」「今日からの3ヶ月」のように今日から始まる未来で語る）
+- 元ネタや骨組みに具体的な月・季節が書かれていても、そのままコピーせず今日基点の時期に置き換えること
 
 【タイトル整合性（必達）】
 タイトル「${topic}」に含まれる数字・スケール・約束（例:「億」「3分後」「100万人に一人」等）は、
