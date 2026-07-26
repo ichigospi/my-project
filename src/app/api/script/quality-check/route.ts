@@ -310,7 +310,7 @@ function parseJSON(text: string): Record<string, unknown> | null {
   return null;
 }
 
-async function callAnthropic(aiApiKey: string, userPrompt: string, aiModel: ReturnType<typeof resolveAiModel>): Promise<string> {
+async function callAnthropic(aiApiKey: string, userPrompt: string, aiModel: ReturnType<typeof resolveAiModel>, systemPrompt: string): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -318,7 +318,7 @@ async function callAnthropic(aiApiKey: string, userPrompt: string, aiModel: Retu
       body: JSON.stringify({
         model: aiModel,
         max_tokens: 8000,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [{ role: "user", content: userPrompt + "\n\nJSONのみ出力してください。{ から始めてください。" }],
         ...anthropicExtraBody(aiModel),
       }),
@@ -339,14 +339,14 @@ async function callAnthropic(aiApiKey: string, userPrompt: string, aiModel: Retu
   throw new Error("リトライ上限");
 }
 
-async function callOpenAI(aiApiKey: string, userPrompt: string): Promise<string> {
+async function callOpenAI(aiApiKey: string, userPrompt: string, systemPrompt: string): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
     body: JSON.stringify({
       model: "gpt-4o",
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
       max_tokens: 8000,
@@ -389,7 +389,15 @@ export async function POST(request: NextRequest) {
 
     const isAnthropic = aiApiKey.startsWith("sk-ant-");
     const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
-    const raw = isAnthropic ? await callAnthropic(aiApiKey, userPrompt, aiModel) : await callOpenAI(aiApiKey, userPrompt);
+    // タロットは目標5,000〜6,000字のため、文字数カテゴリの基準を差し替える
+    const isTarot = (body as { style?: string }).style === "tarot";
+    const systemPrompt = isTarot
+      ? SYSTEM_PROMPT
+          .split("5000字").join("6000字")
+          .replace("5001〜5500字", "6001〜6600字")
+          .replace("5500字超", "6600字超")
+      : SYSTEM_PROMPT;
+    const raw = isAnthropic ? await callAnthropic(aiApiKey, userPrompt, aiModel, systemPrompt) : await callOpenAI(aiApiKey, userPrompt, systemPrompt);
     const parsed = parseJSON(raw);
     if (!parsed) {
       return NextResponse.json({ error: "AI応答の解析に失敗しました", raw }, { status: 500 });

@@ -127,7 +127,10 @@ export async function POST(request: NextRequest) {
 
     const styleLabel = style === "healing" ? "ヒーリング系" : style === "tarot" ? "タロット系（リーディング進行型）" : "教育系";
 
-    const userPrompt = `${SYSTEM_PROMPT}
+    const systemPrompt = style === "tarot"
+      ? SYSTEM_PROMPT.replace("目安4,500〜5,000文字", "目安5,000〜6,000文字")
+      : SYSTEM_PROMPT;
+    const userPrompt = `${systemPrompt}
 
 【スタイル】${styleLabel}
 

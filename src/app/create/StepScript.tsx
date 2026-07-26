@@ -85,9 +85,14 @@ function splitSkeletonText(skeleton: string, n: number): string[] {
   return groups;
 }
 
-// 目標文字数は4,500〜5,000字に収める。保存済みプリセットが範囲外でもクランプする
-function clampTargetChars(n?: number): number {
+// 目標文字数のクランプ。タロットは5,000〜6,000字、それ以外は4,500〜5,000字。
+// 保存済みプリセットが範囲外の値でも矯正する
+function clampTargetChars(n?: number, style?: string): number {
+  if (style === "tarot") return Math.max(5000, Math.min(n || 5500, 6000));
   return Math.max(4500, Math.min(n || 4750, 5000));
+}
+function targetRangeLabel(style?: string): string {
+  return style === "tarot" ? "5,000〜6,000" : "4,500〜5,000";
 }
 
 // 推定動画尺（千代婆ベース: 後で調整、デフォルト250文字/分）
@@ -173,7 +178,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           channelProfile: getProfileByChannel(project.channelId || ""),
           style: project.style,
           topic: project.title,
-          additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount)}文字（4,500〜5,000字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
+          additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)),
           referenceAnalyses,
           aiApiKey,
@@ -204,11 +209,11 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const generateSegmentText = async (index: number, previousScript: string, aiApiKey: string, count: number): Promise<string | null> => {
     const preset = getPresetFor(project.genre, project.style, project.channelId);
     const channelProfile = getProfileByChannel(project.channelId || "");
-    const additionalNotes = preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount)}文字（4,500〜5,000字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "";
+    const additionalNotes = preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "";
     const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
     const parts = splitSkeletonText(project.structureProposal?.concept || "", count);
     // 総目標文字数（プリセット）を、骨組みの各パートの分量比で重み付けして per-part に配分
-    const totalTargetChars = clampTargetChars(preset?.targetWordCount);
+    const totalTargetChars = clampTargetChars(preset?.targetWordCount, project.style);
     const totalLen = parts.reduce((s, p) => s + p.length, 0) || 1;
     const partTargetChars = Math.round(totalTargetChars * ((parts[index]?.length || 0) / totalLen));
     const res = await fetch("/api/script/create", {
@@ -455,6 +460,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         })),
         aiApiKey,
         aiModel: getAiModel("check"),
+        style: project.style,
       });
 
       // Railway proxy が "upstream error"(プレーンテキスト) を返すと res.json() が
