@@ -92,6 +92,15 @@ const sqls = [
   `CREATE INDEX IF NOT EXISTS "ThreadsMetricSnapshot_draftId_idx" ON "ThreadsMetricSnapshot"("draftId")`,
 
   `CREATE TABLE IF NOT EXISTS "ThreadsToolSettings" ("id" TEXT NOT NULL PRIMARY KEY, "apifyToken" TEXT NOT NULL DEFAULT '', "apifyActorId" TEXT NOT NULL DEFAULT '', "openaiApiKey" TEXT NOT NULL DEFAULT '', "scraperEnabled" BOOLEAN NOT NULL DEFAULT false, "metricsTiming" TEXT NOT NULL DEFAULT '[1,24,72,168]', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+
+  // ===== 顧客対応ツール（返信第二脳）=====
+  `CREATE TABLE IF NOT EXISTS "ReplyPolicy" ("id" TEXT NOT NULL PRIMARY KEY, "category" TEXT NOT NULL DEFAULT 'general', "title" TEXT NOT NULL, "situation" TEXT NOT NULL DEFAULT '', "guideline" TEXT NOT NULL, "priority" INTEGER NOT NULL DEFAULT 0, "isActive" BOOLEAN NOT NULL DEFAULT true, "source" TEXT NOT NULL DEFAULT 'manual', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "ReplyPolicy_category_idx" ON "ReplyPolicy"("category")`,
+  `CREATE TABLE IF NOT EXISTS "ReplyExample" ("id" TEXT NOT NULL PRIMARY KEY, "category" TEXT NOT NULL DEFAULT 'general', "customerMessage" TEXT NOT NULL, "replyMessage" TEXT NOT NULL, "note" TEXT NOT NULL DEFAULT '', "source" TEXT NOT NULL DEFAULT 'manual', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "ReplyExample_category_idx" ON "ReplyExample"("category")`,
+  `CREATE TABLE IF NOT EXISTS "ReplyDraft" ("id" TEXT NOT NULL PRIMARY KEY, "customerName" TEXT NOT NULL DEFAULT '', "customerMessage" TEXT NOT NULL, "context" TEXT NOT NULL DEFAULT '', "category" TEXT NOT NULL DEFAULT 'general', "isEscalation" BOOLEAN NOT NULL DEFAULT false, "escalationReason" TEXT NOT NULL DEFAULT '', "confidence" TEXT NOT NULL DEFAULT '', "reasoning" TEXT NOT NULL DEFAULT '', "usedPolicyIds" TEXT NOT NULL DEFAULT '[]', "usedExampleIds" TEXT NOT NULL DEFAULT '[]', "draft" TEXT NOT NULL DEFAULT '', "finalReply" TEXT NOT NULL DEFAULT '', "status" TEXT NOT NULL DEFAULT 'draft', "createdByName" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "ReplyDraft_status_idx" ON "ReplyDraft"("status")`,
+  `CREATE INDEX IF NOT EXISTS "ReplyDraft_customerName_idx" ON "ReplyDraft"("customerName")`,
 ];
 
 for (const sql of sqls) {
