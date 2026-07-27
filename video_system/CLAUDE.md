@@ -108,7 +108,11 @@ python3 video_system/scripts/render_video.py video_system/projects/<名前>/time
       "telops": [{"text": "タイトルカード", "style": "title"}]
     },
     {
-      "type": "image", "src": "assets/photo.png", "duration": 4.0
+      "type": "image", "src": "assets/photo.png", "duration": 4.0,
+      "zoom": true,                    // 静止画をゆっくりズーム(Ken Burns)。imageのみ有効
+      "narration": {                   // シーン単位のナレーション音声(省略可)
+        "src": "assets/voice_scene3.mp3", "volume": 1.0
+      }
     }
   ],
 

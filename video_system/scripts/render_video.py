@@ -133,7 +133,11 @@ def render_scene(scene, idx, cfg, tmpdir):
         audio_from_src = has_audio(src) and not scene.get("mute", False)
     elif stype == "image":
         duration = duration or 4.0
-        inputs.append(["-loop", "1", "-t", str(duration), "-framerate", str(fps), "-i", src])
+        if scene.get("zoom"):
+            # Ken Burns: 静止画1枚を zoompan でゆっくりズームさせる
+            inputs.append(["-i", src])
+        else:
+            inputs.append(["-loop", "1", "-t", str(duration), "-framerate", str(fps), "-i", src])
         audio_from_src = False
     elif stype == "color":
         duration = duration or 3.0
@@ -150,6 +154,17 @@ def render_scene(scene, idx, cfg, tmpdir):
         inputs.append(["-f", "lavfi", "-t", str(duration), "-i",
                        "anullsrc=channel_layout=stereo:sample_rate=48000"])
 
+    # シーン単位のナレーション音声
+    narration = scene.get("narration")
+    narration_idx = None
+    if narration:
+        nar_src = os.path.join(base, narration["src"])
+        if not os.path.exists(nar_src):
+            sys.stderr.write(f"[render_video] ナレーションが見つかりません: {nar_src}\n")
+            sys.exit(1)
+        narration_idx = len(inputs)
+        inputs.append(["-t", str(duration), "-i", nar_src])
+
     # オーバーレイ素材
     overlays = scene.get("overlays", [])
     overlay_input_start = len(inputs)
@@ -162,8 +177,19 @@ def render_scene(scene, idx, cfg, tmpdir):
 
     # --- filter_complex 組み立て ---
     filters = []
-    vf = (f"[0:v]fps={fps},scale={width}:{height}:force_original_aspect_ratio=decrease,"
-          f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v0]")
+    if stype == "image" and scene.get("zoom"):
+        # ジッタ防止のため大きめに拡大してから zoompan する
+        frames = max(1, int(round(duration * fps)))
+        zoom_to = 1.12
+        step = (zoom_to - 1.0) / frames
+        vf = (f"[0:v]scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,"
+              f"crop={width * 2}:{height * 2},"
+              f"zoompan=z='min(zoom+{step:.6f},{zoom_to})':d={frames}"
+              f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+              f":s={width}x{height}:fps={fps},setsar=1,format=yuv420p[v0]")
+    else:
+        vf = (f"[0:v]fps={fps},scale={width}:{height}:force_original_aspect_ratio=decrease,"
+              f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v0]")
     filters.append(vf)
     last = "v0"
 
@@ -196,9 +222,18 @@ def render_scene(scene, idx, cfg, tmpdir):
     if audio_from_src:
         vol = scene.get("volume", 1.0)
         filters.append(f"[0:a]volume={vol},aresample=48000,"
-                       f"apad=whole_dur={duration}[aout]")
+                       f"apad=whole_dur={duration}[abase]")
     else:
-        filters.append("[1:a]anull[aout]")
+        filters.append("[1:a]anull[abase]")
+
+    if narration_idx is not None:
+        nar_vol = narration.get("volume", 1.0)
+        filters.append(f"[{narration_idx}:a]volume={nar_vol},aresample=48000,"
+                       f"apad=whole_dur={duration}[anar]")
+        filters.append("[abase][anar]amix=inputs=2:duration=first:"
+                       "dropout_transition=0:normalize=0[aout]")
+    else:
+        filters.append("[abase]anull[aout]")
 
     out_path = os.path.join(tmpdir, f"scene_{idx:03d}.mp4")
     cmd = ["ffmpeg", "-y", "-hide_banner"]

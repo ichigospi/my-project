@@ -27,6 +27,11 @@ export interface VideoScene {
   assetTaskId?: string;
   assetError?: string;
   mute?: boolean;
+  zoom?: boolean; // 画像素材をゆっくりズームさせる(既定: 有効)
+  narrationUrl?: string; // TTSで生成したナレーション音声
+  narrationDuration?: number;
+  narrationStatus?: "none" | "generating" | "ready" | "error";
+  narrationError?: string;
 }
 
 export interface VideoProject {
@@ -38,6 +43,7 @@ export interface VideoProject {
   bgmUrl?: string;
   bgmName?: string;
   bgmVolume: number;
+  narrationVoice: string; // OpenAI TTSの声(nova / shimmer / alloy 等)
   renderUrl?: string;
   renderSizeMb?: number;
   createdAt: string;
@@ -87,6 +93,7 @@ export function createVideoProject(opts: {
     aspect: opts.aspect || "9:16",
     scenes: [],
     bgmVolume: 0.15,
+    narrationVoice: "nova",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

@@ -30,6 +30,8 @@ interface RenderScene {
   mute?: boolean;
   fadeIn?: number;
   fadeOut?: number;
+  zoom?: boolean;
+  narrationUrl?: string;
   telops?: RenderTelop[];
 }
 
@@ -78,15 +80,24 @@ export async function POST(request: NextRequest) {
           ...(t.end != null ? { end: Number(t.end) } : {}),
         }));
 
+      // シーン単位ナレーション
+      let narration: { src: string; volume?: number } | undefined;
+      if (scene.narrationUrl) {
+        const { path } = await resolveAsset(scene.narrationUrl);
+        narration = { src: path };
+      }
+
       if (scene.assetUrl) {
         const { path, isImage } = await resolveAsset(scene.assetUrl);
         timelineScenes.push({
           type: isImage ? "image" : "video",
           src: path,
           duration,
+          ...(isImage && scene.zoom !== false ? { zoom: true } : {}),
           ...(scene.mute ? { mute: true } : {}),
           ...(scene.fadeIn ? { fade_in: Number(scene.fadeIn) } : {}),
           ...(scene.fadeOut ? { fade_out: Number(scene.fadeOut) } : {}),
+          ...(narration ? { narration } : {}),
           telops,
         });
       } else {
@@ -96,6 +107,7 @@ export async function POST(request: NextRequest) {
           duration,
           ...(scene.fadeIn ? { fade_in: Number(scene.fadeIn) } : {}),
           ...(scene.fadeOut ? { fade_out: Number(scene.fadeOut) } : {}),
+          ...(narration ? { narration } : {}),
           telops,
         });
       }

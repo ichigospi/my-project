@@ -20,6 +20,15 @@ import {
   genVideoId,
 } from "@/lib/video-store";
 
+const VOICE_OPTIONS = [
+  { id: "nova", label: "Nova(明るい女性)" },
+  { id: "shimmer", label: "Shimmer(落ち着いた女性)" },
+  { id: "coral", label: "Coral(やわらかい女性)" },
+  { id: "alloy", label: "Alloy(中性的)" },
+  { id: "onyx", label: "Onyx(低い男性)" },
+  { id: "echo", label: "Echo(男性)" },
+];
+
 const PROVIDER_OPTIONS: { id: AssetProvider; label: string; needs: string }[] = [
   { id: "openai_image", label: "AI画像 (gpt-image-1)", needs: "OpenAIキー" },
   { id: "litvideo_video", label: "AI動画 (LitVideo)", needs: "LitMediaキー" },
@@ -228,6 +237,58 @@ function VideoPageInner() {
     return () => clearInterval(timer);
   }, [updateScene]);
 
+  // ---- ナレーション音声生成(OpenAI TTS) ----
+  // 音声の長さに合わせてシーン尺を自動調整し、テロップの表示タイミングも比例して伸縮する
+  const generateNarration = useCallback(async (scene: VideoScene) => {
+    const cur = currentRef.current;
+    if (!cur || !scene.narration.trim()) return;
+    const openaiApiKey = getApiKey("openai_api_key");
+    if (!openaiApiKey) {
+      setError("ナレーション音声には設定ページのOpenAI APIキーが必要です");
+      return;
+    }
+    updateScene(scene.id, { narrationStatus: "generating", narrationError: undefined });
+    try {
+      const res = await fetch("/api/video/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: scene.narration,
+          openaiApiKey,
+          voice: cur.narrationVoice || "nova",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "音声生成に失敗しました");
+      const audioDur = Number(data.duration) || 0;
+      const newDuration = audioDur > 0 ? Math.min(Math.max(Math.round((audioDur + 0.6) * 10) / 10, 2), 30) : scene.duration;
+      const ratio = scene.duration > 0 ? newDuration / scene.duration : 1;
+      updateScene(scene.id, {
+        narrationStatus: "ready",
+        narrationUrl: data.url,
+        narrationDuration: audioDur,
+        duration: newDuration,
+        telops: scene.telops.map((t) => ({
+          ...t,
+          ...(t.start != null ? { start: Math.round(t.start * ratio * 10) / 10 } : {}),
+          ...(t.end != null ? { end: Math.round(t.end * ratio * 10) / 10 } : {}),
+        })),
+      });
+    } catch (e) {
+      updateScene(scene.id, { narrationStatus: "error", narrationError: String(e instanceof Error ? e.message : e) });
+    }
+  }, [updateScene]);
+
+  const handleGenerateAllNarrations = async () => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    for (const scene of cur.scenes) {
+      if (scene.narration.trim() && scene.narrationStatus !== "ready" && scene.narrationStatus !== "generating") {
+        await generateNarration(scene);
+      }
+    }
+  };
+
   // ---- 手持ち素材アップロード ----
   const handleUpload = async (sceneId: string, file: File) => {
     setUploadingSceneId(sceneId);
@@ -278,6 +339,8 @@ function VideoPageInner() {
             assetUrl: s.assetStatus === "ready" ? s.assetUrl : undefined,
             duration: s.duration,
             mute: s.mute,
+            zoom: s.zoom !== false,
+            narrationUrl: s.narrationStatus === "ready" ? s.narrationUrl : undefined,
             telops: s.telops,
           })),
           bgm: cur.bgmUrl ? { url: cur.bgmUrl, volume: cur.bgmVolume } : null,
@@ -423,6 +486,16 @@ function VideoPageInner() {
                 <option value="16:9">横 16:9</option>
                 <option value="1:1">正方形 1:1</option>
               </select>
+              <select
+                value={current.narrationVoice || "nova"}
+                onChange={(e) => update({ narrationVoice: e.target.value })}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white"
+                title="ナレーションの声(OpenAI TTS)"
+              >
+                {VOICE_OPTIONS.map((v) => (
+                  <option key={v.id} value={v.id}>声: {v.label}</option>
+                ))}
+              </select>
               <button
                 onClick={handlePlan}
                 disabled={planning}
@@ -464,13 +537,32 @@ function VideoPageInner() {
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs text-gray-500">ナレーション / 内容</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-gray-500">ナレーション / 内容</label>
+                      <button
+                        onClick={() => generateNarration(scene)}
+                        disabled={scene.narrationStatus === "generating" || !scene.narration.trim()}
+                        className="text-xs text-accent hover:underline disabled:opacity-50 disabled:no-underline"
+                      >
+                        {scene.narrationStatus === "generating"
+                          ? "音声生成中..."
+                          : scene.narrationStatus === "ready"
+                            ? "🔊 音声を再生成"
+                            : "🔊 音声を生成"}
+                      </button>
+                    </div>
                     <textarea
                       value={scene.narration}
-                      onChange={(e) => updateScene(scene.id, { narration: e.target.value })}
+                      onChange={(e) => updateScene(scene.id, { narration: e.target.value, narrationStatus: "none", narrationUrl: undefined })}
                       rows={2}
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm mt-1"
                     />
+                    {scene.narrationStatus === "ready" && scene.narrationUrl && (
+                      <audio src={scene.narrationUrl} controls className="w-full h-8 mt-1" />
+                    )}
+                    {scene.narrationStatus === "error" && (
+                      <p className="text-xs text-danger mt-1">{scene.narrationError}</p>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs text-gray-500">テロップ(1行=1テロップ)</label>
@@ -512,6 +604,14 @@ function VideoPageInner() {
                         onChange={(e) => updateScene(scene.id, { mute: e.target.checked })}
                       />
                       素材の音を消す
+                    </label>
+                    <label className="text-xs text-gray-500 flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={scene.zoom !== false}
+                        onChange={(e) => updateScene(scene.id, { zoom: e.target.checked })}
+                      />
+                      画像をズーム
                     </label>
                   </div>
                 </div>
@@ -597,6 +697,12 @@ function VideoPageInner() {
                 className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors"
               >
                 未生成のAI素材を一括生成
+              </button>
+              <button
+                onClick={handleGenerateAllNarrations}
+                className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors"
+              >
+                🔊 ナレーション音声を一括生成
               </button>
             </div>
           )}
