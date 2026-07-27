@@ -4,7 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { assetPath, importAssetFromUrl, saveAsset, assetUrl } from "@/lib/video-assets";
+import { assetPath, importAssetFromUrl, saveAsset, assetUrl, assetStoreDir } from "@/lib/video-assets";
 import { createJob, getJob, completeJob, failJob } from "@/lib/video-render-jobs";
 
 export const maxDuration = 300;
@@ -121,6 +121,8 @@ async function runRender(body: RenderRequest): Promise<{ url: string; sizeMb: nu
       font: "auto",
       // 長尺はエンコード時間を優先して veryfast にする(画質差は軽微)
       preset: totalDuration > 240 ? "veryfast" : "medium",
+      // 変更のないシーンを再エンコードしないためのキャッシュ(修正→再書き出しの高速化)
+      cache_dir: join(assetStoreDir(), "scene-cache"),
       scenes: timelineScenes,
     };
     if (bgm?.url) {

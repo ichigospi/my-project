@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkVideoTask, LitMediaError } from "@/lib/litmedia";
-import { saveAsset, importAssetFromUrl, assetUrl } from "@/lib/video-assets";
+import { saveAsset, importAssetFromUrl, assetUrl, addToLibrary } from "@/lib/video-assets";
 
 export const maxDuration = 300;
 
@@ -8,7 +8,7 @@ export const maxDuration = 300;
 // クライアント側が数十秒間隔でポーリングする想定。
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { provider, taskId, openaiApiKey, litmediaApiKey } = body;
+  const { provider, taskId, openaiApiKey, litmediaApiKey, prompt } = body;
 
   if (!provider || !taskId) {
     return NextResponse.json({ error: "provider と taskId が必要です" }, { status: 400 });
@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: `Sora動画のダウンロードに失敗 (${contentRes.status})` }, { status: 502 });
         }
         const id = await saveAsset(Buffer.from(await contentRes.arrayBuffer()), "mp4");
+        await addToLibrary({ id, kind: "video", source: "sora_video", prompt: prompt ? String(prompt).slice(0, 300) : undefined });
         return NextResponse.json({ status: "ready", url: assetUrl(id) });
       }
       if (data.status === "failed") {
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
       const result = await checkVideoTask(litmediaApiKey, String(taskId));
       if (result.status === "ready") {
         const id = await importAssetFromUrl(result.url, "mp4");
+        await addToLibrary({ id, kind: "video", source: "litvideo_video", prompt: prompt ? String(prompt).slice(0, 300) : undefined });
         return NextResponse.json({ status: "ready", url: assetUrl(id) });
       }
       if (result.status === "error") {

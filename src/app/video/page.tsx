@@ -19,6 +19,14 @@ import {
   createVideoProject,
   genVideoId,
 } from "@/lib/video-store";
+import type { LibraryEntry } from "@/lib/video-assets";
+
+const SOURCE_LABELS: Record<string, string> = {
+  openai_image: "AI画像",
+  sora_video: "Sora",
+  litvideo_video: "LitVideo",
+  upload: "アップロード",
+};
 
 const VOICE_OPTIONS = [
   { id: "nova", label: "Nova(明るい女性)" },
@@ -55,6 +63,10 @@ function VideoPageInner() {
   const [error, setError] = useState("");
   const [uploadingSceneId, setUploadingSceneId] = useState<string | null>(null);
   const [uploadingBgm, setUploadingBgm] = useState(false);
+  const [library, setLibrary] = useState<LibraryEntry[]>([]);
+  const [libraryPersistent, setLibraryPersistent] = useState(true);
+  const [libraryOpenFor, setLibraryOpenFor] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
   const currentRef = useRef<VideoProject | null>(null);
   currentRef.current = current;
 
@@ -100,6 +112,23 @@ function VideoPageInner() {
     setCurrent(next);
     setVideos(saveVideoProject(next));
   }, []);
+
+  const loadLibrary = useCallback(async () => {
+    try {
+      const res = await fetch("/api/video/library");
+      const data = await res.json();
+      if (res.ok) {
+        setLibrary(data.entries || []);
+        setLibraryPersistent(!!data.persistent);
+      }
+    } catch {
+      // ライブラリは補助機能なので読み込み失敗は無視
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLibrary();
+  }, [loadLibrary]);
 
   // ---- 台本 → シーン構成 ----
   const handlePlan = async () => {
@@ -182,13 +211,14 @@ function VideoPageInner() {
       if (!res.ok) throw new Error(data.error || "素材生成に失敗しました");
       if (data.status === "ready") {
         updateScene(scene.id, { assetStatus: "ready", assetUrl: data.url });
+        loadLibrary();
       } else {
         updateScene(scene.id, { assetStatus: "generating", assetTaskId: data.taskId });
       }
     } catch (e) {
       updateScene(scene.id, { assetStatus: "error", assetError: String(e instanceof Error ? e.message : e) });
     }
-  }, [updateScene]);
+  }, [updateScene, loadLibrary]);
 
   const handleGenerateAll = async () => {
     const cur = currentRef.current;
@@ -219,6 +249,7 @@ function VideoPageInner() {
             body: JSON.stringify({
               provider: scene.provider,
               taskId: scene.assetTaskId,
+              prompt: scene.visualPrompt,
               openaiApiKey: getApiKey("openai_api_key"),
               litmediaApiKey: getApiKey("litmedia_api_key"),
             }),
@@ -226,6 +257,7 @@ function VideoPageInner() {
           const data = await res.json();
           if (data.status === "ready") {
             updateScene(scene.id, { assetStatus: "ready", assetUrl: data.url, assetTaskId: undefined });
+            loadLibrary();
           } else if (data.status === "error" || (!res.ok && data.error)) {
             updateScene(scene.id, { assetStatus: "error", assetError: data.error, assetTaskId: undefined });
           }
@@ -235,7 +267,7 @@ function VideoPageInner() {
       }
     }, 20000);
     return () => clearInterval(timer);
-  }, [updateScene]);
+  }, [updateScene, loadLibrary]);
 
   // ---- ナレーション音声生成(OpenAI TTS) ----
   // 音声の長さに合わせてシーン尺を自動調整し、テロップの表示タイミングも比例して伸縮する
@@ -288,6 +320,24 @@ function VideoPageInner() {
         await generateNarration(scene);
       }
     }
+  };
+
+  // ---- 素材ライブラリ ----
+  const pickFromLibrary = (sceneId: string, entry: LibraryEntry) => {
+    updateScene(sceneId, {
+      provider: "upload",
+      assetStatus: "ready",
+      assetUrl: `/api/video/assets/${entry.id}`,
+      assetError: undefined,
+      assetTaskId: undefined,
+    });
+    setLibraryOpenFor(null);
+  };
+
+  const deleteLibraryEntry = async (id: string) => {
+    if (!confirm("この素材をライブラリから削除しますか？")) return;
+    await fetch(`/api/video/library?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    loadLibrary();
   };
 
   // ---- 手持ち素材アップロード ----
@@ -688,7 +738,46 @@ function VideoPageInner() {
                           />
                         </label>
                       )}
+                      <button
+                        onClick={() => {
+                          setLibraryOpenFor(libraryOpenFor === scene.id ? null : scene.id);
+                          loadLibrary();
+                        }}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:border-accent hover:text-accent"
+                        title="生成済み素材を使い回す"
+                      >
+                        📁
+                      </button>
                     </div>
+                    {libraryOpenFor === scene.id && (
+                      <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-100 max-h-64 overflow-y-auto">
+                        <p className="text-xs text-gray-500 mb-2">素材ライブラリから選ぶ(過去に生成・アップロードした素材)</p>
+                        {library.filter((e) => e.kind !== "audio").length === 0 ? (
+                          <p className="text-xs text-gray-400">まだ素材がありません</p>
+                        ) : (
+                          <div className="grid grid-cols-3 gap-2">
+                            {library.filter((e) => e.kind !== "audio").map((entry) => (
+                              <button
+                                key={entry.id}
+                                onClick={() => pickFromLibrary(scene.id, entry)}
+                                className="text-left rounded-lg overflow-hidden border border-gray-200 hover:border-accent bg-white"
+                                title={entry.prompt || entry.label || ""}
+                              >
+                                {entry.kind === "image" ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={`/api/video/assets/${entry.id}`} alt="" className="w-full h-16 object-cover" />
+                                ) : (
+                                  <video src={`/api/video/assets/${entry.id}`} muted className="w-full h-16 object-cover" />
+                                )}
+                                <span className="block px-1.5 py-1 text-[10px] text-gray-500 truncate">
+                                  {SOURCE_LABELS[entry.source] || entry.source}: {entry.prompt || entry.label || ""}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {(scene.provider === "openai_image" || scene.provider === "sora_video" || scene.provider === "litvideo_video") && (
                     <div>
@@ -814,6 +903,53 @@ function VideoPageInner() {
               )}
             </div>
           )}
+
+          {/* 素材ライブラリ管理 */}
+          <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold">素材ライブラリ({library.length})</h2>
+              <button onClick={() => { setShowLibrary(!showLibrary); loadLibrary(); }} className="text-sm text-accent hover:underline">
+                {showLibrary ? "閉じる" : "開く"}
+              </button>
+            </div>
+            {!libraryPersistent && (
+              <p className="text-xs text-amber-600 mb-2">
+                ⚠ 永続ストレージ未設定のため、素材は再デプロイで消えます。Railwayでボリュームを追加し、環境変数
+                <code className="bg-gray-100 px-1 rounded mx-1">VIDEO_ASSET_DIR</code>
+                にマウント先(例: /data/video-assets)を設定すると使い回せるようになります。
+              </p>
+            )}
+            {showLibrary && (
+              library.length === 0 ? (
+                <p className="text-sm text-gray-400">生成・アップロードした素材がここに貯まり、シーンの「📁」ボタンから使い回せます</p>
+              ) : (
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                  {library.map((entry) => (
+                    <div key={entry.id} className="rounded-lg overflow-hidden border border-gray-200 bg-white relative group">
+                      {entry.kind === "image" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={`/api/video/assets/${entry.id}`} alt="" className="w-full h-20 object-cover" />
+                      ) : entry.kind === "video" ? (
+                        <video src={`/api/video/assets/${entry.id}`} muted className="w-full h-20 object-cover" />
+                      ) : (
+                        <div className="w-full h-20 flex items-center justify-center text-2xl bg-gray-50">🎵</div>
+                      )}
+                      <span className="block px-1.5 py-1 text-[10px] text-gray-500 truncate" title={entry.prompt || entry.label || ""}>
+                        {SOURCE_LABELS[entry.source] || entry.source}: {entry.prompt || entry.label || ""}
+                      </span>
+                      <button
+                        onClick={() => deleteLibraryEntry(entry.id)}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100"
+                        title="削除"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
         </>
       )}
     </div>
