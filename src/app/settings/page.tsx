@@ -53,6 +53,8 @@ function SettingsContent() {
   const [showYtKey, setShowYtKey] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+  const [litmediaApiKey, setLitmediaApiKeyState] = useState("");
+  const [showLitmediaKey, setShowLitmediaKey] = useState(false);
   const [cookieStatus, setCookieStatus] = useState<{ hasCookies: boolean; size: number; uploadedAt?: string; expiresAt?: string; isExpired?: boolean } | null>(null);
   const [uploadingCookie, setUploadingCookie] = useState(false);
   const [cookieResult, setCookieResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -79,6 +81,7 @@ function SettingsContent() {
       setYoutubeApiKey(getApiKey("yt_api_key"));
       setAiApiKeyState(getApiKey("ai_api_key"));
       setOpenaiApiKeyState(getApiKey("openai_api_key"));
+      setLitmediaApiKeyState(getApiKey("litmedia_api_key"));
       setChannelCount(getChannels().length);
     });
     setAiModelGenerate(getAiModel("generate"));
@@ -235,6 +238,7 @@ function SettingsContent() {
     setApiKey("yt_api_key", youtubeApiKey);
     setApiKey("ai_api_key", aiApiKey);
     setApiKey("openai_api_key", openaiApiKey);
+    setApiKey("litmedia_api_key", litmediaApiKey);
     setAiModel("generate", aiModelGenerate);
     setAiModel("check", aiModelCheck);
     // サーバーにも共有設定を保存
@@ -377,12 +381,12 @@ function SettingsContent() {
           </div>
         </div>
 
-        {/* OpenAI APIキー（Whisper音声書き起こし用）*/}
+        {/* OpenAI APIキー（Whisper音声書き起こし・動画編集の画像/Sora生成用）*/}
         <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-          <h2 className="font-semibold mb-1">OpenAI APIキー（音声書き起こし用 / 任意）</h2>
+          <h2 className="font-semibold mb-1">OpenAI APIキー（音声書き起こし・動画素材生成用 / 任意）</h2>
           <p className="text-sm text-gray-500 mb-4">
-            ローカル<code className="bg-gray-100 px-1 rounded text-xs">/ocr</code>の「🎙 音声」ボタンで使用。
-            字幕もテロップも無い動画を OpenAI Whisper API で書き起こすために必要です。
+            ローカル<code className="bg-gray-100 px-1 rounded text-xs">/ocr</code>の「🎙 音声」ボタン（Whisper書き起こし）と、
+            「動画作成」ページのAI素材生成（gpt-image-1 画像 / Sora 動画）で使用します。
             <code className="bg-gray-100 px-1 rounded text-xs">sk-</code>(ant- は不可) で始まるOpenAIキーを入力。
           </p>
           <div className="relative">
@@ -396,6 +400,29 @@ function SettingsContent() {
             <button type="button" onClick={() => setShowOpenaiKey(!showOpenaiKey)}
               className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
               {showOpenaiKey ? "隠す" : "表示"}
+            </button>
+          </div>
+        </div>
+
+        {/* LitMedia (LitVideo) APIキー（動画編集のAI動画素材生成用）*/}
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-semibold mb-1">LitMedia (LitVideo) APIキー（AI動画素材生成用 / 任意）</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            「動画作成」ページで LitVideo（Kling / Seedance 等）によるAI動画素材を生成するために必要です。
+            LitMedia公式の認証ツール（litmedia-ai/skill の <code className="bg-gray-100 px-1 rounded text-xs">auth.py login</code>）で取得した
+            APIキーを入力してください。生成にはLitMediaのクレジットを消費します。
+          </p>
+          <div className="relative">
+            <input
+              type={showLitmediaKey ? "text" : "password"}
+              value={litmediaApiKey}
+              onChange={(e) => setLitmediaApiKeyState(e.target.value)}
+              placeholder="LitMedia APIキー"
+              className="w-full px-4 py-2.5 pr-16 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+            />
+            <button type="button" onClick={() => setShowLitmediaKey(!showLitmediaKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+              {showLitmediaKey ? "隠す" : "表示"}
             </button>
           </div>
         </div>

@@ -2,7 +2,7 @@ FROM node:20-slim
 
 # yt-dlp + ffmpeg インストール（yt-dlpは最新版を使用）
 RUN apt-get update && apt-get install -y \
-  python3 python3-pip ffmpeg curl ca-certificates \
+  python3 python3-pip ffmpeg curl ca-certificates fonts-noto-cjk \
   && pip3 install --break-system-packages --upgrade yt-dlp \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
