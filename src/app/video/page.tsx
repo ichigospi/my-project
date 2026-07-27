@@ -128,7 +128,7 @@ function VideoPageInner() {
           aiApiKey,
           aiModel: getAiModel("generate"),
           aspect: current.aspect,
-          targetSeconds: 60,
+          targetSeconds: current.targetSeconds || 600,
         }),
       });
       const data = await res.json();
@@ -144,7 +144,7 @@ function VideoPageInner() {
         id: genVideoId(),
         section: s.section || "",
         narration: s.narration || "",
-        duration: Math.min(Math.max(Number(s.duration) || 6, 2), 30),
+        duration: Math.min(Math.max(Number(s.duration) || 6, 2), 120),
         telops: (s.telops || []).filter((t) => t.text),
         visualPrompt: s.visualPrompt || "",
         provider: defaultProvider,
@@ -256,12 +256,13 @@ function VideoPageInner() {
           text: scene.narration,
           openaiApiKey,
           voice: cur.narrationVoice || "nova",
+          instructions: cur.narrationStyle || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "音声生成に失敗しました");
       const audioDur = Number(data.duration) || 0;
-      const newDuration = audioDur > 0 ? Math.min(Math.max(Math.round((audioDur + 0.6) * 10) / 10, 2), 30) : scene.duration;
+      const newDuration = audioDur > 0 ? Math.min(Math.max(Math.round((audioDur + 0.6) * 10) / 10, 2), 180) : scene.duration;
       const ratio = scene.duration > 0 ? newDuration / scene.duration : 1;
       updateScene(scene.id, {
         narrationStatus: "ready",
@@ -323,7 +324,7 @@ function VideoPageInner() {
     }
   };
 
-  // ---- レンダリング ----
+  // ---- レンダリング(非同期ジョブ + ポーリング) ----
   const handleRender = async () => {
     const cur = currentRef.current;
     if (!cur || cur.scenes.length === 0) return;
@@ -347,8 +348,21 @@ function VideoPageInner() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "レンダリングに失敗しました");
-      update({ renderUrl: data.url, renderSizeMb: data.sizeMb });
+      if (!res.ok) throw new Error(data.error || "レンダリングの開始に失敗しました");
+      const jobId = data.jobId as string;
+
+      // 完了までポーリング(5秒間隔)。長尺は数十分かかることがある
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const st = await fetch(`/api/video/render?jobId=${encodeURIComponent(jobId)}`);
+        const stData = await st.json();
+        if (!st.ok) throw new Error(stData.error || "レンダリング状況の取得に失敗しました");
+        if (stData.status === "done") {
+          update({ renderUrl: stData.url, renderSizeMb: stData.sizeMb });
+          break;
+        }
+        if (stData.status === "error") throw new Error(stData.error || "レンダリングに失敗しました");
+      }
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -487,6 +501,18 @@ function VideoPageInner() {
                 <option value="1:1">正方形 1:1</option>
               </select>
               <select
+                value={current.targetSeconds || 600}
+                onChange={(e) => update({ targetSeconds: Number(e.target.value) })}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white"
+                title="動画の目標尺"
+              >
+                <option value={60}>長さ: ショート(60秒)</option>
+                <option value={180}>長さ: 3分</option>
+                <option value={600}>長さ: 10分</option>
+                <option value={900}>長さ: 15分</option>
+                <option value={1200}>長さ: 20分</option>
+              </select>
+              <select
                 value={current.narrationVoice || "nova"}
                 onChange={(e) => update({ narrationVoice: e.target.value })}
                 className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white"
@@ -504,9 +530,18 @@ function VideoPageInner() {
                 {planning ? "シーン構成を生成中..." : current.scenes.length > 0 ? "シーン構成を作り直す" : "台本からシーン構成を生成"}
               </button>
             </div>
+            <div className="mt-3">
+              <label className="text-xs text-gray-500">話し方の指示(ナレーション音声のトーン。空欄可)</label>
+              <input
+                value={current.narrationStyle || ""}
+                onChange={(e) => update({ narrationStyle: e.target.value })}
+                placeholder="例: 低めのトーンで、ゆっくり、癒すように語りかける"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm mt-1"
+              />
+            </div>
             {current.scenes.length > 0 && (
               <p className="text-xs text-gray-500 mt-3">
-                {current.scenes.length}シーン / 合計 約{totalDuration}秒
+                {current.scenes.length}シーン / 合計 約{Math.floor(totalDuration / 60)}分{Math.round(totalDuration % 60)}秒
                 {generatingCount > 0 && ` / 素材生成中: ${generatingCount}件(数分かかります)`}
               </p>
             )}
@@ -592,7 +627,7 @@ function VideoPageInner() {
                     <input
                       type="number"
                       min={2}
-                      max={30}
+                      max={180}
                       value={scene.duration}
                       onChange={(e) => updateScene(scene.id, { duration: Number(e.target.value) || 6 })}
                       className="w-20 px-3 py-1.5 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm"
@@ -751,7 +786,7 @@ function VideoPageInner() {
                 disabled={rendering || generatingCount > 0}
                 className="px-6 py-3 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50"
               >
-                {rendering ? "レンダリング中...(数分かかります)" : "動画を書き出す"}
+                {rendering ? "レンダリング中...(長尺は数十分かかります。このページは開いたままに)" : "動画を書き出す"}
               </button>
               {generatingCount > 0 && (
                 <p className="text-xs text-amber-600 mt-2">AI素材の生成完了を待っています({generatingCount}件)</p>

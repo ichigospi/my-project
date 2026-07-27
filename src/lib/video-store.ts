@@ -44,6 +44,8 @@ export interface VideoProject {
   bgmName?: string;
   bgmVolume: number;
   narrationVoice: string; // OpenAI TTSの声(nova / shimmer / alloy 等)
+  narrationStyle?: string; // 話し方の指示(例: 低めのトーンでゆっくり癒すように)
+  targetSeconds?: number; // 動画の目標尺(秒)。シーン構成生成に使う
   renderUrl?: string;
   renderSizeMb?: number;
   createdAt: string;
@@ -94,6 +96,7 @@ export function createVideoProject(opts: {
     scenes: [],
     bgmVolume: 0.15,
     narrationVoice: "nova",
+    targetSeconds: 600,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

@@ -241,7 +241,7 @@ def render_scene(scene, idx, cfg, tmpdir):
         cmd += inp
     cmd += ["-filter_complex", ";".join(filters),
             "-map", "[vout]", "-map", "[aout]",
-            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+            "-c:v", "libx264", "-preset", cfg.get("preset", "medium"), "-crf", "20",
             "-c:a", "aac", "-ar", "48000", "-ac", "2",
             "-t", str(duration), "-r", str(fps),
             out_path]
