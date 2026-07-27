@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { saveAsset, assetUrl, ALLOWED_EXTS } from "@/lib/video-assets";
+import { saveAsset, assetUrl, ALLOWED_EXTS, addToLibrary, kindForExt } from "@/lib/video-assets";
 
 export const maxDuration = 300;
 
@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const id = await saveAsset(Buffer.from(await file.arrayBuffer()), ext);
+    await addToLibrary({ id, kind: kindForExt(ext), source: "upload", label: file.name.slice(0, 100) });
     return NextResponse.json({ url: assetUrl(id), name: file.name });
   } catch (e) {
     console.error("POST /api/video/upload", e);

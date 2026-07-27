@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { submitTextToVideo, LitMediaError } from "@/lib/litmedia";
-import { saveAsset, assetUrl } from "@/lib/video-assets";
+import { saveAsset, assetUrl, addToLibrary } from "@/lib/video-assets";
 
 export const maxDuration = 300;
 
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       const b64 = data.data?.[0]?.b64_json;
       if (!b64) return NextResponse.json({ error: "OpenAI: 画像データが返りませんでした" }, { status: 502 });
       const id = await saveAsset(Buffer.from(b64, "base64"), "png");
+      await addToLibrary({ id, kind: "image", source: "openai_image", prompt: String(prompt).slice(0, 300) });
       return NextResponse.json({ status: "ready", url: assetUrl(id) });
     }
 

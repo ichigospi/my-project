@@ -8,12 +8,14 @@ timeline.json の仕様は video_system/CLAUDE.md を参照。
 ffmpeg / ffprobe が必要。テロップには日本語フォント (Noto Sans CJK 等) を使用する。
 """
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 FONT_CANDIDATES = [
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
@@ -105,6 +107,39 @@ def build_drawtext(telop, font, width, height, tmpdir, idx):
         e = 100000 if end is None else end
         parts.append(f"enable='between(t,{s},{e})'")
     return ":".join(parts)
+
+
+def scene_cache_key(scene, cfg):
+    """シーン設定+素材ファイルの状態からキャッシュキーを作る。
+    変更のないシーンは再エンコードせずキャッシュを使い回す(長尺の修正を高速化)。"""
+    base = cfg["_base_dir"]
+    parts = dict(scene)
+    src = scene.get("src")
+    if src:
+        p = os.path.join(base, src)
+        if os.path.exists(p):
+            st = os.stat(p)
+            parts["_stat_src"] = [st.st_size, int(st.st_mtime)]
+    nar = scene.get("narration")
+    if nar and nar.get("src"):
+        p = os.path.join(base, nar["src"])
+        if os.path.exists(p):
+            st = os.stat(p)
+            parts["_stat_narration"] = [st.st_size, int(st.st_mtime)]
+    parts["_conf"] = [cfg["width"], cfg["height"], cfg["fps"], cfg.get("preset", "medium")]
+    raw = json.dumps(parts, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
+def prune_cache(cache_dir, max_age_days=7):
+    try:
+        cutoff = time.time() - max_age_days * 86400
+        for name in os.listdir(cache_dir):
+            path = os.path.join(cache_dir, name)
+            if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                os.remove(path)
+    except OSError:
+        pass
 
 
 def render_scene(scene, idx, cfg, tmpdir):
@@ -269,11 +304,31 @@ def main():
 
     tmpdir = tempfile.mkdtemp(prefix="render_video_")
     try:
-        # 1. 各シーンをレンダリング
+        # 1. 各シーンをレンダリング(cache_dir 指定時は変更のないシーンを使い回す)
+        cache_dir = cfg.get("cache_dir")
+        if cache_dir:
+            # 相対指定は timeline.json のあるディレクトリ基準。concat で使うため絶対パスにする
+            cache_dir = os.path.abspath(os.path.join(base_dir, cache_dir))
+            os.makedirs(cache_dir, exist_ok=True)
+            prune_cache(cache_dir)
+
         scene_files = []
+        total = len(cfg.get("scenes", []))
         for i, scene in enumerate(cfg.get("scenes", [])):
-            print(f"[render_video] シーン {i + 1}/{len(cfg['scenes'])} をレンダリング中...")
-            scene_files.append(render_scene(scene, i, cfg, tmpdir))
+            cached_path = None
+            if cache_dir:
+                cached_path = os.path.join(cache_dir, f"scene_{scene_cache_key(scene, cfg)}.mp4")
+                if os.path.exists(cached_path):
+                    print(f"[render_video] シーン {i + 1}/{total}: キャッシュを使用")
+                    scene_files.append(cached_path)
+                    continue
+            print(f"[render_video] シーン {i + 1}/{total} をレンダリング中...")
+            rendered = render_scene(scene, i, cfg, tmpdir)
+            if cached_path:
+                shutil.copyfile(rendered, cached_path)
+                scene_files.append(cached_path)
+            else:
+                scene_files.append(rendered)
 
         if not scene_files:
             sys.stderr.write("[render_video] scenes が空です。\n")

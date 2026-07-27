@@ -78,6 +78,8 @@ python3 video_system/scripts/render_video.py video_system/projects/<名前>/time
   "height": 1920,
   "fps": 30,
   "font": "auto",                 // "auto" で Noto Sans CJK 等を自動検出。パス指定も可
+  "preset": "medium",             // x264プリセット。長尺は "veryfast" 推奨(省略可)
+  "cache_dir": "scene_cache",     // シーン単位キャッシュ。変更のないシーンは再エンコードしない(省略可)
 
   "scenes": [
     {
