@@ -14,24 +14,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "台本とAIのAPIキーが必要です" }, { status: 400 });
   }
 
-  const prompt = `あなたは動画編集者です。以下の台本を、${aspect === "9:16" ? "縦型ショート" : "横型"}動画(合計${targetSeconds}秒程度)のシーン構成に変換してください。
+  const secs = Math.min(Math.max(Number(targetSeconds) || 60, 15), 1800);
+  const isLongForm = secs >= 300;
+  // 長尺は1シーン20〜45秒、ショートは4〜12秒を目安にシーン数を配分する
+  const minScenes = isLongForm ? Math.max(6, Math.round(secs / 45)) : 4;
+  const maxScenes = isLongForm ? Math.min(45, Math.round(secs / 20)) : 10;
+
+  const prompt = `あなたは動画編集者です。以下の台本を、${aspect === "9:16" ? "縦型ショート" : "横型"}動画(合計${Math.round(secs / 60)}分${secs % 60 ? `${secs % 60}秒` : ""}程度)のシーン構成に変換してください。
 
 【台本】
-${String(script).substring(0, 12000)}
+${String(script).substring(0, 30000)}
 
 ルール:
-- シーン数は4〜10個。1シーン4〜12秒
-- narration はそのシーンで読み上げる/伝える内容の要約(台本の言葉を活かす)
-- telops は画面に出す字幕。1テロップ15〜25文字、1シーンに1〜3個。start/end はシーン内の秒数で、シーンの尺に収める
-- visualPrompt はそのシーンの映像をAI生成するための英語プロンプト。被写体・雰囲気・カメラワークを具体的に。テキスト描画の指示は入れない
+- シーン数は${minScenes}〜${maxScenes}個。1シーン${isLongForm ? "20〜45秒" : "4〜12秒"}
+${isLongForm
+  ? `- narration はそのシーンで読み上げる台本の本文。要約せず、台本の文章を話し言葉のまま順番に割り振る(ナレーション音声の原稿になる)。台本全体を漏れなくカバーすること
+- duration は narration の文字数から見積もる(日本語は1分あたり約300文字)`
+  : `- narration はそのシーンで読み上げる/伝える内容の要約(台本の言葉を活かす)`}
+- telops は画面に出す字幕。1テロップ15〜25文字、1シーンに${isLongForm ? "2〜5" : "1〜3"}個。start/end はシーン内の秒数で、シーンの尺に収める
+- visualPrompt はそのシーンの映像をAI生成するための英語プロンプト。被写体・雰囲気・カメラワークを具体的に。テキスト描画の指示は入れない。動画全体でトーン(色調・世界観)を統一する
 - 実在の人物名・ロゴ・著作物は visualPrompt に入れない
 
 以下のJSON配列のみを出力:
 [
   {
     "section": "フック",
-    "narration": "シーンで伝える内容",
-    "duration": 6,
+    "narration": "シーンで読み上げる文章",
+    "duration": ${isLongForm ? 30 : 6},
     "telops": [{"text": "テロップ文", "start": 0.5, "end": 5.5}],
     "visualPrompt": "cinematic ..."
   }
@@ -48,7 +57,7 @@ ${String(script).substring(0, 12000)}
           headers: anthropicHeaders(aiApiKey, aiModel),
           body: JSON.stringify({
             model: aiModel,
-            max_tokens: 8192,
+            max_tokens: isLongForm ? 32000 : 8192,
             messages: [{ role: "user", content: prompt }],
             ...anthropicExtraBody(aiModel),
           }),
@@ -74,7 +83,7 @@ ${String(script).substring(0, 12000)}
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 8192 }),
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: isLongForm ? 16000 : 8192 }),
       });
       if (!res.ok) {
         const e = await res.json();
