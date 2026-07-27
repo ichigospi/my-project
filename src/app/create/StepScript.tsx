@@ -995,10 +995,16 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm">テロップ形式</h3>
-                <button onClick={handleConvertTelop} disabled={convertingTelop}
-                  className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
-                  {convertingTelop ? "変換中..." : "テロップに変換"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <a href={`/video?projectId=${project.id}`}
+                    className="px-3 py-1.5 rounded-lg border border-accent text-accent text-xs font-medium hover:bg-accent hover:text-white transition-colors">
+                    🎬 この台本で動画を作る
+                  </a>
+                  <button onClick={handleConvertTelop} disabled={convertingTelop}
+                    className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
+                    {convertingTelop ? "変換中..." : "テロップに変換"}
+                  </button>
+                </div>
               </div>
               {project.telopScript && (
                 <>

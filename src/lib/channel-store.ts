@@ -113,12 +113,14 @@ export function parseYouTubeUrl(url: string): { handle?: string; channelId?: str
 }
 
 // APIキー管理
-export function getApiKey(key: "yt_api_key" | "ai_api_key" | "openai_api_key"): string {
+export type ApiKeyName = "yt_api_key" | "ai_api_key" | "openai_api_key" | "litmedia_api_key";
+
+export function getApiKey(key: ApiKeyName): string {
   if (typeof window === "undefined") return "";
   return localStorage.getItem(key) || "";
 }
 
-export function setApiKey(key: "yt_api_key" | "ai_api_key" | "openai_api_key", value: string) {
+export function setApiKey(key: ApiKeyName, value: string) {
   if (typeof window === "undefined") return;
   localStorage.setItem(key, value);
 }
