@@ -44,3 +44,7 @@ next-env.d.ts
 /src/generated/prisma
 *.db
 *.db-journal
+
+# video_system: 書き出し動画・デモ生成素材はコミットしない
+video_system/projects/*/output/
+video_system/projects/sample_short/assets/

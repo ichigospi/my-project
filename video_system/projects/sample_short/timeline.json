@@ -1,0 +1,57 @@
+{
+  "output": "output/final.mp4",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "font": "auto",
+
+  "scenes": [
+    {
+      "type": "color",
+      "color": "black",
+      "duration": 3.0,
+      "fade_in": 0.6,
+      "telops": [
+        {
+          "text": "動画編集、\nClaude Codeに\n全部任せられます",
+          "style": "title",
+          "start": 0.4
+        }
+      ]
+    },
+    {
+      "type": "video",
+      "src": "assets/bg_gradient.mp4",
+      "duration": 8.0,
+      "telops": [
+        { "text": "① 台本を作る", "style": "caption", "start": 0.5, "end": 8.0, "y": "h*0.30" },
+        { "text": "② 素材を用意する", "style": "caption", "start": 2.5, "end": 8.0, "y": "h*0.45" },
+        { "text": "③ テロップとBGMを入れる", "style": "caption", "start": 4.5, "end": 8.0, "y": "h*0.60" }
+      ]
+    },
+    {
+      "type": "video",
+      "src": "assets/footage_demo.mp4",
+      "duration": 5.0,
+      "mute": true,
+      "telops": [
+        { "text": "手持ち素材の挿入もOK", "style": "caption" }
+      ]
+    },
+    {
+      "type": "image",
+      "src": "assets/matome.png",
+      "duration": 4.0,
+      "fade_out": 1.0,
+      "telops": [
+        { "text": "修正指示も\nチャットでどうぞ", "style": "title" }
+      ]
+    }
+  ],
+
+  "bgm": {
+    "src": "assets/bgm_demo.mp3",
+    "volume": 0.3,
+    "fade_out": 2.0
+  }
+}
