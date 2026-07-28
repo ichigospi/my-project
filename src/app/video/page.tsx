@@ -59,6 +59,8 @@ function VideoPageInner() {
   const [current, setCurrent] = useState<VideoProject | null>(null);
   const [scriptProjects, setScriptProjects] = useState<ScriptProject[]>([]);
   const [planning, setPlanning] = useState(false);
+  const [matching, setMatching] = useState(false);
+  const [matchMsg, setMatchMsg] = useState("");
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState("");
   const [uploadingSceneId, setUploadingSceneId] = useState<string | null>(null);
@@ -180,6 +182,8 @@ function VideoPageInner() {
         assetStatus: "none",
       }));
       update({ scenes });
+      // 格納庫に合う素材があれば自動で割り当てる(残りだけ新規生成すればよい)
+      await handleMatchAssets(scenes);
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -321,6 +325,58 @@ function VideoPageInner() {
       }
     }
   };
+
+  // ---- 格納庫からの自動割り当て ----
+  // シーン内容と格納庫の素材(生成プロンプト等)をAIで照合し、合う素材を自動で割り当てる
+  const handleMatchAssets = useCallback(async (targetScenes?: VideoScene[]) => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    const scenes = targetScenes || cur.scenes;
+    const unassigned = scenes.filter((s) => s.assetStatus !== "ready");
+    if (unassigned.length === 0) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) return;
+    setMatching(true);
+    setMatchMsg("");
+    try {
+      const res = await fetch("/api/video/match-assets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aiApiKey,
+          aiModel: getAiModel("generate"),
+          scenes: unassigned.map((s) => ({
+            id: s.id,
+            section: s.section,
+            narration: s.narration,
+            visualPrompt: s.visualPrompt,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "自動割り当てに失敗しました");
+      const assignments = (data.assignments || []) as { sceneId: string; assetId: string }[];
+      for (const a of assignments) {
+        updateScene(a.sceneId, {
+          provider: "upload",
+          assetStatus: "ready",
+          assetUrl: `/api/video/assets/${a.assetId}`,
+          assetError: undefined,
+          assetTaskId: undefined,
+        });
+      }
+      const rest = unassigned.length - assignments.length;
+      setMatchMsg(
+        data.libraryCount === 0
+          ? "格納庫が空です。素材を生成すると自動で貯まります"
+          : `📦 格納庫から${assignments.length}シーンに割り当てました${rest > 0 ? `(残り${rest}シーンは生成が必要)` : ""}`,
+      );
+    } catch (e) {
+      setMatchMsg(`❌ ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setMatching(false);
+    }
+  }, [updateScene]);
 
   // ---- 素材ライブラリ ----
   const pickFromLibrary = (sceneId: string, entry: LibraryEntry) => {
@@ -817,6 +873,13 @@ function VideoPageInner() {
                 + シーンを追加
               </button>
               <button
+                onClick={() => handleMatchAssets()}
+                disabled={matching}
+                className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors disabled:opacity-50"
+              >
+                {matching ? "照合中..." : "📦 格納庫から自動割り当て"}
+              </button>
+              <button
                 onClick={handleGenerateAll}
                 className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors"
               >
@@ -828,6 +891,7 @@ function VideoPageInner() {
               >
                 🔊 ナレーション音声を一括生成
               </button>
+              {matchMsg && <span className="text-xs text-gray-600">{matchMsg}</span>}
             </div>
           )}
 
@@ -904,13 +968,40 @@ function VideoPageInner() {
             </div>
           )}
 
-          {/* 素材ライブラリ管理 */}
+          {/* 素材格納庫 */}
           <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold">素材ライブラリ({library.length})</h2>
-              <button onClick={() => { setShowLibrary(!showLibrary); loadLibrary(); }} className="text-sm text-accent hover:underline">
-                {showLibrary ? "閉じる" : "開く"}
-              </button>
+              <h2 className="font-semibold">📦 素材格納庫({library.length})</h2>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-accent hover:underline cursor-pointer">
+                  {uploadingBgm ? "追加中..." : "＋素材を追加(複数可)"}
+                  <input
+                    type="file"
+                    multiple
+                    accept="video/*,image/*,audio/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || []);
+                      e.target.value = "";
+                      if (files.length === 0) return;
+                      setUploadingBgm(true);
+                      try {
+                        for (const f of files) {
+                          const form = new FormData();
+                          form.append("file", f);
+                          await fetch("/api/video/upload", { method: "POST", body: form });
+                        }
+                        loadLibrary();
+                      } finally {
+                        setUploadingBgm(false);
+                      }
+                    }}
+                  />
+                </label>
+                <button onClick={() => { setShowLibrary(!showLibrary); loadLibrary(); }} className="text-sm text-accent hover:underline">
+                  {showLibrary ? "閉じる" : "開く"}
+                </button>
+              </div>
             </div>
             {!libraryPersistent && (
               <p className="text-xs text-amber-600 mb-2">
@@ -921,7 +1012,10 @@ function VideoPageInner() {
             )}
             {showLibrary && (
               library.length === 0 ? (
-                <p className="text-sm text-gray-400">生成・アップロードした素材がここに貯まり、シーンの「📁」ボタンから使い回せます</p>
+                <p className="text-sm text-gray-400">
+                  生成・アップロードした素材がここに貯まります。シーン構成の生成時に内容の合う素材が自動で割り当てられ、
+                  シーンの「📁」ボタンから手動でも選べます
+                </p>
               ) : (
                 <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
                   {library.map((entry) => (
