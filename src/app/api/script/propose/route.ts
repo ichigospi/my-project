@@ -14,16 +14,21 @@ function jstToday(): string {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText } = body;
+  const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText, primaryAnalysisId } = body;
   const aiModel = resolveAiModel(body.aiModel);
-  // 主軸元ネタ（最多再生）の書き起こし文字数。±500字ルールの基準
-  const refCharCount: number | undefined = (() => {
-    const list = (analyses || []).filter((a: { transcript?: string }) => a.transcript);
+  // 主軸（メイン）元ネタの決定: ユーザー指定があればそれ、無ければ最多再生
+  const primaryId: string | undefined = (() => {
+    const list = (analyses || []) as { id?: string; views?: number }[];
     if (list.length === 0) return undefined;
-    const primary = list.reduce(
-      (m: { views?: number }, a: { views?: number }) => ((a.views || 0) > (m.views || 0) ? a : m),
-      list[0]
-    ) as { transcript?: string };
+    if (primaryAnalysisId && list.some((a) => a.id === primaryAnalysisId)) return primaryAnalysisId;
+    return list.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), list[0]).id;
+  })();
+  // 主軸元ネタの書き起こし文字数。±500字ルールの基準
+  const refCharCount: number | undefined = (() => {
+    const list = (analyses || []).filter((a: { transcript?: string }) => a.transcript) as { id?: string; views?: number; transcript?: string }[];
+    if (list.length === 0) return undefined;
+    const primary = list.find((a) => a.id === primaryId)
+      || list.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), list[0]);
     return (primary.transcript || "").replace(/\s/g, "").length || undefined;
   })();
 
@@ -32,6 +37,7 @@ export async function POST(request: NextRequest) {
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
 
   const analysisTexts = analyses.map((a: {
+    id?: string;
     videoTitle: string; channelName: string; views: number;
     analysisResult: {
       summary: string;
@@ -43,7 +49,7 @@ export async function POST(request: NextRequest) {
       score?: { overall: number };
     };
   }, i: number) => `
-【参考動画${i + 1}】「${a.videoTitle}」（${a.channelName}）再生数: ${a.views?.toLocaleString()}回
+【参考動画${i + 1}${(analyses?.length || 0) > 1 ? (a.id === primaryId ? "｜★主軸（メイン）: 構成・尺配分・文字数のトレース元" : "｜サブ（要素どり）: 構成は混ぜず、要素の移植のみに使う") : ""}】「${a.videoTitle}」（${a.channelName}）再生数: ${a.views?.toLocaleString()}回
 概要: ${a.analysisResult?.summary}
 構成（★この順番・役割・尺配分を完全トレースする）:
 ${a.analysisResult?.structure?.map((s, idx) => `  ${idx + 1}. ${s.name}（${s.timeRange}）— 役割: ${s.purpose || "不明"}`).join("\n") || "  不明"}
@@ -98,8 +104,10 @@ ${userPrompt}
 【鉄則】
 - 構成は元ネタを完全にトレースする: セクションの順番・役割・尺配分をそのまま踏襲し、勝手に組み替えない
 - トレースの基本イメージ: 「別の話に差し替える」のではなく「同じ効果・同じ役割を持つ訴求や例えを、別の言い方で言い直す」。各セクションの訴求の中身・狙う感情・例えの構図は元ネタのまま維持し、言い回しだけを自チャンネルの言葉にする設計を書くこと
-- 参考動画が複数ある場合は、最も伸びている動画の構成を主軸とし、他は訴求要素の補強に使う
-- 各セクションで「どの参考動画のどの要素を取り入れたか」を必ず明記すること
+- 参考動画が複数ある場合は、【★主軸（メイン）】と表示された動画の構成だけをトレースする。【サブ】の動画は構成レベルでは一切混ぜず、
+  要素単位（フックの型・体験談の見せ方・離脱防止の仕掛け・訴求の言い回し等）を主軸の該当セクションに「移植」する使い方のみ。
+  主軸とサブの構成を混ぜた折衷構成は禁止（統一感が壊れる最大の原因）
+- 各セクションで「どの参考動画のどの要素を取り入れたか（主軸から／サブから移植）」を必ず明記すること
 - 各セクションに、元ネタの5要素（理想の未来／最悪の未来／CTA／視聴維持の仕掛け／世界観の演出）のうち該当するものを「元ネタはこう → 上位互換ではこう一段具体的にする」の形で明記すること
 - オリジナリティを出しすぎて参考動画から乖離しないこと
 - ヒーリング系の場合: 本編（ヒーリングパート）は3分以内に開始すること。冒頭のフック＋共感は1-2分で切り上げてすぐ本編に入る
@@ -110,7 +118,7 @@ ${userPrompt}
   ・**完成宣言（例: 億を受け取る器ができた／削られずに丸ごと届く体になった）は全身が繋がった最後に1回だけ**。部位ごとに同じ結論へ結びつける設計は禁止
   ・完成後に流れを固定する日常アクション（例: 朝「受け取ります」とひと言）を1つ設計に含める
   ・骨組みには「どの部位で・どの内側の課題が・何に書き換わるか」の対応を段階リストとして書くこと
-- 教育系の場合: 冒頭2分以内に本題に入ること
+- 教育系の場合: 冒頭はチャンネルルールの冒頭構成に従い、3分以内に収めて本題に入ること
 
 【チャンネル必須要素の追加（構成トレースより優先）】
 - 元ネタは競合動画なので、このチャンネル独自の必須要素（公式LINE誘導・収益化導線・放置するとどうなるかの警告など）は含まれていない
@@ -185,6 +193,15 @@ ${style === "tarot" ? `
 
 ${buildTarotDrawBlock()}
 - 骨組みの各カードセクションには、上記の抽選カード名（正位置/逆位置込み）を必ず明記すること。
+` : ""}${style === "education" ? `
+【教育系（解説型）のハイブリッド構成（必達・構成トレースより優先）】
+教育系では元ネタの冒頭・CTAが弱いことが多いため、構成の作り方を次のように分担する:
+- 冒頭と終盤CTAは元ネタをトレースしない。下記【カテゴリ別ルール】等の台本ルール（冒頭の要素構成・終盤のCTA構成）を最優先で設計する。
+  元ネタの冒頭・CTAが弱い/存在しない場合でも、ルール通りに専用セクションを組むこと
+- 本編（肝心の中身）は主軸元ネタから組み立てる:「何を語るか」（主張・差分・理由の仕組み・実践法）は主軸の本編をトレースし、
+  サブからは要素単位（訴求の型・例えの構図・離脱防止等）で移植する
+- 体験談・具体例は元ネタのものをそのまま使わず、自チャンネルの語り手のキャラ・設定に合った人物像・相談内容に置き換えて設計する
+- 骨組みの各セクションの参考元表記には「主軸から／サブから移植／チャンネルルール由来」のいずれかを明記すること
 ` : ""}
 ${rulesText || ""}
 ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}

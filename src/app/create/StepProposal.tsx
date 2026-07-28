@@ -84,6 +84,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
       const referenceAnalyses = analyses.map((a) => ({
         videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult,
+        role: analyses.length > 1 ? (a.id === effectivePrimaryId ? "main" : "sub") : undefined,
       }));
       const body = JSON.stringify({ skeleton, referenceAnalyses, rulesText, style: project.style, aiApiKey, aiModel: getAiModel("check") });
       let data: Record<string, unknown> | null = null;
@@ -129,6 +130,13 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     setAnalyses(all.filter((a) => project.analyses.includes(a.id)));
   }, [project.analyses]);
 
+  // 主軸（メイン）にする参考動画。未指定時は最多再生をメインとする
+  const effectivePrimaryId = (() => {
+    if (analyses.length === 0) return "";
+    if (project.primaryAnalysisId && analyses.some((a) => a.id === project.primaryAnalysisId)) return project.primaryAnalysisId;
+    return analyses.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), analyses[0]).id;
+  })();
+
   const handleGenerate = async () => {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
@@ -144,6 +152,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           analyses, style: project.style, topic: project.title,
+          primaryAnalysisId: effectivePrimaryId || undefined,
           channelProfile: getProfileByChannel(project.channelId || ""), aiApiKey, aiModel: getAiModel("generate"),
           userPrompt: promptText || undefined,
           currentSkeleton: skeleton || undefined,
@@ -203,16 +212,35 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       {/* チャンネルプロフィール未設定の警告 */}
       <ProfileWarning channelId={project.channelId} />
 
-      {/* 参考動画サマリー */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-        {analyses.map((a) => (
-          <div key={a.id} className="bg-card-bg rounded-lg p-4 shadow-sm border border-gray-100">
-            <p className="text-sm font-medium truncate">{a.videoTitle}</p>
-            <p className="text-xs text-gray-500">{a.channelName} · スコア {a.score?.overall || "?"}/10</p>
-            {a.analysisResult?.overallPattern && <p className="text-xs text-accent mt-1">{a.analysisResult.overallPattern}</p>}
-          </div>
-        ))}
+      {/* 参考動画サマリー（複数あるときはメイン/サブの役割を指定できる） */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+        {analyses.map((a) => {
+          const isMain = a.id === effectivePrimaryId;
+          return (
+            <div key={a.id} className={`bg-card-bg rounded-lg p-4 shadow-sm border ${analyses.length > 1 && isMain ? "border-accent" : "border-gray-100"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium truncate">{a.videoTitle}</p>
+                {analyses.length > 1 && (isMain ? (
+                  <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-accent text-white font-semibold">★メイン</span>
+                ) : (
+                  <button onClick={() => onUpdate({ ...project, primaryAnalysisId: a.id })}
+                    className="shrink-0 text-[10px] px-2 py-0.5 rounded-full border border-gray-300 text-gray-500 hover:border-accent hover:text-accent transition-colors">
+                    サブ｜メインにする
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500">{a.channelName} · スコア {a.score?.overall || "?"}/10</p>
+              {a.analysisResult?.overallPattern && <p className="text-xs text-accent mt-1">{a.analysisResult.overallPattern}</p>}
+            </div>
+          );
+        })}
       </div>
+      {analyses.length > 1 && (
+        <p className="text-xs text-gray-500 mb-6">
+          ★メイン＝構成・尺配分・文字数のトレース元 ／ サブ＝フック・体験談など要素の移植のみ（構成は混ぜません）。メインを変えたら骨組みを再生成してください。
+        </p>
+      )}
+      {analyses.length <= 1 && <div className="mb-4" />}
 
       {/* メインタブ: 骨組み / 参考動画の分析 */}
       <div className="flex gap-1 mb-4 border-b border-gray-200">

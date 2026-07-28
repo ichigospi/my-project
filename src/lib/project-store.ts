@@ -67,6 +67,8 @@ export interface ScriptProject {
   titleCandidates: TitleCandidate[];
   referenceVideos: ReferenceVideo[];
   analyses: string[]; // ScriptAnalysis IDs
+  // 参考動画のうち構成の主軸（メイン）にする分析ID。未指定時は最多再生がメイン。他はサブ（要素どり）
+  primaryAnalysisId?: string;
   structureProposal: StructureProposal | null;
   generatedScript: string;
   telopScript: TelopLine[] | null;
