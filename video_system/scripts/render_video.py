@@ -158,12 +158,16 @@ def render_scene(scene, idx, cfg, tmpdir):
     duration = scene.get("duration")
 
     if stype == "video":
+        total = probe_duration(src)
         if duration is None:
-            total = probe_duration(src)
             duration = max(0.1, (total or 5.0) - scene.get("start", 0))
         pre = []
         if scene.get("start"):
             pre += ["-ss", str(scene["start"])]
+        elif total and total < duration - 0.05:
+            # 素材がシーン尺より短い場合はループ再生で埋める
+            # (短いAI生成クリップを長いナレーションシーンで使い回すため)
+            pre += ["-stream_loop", "-1"]
         inputs.append(pre + ["-t", str(duration), "-i", src])
         audio_from_src = has_audio(src) and not scene.get("mute", False)
     elif stype == "image":
