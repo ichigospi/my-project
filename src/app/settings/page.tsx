@@ -55,6 +55,8 @@ function SettingsContent() {
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [litmediaApiKey, setLitmediaApiKeyState] = useState("");
   const [showLitmediaKey, setShowLitmediaKey] = useState(false);
+  const [litmediaConnecting, setLitmediaConnecting] = useState(false);
+  const [litmediaAuthMsg, setLitmediaAuthMsg] = useState("");
   const [cookieStatus, setCookieStatus] = useState<{ hasCookies: boolean; size: number; uploadedAt?: string; expiresAt?: string; isExpired?: boolean } | null>(null);
   const [uploadingCookie, setUploadingCookie] = useState(false);
   const [cookieResult, setCookieResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -409,9 +411,57 @@ function SettingsContent() {
           <h2 className="font-semibold mb-1">LitMedia (LitVideo) APIキー（AI動画素材生成用 / 任意）</h2>
           <p className="text-sm text-gray-500 mb-4">
             「動画作成」ページで LitVideo（Kling / Seedance 等）によるAI動画素材を生成するために必要です。
-            LitMedia公式の認証ツール（litmedia-ai/skill の <code className="bg-gray-100 px-1 rounded text-xs">auth.py login</code>）で取得した
-            APIキーを入力してください。生成にはLitMediaのクレジットを消費します。
+            下の「LitMediaと接続」を押すと、ブラウザでLitMediaにログイン中なら承認するだけでキーを自動取得できます。
+            生成にはLitMediaのクレジットを消費します。
           </p>
+          <div className="flex items-center gap-3 mb-3">
+            <button
+              type="button"
+              disabled={litmediaConnecting}
+              onClick={async () => {
+                setLitmediaConnecting(true);
+                setLitmediaAuthMsg("認証を開始しています...");
+                try {
+                  const initRes = await fetch("/api/video/litmedia-auth", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "init" }),
+                  });
+                  const init = await initRes.json();
+                  if (!initRes.ok) throw new Error(init.error || "認証の開始に失敗しました");
+                  window.open(init.verificationUrl, "_blank");
+                  setLitmediaAuthMsg("開いたLitMediaのページで「Authorize(承認)」を押してください。承認を待っています...");
+                  const deadline = Date.now() + 10 * 60 * 1000;
+                  while (Date.now() < deadline) {
+                    await new Promise((r) => setTimeout(r, Math.max(init.interval, 2) * 1000));
+                    const pollRes = await fetch("/api/video/litmedia-auth", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "poll", deviceCode: init.deviceCode, tokenEndpoint: init.tokenEndpoint }),
+                    });
+                    const poll = await pollRes.json();
+                    if (!pollRes.ok) throw new Error(poll.error || "認証の確認に失敗しました");
+                    if (poll.status === "approved") {
+                      setLitmediaApiKeyState(poll.apiKey);
+                      setApiKey("litmedia_api_key", poll.apiKey);
+                      setLitmediaAuthMsg("✅ 接続しました！キーを保存済みです（下の「保存」も押すと全端末に同期されます）");
+                      return;
+                    }
+                    if (poll.status === "error") throw new Error(poll.error);
+                  }
+                  throw new Error("時間切れです。もう一度お試しください");
+                } catch (e) {
+                  setLitmediaAuthMsg(`❌ ${e instanceof Error ? e.message : e}`);
+                } finally {
+                  setLitmediaConnecting(false);
+                }
+              }}
+              className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50"
+            >
+              {litmediaConnecting ? "接続中..." : "🔗 LitMediaと接続してキーを自動取得"}
+            </button>
+            {litmediaAuthMsg && <span className="text-xs text-gray-600">{litmediaAuthMsg}</span>}
+          </div>
           <div className="relative">
             <input
               type={showLitmediaKey ? "text" : "password"}
