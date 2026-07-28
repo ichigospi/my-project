@@ -27,9 +27,11 @@ FONT_CANDIDATES = [
 
 # テロップのスタイルプリセット。fontsize は画面高さに対する比率。
 TELOP_STYLES = {
-    "title":   {"size_ratio": 0.055, "y": "(h-text_h)/2", "border": True,  "box": False},
-    "caption": {"size_ratio": 0.042, "y": "h-text_h-h*0.16", "border": False, "box": True},
-    "note":    {"size_ratio": 0.030, "y": "h*0.08",      "border": False, "box": True},
+    "title":    {"size_ratio": 0.055, "y": "(h-text_h)/2", "border": True,  "box": False, "color": "white"},
+    "caption":  {"size_ratio": 0.042, "y": "h-text_h-h*0.16", "border": False, "box": True, "color": "white"},
+    "note":     {"size_ratio": 0.030, "y": "h*0.08",      "border": False, "box": True, "color": "white"},
+    # TV風の強調テロップ(大きめ・黄色・太フチ)
+    "emphasis": {"size_ratio": 0.062, "y": "h*0.30",      "border": True,  "box": False, "color": "yellow"},
 }
 
 
@@ -76,16 +78,33 @@ def find_font(cfg):
     sys.exit(1)
 
 
-def build_drawtext(telop, font, width, height, tmpdir, idx):
+def build_drawtext(telop, font, width, height, tmpdir, idx, scene_duration):
     style = TELOP_STYLES.get(telop.get("style", "caption"), TELOP_STYLES["caption"])
-    fontsize = telop.get("fontsize") or max(24, int(height * style["size_ratio"]))
-    color = telop.get("color", "white")
+    size_mult = float(telop.get("size_mult", 1.0))
+    fontsize = telop.get("fontsize") or max(20, int(height * style["size_ratio"] * size_mult))
+    color = telop.get("color") or style.get("color", "white")
     x = telop.get("x", "(w-text_w)/2")
-    y = telop.get("y", style["y"])
+    y = str(telop.get("y", style["y"]))
 
     textfile = os.path.join(tmpdir, f"telop_{idx}.txt")
     with open(textfile, "w", encoding="utf-8") as f:
         f.write(telop["text"])
+
+    start = telop.get("start")
+    end = telop.get("end")
+    s = 0.0 if start is None else float(start)
+    e = float(scene_duration) if end is None else float(end)
+
+    # アニメーション(fade: フェードイン/アウト, slide_up: 下からスライド+フェード)
+    anim = telop.get("anim", "none")
+    alpha = None
+    if anim in ("fade", "slide_up"):
+        fade_in, fade_out = 0.35, 0.25
+        alpha = (f"if(lt(t,{s}),0,"
+                 f"if(lt(t,{s + fade_in}),(t-{s})/{fade_in},"
+                 f"if(lt(t,{e - fade_out}),1,max(0,({e}-t)/{fade_out}))))")
+    if anim == "slide_up":
+        y = f"({y})+{int(height * 0.03)}*max(0,1-(t-{s})/0.35)"
 
     parts = [
         f"drawtext=fontfile='{font}'",
@@ -93,19 +112,17 @@ def build_drawtext(telop, font, width, height, tmpdir, idx):
         f"fontsize={fontsize}",
         f"fontcolor={color}",
         f"x={x}",
-        f"y={y}",
+        f"y='{y}'",
         "line_spacing=12",
     ]
+    if alpha:
+        parts.append(f"alpha='{alpha}'")
     if telop.get("box", style["box"]):
         parts.append(f"box=1:boxcolor={telop.get('boxcolor', 'black@0.55')}:boxborderw=18")
     if telop.get("border", style["border"]):
         parts.append(f"borderw={max(2, fontsize // 12)}:bordercolor=black")
-    start = telop.get("start")
-    end = telop.get("end")
     if start is not None or end is not None:
-        s = 0 if start is None else start
-        e = 100000 if end is None else end
-        parts.append(f"enable='between(t,{s},{e})'")
+        parts.append(f"enable='between(t,{s},{100000 if end is None else e})'")
     return ":".join(parts)
 
 
@@ -126,6 +143,11 @@ def scene_cache_key(scene, cfg):
         if os.path.exists(p):
             st = os.stat(p)
             parts["_stat_narration"] = [st.st_size, int(st.st_mtime)]
+    for i, seg in enumerate(scene.get("segments") or []):
+        p = os.path.join(base, seg.get("src", ""))
+        if os.path.exists(p):
+            st = os.stat(p)
+            parts[f"_stat_seg{i}"] = [st.st_size, int(st.st_mtime)]
     parts["_conf"] = [cfg["width"], cfg["height"], cfg["fps"], cfg.get("preset", "medium")]
     raw = json.dumps(parts, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
@@ -156,8 +178,34 @@ def render_scene(scene, idx, cfg, tmpdir):
 
     inputs = []
     duration = scene.get("duration")
+    segments = scene.get("segments") or []
 
-    if stype == "video":
+    if stype == "multi":
+        # 複数素材をシーン内で順番に切り替えるカット割り。
+        # 各セグメントは duration / セグメント数 の均等割り。
+        duration = duration or 6.0
+        if not segments:
+            sys.stderr.write("[render_video] multi シーンに segments がありません\n")
+            sys.exit(1)
+        seg_dur = duration / len(segments)
+        for seg in segments:
+            seg_src = os.path.join(base, seg["src"])
+            if not os.path.exists(seg_src):
+                sys.stderr.write(f"[render_video] 素材が見つかりません: {seg_src}\n")
+                sys.exit(1)
+            if seg.get("type") == "image":
+                if seg.get("zoom"):
+                    inputs.append(["-i", seg_src])
+                else:
+                    inputs.append(["-loop", "1", "-t", str(seg_dur), "-framerate", str(fps), "-i", seg_src])
+            else:
+                pre = []
+                total = probe_duration(seg_src)
+                if total and total < seg_dur - 0.05:
+                    pre += ["-stream_loop", "-1"]
+                inputs.append(pre + ["-t", str(seg_dur), "-i", seg_src])
+        audio_from_src = False
+    elif stype == "video":
         total = probe_duration(src)
         if duration is None:
             duration = max(0.1, (total or 5.0) - scene.get("start", 0))
@@ -189,7 +237,9 @@ def render_scene(scene, idx, cfg, tmpdir):
         sys.exit(1)
 
     # 無音音声（音声なし素材用）
+    silence_idx = None
     if not audio_from_src:
+        silence_idx = len(inputs)
         inputs.append(["-f", "lavfi", "-t", str(duration), "-i",
                        "anullsrc=channel_layout=stereo:sample_rate=48000"])
 
@@ -215,21 +265,39 @@ def render_scene(scene, idx, cfg, tmpdir):
         inputs.append(["-loop", "1", "-t", str(duration), "-i", ov_src])
 
     # --- filter_complex 組み立て ---
-    filters = []
-    if stype == "image" and scene.get("zoom"):
+    def zoompan_chain(in_label, out_label, dur):
         # ジッタ防止のため大きめに拡大してから zoompan する
-        frames = max(1, int(round(duration * fps)))
+        frames = max(1, int(round(dur * fps)))
         zoom_to = 1.12
         step = (zoom_to - 1.0) / frames
-        vf = (f"[0:v]scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,"
-              f"crop={width * 2}:{height * 2},"
-              f"zoompan=z='min(zoom+{step:.6f},{zoom_to})':d={frames}"
-              f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-              f":s={width}x{height}:fps={fps},setsar=1,format=yuv420p[v0]")
+        return (f"[{in_label}]scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,"
+                f"crop={width * 2}:{height * 2},"
+                f"zoompan=z='min(zoom+{step:.6f},{zoom_to})':d={frames}"
+                f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+                f":s={width}x{height}:fps={fps},setsar=1,format=yuv420p[{out_label}]")
+
+    def normalize_chain(in_label, out_label):
+        return (f"[{in_label}]fps={fps},scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[{out_label}]")
+
+    filters = []
+    if stype == "multi":
+        seg_dur = duration / len(segments)
+        seg_labels = []
+        for k, seg in enumerate(segments):
+            label = f"sv{k}"
+            if seg.get("type") == "image" and seg.get("zoom"):
+                filters.append(zoompan_chain(f"{k}:v", label, seg_dur))
+            else:
+                filters.append(normalize_chain(f"{k}:v", label))
+            # 均等割りのためセグメント長にトリムする
+            filters.append(f"[{label}]trim=duration={seg_dur},setpts=PTS-STARTPTS[t{label}]")
+            seg_labels.append(f"[t{label}]")
+        filters.append("".join(seg_labels) + f"concat=n={len(segments)}:v=1:a=0[v0]")
+    elif stype == "image" and scene.get("zoom"):
+        filters.append(zoompan_chain("0:v", "v0", duration))
     else:
-        vf = (f"[0:v]fps={fps},scale={width}:{height}:force_original_aspect_ratio=decrease,"
-              f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v0]")
-    filters.append(vf)
+        filters.append(normalize_chain("0:v", "v0"))
     last = "v0"
 
     for j, ov in enumerate(overlays):
@@ -247,7 +315,7 @@ def render_scene(scene, idx, cfg, tmpdir):
         filters.append(f"[{last}][{ov_label}]overlay={x}:{y}{enable}[{out_label}]")
         last = out_label
 
-    telop_filters = [build_drawtext(t, font, width, height, tmpdir, f"{idx}_{k}")
+    telop_filters = [build_drawtext(t, font, width, height, tmpdir, f"{idx}_{k}", duration)
                      for k, t in enumerate(scene.get("telops", []))]
     fade_parts = []
     if scene.get("fade_in"):
@@ -263,7 +331,7 @@ def render_scene(scene, idx, cfg, tmpdir):
         filters.append(f"[0:a]volume={vol},aresample=48000,"
                        f"apad=whole_dur={duration}[abase]")
     else:
-        filters.append("[1:a]anull[abase]")
+        filters.append(f"[{silence_idx}:a]anull[abase]")
 
     if narration_idx is not None:
         nar_vol = narration.get("volume", 1.0)

@@ -115,6 +115,33 @@ function VideoPageInner() {
     setVideos(saveVideoProject(next));
   }, []);
 
+  // シーンの素材リストに追加する(カット割り用。冒頭3分は複数素材が必要)
+  const appendAsset = useCallback((sceneId: string, url: string) => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    const scene = cur.scenes.find((s) => s.id === sceneId);
+    const urls = [...(scene?.assetUrls || (scene?.assetUrl ? [scene.assetUrl] : [])), url];
+    updateScene(sceneId, {
+      assetUrls: urls,
+      assetUrl: urls[0],
+      assetStatus: "ready",
+      assetError: undefined,
+      assetTaskId: undefined,
+    });
+  }, [updateScene]);
+
+  const removeAsset = useCallback((sceneId: string, url: string) => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    const scene = cur.scenes.find((s) => s.id === sceneId);
+    const urls = (scene?.assetUrls || (scene?.assetUrl ? [scene.assetUrl] : [])).filter((u) => u !== url);
+    updateScene(sceneId, {
+      assetUrls: urls,
+      assetUrl: urls[0],
+      assetStatus: urls.length > 0 ? "ready" : "none",
+    });
+  }, [updateScene]);
+
   const loadLibrary = useCallback(async () => {
     try {
       const res = await fetch("/api/video/library");
@@ -176,7 +203,7 @@ function VideoPageInner() {
         section: s.section || "",
         narration: s.narration || "",
         duration: Math.min(Math.max(Number(s.duration) || 6, 2), 120),
-        telops: (s.telops || []).filter((t) => t.text),
+        telops: (s.telops || []).filter((t) => t.text).map((t) => ({ ...t, anim: "fade" as const })),
         visualPrompt: s.visualPrompt || "",
         provider: defaultProvider,
         assetStatus: "none",
@@ -214,7 +241,7 @@ function VideoPageInner() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "素材生成に失敗しました");
       if (data.status === "ready") {
-        updateScene(scene.id, { assetStatus: "ready", assetUrl: data.url });
+        appendAsset(scene.id, data.url);
         loadLibrary();
       } else {
         updateScene(scene.id, { assetStatus: "generating", assetTaskId: data.taskId });
@@ -222,7 +249,7 @@ function VideoPageInner() {
     } catch (e) {
       updateScene(scene.id, { assetStatus: "error", assetError: String(e instanceof Error ? e.message : e) });
     }
-  }, [updateScene, loadLibrary]);
+  }, [updateScene, appendAsset, loadLibrary]);
 
   const handleGenerateAll = async () => {
     const cur = currentRef.current;
@@ -260,7 +287,7 @@ function VideoPageInner() {
           });
           const data = await res.json();
           if (data.status === "ready") {
-            updateScene(scene.id, { assetStatus: "ready", assetUrl: data.url, assetTaskId: undefined });
+            appendAsset(scene.id, data.url);
             loadLibrary();
           } else if (data.status === "error" || (!res.ok && data.error)) {
             updateScene(scene.id, { assetStatus: "error", assetError: data.error, assetTaskId: undefined });
@@ -271,7 +298,7 @@ function VideoPageInner() {
       }
     }, 20000);
     return () => clearInterval(timer);
-  }, [updateScene, loadLibrary]);
+  }, [updateScene, appendAsset, loadLibrary]);
 
   // ---- ナレーション音声生成(OpenAI TTS) ----
   // 音声の長さに合わせてシーン尺を自動調整し、テロップの表示タイミングも比例して伸縮する
@@ -357,13 +384,7 @@ function VideoPageInner() {
       if (!res.ok) throw new Error(data.error || "自動割り当てに失敗しました");
       const assignments = (data.assignments || []) as { sceneId: string; assetId: string }[];
       for (const a of assignments) {
-        updateScene(a.sceneId, {
-          provider: "upload",
-          assetStatus: "ready",
-          assetUrl: `/api/video/assets/${a.assetId}`,
-          assetError: undefined,
-          assetTaskId: undefined,
-        });
+        appendAsset(a.sceneId, `/api/video/assets/${a.assetId}`);
       }
       const rest = unassigned.length - assignments.length;
       setMatchMsg(
@@ -376,17 +397,11 @@ function VideoPageInner() {
     } finally {
       setMatching(false);
     }
-  }, [updateScene]);
+  }, [appendAsset]);
 
   // ---- 素材ライブラリ ----
   const pickFromLibrary = (sceneId: string, entry: LibraryEntry) => {
-    updateScene(sceneId, {
-      provider: "upload",
-      assetStatus: "ready",
-      assetUrl: `/api/video/assets/${entry.id}`,
-      assetError: undefined,
-      assetTaskId: undefined,
-    });
+    appendAsset(sceneId, `/api/video/assets/${entry.id}`);
     setLibraryOpenFor(null);
   };
 
@@ -405,7 +420,7 @@ function VideoPageInner() {
       const res = await fetch("/api/video/upload", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
-      updateScene(sceneId, { provider: "upload", assetStatus: "ready", assetUrl: data.url, assetError: undefined });
+      appendAsset(sceneId, data.url);
     } catch (e) {
       updateScene(sceneId, { assetStatus: "error", assetError: String(e instanceof Error ? e.message : e) });
     } finally {
@@ -443,7 +458,7 @@ function VideoPageInner() {
         body: JSON.stringify({
           aspect: cur.aspect,
           scenes: cur.scenes.map((s) => ({
-            assetUrl: s.assetStatus === "ready" ? s.assetUrl : undefined,
+            assetUrls: s.assetStatus === "ready" ? (s.assetUrls?.length ? s.assetUrls : s.assetUrl ? [s.assetUrl] : []) : [],
             duration: s.duration,
             mute: s.mute,
             zoom: s.zoom !== false,
@@ -509,6 +524,15 @@ function VideoPageInner() {
 
   const totalDuration = current?.scenes.reduce((s, sc) => s + sc.duration, 0) || 0;
   const generatingCount = current?.scenes.filter((s) => s.assetStatus === "generating").length || 0;
+  // 冒頭3分ルール(1素材あたり最大5秒)の判定用: 各シーンの開始秒
+  const sceneStarts: number[] = [];
+  {
+    let acc = 0;
+    for (const s of current?.scenes || []) {
+      sceneStarts.push(acc);
+      acc += s.duration;
+    }
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
@@ -674,6 +698,17 @@ function VideoPageInner() {
                   <button onClick={() => removeScene(scene.id)} className="px-2 py-1 hover:text-danger" title="削除">✕</button>
                 </div>
               </div>
+              {(() => {
+                if (sceneStarts[i] >= 180 || scene.duration <= 5) return null;
+                const required = Math.ceil(scene.duration / 5);
+                const have = scene.assetUrls?.length || (scene.assetUrl ? 1 : 0);
+                return (
+                  <p className={`text-xs mb-2 ${have >= required ? "text-green-600" : "text-amber-600"}`}>
+                    ⚡ 冒頭3分カット割り: 5秒ごとに素材が切り替わります(素材{have}/{required}本
+                    {have < required ? "・不足分は手持ち素材のローテーションで埋めます。素材を追加すると単調さが減ります" : ""})
+                  </p>
+                );
+              })()}
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-3">
@@ -706,27 +741,65 @@ function VideoPageInner() {
                     )}
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500">テロップ(1行=1テロップ)</label>
-                    <textarea
-                      value={scene.telops.map((t) => t.text).join("\n")}
-                      onChange={(e) => {
-                        const lines = e.target.value.split("\n");
-                        const dur = scene.duration;
-                        const per = lines.length > 0 ? dur / lines.length : dur;
-                        updateScene(scene.id, {
-                          telops: lines
-                            .map((text, j) => ({
-                              text,
-                              start: Math.round(j * per * 10) / 10,
-                              end: Math.round(Math.min((j + 1) * per, dur) * 10) / 10,
-                            }))
-                            .filter((t) => t.text.trim()),
-                        });
-                      }}
-                      rows={3}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm mt-1"
-                      placeholder="表示するテロップを行ごとに入力"
-                    />
+                    <label className="text-xs text-gray-500">テロップ(1行ずつスタイル・動き・サイズ・色・表示秒を調整できます)</label>
+                    <div className="space-y-1 mt-1">
+                      {scene.telops.map((t, ti) => {
+                        const patchTelop = (patch: Partial<typeof t>) => {
+                          const telops = scene.telops.map((x, xi) => (xi === ti ? { ...x, ...patch } : x));
+                          updateScene(scene.id, { telops });
+                        };
+                        return (
+                          <div key={ti} className="flex flex-wrap items-center gap-1">
+                            <input
+                              value={t.text}
+                              onChange={(e) => patchTelop({ text: e.target.value })}
+                              className="flex-1 min-w-40 px-2 py-1.5 rounded border border-gray-200 focus:border-accent outline-none text-xs"
+                            />
+                            <select value={t.style || "caption"} onChange={(e) => patchTelop({ style: e.target.value as typeof t.style })}
+                              className="px-1.5 py-1.5 rounded border border-gray-200 text-xs bg-white">
+                              <option value="caption">字幕</option>
+                              <option value="title">タイトル</option>
+                              <option value="emphasis">強調</option>
+                              <option value="note">注釈</option>
+                            </select>
+                            <select value={t.anim || "none"} onChange={(e) => patchTelop({ anim: e.target.value as typeof t.anim })}
+                              className="px-1.5 py-1.5 rounded border border-gray-200 text-xs bg-white">
+                              <option value="none">動きなし</option>
+                              <option value="fade">フェード</option>
+                              <option value="slide_up">スライド</option>
+                            </select>
+                            <select value={t.size || "m"} onChange={(e) => patchTelop({ size: e.target.value as typeof t.size })}
+                              className="px-1.5 py-1.5 rounded border border-gray-200 text-xs bg-white">
+                              <option value="s">小</option>
+                              <option value="m">中</option>
+                              <option value="l">大</option>
+                            </select>
+                            <select value={t.color || "white"} onChange={(e) => patchTelop({ color: e.target.value })}
+                              className="px-1.5 py-1.5 rounded border border-gray-200 text-xs bg-white">
+                              <option value="white">白</option>
+                              <option value="yellow">黄</option>
+                              <option value="pink">ピンク</option>
+                              <option value="cyan">水色</option>
+                            </select>
+                            <input type="number" value={t.start ?? ""} placeholder="開始" step={0.5} min={0}
+                              onChange={(e) => patchTelop({ start: e.target.value === "" ? undefined : Number(e.target.value) })}
+                              className="w-14 px-1.5 py-1.5 rounded border border-gray-200 text-xs" title="表示開始(秒)" />
+                            <input type="number" value={t.end ?? ""} placeholder="終了" step={0.5} min={0}
+                              onChange={(e) => patchTelop({ end: e.target.value === "" ? undefined : Number(e.target.value) })}
+                              className="w-14 px-1.5 py-1.5 rounded border border-gray-200 text-xs" title="表示終了(秒)" />
+                            <button
+                              onClick={() => updateScene(scene.id, { telops: scene.telops.filter((_, xi) => xi !== ti) })}
+                              className="px-1.5 text-gray-400 hover:text-danger" title="削除">✕</button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        onClick={() => updateScene(scene.id, { telops: [...scene.telops, { text: "", style: "caption", anim: "fade" }] })}
+                        className="text-xs text-accent hover:underline"
+                      >
+                        ＋テロップを追加
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <label className="text-xs text-gray-500">尺(秒)</label>
@@ -849,16 +922,32 @@ function VideoPageInner() {
                   {scene.assetStatus === "error" && (
                     <p className="text-xs text-danger">{scene.assetError}</p>
                   )}
-                  {scene.assetStatus === "ready" && scene.assetUrl && (
-                    <div className="rounded-lg overflow-hidden bg-gray-900 max-w-50">
-                      {/\.(png|jpg|jpeg|webp)$/i.test(scene.assetUrl) ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={scene.assetUrl} alt="素材プレビュー" className="w-full h-auto" />
-                      ) : (
-                        <video src={scene.assetUrl} controls muted className="w-full h-auto" />
-                      )}
-                    </div>
-                  )}
+                  {(() => {
+                    const urls = scene.assetUrls?.length ? scene.assetUrls : scene.assetUrl ? [scene.assetUrl] : [];
+                    if (scene.assetStatus !== "ready" || urls.length === 0) return null;
+                    return (
+                      <div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {urls.map((url, ui) => (
+                            <div key={`${url}_${ui}`} className="rounded-lg overflow-hidden bg-gray-900 relative group">
+                              {/\.(png|jpg|jpeg|webp)$/i.test(url) ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={url} alt="" className="w-full h-20 object-cover" />
+                              ) : (
+                                <video src={url} muted className="w-full h-20 object-cover" />
+                              )}
+                              <span className="absolute bottom-0.5 left-1 text-[10px] text-white/90 bg-black/40 px-1 rounded">{ui + 1}</span>
+                              <button
+                                onClick={() => removeAsset(scene.id, url)}
+                                className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100"
+                                title="この素材を外す">✕</button>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1">素材は番号順に切り替わります。「生成」「📁」で追加できます</p>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

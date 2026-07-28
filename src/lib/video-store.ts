@@ -11,7 +11,10 @@ export interface VideoTelop {
   text: string;
   start?: number;
   end?: number;
-  style?: "title" | "caption" | "note";
+  style?: "title" | "caption" | "note" | "emphasis";
+  anim?: "none" | "fade" | "slide_up";
+  size?: "s" | "m" | "l";
+  color?: string; // white / yellow / pink / cyan
 }
 
 export interface VideoScene {
@@ -23,7 +26,8 @@ export interface VideoScene {
   visualPrompt: string;
   provider: AssetProvider;
   assetStatus: AssetStatus;
-  assetUrl?: string;
+  assetUrl?: string; // 後方互換(assetUrls の先頭と同期)
+  assetUrls?: string[]; // シーン内カット割り用の素材リスト(順番に切り替わる)
   assetTaskId?: string;
   assetError?: string;
   mute?: boolean;
