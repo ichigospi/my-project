@@ -193,18 +193,26 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     finally { setGenerating(false); }
   };
 
-  // 主軸元ネタ（最多再生の参考動画）の書き起こし文字数。±500字ルールの基準
+  // 主軸元ネタの書き起こし文字数。±500字ルールの基準（メイン指定があればそれ、無ければ最多再生）
   const getRefCharCount = (): number | undefined => {
     const refs = getAnalyses().filter((a) => project.analyses?.includes(a.id) && a.transcript);
     if (refs.length === 0) return undefined;
-    const primary = refs.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), refs[0]);
+    const primary = refs.find((a) => a.id === project.primaryAnalysisId)
+      || refs.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), refs[0]);
     return primary.transcript.replace(/\s/g, "").length;
   };
 
-  // 元ネタ分析の整形（分割生成・パートチェックで共用）
-  const buildRefs = () => getAnalyses()
-    .filter((a) => project.analyses?.includes(a.id))
-    .map((a) => ({ videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult }));
+  // 元ネタ分析の整形（分割生成・パートチェックで共用）。メイン/サブの役割も付与する
+  const buildRefs = () => {
+    const refs = getAnalyses().filter((a) => project.analyses?.includes(a.id));
+    const primaryId = refs.some((a) => a.id === project.primaryAnalysisId)
+      ? project.primaryAnalysisId
+      : (refs.length > 0 ? refs.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), refs[0]).id : undefined);
+    return refs.map((a) => ({
+      videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult,
+      role: refs.length > 1 ? (a.id === primaryId ? "main" : "sub") : undefined,
+    }));
+  };
 
   // 計画上の総パート数（骨組みと出力回数で決まる。逐次生成の途中でも一定）
   const plannedTotalParts = () => {

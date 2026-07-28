@@ -10,6 +10,7 @@ interface RefAnalysis {
   videoTitle?: string;
   channelName?: string;
   views?: number;
+  role?: "main" | "sub"; // main=構成の主軸（トレース元） / sub=要素どり
   analysisResult?: {
     summary?: string;
     structure?: { name: string; timeRange: string; purpose: string }[];
@@ -30,10 +31,12 @@ interface RefAnalysis {
 function buildReferenceText(referenceAnalyses: RefAnalysis[]): string {
   if (!referenceAnalyses || referenceAnalyses.length === 0) return "";
 
+  const hasRoles = referenceAnalyses.length > 1 && referenceAnalyses.some((a) => a.role);
   const blocks = referenceAnalyses.map((a, i) => {
     const r = a.analysisResult;
     if (!r) return "";
-    return `■ 元ネタ${i + 1}「${a.videoTitle || "無題"}」（${a.channelName || "不明"} / 再生数: ${a.views?.toLocaleString() || "不明"}回）
+    const roleLabel = hasRoles ? (a.role === "main" ? "｜★主軸（メイン）: 構成・展開のトレース元" : "｜サブ（要素どり）: 骨組みで指定された要素の移植のみに使う。構成は混ぜない") : "";
+    return `■ 元ネタ${i + 1}${roleLabel}「${a.videoTitle || "無題"}」（${a.channelName || "不明"} / 再生数: ${a.views?.toLocaleString() || "不明"}回）
 ・構成: ${r.structure?.map((s) => `${s.name}(${s.timeRange})`).join(" → ") || "不明"}
 ・理想の未来（欲求喚起）: ${r.idealFuture || r.appealPoints?.join(" / ") || "不明"}
 ・最悪の未来: ${r.worstFuture || "不明"}
