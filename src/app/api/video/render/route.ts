@@ -23,9 +23,13 @@ interface RenderTelop {
   start?: number;
   end?: number;
   style?: string;
+  anim?: string;
+  size?: string;
+  color?: string;
 }
 interface RenderScene {
   assetUrl?: string;
+  assetUrls?: string[];
   color?: string;
   duration: number;
   mute?: boolean;
@@ -35,6 +39,15 @@ interface RenderScene {
   narrationUrl?: string;
   telops?: RenderTelop[];
 }
+
+const TELOP_STYLES = ["title", "note", "emphasis", "caption"];
+const TELOP_ANIMS = ["fade", "slide_up"];
+const TELOP_COLORS = ["white", "yellow", "pink", "cyan"];
+const SIZE_MULT: Record<string, number> = { s: 0.8, m: 1.0, l: 1.4 };
+
+// 冒頭(リテンションが決まる時間帯)は同一素材を5秒以上使わない
+const FAST_CUT_WINDOW_SEC = 180;
+const FAST_CUT_MAX_SEC = 5;
 interface RenderRequest {
   aspect?: string;
   fps?: number;
@@ -68,13 +81,17 @@ async function runRender(body: RenderRequest): Promise<{ url: string; sizeMb: nu
     workDir = await mkdtemp(join(tmpdir(), "video-render-"));
 
     const timelineScenes = [];
+    let cursor = 0; // 動画先頭からの経過秒(冒頭カット割りルールの判定用)
     for (const scene of scenes) {
       const duration = Math.min(Math.max(Number(scene.duration) || 5, 1), 180);
       const telops = (scene.telops || [])
         .filter((t) => t.text?.trim())
         .map((t) => ({
           text: String(t.text).slice(0, 200),
-          style: t.style === "title" || t.style === "note" ? t.style : "caption",
+          style: TELOP_STYLES.includes(t.style || "") ? t.style : "caption",
+          ...(t.anim && TELOP_ANIMS.includes(t.anim) ? { anim: t.anim } : {}),
+          ...(t.size && SIZE_MULT[t.size] ? { size_mult: SIZE_MULT[t.size] } : {}),
+          ...(t.color && TELOP_COLORS.includes(t.color) ? { color: t.color } : {}),
           ...(t.start != null ? { start: Number(t.start) } : {}),
           ...(t.end != null ? { end: Number(t.end) } : {}),
         }));
@@ -85,30 +102,50 @@ async function runRender(body: RenderRequest): Promise<{ url: string; sizeMb: nu
         narration = { src: path };
       }
 
-      if (scene.assetUrl) {
-        const { path, isImage } = await resolveAsset(scene.assetUrl);
-        timelineScenes.push({
-          type: isImage ? "image" : "video",
-          src: path,
-          duration,
-          ...(isImage && scene.zoom !== false ? { zoom: true } : {}),
-          ...(scene.mute ? { mute: true } : {}),
-          ...(scene.fadeIn ? { fade_in: Number(scene.fadeIn) } : {}),
-          ...(scene.fadeOut ? { fade_out: Number(scene.fadeOut) } : {}),
-          ...(narration ? { narration } : {}),
-          telops,
-        });
+      const assetUrls = (scene.assetUrls?.length ? scene.assetUrls : scene.assetUrl ? [scene.assetUrl] : [])
+        .filter(Boolean);
+
+      const common = {
+        duration,
+        ...(scene.fadeIn ? { fade_in: Number(scene.fadeIn) } : {}),
+        ...(scene.fadeOut ? { fade_out: Number(scene.fadeOut) } : {}),
+        ...(narration ? { narration } : {}),
+        telops,
+      };
+
+      if (assetUrls.length === 0) {
+        timelineScenes.push({ type: "color", color: scene.color || "#1a1a2e", ...common });
       } else {
-        timelineScenes.push({
-          type: "color",
-          color: scene.color || "#1a1a2e",
-          duration,
-          ...(scene.fadeIn ? { fade_in: Number(scene.fadeIn) } : {}),
-          ...(scene.fadeOut ? { fade_out: Number(scene.fadeOut) } : {}),
-          ...(narration ? { narration } : {}),
-          telops,
-        });
+        // 冒頭3分は1素材あたり最大5秒。素材が足りない場合はローテーションで満たす
+        const inFastWindow = cursor < FAST_CUT_WINDOW_SEC;
+        const requiredCuts = inFastWindow ? Math.ceil(duration / FAST_CUT_MAX_SEC) : 1;
+        const segCount = Math.max(assetUrls.length, requiredCuts);
+
+        if (segCount === 1) {
+          const { path, isImage } = await resolveAsset(assetUrls[0]);
+          timelineScenes.push({
+            type: isImage ? "image" : "video",
+            src: path,
+            ...(isImage && scene.zoom !== false ? { zoom: true } : {}),
+            ...(scene.mute ? { mute: true } : {}),
+            ...common,
+          });
+        } else {
+          const resolved = [];
+          for (const url of assetUrls) resolved.push(await resolveAsset(url));
+          const segments = [];
+          for (let k = 0; k < segCount; k++) {
+            const a = resolved[k % resolved.length];
+            segments.push({
+              type: a.isImage ? "image" : "video",
+              src: a.path,
+              ...(a.isImage && scene.zoom !== false ? { zoom: true } : {}),
+            });
+          }
+          timelineScenes.push({ type: "multi", segments, ...common });
+        }
       }
+      cursor += duration;
     }
 
     const totalDuration = timelineScenes.reduce((s, sc) => s + (sc.duration as number), 0);
