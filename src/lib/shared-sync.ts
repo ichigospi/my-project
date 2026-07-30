@@ -2,6 +2,7 @@
 // ルール: サーバーとローカルの両方を保持。どちらかにしかないデータは追加。
 
 import { getApiKey, setApiKey, getChannels, saveChannels } from "./channel-store";
+import { getStoredAiModel, applyAiModelFromServer } from "./ai-model";
 import {
   getProfile, saveProfile,
   getAllProfiles, saveProfileByChannel,
@@ -221,6 +222,12 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
     if (data.litmedia_api_key && !getApiKey("litmedia_api_key")) {
       setApiKey("litmedia_api_key", data.litmedia_api_key);
     }
+
+    // AIモデル選択（生成用/チェック用）: 端末・URLを跨いで共有する。
+    // localStorageのみだと管理者側（トンネルURLが毎回変わる＝別オリジン）で毎回デフォルトに戻ってしまうため、
+    // サーバーの共有設定を正として反映する（設定画面で保存すればpushで全端末に配布される）
+    if (data.ai_model_generate) applyAiModelFromServer("generate", data.ai_model_generate);
+    if (data.ai_model_check) applyAiModelFromServer("check", data.ai_model_check);
 
     // 自分のチャンネル(MyChannel): 同名マージ + id統一書き換え
     // ※ projects/tasks/hooks 等のマージ「前」に走らせる必要がある
@@ -563,6 +570,8 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       ai_api_key: getApiKey("ai_api_key"),
       openai_api_key: getApiKey("openai_api_key"),
       litmedia_api_key: getApiKey("litmedia_api_key"),
+      ai_model_generate: getStoredAiModel("generate"),
+      ai_model_check: getStoredAiModel("check"),
       channels: getChannels(),
       hooks: getHooks(),
       ctas: getCTAs(),
@@ -590,7 +599,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
     const failedKeys: { key: string; size: number; error: string }[] = [];
     for (const [key, value] of Object.entries(payloadParts)) {
       // 空のAPIキーは送らない（サーバーの共有キーを空文字で潰さない）
-      if ((key === "yt_api_key" || key === "ai_api_key" || key === "openai_api_key" || key === "litmedia_api_key") && !value) continue;
+      if ((key === "yt_api_key" || key === "ai_api_key" || key === "openai_api_key" || key === "litmedia_api_key" || key === "ai_model_generate" || key === "ai_model_check") && !value) continue;
       const body = JSON.stringify({ [key]: value });
       // 前回push成功時から変更が無いキーはスキップ（差分push）
       const hashKey = PUSH_HASH_PREFIX + key;

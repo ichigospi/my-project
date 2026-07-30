@@ -79,7 +79,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
 
   return (
-    <aside className={`w-64 min-h-screen ${isLocal ? "bg-[#1a2332]" : "bg-gradient-to-b from-[#b71540] via-[#8b1e87] to-[#5f27cd]"} text-sidebar-text flex flex-col shrink-0`}>
+    <aside className={`w-64 min-h-screen ${isLocal ? "bg-[#1a2332]" : "bg-sidebar-bg"} text-sidebar-text flex flex-col shrink-0`}>
       <div className="p-6 border-b border-white/10">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold text-white">YouTube×スピ　自動化ツール</h1>

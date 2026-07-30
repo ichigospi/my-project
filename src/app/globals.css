@@ -3,13 +3,13 @@
 :root {
   --background: #f8f9fc;
   --foreground: #1a1a2e;
-  /* 赤→紫のグラデーションテーマ。sidebar-bg はグラデーション非対応箇所のフォールバック色 */
-  --sidebar-bg: #6d1b6e;
-  --sidebar-text: #f0e6f2;
-  --sidebar-active: #e0447c;
+  /* 赤単色テーマ */
+  --sidebar-bg: #8f1232;
+  --sidebar-text: #f5e6ea;
+  --sidebar-active: #d63049;
   --card-bg: #ffffff;
-  --accent: #b32d8d;
-  --accent-light: #e08ad2;
+  --accent: #c22347;
+  --accent-light: #e88fa6;
   --success: #00b894;
   --warning: #fdcb6e;
   --danger: #e17055;
