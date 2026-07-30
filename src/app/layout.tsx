@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   title: "YouTube×スピ　自動化ツール",
   description: "競合リサーチ & 台本作成",
   manifest: "/manifest.json",
-  themeColor: "#8b1e87",
+  themeColor: "#8f1232",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

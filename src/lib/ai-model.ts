@@ -36,6 +36,20 @@ export function setAiModel(purpose: AiModelPurpose, model: AiModelId) {
   localStorage.setItem(STORAGE_KEYS[purpose], model);
 }
 
+// 共有同期用: 保存されている生の値（未設定なら空文字）。
+// デフォルト値でサーバーの共有設定を潰さないよう、未設定は未設定のまま返す
+export function getStoredAiModel(purpose: AiModelPurpose): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(STORAGE_KEYS[purpose]) || "";
+}
+
+// 共有同期用: サーバーから受け取った値をローカルに反映（不正値は無視）
+export function applyAiModelFromServer(purpose: AiModelPurpose, model: string) {
+  if (typeof window === "undefined") return;
+  if (!(ALLOWED_AI_MODELS as readonly string[]).includes(model)) return;
+  localStorage.setItem(STORAGE_KEYS[purpose], model);
+}
+
 // Anthropic APIリクエスト用ヘッダー。Fable 5 はserver-side fallbackのbetaヘッダーを付ける
 export function anthropicHeaders(apiKey: string, model: AiModelId): Record<string, string> {
   const h: Record<string, string> = {

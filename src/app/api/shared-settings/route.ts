@@ -7,7 +7,8 @@ import { requireAuth } from "@/lib/auth-helpers";
 // ここで束ねるとリクエスト/レスポンスが肥大化し "Failed to fetch" の原因になるため、
 // 重い可能性のあるキーは含めない。
 const SHARED_KEYS = [
-  "shared_yt_api_key", "shared_ai_api_key", "shared_openai_api_key", "shared_litmedia_api_key", "shared_channels", "shared_hooks",
+  "shared_yt_api_key", "shared_ai_api_key", "shared_openai_api_key", "shared_litmedia_api_key",
+  "shared_ai_model_generate", "shared_ai_model_check", "shared_channels", "shared_hooks",
   "shared_ctas", "shared_thumbnail_words", "shared_titles", "shared_profile",
   "shared_profiles_list", "shared_winning_patterns", "shared_presets",
   "shared_tasks", "shared_members", "shared_my_channel",
@@ -54,6 +55,8 @@ export async function GET() {
       ai_api_key: map["shared_ai_api_key"] || "",
       openai_api_key: map["shared_openai_api_key"] || "",
       litmedia_api_key: map["shared_litmedia_api_key"] || "",
+      ai_model_generate: map["shared_ai_model_generate"] || "",
+      ai_model_check: map["shared_ai_model_check"] || "",
       channels: parse("shared_channels", [] as unknown[]),
       hooks: parse("shared_hooks", [] as unknown[]),
       ctas: parse("shared_ctas", [] as unknown[]),
@@ -110,6 +113,9 @@ export async function POST(request: NextRequest) {
     if (body.ai_api_key) updates.push({ key: "shared_ai_api_key", value: body.ai_api_key });
     if (body.openai_api_key) updates.push({ key: "shared_openai_api_key", value: body.openai_api_key });
     if (body.litmedia_api_key) updates.push({ key: "shared_litmedia_api_key", value: body.litmedia_api_key });
+    // AIモデル選択も空文字での上書きは受け付けない（未設定端末のpushで共有設定を消さない）
+    if (body.ai_model_generate) updates.push({ key: "shared_ai_model_generate", value: body.ai_model_generate });
+    if (body.ai_model_check) updates.push({ key: "shared_ai_model_check", value: body.ai_model_check });
     if (body.channels !== undefined) updates.push({ key: "shared_channels", value: JSON.stringify(body.channels) });
     if (body.hooks !== undefined) updates.push({ key: "shared_hooks", value: JSON.stringify(body.hooks) });
     if (body.ctas !== undefined) updates.push({ key: "shared_ctas", value: JSON.stringify(body.ctas) });

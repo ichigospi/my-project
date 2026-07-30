@@ -85,6 +85,9 @@ function SettingsContent() {
       setOpenaiApiKeyState(getApiKey("openai_api_key"));
       setLitmediaApiKeyState(getApiKey("litmedia_api_key"));
       setChannelCount(getChannels().length);
+      // モデル選択はpullでサーバーの共有値がlocalStorageに反映された後に読む
+      setAiModelGenerate(getAiModel("generate"));
+      setAiModelCheck(getAiModel("check"));
     });
     setAiModelGenerate(getAiModel("generate"));
     setAiModelCheck(getAiModel("check"));
