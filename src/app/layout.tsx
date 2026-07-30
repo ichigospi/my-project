@@ -13,14 +13,14 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "占いスピYTツール",
+  title: "YouTube×スピ　自動化ツール",
   description: "競合リサーチ & 台本作成",
   manifest: "/manifest.json",
-  themeColor: "#6366f1",
+  themeColor: "#8b1e87",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "占いスピYT",
+    title: "YouTube×スピ",
   },
 };
 
