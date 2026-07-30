@@ -61,7 +61,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <>
       {/* モバイルヘッダー（フルスクリーンページでは非表示） */}
       {!isMobileFullscreen && (
-        <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-sidebar-bg text-white flex items-center px-4 h-14 shadow-lg">
+        <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-[#b71540] to-[#5f27cd] text-white flex items-center px-4 h-14 shadow-lg">
           <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 -ml-2">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               {mobileMenuOpen
@@ -71,7 +71,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </svg>
           </button>
           <span className="ml-3 font-bold text-sm">
-            {isLocal ? "ローカルツール" : "占いスピYTツール"}
+            {isLocal ? "ローカルツール" : "YouTube×スピ　自動化ツール"}
           </span>
         </div>
       )}

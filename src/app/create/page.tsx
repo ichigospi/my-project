@@ -101,11 +101,28 @@ export default function CreatePage() {
         )}
 
         <div className="space-y-3">
-          {projects.map((p) => (
+          {projects.map((p) => {
+            // 元ネタ（選択済み参考動画）のサムネイル。未選択なら候補全体から表示
+            const selectedRefs = (p.referenceVideos || []).filter((v) => v.selected && v.thumbnailUrl);
+            const refThumbs = (selectedRefs.length > 0 ? selectedRefs : (p.referenceVideos || []).filter((v) => v.thumbnailUrl)).slice(0, 3);
+            return (
             <div key={p.id} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
               <div className="flex items-center gap-4">
+                {refThumbs.length > 0 && (
+                  <div className="flex gap-1.5 shrink-0 cursor-pointer" onClick={() => handleResume(p)}>
+                    {refThumbs.map((v) => (
+                      <img key={v.videoId} src={v.thumbnailUrl} alt={v.title} title={`元ネタ: ${v.title}（${v.channelName}）`}
+                        className="w-24 h-[54px] rounded-md object-cover border border-gray-200 hidden sm:block first:block" />
+                    ))}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleResume(p)}>
                   <p className="font-semibold text-sm">{p.title || "（タイトル未定）"}</p>
+                  {refThumbs.length > 0 && (
+                    <p className="text-[11px] text-gray-400 truncate mt-0.5" title={refThumbs.map((v) => v.title).join(" / ")}>
+                      元ネタ: {refThumbs.map((v) => v.title).join(" / ")}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">{GENRE_LABELS[p.genre]}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{STYLE_LABELS[p.style]}</span>
@@ -218,7 +235,8 @@ export default function CreatePage() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );

@@ -29,7 +29,7 @@ export default function LaunchSidebar() {
   }, []);
 
   return (
-    <aside className="w-64 min-h-screen bg-[#1a1a2e] text-sidebar-text flex flex-col shrink-0">
+    <aside className="w-64 min-h-screen bg-gradient-to-b from-[#b71540] via-[#8b1e87] to-[#5f27cd] text-sidebar-text flex flex-col shrink-0">
       <div className="p-6 border-b border-white/10">
         <h1 className="text-xl font-bold text-white">ローンチツール</h1>
         <p className="text-xs text-sidebar-text/60 mt-1">14日間ローンチ設計 & コンテンツ生成</p>
