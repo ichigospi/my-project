@@ -11,6 +11,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [checking, setChecking] = useState(true);
+  // hydration対策: サーバー描画と初回クライアント描画を一致させるため、
+  // window依存の分岐（ローカル環境スキップ）はマウント後にのみ適用する
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -44,8 +48,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   if (status === "loading" || checking) {
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
     if (isPublic) return <>{children}</>;
-    // ローカル環境では読み込み画面をスキップ
-    if (typeof window !== "undefined" && window.location.hostname !== "my-project-production-d888.up.railway.app") {
+    // ローカル環境では読み込み画面をスキップ（マウント後に判定。初回描画でwindowを見るとSSRとズレてhydrationエラーになる）
+    if (mounted && window.location.hostname !== "my-project-production-d888.up.railway.app") {
       return <>{children}</>;
     }
     return (
