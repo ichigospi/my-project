@@ -101,17 +101,17 @@ export default function CreatePage() {
         )}
 
         <div className="space-y-3">
-          {projects.map((p) => {
+          {projects.map((p, pi) => {
             // 元ネタ（選択済み参考動画）のサムネイル。未選択なら候補全体から表示
             const selectedRefs = (p.referenceVideos || []).filter((v) => v.selected && v.thumbnailUrl);
             const refThumbs = (selectedRefs.length > 0 ? selectedRefs : (p.referenceVideos || []).filter((v) => v.thumbnailUrl)).slice(0, 3);
             return (
-            <div key={p.id} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+            <div key={p.id || `proj-${pi}`} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
               <div className="flex items-center gap-4">
                 {refThumbs.length > 0 && (
                   <div className="flex gap-1.5 shrink-0 cursor-pointer" onClick={() => handleResume(p)}>
-                    {refThumbs.map((v) => (
-                      <img key={v.videoId} src={v.thumbnailUrl} alt={v.title} title={`元ネタ: ${v.title}（${v.channelName}）`}
+                    {refThumbs.map((v, vi) => (
+                      <img key={v.videoId || `thumb-${vi}`} src={v.thumbnailUrl} alt={v.title} title={`元ネタ: ${v.title}（${v.channelName}）`}
                         className="w-24 h-[54px] rounded-md object-cover border border-gray-200 hidden sm:block first:block" />
                     ))}
                   </div>
