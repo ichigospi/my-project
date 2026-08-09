@@ -5,12 +5,32 @@ import Link from "next/link";
 import { useThreadsAccountId } from "@/lib/threads-account";
 import { api, filesToDataUrls, fmtDate, fmtNum, getAiKey, getThreadsModel } from "@/lib/threads-client";
 
+interface Insights {
+  hooks: string[];
+  strongWords: string[];
+  growthPatterns: string[];
+  toneNotes: string[];
+  logicNotes: string[];
+  analyzedCount?: number;
+}
+
 interface AnalyzeResult {
   summary: string;
   growingTraits: string[];
   notGrowingTraits: string[];
   logicSuggestions: string[];
+  insights: Insights;
 }
+
+const EMPTY_INSIGHTS: Insights = { hooks: [], strongWords: [], growthPatterns: [], toneNotes: [], logicNotes: [] };
+
+const INSIGHT_GROUPS: { key: keyof Insights; label: string; emoji: string }[] = [
+  { key: "hooks", label: "伸びてるフック", emoji: "🪝" },
+  { key: "strongWords", label: "刺さる強ワード", emoji: "💥" },
+  { key: "growthPatterns", label: "伸びやすい傾向", emoji: "📈" },
+  { key: "toneNotes", label: "効いてる口調", emoji: "🗣️" },
+  { key: "logicNotes", label: "勝ち筋ロジック", emoji: "🎯" },
+];
 
 interface PostRow {
   id: string;
@@ -44,6 +64,45 @@ export default function ThreadsAnalyticsPage() {
   const [aResult, setAResult] = useState<AnalyzeResult | null>(null);
   const [aError, setAError] = useState("");
   const [applied, setApplied] = useState<Set<number>>(new Set());
+  // 蓄積された学習データ
+  const [storedInsights, setStoredInsights] = useState<Insights>(EMPTY_INSIGHTS);
+  const [insightsSaved, setInsightsSaved] = useState(false);
+
+  // アカウントの現在の学習データを読み込む
+  const loadInsights = useCallback(async () => {
+    if (!accountId) return;
+    try {
+      const list = await api<{ id: string; learnedInsights?: string }[]>("/api/threads/accounts");
+      const acc = list.find((a) => a.id === accountId);
+      if (acc?.learnedInsights) {
+        const parsed = JSON.parse(acc.learnedInsights) as Partial<Insights>;
+        setStoredInsights({ ...EMPTY_INSIGHTS, ...parsed });
+      } else {
+        setStoredInsights(EMPTY_INSIGHTS);
+      }
+    } catch {
+      setStoredInsights(EMPTY_INSIGHTS);
+    }
+  }, [accountId]);
+
+  useEffect(() => {
+    loadInsights();
+  }, [loadInsights]);
+
+  // 分析で得た最新学習データをアカウントに保存（蓄積更新）
+  const saveInsights = async () => {
+    if (!aResult || !accountId) return;
+    try {
+      await api(`/api/threads/accounts/${accountId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ learnedInsights: JSON.stringify(aResult.insights) }),
+      });
+      setStoredInsights({ ...EMPTY_INSIGHTS, ...aResult.insights });
+      setInsightsSaved(true);
+    } catch (e) {
+      setAError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const runAnalyze = async () => {
     const aiApiKey = getAiKey();
@@ -59,6 +118,7 @@ export default function ThreadsAnalyticsPage() {
     setAError("");
     setAResult(null);
     setApplied(new Set());
+    setInsightsSaved(false);
     try {
       const res = await api<AnalyzeResult>("/api/threads/analytics/analyze", {
         method: "POST",
@@ -143,11 +203,46 @@ export default function ThreadsAnalyticsPage() {
       {/* スクショから傾向分析 */}
       <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
         <div>
-          <h3 className="text-sm font-bold text-neutral-100">🔬 スクショから傾向分析</h3>
+          <h3 className="text-sm font-bold text-neutral-100">🔬 スクショから傾向分析 → 学習データに蓄積</h3>
           <p className="text-xs text-neutral-500 mt-1">
-            自分の投稿（表示回数・いいねが写ったスクショ）を複数枚入れると、AIが「伸びる/伸びない傾向」と「投稿ロジックに加えると良い提案」を出します。提案はワンクリックでアカウントの投稿ロジックに追記できます。
+            自分の投稿スクショ（表示回数・いいねが写ったもの）を入れて分析すると、AIが傾向を出し、アカウントの<span className="text-neutral-300">学習データ</span>に<span className="text-neutral-300">マージ更新</span>します。学習データは生成に自動反映され、使うほど精度が上がります。
           </p>
         </div>
+
+        {/* 蓄積された学習データ（常時表示） */}
+        {(() => {
+          const total = INSIGHT_GROUPS.reduce((s, g) => s + (storedInsights[g.key] as string[]).length, 0);
+          return (
+            <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold text-neutral-200">📚 このアカウントの学習データ</span>
+                {storedInsights.analyzedCount ? (
+                  <span className="text-[10px] text-neutral-500">分析{storedInsights.analyzedCount}回分を蓄積</span>
+                ) : null}
+              </div>
+              {total === 0 ? (
+                <p className="text-[11px] text-neutral-500">まだ空です。下で投稿スクショを分析すると、ここに「フック/強ワード/傾向/口調/ロジック」が溜まっていきます。</p>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {INSIGHT_GROUPS.map((g) => {
+                    const items = storedInsights[g.key] as string[];
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={g.key}>
+                        <div className="text-[11px] font-bold text-neutral-300 mb-1">{g.emoji} {g.label}</div>
+                        <div className="flex flex-wrap gap-1">
+                          {items.map((it, i) => (
+                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">{it}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <div className="flex items-center gap-2 flex-wrap">
           <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
             📷 投稿スクショを選択
@@ -253,6 +348,41 @@ export default function ThreadsAnalyticsPage() {
               </ul>
               <p className="text-[10px] text-neutral-600 mt-2">
                 追記先は選択中アカウントの「投稿ロジック」。<Link href="/threads/accounts" className="text-sky-400 underline">アカウント編集</Link>で確認・調整できます。
+              </p>
+            </div>
+
+            {/* 学習データに反映（蓄積更新） */}
+            <div className="bg-indigo-500/5 border border-indigo-500/30 rounded-lg p-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                <h4 className="text-xs font-bold text-indigo-200">🧠 今回の分析を反映した「最新の学習データ」</h4>
+                <button
+                  onClick={saveInsights}
+                  disabled={insightsSaved}
+                  className={`text-[11px] px-3 py-1.5 rounded-lg font-bold whitespace-nowrap ${
+                    insightsSaved ? "bg-emerald-500/20 text-emerald-300 cursor-default" : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  }`}
+                >
+                  {insightsSaved ? "✓ 学習データに反映済み" : "📥 この内容を学習データに反映（蓄積）"}
+                </button>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {INSIGHT_GROUPS.map((g) => {
+                  const items = (aResult.insights?.[g.key] as string[]) ?? [];
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={g.key}>
+                      <div className="text-[11px] font-bold text-neutral-300 mb-1">{g.emoji} {g.label}</div>
+                      <div className="flex flex-wrap gap-1">
+                        {items.map((it, i) => (
+                          <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-200">{it}</span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-neutral-600 mt-2">
+                反映すると上の「📚学習データ」が更新され、以降の生成（かんたん生成含む）に自動で効きます。
               </p>
             </div>
           </div>

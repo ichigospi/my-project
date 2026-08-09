@@ -8,7 +8,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { id } = await params;
     const body = await request.json();
     const data: Record<string, unknown> = {};
-    for (const key of ["name", "concept", "logic", "target", "worldview", "uniqueLogic", "ngWords", "tone"] as const) {
+    for (const key of ["name", "concept", "logic", "target", "worldview", "uniqueLogic", "ngWords", "learnedInsights", "tone"] as const) {
       if (typeof body[key] === "string") data[key] = body[key];
     }
     if (typeof body.handle === "string") data.handle = body.handle.replace(/^@/, "");

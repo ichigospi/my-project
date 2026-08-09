@@ -3,7 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { callThreadsAI, extractJson, parseDataUrlImage, resolveThreadsAiModel, type ThreadsAiImage } from "@/lib/threads-ai";
-import { ANALYZE_POSTS_SYSTEM, buildAnalyzePostsInstruction, type AnalyzePostsResult } from "@/lib/threads-prompts";
+import {
+  ANALYZE_POSTS_SYSTEM,
+  buildAnalyzePostsInstruction,
+  EMPTY_INSIGHTS,
+  type AccountInsights,
+  type AnalyzePostsResult,
+} from "@/lib/threads-prompts";
 
 export const maxDuration = 120;
 
@@ -28,6 +34,7 @@ export async function POST(request: NextRequest) {
     let accountName: string | undefined;
     let concept: string | undefined;
     let currentLogic: string | undefined;
+    let existingInsights: AccountInsights | null = null;
     let storedPosts:
       | { content: string; views: number; likes: number; replies: number; reposts: number }[]
       | undefined;
@@ -37,6 +44,11 @@ export async function POST(request: NextRequest) {
         accountName = account.name;
         concept = account.concept;
         currentLogic = account.logic;
+        try {
+          existingInsights = JSON.parse(account.learnedInsights || "{}") as AccountInsights;
+        } catch {
+          existingInsights = null;
+        }
       }
       const drafts = await prisma.threadsPostDraft.findMany({
         where: { accountId: String(body.accountId), status: "published" },
@@ -49,10 +61,10 @@ export async function POST(request: NextRequest) {
 
     const res = await callThreadsAI(aiApiKey, {
       systemPrompt: ANALYZE_POSTS_SYSTEM,
-      userInstruction: buildAnalyzePostsInstruction({ accountName, concept, currentLogic, storedPosts, pastedText }),
+      userInstruction: buildAnalyzePostsInstruction({ accountName, concept, currentLogic, existingInsights, storedPosts, pastedText }),
       images,
       model: resolveThreadsAiModel(body.model),
-      maxTokens: 3000,
+      maxTokens: 3500,
     });
     if (res.error) {
       return NextResponse.json({ error: res.error }, { status: res.retryable ? 503 : 500 });
@@ -61,11 +73,21 @@ export async function POST(request: NextRequest) {
     if (!parsed) {
       return NextResponse.json({ error: "分析結果を解析できませんでした。もう一度お試しください" }, { status: 502 });
     }
+    const insights: AccountInsights = {
+      hooks: parsed.insights?.hooks ?? existingInsights?.hooks ?? [],
+      strongWords: parsed.insights?.strongWords ?? existingInsights?.strongWords ?? [],
+      growthPatterns: parsed.insights?.growthPatterns ?? existingInsights?.growthPatterns ?? [],
+      toneNotes: parsed.insights?.toneNotes ?? existingInsights?.toneNotes ?? [],
+      logicNotes: parsed.insights?.logicNotes ?? existingInsights?.logicNotes ?? [],
+      analyzedCount: (existingInsights?.analyzedCount ?? 0) + 1,
+    };
     return NextResponse.json({
       summary: parsed.summary ?? "",
       growingTraits: parsed.growingTraits ?? [],
       notGrowingTraits: parsed.notGrowingTraits ?? [],
       logicSuggestions: parsed.logicSuggestions ?? [],
+      insights,
+      previousInsights: existingInsights ?? EMPTY_INSIGHTS,
     });
   } catch (e) {
     console.error("POST /api/threads/analytics/analyze", e);
