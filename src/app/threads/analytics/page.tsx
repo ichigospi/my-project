@@ -299,10 +299,13 @@ export default function ThreadsAnalyticsPage() {
           onChange={(e) => setANote(e.target.value)}
           rows={2}
           className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-xs"
-          placeholder="（任意）補足があれば。例: 最近リーチが落ちてる / この2枚が特に伸びた 等"
+          placeholder="（任意）補足。例: この2枚が特に伸びた / 3〜4枚目は同じツリー投稿の続き"
         />
         <p className="text-[10px] text-neutral-600">
           複数の投稿をまとめてOK。「追加」を何度押しても足せます（最大{MAX_ANALYZE_IMAGES}枚）。表示回数やいいね数が写っているほど精度が上がります。保存済みの投稿実績も自動で加味します。
+        </p>
+        <p className="text-[10px] text-amber-300/80">
+          🌳 長文ツリー投稿（本文＋続きのリプ）は、本文→続きの順で並べて入れてください。AIが「1投稿の続き」として判定します。判定が不安なときは補足欄に「◯〜◯枚目は同じツリー」と書けば確実です。
         </p>
 
         {aError && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-xs text-rose-300">{aError}</div>}
