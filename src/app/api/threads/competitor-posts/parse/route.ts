@@ -49,14 +49,15 @@ export async function POST(request: NextRequest) {
 
     // ① パース（テキスト・スクショどちらでも。長文ツリー/長文は1投稿に結合）
     const today = new Date().toISOString().slice(0, 10);
+    const instruction = buildPasteParseInstruction({
+      raw: raw?.trim() || undefined,
+      todayIso: today,
+      postFormat,
+      hasImages: images.length > 0,
+    });
     const parseRes = await callThreadsAI(aiApiKey, {
       systemPrompt: PASTE_PARSE_SYSTEM,
-      userInstruction: buildPasteParseInstruction({
-        raw: raw?.trim() || undefined,
-        todayIso: today,
-        postFormat,
-        hasImages: images.length > 0,
-      }),
+      userInstruction: instruction,
       images,
       model,
       maxTokens: 8192,
@@ -64,9 +65,28 @@ export async function POST(request: NextRequest) {
     if (parseRes.error) {
       return NextResponse.json({ error: parseRes.error, retryable: parseRes.retryable }, { status: parseRes.retryable ? 503 : 500 });
     }
-    const parsed = extractJson<ParsedPastePost[]>(parseRes.text);
-    if (!parsed || !Array.isArray(parsed) || parsed.length === 0) {
-      return NextResponse.json({ error: "投稿を抽出できませんでした。貼り付け内容を確認してください" }, { status: 422 });
+    let parsed = extractJson<ParsedPastePost[]>(parseRes.text);
+    // JSONとして解釈できない場合は厳格指示で1回だけ再試行
+    if (!Array.isArray(parsed)) {
+      const retry = await callThreadsAI(aiApiKey, {
+        systemPrompt: PASTE_PARSE_SYSTEM,
+        userInstruction:
+          instruction +
+          "\n\n※重要: 有効なJSON配列のみを厳密に出力してください（説明・コードフェンス（```）は一切書かない）。本文が読み取れた投稿だけを配列で返す。",
+        images,
+        model,
+        maxTokens: 8192,
+      });
+      if (!retry.error) parsed = extractJson<ParsedPastePost[]>(retry.text);
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "投稿を抽出できませんでした。スクショに投稿の本文が写っているか確認してください（プロフィール画面ではなく、投稿一覧/投稿詳細のスクショが必要です）。テキスト貼り付けでも試せます。",
+        },
+        { status: 422 },
+      );
     }
 
     // ② 登録
