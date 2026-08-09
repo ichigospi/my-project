@@ -16,12 +16,20 @@ interface Insights {
 
 interface ReadPost {
   label: string;
+  type?: string;
   views: number;
   likes: number;
   replies: number;
   reposts: number;
   excerpt?: string;
 }
+
+const POST_TYPE_LABEL: Record<string, string> = {
+  tree: "🌳ツリー",
+  short: "✏️短文",
+  education: "📚教育",
+  other: "投稿",
+};
 
 interface AnalyzeResult {
   summary: string;
@@ -387,6 +395,11 @@ export default function ThreadsAnalyticsPage() {
                           <tr key={i} className="border-b border-neutral-800/60">
                             <td className="px-2 py-1 text-neutral-300">
                               <span className="font-bold">{p.label}</span>
+                              {p.type && (
+                                <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-neutral-800 text-neutral-400">
+                                  {POST_TYPE_LABEL[p.type] ?? p.type}
+                                </span>
+                              )}
                               {p.excerpt ? <span className="text-neutral-500"> {p.excerpt}</span> : null}
                             </td>
                             <td className="px-2 py-1 text-right text-neutral-100 font-bold">{p.views > 0 ? fmtNum(p.views) : "—"}</td>
@@ -401,7 +414,9 @@ export default function ThreadsAnalyticsPage() {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-[10px] text-neutral-600 mt-1.5">※ 表示回数が違っていたら補足欄で訂正して再分析できます。「率」=いいね÷表示。</p>
+                <p className="text-[10px] text-neutral-600 mt-1.5">
+                  ※ 形式で伸びやすさが桁違い（🌳ツリー＞✏️短文＞📚教育）。表示回数だけで優劣は決めず、同形式内での相対＋教育価値の両輪で分析しています。表示回数が違えば補足欄で訂正→再分析。「率」=いいね÷表示。
+                </p>
               </div>
             )}
 
