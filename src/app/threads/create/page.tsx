@@ -24,6 +24,7 @@ interface CompetitorPost {
   views: number;
   planType: string;
   hookType: string;
+  postFormat?: string;
   isHot: boolean;
   competitor: { handle: string };
 }
@@ -269,6 +270,7 @@ function CreateContent() {
         setGenerating(false);
         return;
       }
+      if (top.postFormat === "tree") note += "／🌳長文ツリー：本文は口調・コンセプト調整のみ、続きは教育を入れてリライト";
       setRefA(top);
       setRefB(null);
       setAutoPickedNote(note);
