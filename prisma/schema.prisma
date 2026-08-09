@@ -357,9 +357,12 @@ model ThreadsAccount {
   name      String                    // 表示名
   handle    String   @unique
   // 投稿の土台（生成時に必ず注入）
-  concept   String   @default("")     // コンセプト
-  logic     String   @default("")     // 投稿ロジック（勝ちパターンの言語化）
-  target    String   @default("")
+  concept     String @default("")     // コンセプト
+  logic       String @default("")     // 投稿ロジック（勝ちパターンの言語化）
+  target      String @default("")
+  worldview   String @default("")     // 世界観・独自概念の背景（例: 念の流れ／神様との繋がり観）
+  uniqueLogic String @default("")     // 独自ロジック・独自用語（例: 「器」「巡り」など繰り返し使う概念）
+  ngWords     String @default("")     // NG表現・使わない言い回し
   tone      String   @default("{}")   // 口調JSON: 一人称/語尾/絵文字/改行
   isActive  Boolean  @default(true)
   sortOrder Int      @default(0)

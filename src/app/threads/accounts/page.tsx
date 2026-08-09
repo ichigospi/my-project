@@ -11,6 +11,9 @@ interface Account {
   concept: string;
   logic: string;
   target: string;
+  worldview: string;
+  uniqueLogic: string;
+  ngWords: string;
   tone: string;
   isActive: boolean;
   sortOrder: number;
@@ -24,7 +27,17 @@ const TONE_FIELDS = [
   { key: "改行", placeholder: "例: 1〜2文ごとに空行を入れる" },
 ] as const;
 
-const emptyForm = { name: "", handle: "", concept: "", logic: "", target: "", tone: {} as Record<string, string> };
+const emptyForm = {
+  name: "",
+  handle: "",
+  concept: "",
+  logic: "",
+  target: "",
+  worldview: "",
+  uniqueLogic: "",
+  ngWords: "",
+  tone: {} as Record<string, string>,
+};
 
 export default function ThreadsAccountsPage() {
   const [accountId, setAccountId] = useThreadsAccountId();
@@ -56,7 +69,15 @@ export default function ThreadsAccountsPage() {
   const notifyUpdated = () => window.dispatchEvent(new CustomEvent("threads-accounts-updated"));
 
   interface PrefillResponse {
-    prefill: { name: string; concept: string; logic: string; target: string; tone: Record<string, string> };
+    prefill: {
+      name: string;
+      concept: string;
+      logic: string;
+      target: string;
+      worldview?: string;
+      uniqueLogic?: string;
+      tone: Record<string, string>;
+    };
     handle: string | null;
     source: { fetched: boolean; scraped?: boolean; postCount: number };
   }
@@ -91,6 +112,8 @@ export default function ThreadsAccountsPage() {
         concept: res.prefill.concept || f.concept,
         logic: res.prefill.logic || f.logic,
         target: res.prefill.target || f.target,
+        worldview: res.prefill.worldview || f.worldview,
+        uniqueLogic: res.prefill.uniqueLogic || f.uniqueLogic,
         tone: { ...f.tone, ...Object.fromEntries(Object.entries(res.prefill.tone ?? {}).filter(([, v]) => v)) },
       }));
       setPrefillMsg(
@@ -128,7 +151,17 @@ export default function ThreadsAccountsPage() {
     } catch {
       tone = {};
     }
-    setForm({ name: a.name, handle: a.handle, concept: a.concept, logic: a.logic, target: a.target, tone });
+    setForm({
+      name: a.name,
+      handle: a.handle,
+      concept: a.concept,
+      logic: a.logic,
+      target: a.target,
+      worldview: a.worldview ?? "",
+      uniqueLogic: a.uniqueLogic ?? "",
+      ngWords: a.ngWords ?? "",
+      tone,
+    });
     setEditing(a.id);
   };
 
@@ -353,6 +386,9 @@ export default function ThreadsAccountsPage() {
                 className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
                 placeholder="例: 冒頭は数字か断言でフック。本文は箇条書き中心。締めは保存を促す。共感→具体→行動の順。"
               />
+              <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                📊 分析ページで「スクショから傾向分析」すると、ここに追記できる提案が出ます。
+              </span>
             </label>
 
             <label className="block">
@@ -366,7 +402,53 @@ export default function ThreadsAccountsPage() {
               />
             </label>
 
-            <div>
+            {/* 世界観・独自ロジック（生成の"らしさ"を決める中核） */}
+            <div className="border-t border-neutral-800 pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-neutral-100">🌌 世界観・独自性</span>
+                <span className="text-[10px] text-neutral-500">ここが「このアカウントらしさ」を作り、生成に強く反映されます</span>
+              </div>
+
+              <label className="block">
+                <span className="text-xs font-medium text-neutral-300">世界観</span>
+                <textarea
+                  value={form.worldview}
+                  onChange={(e) => setForm({ ...form, worldview: e.target.value })}
+                  rows={3}
+                  className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+                  placeholder="例: 物事は“目に見えない念の流れ”で動く。白蛇＝弁財天の遣いで金運を運ぶ。人生の停滞は氣の巡りの詰まりが原因、という前提で世界を語る。"
+                />
+                <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                  どんな前提・価値観で世界を捉えているか。生成文の「語る土台」になります。
+                </span>
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-medium text-neutral-300">独自ロジック・独自用語</span>
+                <textarea
+                  value={form.uniqueLogic}
+                  onChange={(e) => setForm({ ...form, uniqueLogic: e.target.value })}
+                  rows={3}
+                  className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+                  placeholder="例: 独自用語「器」「巡り」「氣結び」を繰り返し使う。開運＝待つものではなく“創る”もの。一般の占いは表層しか見ないが、本アカは念の根まで見る、という独自理論。"
+                />
+                <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                  繰り返し使う独自ワードや、他と差別化する持論。生成文に自然に織り込まれます。
+                </span>
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-medium text-neutral-300">NG表現（使わない言い回し）</span>
+                <input
+                  value={form.ngWords}
+                  onChange={(e) => setForm({ ...form, ngWords: e.target.value })}
+                  className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+                  placeholder="例: 「絶対」「必ず儲かる」等の断定的な金銭表現、医療・断定的効果の表現"
+                />
+              </label>
+            </div>
+
+            <div className="border-t border-neutral-800 pt-4">
               <span className="text-xs font-medium text-neutral-300">口調ルール</span>
               <div className="grid md:grid-cols-2 gap-2 mt-1">
                 {TONE_FIELDS.map((f) => (
