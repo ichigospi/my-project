@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useThreadsAccountId } from "@/lib/threads-account";
-import { api, fmtDate, fmtNum } from "@/lib/threads-client";
+import { api, filesToDataUrls, fmtDate, fmtNum, getAiKey, getThreadsModel } from "@/lib/threads-client";
+
+interface AnalyzeResult {
+  summary: string;
+  growingTraits: string[];
+  notGrowingTraits: string[];
+  logicSuggestions: string[];
+}
 
 interface PostRow {
   id: string;
@@ -29,6 +36,72 @@ export default function ThreadsAnalyticsPage() {
   const [data, setData] = useState<Analytics | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"top" | "recent">("top");
+
+  // スクショ傾向分析
+  const [aImages, setAImages] = useState<string[]>([]);
+  const [aNote, setANote] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aResult, setAResult] = useState<AnalyzeResult | null>(null);
+  const [aError, setAError] = useState("");
+  const [applied, setApplied] = useState<Set<number>>(new Set());
+
+  const runAnalyze = async () => {
+    const aiApiKey = getAiKey();
+    if (!aiApiKey) {
+      setAError("AI APIキーが未設定です（設定画面で登録してください）");
+      return;
+    }
+    if (aImages.length === 0 && !aNote.trim()) {
+      setAError("投稿スクショを1枚以上入れてください（テキスト補足のみでも可）");
+      return;
+    }
+    setAnalyzing(true);
+    setAError("");
+    setAResult(null);
+    setApplied(new Set());
+    try {
+      const res = await api<AnalyzeResult>("/api/threads/analytics/analyze", {
+        method: "POST",
+        body: JSON.stringify({
+          accountId: accountId || undefined,
+          images: aImages.length > 0 ? aImages : undefined,
+          pastedText: aNote.trim() || undefined,
+          aiApiKey,
+          model: getThreadsModel(),
+        }),
+      });
+      setAResult(res);
+    } catch (e) {
+      setAError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // 提案を投稿ロジックに追記
+  const applyToLogic = async (text: string, idx: number) => {
+    if (!accountId) {
+      setAError("アカウントが選択されていません");
+      return;
+    }
+    try {
+      const list = await api<{ id: string; logic: string }[]>("/api/threads/accounts");
+      const acc = list.find((a) => a.id === accountId);
+      const cur = acc?.logic ?? "";
+      const newLogic = cur.trim() ? `${cur.trim()}\n・${text}` : `・${text}`;
+      await api(`/api/threads/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify({ logic: newLogic }) });
+      setApplied((prev) => new Set(prev).add(idx));
+    } catch (e) {
+      setAError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const applyAll = async () => {
+    if (!aResult) return;
+    for (let i = 0; i < aResult.logicSuggestions.length; i++) {
+      if (!applied.has(i)) await applyToLogic(aResult.logicSuggestions[i], i);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!accountId) return;
@@ -66,6 +139,125 @@ export default function ThreadsAnalyticsPage() {
       </div>
 
       {error && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-sm text-rose-300">{error}</div>}
+
+      {/* スクショから傾向分析 */}
+      <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-neutral-100">🔬 スクショから傾向分析</h3>
+          <p className="text-xs text-neutral-500 mt-1">
+            自分の投稿（表示回数・いいねが写ったスクショ）を複数枚入れると、AIが「伸びる/伸びない傾向」と「投稿ロジックに加えると良い提案」を出します。提案はワンクリックでアカウントの投稿ロジックに追記できます。
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
+            📷 投稿スクショを選択
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={async (e) => {
+                const files = Array.from(e.target.files ?? []);
+                if (files.length === 0) return;
+                const urls = await filesToDataUrls(files, 1600, 10);
+                setAImages((prev) => [...prev, ...urls].slice(0, 10));
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {aImages.length > 0 && (
+            <>
+              <div className="flex gap-1.5 flex-wrap">
+                {aImages.map((src, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={i} src={src} alt={`投稿${i + 1}`} className="h-10 w-10 object-cover rounded border border-neutral-600" />
+                ))}
+              </div>
+              <span className="text-[11px] text-neutral-500">{aImages.length}枚</span>
+              <button onClick={() => setAImages([])} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
+                クリア
+              </button>
+            </>
+          )}
+          <button
+            onClick={runAnalyze}
+            disabled={analyzing}
+            className="ml-auto px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
+          >
+            {analyzing ? "分析中...（30秒〜1分）" : "傾向を分析する"}
+          </button>
+        </div>
+        <textarea
+          value={aNote}
+          onChange={(e) => setANote(e.target.value)}
+          rows={2}
+          className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-xs"
+          placeholder="（任意）補足があれば。例: 最近リーチが落ちてる / この2枚が特に伸びた 等"
+        />
+        <p className="text-[10px] text-neutral-600">最大10枚。表示回数やいいね数が写っているほど精度が上がります。保存済みの投稿実績も自動で加味します。</p>
+
+        {aError && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-xs text-rose-300">{aError}</div>}
+
+        {aResult && (
+          <div className="space-y-3 pt-1">
+            {aResult.summary && (
+              <p className="text-xs text-neutral-300 bg-neutral-800/50 rounded-lg p-3 leading-relaxed">{aResult.summary}</p>
+            )}
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="bg-emerald-500/5 border border-emerald-500/25 rounded-lg p-3">
+                <h4 className="text-xs font-bold text-emerald-300 mb-1.5">📈 伸びる投稿の傾向</h4>
+                <ul className="space-y-1 text-xs text-neutral-200 list-disc list-inside">
+                  {aResult.growingTraits.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="bg-rose-500/5 border border-rose-500/25 rounded-lg p-3">
+                <h4 className="text-xs font-bold text-rose-300 mb-1.5">📉 伸びない投稿の傾向</h4>
+                <ul className="space-y-1 text-xs text-neutral-200 list-disc list-inside">
+                  {aResult.notGrowingTraits.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="bg-amber-500/5 border border-amber-500/30 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                <h4 className="text-xs font-bold text-amber-200">💡 投稿ロジックに加えると良い提案</h4>
+                {aResult.logicSuggestions.length > 0 && (
+                  <button
+                    onClick={applyAll}
+                    className="text-[11px] px-2.5 py-1 rounded-lg border border-amber-400/40 text-amber-200 hover:bg-amber-400/10 whitespace-nowrap"
+                  >
+                    すべて投稿ロジックに追記
+                  </button>
+                )}
+              </div>
+              <ul className="space-y-1.5">
+                {aResult.logicSuggestions.map((s, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="flex-1 text-xs text-neutral-200">{s}</span>
+                    <button
+                      onClick={() => applyToLogic(s, i)}
+                      disabled={applied.has(i)}
+                      className={`text-[11px] px-2 py-1 rounded-lg whitespace-nowrap ${
+                        applied.has(i)
+                          ? "bg-emerald-500/20 text-emerald-300 cursor-default"
+                          : "bg-white text-black font-bold hover:bg-neutral-200"
+                      }`}
+                    >
+                      {applied.has(i) ? "✓ 追記済み" : "＋ ロジックに追記"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[10px] text-neutral-600 mt-2">
+                追記先は選択中アカウントの「投稿ロジック」。<Link href="/threads/accounts" className="text-sky-400 underline">アカウント編集</Link>で確認・調整できます。
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {data && data.publishedCount === 0 ? (
         <div className="bg-neutral-900 rounded-xl border border-dashed border-neutral-700 p-10 text-center text-sm text-neutral-500">

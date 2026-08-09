@@ -10,6 +10,9 @@ export interface ThreadsAccountContext {
   concept: string;
   logic: string;
   target: string;
+  worldview?: string;
+  uniqueLogic?: string;
+  ngWords?: string;
   tone: string; // JSON文字列
 }
 
@@ -69,6 +72,10 @@ export function buildAccountKnowledgeContext(
   if (account.concept) lines.push(`- コンセプト: ${account.concept}`);
   if (account.logic) lines.push(`- 投稿ロジック: ${account.logic}`);
   if (account.target) lines.push(`- ターゲット: ${account.target}`);
+  if (account.worldview) lines.push(`- 世界観（この観点で世界を語る）: ${account.worldview}`);
+  if (account.uniqueLogic)
+    lines.push(`- 独自ロジック・独自用語（本文中で自然に繰り返し使う）: ${account.uniqueLogic}`);
+  if (account.ngWords) lines.push(`- NG表現（使わない）: ${account.ngWords}`);
   try {
     const tone = JSON.parse(account.tone || "{}") as Record<string, string>;
     const toneEntries = Object.entries(tone).filter(([, v]) => v);
@@ -315,6 +322,8 @@ Threadsアカウントのプロフィール情報・投稿サンプル（テキ�
   "concept": "誰に・何を・どう届けるアカウントかを2-3文で",
   "logic": "投稿の勝ちパターン・構成の傾向を2-3文で（投稿サンプルがある場合のみ具体的に。無ければ発信ジャンルから一般的な定石を提案）",
   "target": "想定ターゲット像を1-2文で",
+  "worldview": "このアカウントがどんな世界観・前提で物事を語っているか（例: 念の流れ／神様との繋がり観）。投稿サンプルから読み取れる場合のみ。無ければ空文字",
+  "uniqueLogic": "繰り返し使われている独自用語や、他と差別化する独自の持論・理論（例: 「器」「巡り」という概念、開運は創るものという主張）。投稿サンプルから読み取れる場合のみ。無ければ空文字",
   "tone": {
     "一人称": "投稿から読み取れる一人称（不明なら空文字）",
     "語尾": "文体・語尾の特徴（例: 断定調 / です・ます調）",
@@ -324,7 +333,7 @@ Threadsアカウントのプロフィール情報・投稿サンプル（テキ�
 }
 
 注意:
-- 投稿サンプルが無い場合、toneの各項目は空文字にする（憶測で埋めない）
+- 投稿サンプルが無い場合、tone・worldview・uniqueLogicは空文字にする（憶測で埋めない）
 - conceptとtargetはプロフィール文からの推定でよいが、簡潔に`;
 
 export function buildPrefillInstruction(params: {
@@ -355,6 +364,8 @@ export interface PrefillResult {
   concept: string;
   logic: string;
   target: string;
+  worldview?: string;
+  uniqueLogic?: string;
   tone: Record<string, string>;
 }
 
@@ -373,6 +384,57 @@ export interface CompetitorPrefillResult {
   handle: string;
   name: string;
   note: string;
+}
+
+// ============================================================
+// ⑦ 自投稿スクショの傾向分析（伸びる/伸びない傾向 + ロジック提案）
+// ============================================================
+
+export const ANALYZE_POSTS_SYSTEM = `あなたはThreads運用の分析者です。
+ユーザー自身のアカウントの投稿スクリーンショット（各投稿に表示回数・いいね・返信・リポスト等の数値が写っている）と、必要に応じてテキストの実績データを渡します。
+数値の高い投稿（伸びた投稿）と低い投稿（伸びなかった投稿）を比較し、「何が伸びる要因か／何が伸びない要因か」を投稿の中身（フック・構成・テーマ・語り口・長さ・CTA・世界観の出し方など）に踏み込んで分析してください。
+
+出力形式（JSONのみを出力。説明文やコードフェンス外の文章は不要）:
+{
+  "summary": "全体の所感を2-3文で。何件を見て、伸びの差がどこから来ていそうか。",
+  "growingTraits": ["伸びている投稿に共通する具体的な特徴（1項目1文）", "..."],
+  "notGrowingTraits": ["伸びていない投稿に共通する具体的な特徴（1項目1文）", "..."],
+  "logicSuggestions": ["このアカウントの投稿ロジックに追記すると良い具体的な指針（1文・命令形で、そのままルールとして使える粒度）", "..."]
+}
+
+注意:
+- 数値（表示回数・いいね）を根拠に、高い群と低い群の差分として語る
+- 抽象論（「質を上げる」等）でなく、再現できる具体（「冒頭1行を問いかけにする」「体験談は数字を入れる」等）で書く
+- logicSuggestions は3〜6個。そのまま投稿ロジック欄に貼れる短い命令文にする
+- スクショが数枚しか無い場合でも、読み取れた範囲で最大限具体的に`;
+
+export function buildAnalyzePostsInstruction(params: {
+  accountName?: string;
+  concept?: string;
+  currentLogic?: string;
+  storedPosts?: { content: string; views: number; likes: number; replies: number; reposts: number }[];
+  pastedText?: string;
+}): string {
+  const lines: string[] = [];
+  if (params.accountName) lines.push(`対象アカウント: ${params.accountName}`);
+  if (params.concept) lines.push(`コンセプト: ${params.concept}`);
+  if (params.currentLogic) lines.push(`現在の投稿ロジック（重複しない新しい提案を出す）: ${params.currentLogic}`);
+  if (params.storedPosts && params.storedPosts.length > 0) {
+    lines.push(`\n保存済みの投稿実績（本文一部 / 表示・いいね・返信・リポスト）:`);
+    params.storedPosts.forEach((p, i) => {
+      lines.push(`【${i + 1}】${p.content.slice(0, 80).replace(/\n/g, " ")} … / 表示${p.views}・❤️${p.likes}・💬${p.replies}・🔁${p.reposts}`);
+    });
+  }
+  if (params.pastedText) lines.push(`\nユーザー補足:\n${params.pastedText}`);
+  lines.push("\n添付スクショと上記データを踏まえ、伸びる/伸びない傾向とロジック提案をJSONで返してください。");
+  return lines.join("\n");
+}
+
+export interface AnalyzePostsResult {
+  summary: string;
+  growingTraits: string[];
+  notGrowingTraits: string[];
+  logicSuggestions: string[];
 }
 
 export const INSIGHT_SYSTEM = `あなたはThreads運用の分析者です。投稿の実績データを見て、考察の下書きを作ります。
