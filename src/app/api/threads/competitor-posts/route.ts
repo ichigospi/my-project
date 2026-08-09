@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
     if (planType) where.planType = planType;
     if (hot === "1") where.isHot = true;
     if (q) where.content = { contains: q };
+    // タグ検索（tagsはJSON文字列。完全一致タグを含む投稿に絞る）
+    const tag = searchParams.get("tag");
+    if (tag) where.tags = { contains: `"${tag}"` };
     // 閲覧数の下限フィルタ
     const minViews = Number(searchParams.get("minViews") || 0);
     if (minViews > 0) where.views = { gte: minViews };
