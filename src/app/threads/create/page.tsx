@@ -90,11 +90,14 @@ function CreateContent() {
   const [refB, setRefB] = useState<CompetitorPost | null>(null);
   const [pickerFor, setPickerFor] = useState<"A" | "B" | null>(null);
 
-  // かんたん生成（企画を選んで1ポチ）
+  // かんたん生成（企画/タグで元投稿を選ぶ → 確認 → 生成）
   const [easyPlan, setEasyPlan] = useState("");
   const [easyTag, setEasyTag] = useState("");
-  const [easyTopic, setEasyTopic] = useState("");
-  const [autoPickedNote, setAutoPickedNote] = useState("");
+  const [easyInstruction, setEasyInstruction] = useState("");
+  const [easySourceList, setEasySourceList] = useState<CompetitorPost[]>([]);
+  const [easyIdx, setEasyIdx] = useState(0);
+  const [pickingSource, setPickingSource] = useState(false);
+  const [allTags, setAllTags] = useState<string[]>([]);
 
   // 生成設定
   const [mode, setMode] = useState<"single" | "hybrid" | "custom">("single");
@@ -154,11 +157,14 @@ function CreateContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ライブラリ読み込み
+  // ライブラリ読み込み + タグ候補
   useEffect(() => {
     if (!accountId) return;
     api<LibraryItem[]>(`/api/threads/library?accountId=${accountId}`)
       .then(setLibrary)
+      .catch(() => {});
+    api<{ tags: { tag: string; count: number }[] }>(`/api/threads/tags?accountId=${accountId}`)
+      .then((r) => setAllTags(r.tags.map((t) => t.tag)))
       .catch(() => {});
   }, [accountId]);
 
@@ -234,20 +240,16 @@ function CreateContent() {
 
   const generate = () => runGenerate(refA, refB);
 
-  // かんたん生成: 企画を選ぶ → その企画で一番伸びてる競合投稿を自動採用 → 生成 → ベスト案を自動採用
-  const easyGenerate = async () => {
+  // かんたん生成①: 企画/タグに合う「伸びてる競合投稿」の候補リストを取得（生成はまだしない）
+  const easyPickSource = async () => {
     if (!accountId) {
       setError("アカウントを選択してください");
       return;
     }
-    const aiApiKey = getAiKey();
-    if (!aiApiKey) {
-      setError("AI APIキーが未設定です。設定ページで登録してください。");
-      return;
-    }
-    setGenerating(true);
+    setPickingSource(true);
     setError("");
-    setAutoPickedNote("");
+    setEasySourceList([]);
+    setEasyIdx(0);
     try {
       const fetchPosts = async (extra: Record<string, string>): Promise<CompetitorPost[]> => {
         const params = new URLSearchParams({ accountId, sort: "likes", ...extra });
@@ -257,36 +259,36 @@ function CreateContent() {
       const base: Record<string, string> = {};
       if (easyPlan) base.planType = easyPlan;
       if (easyTag.trim()) base.tag = easyTag.trim();
-      const filterLabel = [easyPlan, easyTag.trim() ? `#${easyTag.trim()}` : ""].filter(Boolean).join("・");
 
-      let top: CompetitorPost | null = null;
-      let note = "";
+      let posts: CompetitorPost[] = [];
       if (Object.keys(base).length > 0) {
-        let posts = await fetchPosts({ ...base, hot: "1" });
+        posts = await fetchPosts({ ...base, hot: "1" });
         if (posts.length === 0) posts = await fetchPosts(base);
-        top = posts[0] ?? null;
-        if (top) note = `「${filterLabel}」の伸びてる投稿（@${top.competitor.handle}・❤️${fmtNum(top.likes)}）を元に生成`;
       }
-      if (!top) {
-        let posts = await fetchPosts({ hot: "1" });
+      if (posts.length === 0) {
+        posts = await fetchPosts({ hot: "1" });
         if (posts.length === 0) posts = await fetchPosts({});
-        top = posts[0] ?? null;
-        if (top) note = `${filterLabel ? "該当が無かったため、" : ""}伸びてる投稿（@${top.competitor.handle}・❤️${fmtNum(top.likes)}）を元に生成`;
       }
-      if (!top) {
-        setError("参考にできる競合投稿がありません。まず🔍リサーチ/ベンチマークでスクショ取込 or 自動収集してください。");
-        setGenerating(false);
+      if (posts.length === 0) {
+        setError("参考にできる競合投稿がありません。まず📥投稿読込/ベンチマークで取込 or 自動収集してください。");
         return;
       }
-      if (top.postFormat === "tree") note += "／🌳長文ツリー：本文は口調・コンセプト調整のみ、続きは教育を入れてリライト";
-      setRefA(top);
-      setRefB(null);
-      setAutoPickedNote(note);
-      await runGenerate(top, null, { extra: easyTopic.trim(), autoPick: true });
+      setEasySourceList(posts);
+      setEasyIdx(0);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setGenerating(false);
+    } finally {
+      setPickingSource(false);
     }
+  };
+
+  // かんたん生成②: 確認したオマージュ元＋内容指示で生成（ベスト案を自動採用）
+  const generateFromEasy = async () => {
+    const src = easySourceList[easyIdx];
+    if (!src) return;
+    setRefA(src);
+    setRefB(null);
+    await runGenerate(src, null, { extra: easyInstruction.trim(), autoPick: true });
   };
 
   const pickCandidate = (i: number) => {
@@ -418,11 +420,18 @@ function CreateContent() {
 
       {error && <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700 mb-4">{error}</div>}
 
-      {/* かんたん生成（企画を選んで1ポチ） */}
+      {/* タグ候補（サジェスト用・複数のtag入力から参照） */}
+      <datalist id="threadsTagOptions">
+        {allTags.map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+
+      {/* かんたん生成（企画/タグで元投稿を選ぶ → 確認 → 生成） */}
       <div className="bg-gradient-to-r from-indigo-500/15 to-transparent border border-indigo-500/40 rounded-2xl p-4 mb-4">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-base font-bold text-neutral-100">🎯 かんたん生成</span>
-          <span className="text-[11px] text-neutral-400">企画を選ぶだけ。伸びてる競合投稿を自動でオマージュ元にして完成案を出します。</span>
+          <span className="text-[11px] text-neutral-400">企画/タグで伸びてる競合投稿を出し、内容を確認してから生成できます。</span>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1">
@@ -438,33 +447,97 @@ function CreateContent() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 min-w-[150px]">
-            <span className="text-[11px] text-neutral-400">タグ（任意）</span>
+          <label className="flex flex-col gap-1 flex-1 min-w-[180px]">
+            <span className="text-[11px] text-neutral-400">タグ（一部入力で候補・任意）</span>
             <input
               value={easyTag}
               onChange={(e) => setEasyTag(e.target.value)}
+              list="threadsTagOptions"
               className="border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
               placeholder="#権威性 / 競合名 など"
             />
           </label>
-          <label className="flex flex-col gap-1 flex-1 min-w-[180px]">
-            <span className="text-[11px] text-neutral-400">テーマ（任意）</span>
-            <input
-              value={easyTopic}
-              onChange={(e) => setEasyTopic(e.target.value)}
-              className="border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
-              placeholder="例: 金運を上げる習慣 / 満月の過ごし方"
-            />
-          </label>
           <button
-            onClick={easyGenerate}
-            disabled={generating}
+            onClick={easyPickSource}
+            disabled={pickingSource || generating}
             className="px-6 py-2 rounded-xl bg-white text-black text-sm font-bold hover:bg-neutral-200 disabled:opacity-50 whitespace-nowrap"
           >
-            {generating ? "生成中..." : "⚡ 1ポチ生成"}
+            {pickingSource ? "検索中..." : "🔎 元投稿を出す"}
           </button>
         </div>
-        {autoPickedNote && <p className="text-[11px] text-indigo-300 mt-2">📌 {autoPickedNote}</p>}
+
+        {/* オマージュ元の確認 + 内容指示 + 生成 */}
+        {easySourceList.length > 0 && (() => {
+          const src = easySourceList[easyIdx];
+          if (!src) return null;
+          let tagList: string[] = [];
+          try { tagList = JSON.parse(src.tags || "[]") as string[]; } catch { tagList = []; }
+          return (
+            <div className="mt-3 bg-neutral-950/70 border border-neutral-700 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-bold text-neutral-200">
+                  オマージュ元を確認（{easyIdx + 1}/{easySourceList.length}件）
+                </span>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => setEasyIdx((i) => (i + 1) % easySourceList.length)}
+                    disabled={easySourceList.length < 2}
+                    className="text-[11px] px-2.5 py-1 rounded-lg border border-neutral-600 text-neutral-200 hover:bg-neutral-800 disabled:opacity-40"
+                  >
+                    🔄 別の投稿
+                  </button>
+                  <button
+                    onClick={() => { setEasySourceList([]); setEasyIdx(0); }}
+                    className="text-[11px] px-2.5 py-1 rounded-lg border border-neutral-700 text-neutral-400 hover:bg-neutral-800"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              </div>
+              <div className="text-[11px] text-neutral-500 flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-neutral-300">@{src.competitor.handle}</span>
+                {src.isHot && <span>🔥</span>}
+                {src.postFormat === "tree" && <span className="px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300">🌳ツリー</span>}
+                {src.planType && <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">{src.planType}</span>}
+                {src.views > 0 && <span>👁{fmtNum(src.views)}</span>}
+                <span>❤️{fmtNum(src.likes)}</span>
+                <span>💬{fmtNum(src.replies)}</span>
+              </div>
+              {/* 元投稿の全文（しっかり確認できる） */}
+              <div className="text-sm text-neutral-100 whitespace-pre-wrap max-h-56 overflow-y-auto bg-neutral-900 rounded-lg p-3 border border-neutral-800">
+                {src.content}
+              </div>
+              {(tagList.length > 0 || src.purpose) && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {src.purpose && <span className="text-[10px] text-neutral-400">🎯{src.purpose}</span>}
+                  {tagList.map((t) => (
+                    <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200">#{t}</span>
+                  ))}
+                </div>
+              )}
+              {src.postFormat === "tree" && (
+                <p className="text-[10px] text-teal-300/80">🌳 本文は口調・コンセプト調整のみ／続きは教育を入れてリライトします。</p>
+              )}
+              <label className="block">
+                <span className="text-[11px] text-neutral-400">内容指示（任意・生成に反映）</span>
+                <textarea
+                  value={easyInstruction}
+                  onChange={(e) => setEasyInstruction(e.target.value)}
+                  rows={2}
+                  className="mt-1 w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+                  placeholder="例: 満月テーマで／数字は控えめ／CTAは無料鑑定に／もっと感情に寄せて"
+                />
+              </label>
+              <button
+                onClick={generateFromEasy}
+                disabled={generating}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white text-sm font-bold hover:opacity-90 disabled:opacity-50"
+              >
+                {generating ? "生成中...（数十秒）" : "⚡ この投稿でオマージュ生成"}
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
@@ -707,10 +780,20 @@ function PostPicker({
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("");
   const [hotOnly, setHotOnly] = useState(true);
+  const [competitorList, setCompetitorList] = useState<{ id: string; handle: string; name: string }[]>([]);
+  const [competitorId, setCompetitorId] = useState("");
+
+  useEffect(() => {
+    if (!accountId) return;
+    api<{ id: string; handle: string; name: string }[]>(`/api/threads/competitors?accountId=${accountId}`)
+      .then(setCompetitorList)
+      .catch(() => {});
+  }, [accountId]);
 
   const load = useCallback(async () => {
     if (!accountId) return;
     const params = new URLSearchParams({ accountId, sort: "likes" });
+    if (competitorId) params.set("competitorId", competitorId);
     if (hotOnly) params.set("hot", "1");
     if (q) params.set("q", q);
     if (tag.trim()) params.set("tag", tag.trim());
@@ -720,7 +803,7 @@ function PostPicker({
     } catch {
       // ignore
     }
-  }, [accountId, hotOnly, q, tag]);
+  }, [accountId, competitorId, hotOnly, q, tag]);
 
   useEffect(() => {
     const t = setTimeout(load, 300);
@@ -737,16 +820,29 @@ function PostPicker({
             🔥伸びてる投稿のみ
           </label>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <select
+            value={competitorId}
+            onChange={(e) => setCompetitorId(e.target.value)}
+            className="border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm min-w-[160px]"
+          >
+            <option value="">全アカウント</option>
+            {competitorList.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name || `@${c.handle}`}
+              </option>
+            ))}
+          </select>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="flex-1 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+            className="flex-1 min-w-[140px] border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
             placeholder="本文を検索..."
           />
           <input
             value={tag}
             onChange={(e) => setTag(e.target.value)}
+            list="threadsTagOptions"
             className="w-40 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
             placeholder="#タグ検索"
           />
