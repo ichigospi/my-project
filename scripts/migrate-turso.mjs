@@ -124,6 +124,7 @@ const alters = [
   `ALTER TABLE "ThreadsAccount" ADD COLUMN "worldview" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "ThreadsAccount" ADD COLUMN "uniqueLogic" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "ThreadsAccount" ADD COLUMN "ngWords" TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE "ThreadsCompetitorPost" ADD COLUMN "postFormat" TEXT NOT NULL DEFAULT ''`,
 ];
 for (const sql of alters) {
   try {

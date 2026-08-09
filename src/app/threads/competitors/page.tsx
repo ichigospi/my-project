@@ -26,6 +26,7 @@ export default function ThreadsCompetitorsPage() {
   const [importTarget, setImportTarget] = useState<Competitor | null>(null);
   const [raw, setRaw] = useState("");
   const [importImages, setImportImages] = useState<string[]>([]);
+  const [importFormat, setImportFormat] = useState<"short" | "long" | "tree">("short");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState("");
   const [error, setError] = useState("");
@@ -147,11 +148,13 @@ export default function ThreadsCompetitorsPage() {
           competitorId: importTarget.id,
           raw: raw.trim() || undefined,
           images: importImages.length > 0 ? importImages : undefined,
+          postFormat: importFormat,
           aiApiKey,
           model: getThreadsModel(),
         }),
       });
-      setImportResult(`✅ ${res.createdCount}件を取り込み、${res.classified}件を自動分類しました`);
+      const fmtLabel = importFormat === "tree" ? "長文ツリー" : importFormat === "long" ? "長文" : "短文";
+      setImportResult(`✅ ${fmtLabel}として ${res.createdCount}件を取り込み、${res.classified}件を自動分類しました`);
       setRaw("");
       setImportImages([]);
       await load();
@@ -270,6 +273,7 @@ export default function ThreadsCompetitorsPage() {
                     setImportTarget(c);
                     setImportResult("");
                     setImportImages([]);
+                    setRaw("");
                   }}
                   className="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800"
                 >
@@ -411,9 +415,40 @@ export default function ThreadsCompetitorsPage() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto" onClick={() => !importing && setImportTarget(null)}>
           <div className="bg-neutral-900 rounded-2xl w-full max-w-2xl p-6 space-y-4 my-8" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-neutral-100">@{importTarget.handle} の投稿を取り込む</h3>
+
+            {/* 投稿形式を最初に選ぶ */}
+            <div className="bg-neutral-800/50 border border-neutral-700 rounded-xl p-3 space-y-2">
+              <span className="text-xs font-bold text-neutral-200">① 投稿形式を選ぶ</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {([
+                  { v: "short", label: "短文", desc: "1枚＝1投稿。複数投稿をまとめて取込可" },
+                  { v: "long", label: "長文", desc: "長い1投稿。複数枚でも1件に結合" },
+                  { v: "tree", label: "長文ツリー", desc: "本文＋続きのリプを複数枚で1件に結合" },
+                ] as const).map((f) => (
+                  <button
+                    key={f.v}
+                    onClick={() => setImportFormat(f.v)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border ${
+                      importFormat === f.v
+                        ? "bg-white text-black border-white font-bold"
+                        : "bg-neutral-900 text-neutral-300 border-neutral-700 hover:border-neutral-500"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-neutral-500">
+                {importFormat === "tree"
+                  ? "🌳 本文→続きのリプの順に、同じ投稿のスクショを複数枚アップしてください。1つの投稿として結合して取り込みます（数値は親投稿のもの）。"
+                  : importFormat === "long"
+                    ? "📄 1つの長文投稿として結合します。分割スクショでもまとめて1件に。"
+                    : "✏️ スクショ/貼り付けに含まれる投稿を、それぞれ別々の投稿として取り込みます。"}
+              </p>
+            </div>
+
             <p className="text-xs text-neutral-400">
-              <span className="font-bold text-neutral-200">スクショ推奨:</span> Threads画面のスクショを選ぶだけで、AIが投稿本文といいね・コメント数を読み取ります（最大5枚）。
-              テキストのコピペでもOK。両方入れると両方読みます。
+              <span className="font-bold text-neutral-200">② スクショを選ぶ（推奨）:</span> AIが本文といいね・コメント数を読み取ります（最大8枚）。テキストのコピペでもOK。
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
@@ -426,8 +461,8 @@ export default function ThreadsCompetitorsPage() {
                   onChange={async (e) => {
                     const files = Array.from(e.target.files ?? []);
                     if (files.length === 0) return;
-                    const urls = await filesToDataUrls(files);
-                    setImportImages((prev) => [...prev, ...urls].slice(0, 5));
+                    const urls = await filesToDataUrls(files, 1600, 8);
+                    setImportImages((prev) => [...prev, ...urls].slice(0, 8));
                     e.target.value = "";
                   }}
                 />

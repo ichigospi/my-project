@@ -105,8 +105,9 @@ export function buildAccountKnowledgeContext(
 // ============================================================
 
 export const PASTE_PARSE_SYSTEM = `あなたはThreads投稿データの整理係です。
-ユーザーがThreadsの画面からコピーした雑多なテキスト、またはThreads画面のスクリーンショット画像を渡すので、投稿ごとに分解してJSONで返してください。
+ユーザーがThreadsの画面からコピーした雑多なテキスト、またはThreads画面のスクリーンショット画像を渡すので、投稿を読み取ってJSONで返してください。
 スクリーンショットの場合は、画像内の投稿本文といいね・コメント・リポスト等の数値を正確に読み取ってください。
+指示で「1つの投稿として結合」と言われた場合は、複数画像/テキストを読む順に1つの content にまとめ、配列は1要素だけ返してください（長文ツリー投稿＝本文＋続きのリプの取り込みに使います）。
 
 出力形式（JSON配列のみを出力。説明文・コードフェンス外の文章は不要）:
 [
@@ -127,8 +128,36 @@ export const PASTE_PARSE_SYSTEM = `あなたはThreads投稿データの整理�
 - 1.2万 のような表記は 12000 に変換する
 - 本文の改行・絵文字はそのまま保持する`;
 
-export function buildPasteParseInstruction(raw: string, todayIso: string): string {
-  return `今日の日付: ${todayIso}\n\n以下を投稿ごとに分解してください:\n\n${raw}`;
+export type PostFormat = "short" | "long" | "tree" | "";
+
+export function buildPasteParseInstruction(params: {
+  raw?: string;
+  todayIso: string;
+  postFormat?: PostFormat;
+  hasImages?: boolean;
+}): string {
+  const { raw, todayIso, postFormat, hasImages } = params;
+  const lines: string[] = [`今日の日付: ${todayIso}`, ""];
+  if (postFormat === "tree") {
+    lines.push(
+      "これは【1つの長文ツリー投稿】です。本文（親投稿）＋続きのリプライが複数枚の画像またはテキストに分かれています。",
+      "すべてを読む順に結合し、content に1つにまとめて、配列は【1要素だけ】返してください。",
+      "本文と各続きの境目には、改行2つと「─────（続き）─────」の区切り行を入れてください。",
+      "いいね・コメント・表示回数などの数値は【親投稿（1枚目/最初）】のものを使ってください（続きのリプの数値は使わない）。",
+    );
+  } else if (postFormat === "long") {
+    lines.push(
+      "これは【1つの長文投稿】です。複数の画像/テキストに分かれていても、1つの投稿として結合し、配列は【1要素だけ】返してください。",
+    );
+  } else {
+    lines.push("投稿ごとに分解してください（複数の投稿が含まれる場合は配列で複数返す）。");
+  }
+  if (raw?.trim()) {
+    lines.push("", "対象テキスト:", raw);
+  } else if (hasImages) {
+    lines.push("", "スクリーンショットに写っている投稿を読み取ってください。");
+  }
+  return lines.join("\n");
 }
 
 export interface ParsedPastePost {

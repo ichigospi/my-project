@@ -39,14 +39,20 @@ export async function POST(request: NextRequest) {
     }
 
     const model = resolveThreadsAiModel(body.model);
+    const postFormat: "short" | "long" | "tree" | "" = ["short", "long", "tree"].includes(body.postFormat)
+      ? body.postFormat
+      : "";
 
-    // ① パース（テキスト・スクショどちらでも）
+    // ① パース（テキスト・スクショどちらでも。長文ツリー/長文は1投稿に結合）
     const today = new Date().toISOString().slice(0, 10);
     const parseRes = await callThreadsAI(aiApiKey, {
       systemPrompt: PASTE_PARSE_SYSTEM,
-      userInstruction: raw?.trim()
-        ? buildPasteParseInstruction(raw, today)
-        : `今日の日付: ${today}\n\nスクリーンショットに写っている投稿をすべて分解してください。`,
+      userInstruction: buildPasteParseInstruction({
+        raw: raw?.trim() || undefined,
+        todayIso: today,
+        postFormat,
+        hasImages: images.length > 0,
+      }),
       images,
       model,
       maxTokens: 8192,
@@ -74,6 +80,7 @@ export async function POST(request: NextRequest) {
           views: Number(p.views ?? 0),
           postedAt: p.postedAt ? safeDate(p.postedAt) : null,
           source: "manual",
+          postFormat,
         },
       });
       created.push(post);
