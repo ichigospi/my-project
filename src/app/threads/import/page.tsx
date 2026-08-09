@@ -43,10 +43,9 @@ function ImportContent() {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
-  // 投稿読込
-  const [postFormat, setPostFormat] = useState<"short" | "long" | "tree">("short");
-  const [images, setImages] = useState<string[]>([]);
-  const [raw, setRaw] = useState("");
+  // 投稿読込（1投稿=1枠。複数枠で一括登録）
+  type Slot = { format: "short" | "long" | "tree"; images: string[]; raw: string };
+  const [slots, setSlots] = useState<Slot[]>([{ format: "short", images: [], raw: "" }]);
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -143,14 +142,32 @@ function ImportContent() {
     }
   };
 
+  // 枠の操作
+  const addSlot = () => setSlots((prev) => [...prev, { format: "short", images: [], raw: "" }]);
+  const removeSlot = (i: number) =>
+    setSlots((prev) => {
+      const next = prev.filter((_, j) => j !== i);
+      return next.length === 0 ? [{ format: "short", images: [], raw: "" }] : next;
+    });
+  const updateSlot = (i: number, patch: Partial<Slot>) =>
+    setSlots((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const addSlotImages = async (i: number, files: File[]) => {
+    if (files.length === 0) return;
+    const urls = await filesToDataUrls(files, 1600, 8);
+    setSlots((prev) => prev.map((s, j) => (j === i ? { ...s, images: [...s.images, ...urls].slice(0, 8) } : s)));
+  };
+  const removeSlotImage = (i: number, ii: number) =>
+    setSlots((prev) => prev.map((s, j) => (j === i ? { ...s, images: s.images.filter((_, k) => k !== ii) } : s)));
+
   const submit = async () => {
     const aiApiKey = getAiKey();
     if (!aiApiKey) {
       setMsg("エラー: AI APIキーが未設定です（設定画面で登録）");
       return;
     }
-    if (images.length === 0 && !raw.trim()) {
-      setMsg("投稿のスクショ、または貼り付けテキストを入れてください");
+    const filled = slots.filter((s) => s.images.length > 0 || s.raw.trim());
+    if (filled.length === 0) {
+      setMsg("投稿のスクショ、または貼り付けテキストを入れてください（枠に何も入っていません）");
       return;
     }
     setSaving(true);
@@ -161,31 +178,43 @@ function ImportContent() {
         setSaving(false);
         return;
       }
-      const r = await fetch("/api/threads/competitor-posts/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          competitorId: cid,
-          raw: raw.trim() || undefined,
-          images: images.length > 0 ? images : undefined,
-          postFormat,
-          tags,
-          purpose: purpose.trim() || undefined,
-          aiApiKey,
-          model: getThreadsModel(),
-        }),
-      });
-      const data = (await r.json().catch(() => ({}))) as { createdCount?: number; classified?: number; error?: string; debug?: string };
-      if (!r.ok) {
-        setMsg(`エラー: ${data.error || `HTTP ${r.status}`}${data.debug ? `\n[AI応答の先頭] ${data.debug}` : ""}`);
-        setSaving(false);
-        return;
+      let totalCreated = 0;
+      let totalClassified = 0;
+      const errors: string[] = [];
+      for (let i = 0; i < filled.length; i++) {
+        setMsg(`登録中... (${i + 1}/${filled.length}枠)`);
+        const s = filled[i];
+        const r = await fetch("/api/threads/competitor-posts/parse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            competitorId: cid,
+            raw: s.raw.trim() || undefined,
+            images: s.images.length > 0 ? s.images : undefined,
+            postFormat: s.format,
+            tags,
+            purpose: purpose.trim() || undefined,
+            aiApiKey,
+            model: getThreadsModel(),
+          }),
+        });
+        const data = (await r.json().catch(() => ({}))) as { createdCount?: number; classified?: number; error?: string };
+        if (!r.ok) {
+          errors.push(`枠${i + 1}: ${data.error || `HTTP ${r.status}`}`);
+          continue;
+        }
+        totalCreated += data.createdCount ?? 0;
+        totalClassified += data.classified ?? 0;
       }
-      const fmt = postFormat === "tree" ? "長文ツリー" : postFormat === "long" ? "長文" : "短文";
-      setMsg(`✅ ${fmt}として ${data.createdCount}件を企画に追加（${data.classified}件を自動分類）。タグ: ${tags.join(" / ") || "なし"}`);
-      // 投稿系だけリセット（競合・タグは連続登録しやすいよう保持）
-      setImages([]);
-      setRaw("");
+      if (totalCreated > 0) {
+        setMsg(
+          `✅ ${filled.length}枠から ${totalCreated}件を企画に追加（${totalClassified}件を自動分類）。タグ: ${tags.join(" / ") || "なし"}` +
+            (errors.length ? `\n⚠️ 一部失敗: ${errors.join(" / ")}` : ""),
+        );
+        setSlots([{ format: "short", images: [], raw: "" }]);
+      } else {
+        setMsg(`エラー: 登録できませんでした。${errors.join(" / ")}`);
+      }
       await loadCompetitors();
     } catch (e) {
       setMsg(`エラー: ${e instanceof Error ? e.message : String(e)}`);
@@ -381,68 +410,76 @@ function ImportContent() {
         </div>
       </section>
 
-      {/* ③ 投稿を読み込む */}
+      {/* ③ 投稿を読み込む（1投稿=1枠・複数枠で一括） */}
       <section className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
-        <h3 className="text-sm font-bold text-neutral-100">③ 投稿を読み込む</h3>
-        <div className="flex gap-1.5 flex-wrap">
-          {([
-            { v: "short", label: "短文" },
-            { v: "long", label: "長文" },
-            { v: "tree", label: "長文ツリー" },
-          ] as const).map((f) => (
-            <button
-              key={f.v}
-              onClick={() => setPostFormat(f.v)}
-              className={`text-xs px-3 py-1.5 rounded-lg border ${postFormat === f.v ? "bg-white text-black border-white font-bold" : "bg-neutral-950 text-neutral-300 border-neutral-700 hover:border-neutral-500"}`}
-            >
-              {f.label}
-            </button>
-          ))}
-          <span className="text-[11px] text-neutral-500 self-center">
-            {postFormat === "tree"
-              ? "🌳 本文→続きの順で複数枚。1投稿に結合"
-              : postFormat === "long"
-                ? "📄 複数枚でも1投稿に結合"
-                : "✏️ それぞれ別投稿として取込"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
-            📷 投稿スクショを選択
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={async (e) => {
-                const files = Array.from(e.target.files ?? []);
-                if (files.length === 0) return;
-                const urls = await filesToDataUrls(files, 1600, 8);
-                setImages((prev) => [...prev, ...urls].slice(0, 8));
-                e.target.value = "";
-              }}
+        <h3 className="text-sm font-bold text-neutral-100">③ 投稿を読み込む（1投稿＝1枠）</h3>
+        {slots.map((slot, i) => (
+          <div key={i} className="bg-neutral-950/60 border border-neutral-700 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-neutral-200">📮 投稿{i + 1}</span>
+              <button onClick={() => removeSlot(i)} className="text-[11px] text-neutral-500 hover:text-rose-400">枠を削除</button>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {([
+                { v: "short", label: "短文" },
+                { v: "long", label: "長文" },
+                { v: "tree", label: "長文ツリー" },
+              ] as const).map((f) => (
+                <button
+                  key={f.v}
+                  onClick={() => updateSlot(i, { format: f.v })}
+                  className={`text-xs px-3 py-1 rounded-lg border ${slot.format === f.v ? "bg-white text-black border-white font-bold" : "bg-neutral-950 text-neutral-300 border-neutral-700 hover:border-neutral-500"}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+              <span className="text-[11px] text-neutral-500 self-center">
+                {slot.format === "tree" ? "🌳 本文→続きの順で複数枚→1投稿に結合" : slot.format === "long" ? "📄 複数枚でも1投稿に結合" : "✏️ 別投稿として取込"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="px-3 py-1.5 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
+                📷 スクショ追加
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    await addSlotImages(i, Array.from(e.target.files ?? []));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {slot.images.map((src, ii) => (
+                <div key={ii} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={`p${i}-${ii}`} className="h-12 w-12 object-cover rounded border border-neutral-600" />
+                  <button
+                    onClick={() => removeSlotImage(i, ii)}
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-neutral-900 border border-neutral-600 text-neutral-300 text-[10px] leading-none flex items-center justify-center hover:bg-rose-600 hover:text-white"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <textarea
+              value={slot.raw}
+              onChange={(e) => updateSlot(i, { raw: e.target.value })}
+              rows={3}
+              className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-xs font-mono"
+              placeholder="（テキスト派）本文＋いいね数などを貼り付け"
             />
-          </label>
-          {images.length > 0 && (
-            <>
-              <div className="flex gap-1.5 flex-wrap">
-                {images.map((src, i) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={src} alt={`p${i}`} className="h-10 w-10 object-cover rounded border border-neutral-600" />
-                ))}
-              </div>
-              <span className="text-[11px] text-neutral-500">{images.length}枚</span>
-              <button onClick={() => setImages([])} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">クリア</button>
-            </>
-          )}
-        </div>
-        <textarea
-          value={raw}
-          onChange={(e) => setRaw(e.target.value)}
-          rows={4}
-          className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-xs font-mono"
-          placeholder="（テキスト派はこちら）本文＋いいね数などを貼り付け"
-        />
+          </div>
+        ))}
+        <button
+          onClick={addSlot}
+          className="w-full py-2 rounded-lg border border-dashed border-neutral-600 text-xs text-neutral-300 hover:border-neutral-400 hover:bg-neutral-800/50"
+        >
+          ＋ 投稿枠を追加（別の投稿はこちら）
+        </button>
+        <p className="text-[10px] text-neutral-600">目的・タグは全枠に共通で付きます。形式は枠ごとに選べます。</p>
       </section>
 
       <button
@@ -450,7 +487,7 @@ function ImportContent() {
         disabled={saving}
         className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white text-sm font-bold hover:opacity-90 disabled:opacity-50"
       >
-        {saving ? "追加中...（AIが整理中・数十秒）" : "＋ 企画として追加"}
+        {saving ? "追加中...（AIが整理中）" : `＋ 企画として一括追加${slots.filter((s) => s.images.length > 0 || s.raw.trim()).length > 0 ? `（${slots.filter((s) => s.images.length > 0 || s.raw.trim()).length}枠）` : ""}`}
       </button>
     </main>
   );
