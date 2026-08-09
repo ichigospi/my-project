@@ -34,6 +34,13 @@ export interface RefPostInput {
   planType?: string;
   hookType?: string;
   structureJson?: string;
+  postFormat?: string; // "short" | "long" | "tree"
+}
+
+// 本文がツリー投稿か（形式指定 or 続きの区切りを含む）
+export function isTreePost(p: { postFormat?: string; content?: string }): boolean {
+  if (p.postFormat === "tree") return true;
+  return typeof p.content === "string" && /（続き）|─────/.test(p.content);
 }
 
 export interface LibraryItemInput {
@@ -246,7 +253,12 @@ export const HOMAGE_SYSTEM = `あなたはThreads運用のプロのゴースト�
 - 差し替えるのは中身だけ: 固有名詞・数字・具体例・体験部分を自アカウントの文脈（コンセプト・ロジック・ターゲット）に置き換える
 - オリジナルの工夫や独自の展開を勝手に足さない。「自分らしさ」はアカウント情報の口調ルールの範囲でのみ出す
 - ただし文の丸写しは禁止。同じ意味でも表現は言い換える（類似度チェックで検出されるため）
-- Threadsの投稿として自然な長さ・改行にする（最大500文字）
+- Threadsの投稿として自然な長さ・改行にする（最大500文字。長文ツリーは別途下記に従う）
+
+## 長文ツリー投稿のとき（オマージュ元が「本文＋続き」の構成 = 区切り「─────（続き）─────」を含む場合）
+- 【本文（親投稿・最初の区切りより前）】: 型も中身もほぼ保つ。変えるのは口調とアカウントのコンセプト適合の調整だけ。大きく書き換えない（本文で伸ばす引きはそのまま活かす）。
+- 【ツリー部分（区切り以降の続き）】: 必ず「教育」を入れて、しっかりリライトする。アカウントの世界観・独自ロジック・注入された教育型（問題提起/常識破壊/信念/権威/囲い込み等）を使い、濃いファンを育てる教育を自然に織り込む。元の続きの丸写しはしない。
+- 出力は、本文と続きを元と同じ区切り「─────（続き）─────」で分けて、1つの content にまとめる。
 
 ## 出力形式（JSON のみを出力）
 {
@@ -307,6 +319,16 @@ export function buildHomageInstruction(req: HomageRequest): string {
     lines.push("AとBを組み合わせて作成する。" + (req.modeInstruction || "基本はAの本文骨格にBのフックの型を移植する。"));
   } else {
     lines.push(req.modeInstruction || "Aの型を踏襲して作成する。");
+  }
+
+  // 長文ツリーのときは本文=軽微調整 / 続き=教育を入れてリライト、を強調
+  if (isTreePost(req.refA)) {
+    lines.push(
+      "\n## これは長文ツリー投稿です（必ず守る）",
+      "- 本文（区切り「─────（続き）─────」より前）: 口調とアカウントのコンセプト適合の調整のみ。中身・型は大きく変えない。",
+      "- 続き（区切り以降）: 必ず『教育』を入れて、世界観・独自ロジック・教育型を使ってしっかりリライトする（丸写し禁止）。",
+      "- 出力は本文と続きを同じ区切りで分けて1つのcontentにまとめる。",
+    );
   }
 
   if (req.libraryItems && req.libraryItems.length > 0) {

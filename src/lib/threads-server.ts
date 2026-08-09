@@ -42,6 +42,7 @@ export async function buildRefSnapshot(postId: string): Promise<RefSnapshot | nu
     planType: post.planType,
     hookType: post.hookType,
     structureJson: post.structureJson,
+    postFormat: post.postFormat,
     postUrl: post.postUrl,
     postedAt: post.postedAt ? post.postedAt.toISOString() : null,
     collectedAt: post.collectedAt.toISOString(),
