@@ -86,12 +86,20 @@ export default function ThreadsAnalyticsPage() {
   // 蓄積された学習データ
   const [storedInsights, setStoredInsights] = useState<Insights>(EMPTY_INSIGHTS);
   const [insightsSaved, setInsightsSaved] = useState(false);
+  // 評価基準（ユーザー編集）
+  const [evalCriteria, setEvalCriteria] = useState("");
+  const [criteriaDirty, setCriteriaDirty] = useState(false);
+  const [savingCriteria, setSavingCriteria] = useState(false);
+  // 学習データの手動編集
+  const [editingInsights, setEditingInsights] = useState(false);
+  const [insightsDraft, setInsightsDraft] = useState<Insights>(EMPTY_INSIGHTS);
+  const [reorganizing, setReorganizing] = useState(false);
 
-  // アカウントの現在の学習データを読み込む
+  // アカウントの現在の学習データ・評価基準を読み込む
   const loadInsights = useCallback(async () => {
     if (!accountId) return;
     try {
-      const list = await api<{ id: string; learnedInsights?: string }[]>("/api/threads/accounts");
+      const list = await api<{ id: string; learnedInsights?: string; evalCriteria?: string }[]>("/api/threads/accounts");
       const acc = list.find((a) => a.id === accountId);
       if (acc?.learnedInsights) {
         const parsed = JSON.parse(acc.learnedInsights) as Partial<Insights>;
@@ -99,6 +107,8 @@ export default function ThreadsAnalyticsPage() {
       } else {
         setStoredInsights(EMPTY_INSIGHTS);
       }
+      setEvalCriteria(acc?.evalCriteria ?? "");
+      setCriteriaDirty(false);
     } catch {
       setStoredInsights(EMPTY_INSIGHTS);
     }
@@ -107,6 +117,64 @@ export default function ThreadsAnalyticsPage() {
   useEffect(() => {
     loadInsights();
   }, [loadInsights]);
+
+  // 評価基準を保存
+  const saveCriteria = async () => {
+    if (!accountId) return;
+    setSavingCriteria(true);
+    try {
+      await api(`/api/threads/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify({ evalCriteria }) });
+      setCriteriaDirty(false);
+    } catch (e) {
+      setAError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingCriteria(false);
+    }
+  };
+
+  // 学習データの手動編集
+  const startEditInsights = () => {
+    setInsightsDraft(JSON.parse(JSON.stringify(storedInsights)) as Insights);
+    setEditingInsights(true);
+  };
+  const saveInsightsEdit = async () => {
+    if (!accountId) return;
+    try {
+      await api(`/api/threads/accounts/${accountId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ learnedInsights: JSON.stringify(insightsDraft) }),
+      });
+      setStoredInsights(insightsDraft);
+      setEditingInsights(false);
+    } catch (e) {
+      setAError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // 現在の評価基準で既存の学習データを再整理（新規スクショ不要）
+  const reorganizeByCriteria = async () => {
+    const aiApiKey = getAiKey();
+    if (!aiApiKey) {
+      setAError("AI APIキーが未設定です（設定画面で登録してください）");
+      return;
+    }
+    setReorganizing(true);
+    setAError("");
+    setAResult(null);
+    setInsightsSaved(false);
+    setApplied(new Set());
+    try {
+      const res = await api<AnalyzeResult>("/api/threads/analytics/analyze", {
+        method: "POST",
+        body: JSON.stringify({ accountId, reorganize: true, aiApiKey, model: getThreadsModel() }),
+      });
+      setAResult(res);
+    } catch (e) {
+      setAError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReorganizing(false);
+    }
+  };
 
   // 分析で得た最新学習データをアカウントに保存（蓄積更新）
   const saveInsights = async () => {
@@ -250,40 +318,130 @@ export default function ThreadsAnalyticsPage() {
           </p>
         </div>
 
-        {/* 蓄積された学習データ（常時表示） */}
-        {(() => {
-          const total = INSIGHT_GROUPS.reduce((s, g) => s + (storedInsights[g.key] as string[]).length, 0);
-          return (
-            <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-bold text-neutral-200">📚 このアカウントの学習データ</span>
-                {storedInsights.analyzedCount ? (
-                  <span className="text-[10px] text-neutral-500">分析{storedInsights.analyzedCount}回分を蓄積</span>
-                ) : null}
-              </div>
-              {total === 0 ? (
-                <p className="text-[11px] text-neutral-500">まだ空です。下で投稿スクショを分析すると、ここに「フック/強ワード/傾向/口調/ロジック」が溜まっていきます。</p>
-              ) : (
-                <div className="grid sm:grid-cols-2 gap-2">
-                  {INSIGHT_GROUPS.map((g) => {
-                    const items = storedInsights[g.key] as string[];
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={g.key}>
-                        <div className="text-[11px] font-bold text-neutral-300 mb-1">{g.emoji} {g.label}</div>
-                        <div className="flex flex-wrap gap-1">
-                          {items.map((it, i) => (
-                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">{it}</span>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+        {/* 評価基準（ユーザーが追記していく。分析に毎回反映） */}
+        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-neutral-200">🧭 分析の評価基準（自分で追加・編集）</span>
+            <span className="text-[10px] text-neutral-500">分析するたびに最優先で反映されます</span>
+          </div>
+          <textarea
+            value={evalCriteria}
+            onChange={(e) => {
+              setEvalCriteria(e.target.value);
+              setCriteriaDirty(true);
+            }}
+            rows={4}
+            className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-xs"
+            placeholder={"1行1基準で追記していく。例:\n・伸びやすさは 長文ツリー>短文>教育メイン。表示回数の絶対値だけで優劣を決めない\n・教育投稿は低インプでも「強いフォロワー」を育てる価値がある\n・短文は世界観の刷り込み・欲求喚起で評価する\n・ゴールは「最大インプ×最大教育」の両立"}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={saveCriteria}
+              disabled={savingCriteria || !criteriaDirty}
+              className="text-[11px] px-3 py-1.5 rounded-lg bg-white text-black font-bold hover:bg-neutral-200 disabled:opacity-40"
+            >
+              {savingCriteria ? "保存中..." : criteriaDirty ? "評価基準を保存" : "保存済み"}
+            </button>
+            <span className="text-[10px] text-neutral-600">今後も基準を足していけばOK。次の分析から効きます。</span>
+          </div>
+        </div>
+
+        {/* 蓄積された学習データ（常時表示・手動編集/再整理可） */}
+        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <span className="text-xs font-bold text-neutral-200">📚 このアカウントの学習データ</span>
+            {storedInsights.analyzedCount ? (
+              <span className="text-[10px] text-neutral-500">分析{storedInsights.analyzedCount}回分を蓄積</span>
+            ) : null}
+            <div className="ml-auto flex items-center gap-2">
+              {!editingInsights && (
+                <>
+                  <button
+                    onClick={reorganizeByCriteria}
+                    disabled={reorganizing}
+                    className="text-[10px] px-2 py-1 rounded-lg border border-indigo-400/40 text-indigo-200 hover:bg-indigo-500/10 disabled:opacity-40"
+                    title="新規スクショ無しで、今の評価基準に沿って既存データを整理し直す"
+                  >
+                    {reorganizing ? "再整理中..." : "🔁 現在の基準で再整理"}
+                  </button>
+                  <button onClick={startEditInsights} className="text-[10px] px-2 py-1 rounded-lg border border-neutral-600 text-neutral-300 hover:bg-neutral-800">
+                    ✏️ 手動編集
+                  </button>
+                </>
               )}
             </div>
-          );
-        })()}
+          </div>
+
+          {editingInsights ? (
+            <div className="space-y-2">
+              {INSIGHT_GROUPS.map((g) => {
+                const items = insightsDraft[g.key] as string[];
+                return (
+                  <div key={g.key}>
+                    <div className="text-[11px] font-bold text-neutral-300 mb-1">{g.emoji} {g.label}</div>
+                    <div className="space-y-1">
+                      {items.map((it, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <input
+                            value={it}
+                            onChange={(e) =>
+                              setInsightsDraft((d) => ({
+                                ...d,
+                                [g.key]: (d[g.key] as string[]).map((x, j) => (j === i ? e.target.value : x)),
+                              }))
+                            }
+                            className="flex-1 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded px-2 py-1 text-[11px]"
+                          />
+                          <button
+                            onClick={() =>
+                              setInsightsDraft((d) => ({ ...d, [g.key]: (d[g.key] as string[]).filter((_, j) => j !== i) }))
+                            }
+                            className="text-[11px] text-neutral-500 hover:text-rose-400 px-1"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => setInsightsDraft((d) => ({ ...d, [g.key]: [...(d[g.key] as string[]), ""] }))}
+                        className="text-[10px] text-sky-400 hover:underline"
+                      >
+                        ＋ 項目を追加
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex gap-2 pt-1">
+                <button onClick={saveInsightsEdit} className="text-[11px] px-3 py-1.5 rounded-lg bg-white text-black font-bold hover:bg-neutral-200">
+                  保存
+                </button>
+                <button onClick={() => setEditingInsights(false)} className="text-[11px] px-3 py-1.5 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800">
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          ) : INSIGHT_GROUPS.reduce((s, g) => s + (storedInsights[g.key] as string[]).length, 0) === 0 ? (
+            <p className="text-[11px] text-neutral-500">まだ空です。下で投稿スクショを分析すると、ここに「フック/強ワード/傾向/口調/ロジック」が溜まっていきます。</p>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-2">
+              {INSIGHT_GROUPS.map((g) => {
+                const items = storedInsights[g.key] as string[];
+                if (items.length === 0) return null;
+                return (
+                  <div key={g.key}>
+                    <div className="text-[11px] font-bold text-neutral-300 mb-1">{g.emoji} {g.label}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {items.map((it, i) => (
+                        <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">{it}</span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
         {/* 1投稿=1枠。ツリー投稿は同じ枠に本文＋続きを複数枚 */}
         <div className="space-y-2">
           {postGroups.map((group, gi) => (

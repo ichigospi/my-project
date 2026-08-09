@@ -484,6 +484,7 @@ export const ANALYZE_POSTS_SYSTEM = `あなたはThreads運用の分析者兼「
   - 教育型（教育メイン投稿）= 表示は伸びにくいが「強いフォロワー（濃いファン・購買層）」を育てる価値がある。低インプでも失敗と断じない。
 - だから2軸で評価する: ①リーチ（表示回数、形式内での相対）②教育・ファン化価値（信頼・世界観の定着・行動喚起）。
 - 目指すゴールは「最大のインプ数 × 最大限の教育」を同時に成立させる型・言い回し。両立できている投稿や、伸びた投稿に教育を忍ばせる手を高く評価する。
+- 【ユーザー指定の評価基準】が渡された場合は、それを最優先で守る（組み込みの前提と食い違う場合はユーザー基準を優先）。基準は今後も追加されるので、その観点でも投稿を評価する。
 
 そのうえで、上記2軸で、伸びる/効く要因と、伸びない/弱い要因を投稿の中身（フック・構成・強ワード・テーマ・語り口・長さ・CTA・世界観の出し方・ツリーで続きに引き込む引き・教育の織り込み方など）に踏み込んで分析してください。
 そのうえで、これまでの学習データを土台に、新しい発見を【マージして更新した最新版の学習データ】を返してください（既存の有効な項目は残し、新項目を追加し、重複や矛盾は整理。各リスト最大12項目まで）。
@@ -518,13 +519,23 @@ export function buildAnalyzePostsInstruction(params: {
   accountName?: string;
   concept?: string;
   currentLogic?: string;
+  evalCriteria?: string;
   existingInsights?: AccountInsights | null;
   storedPosts?: { content: string; views: number; likes: number; replies: number; reposts: number }[];
   pastedText?: string;
   postCount?: number;
+  reorganize?: boolean;
 }): string {
   const lines: string[] = [];
-  if (params.postCount) lines.push(`今回のスクショは ${params.postCount} 投稿分（各「▼ 投稿N」ラベルで区切り済み）。`);
+  if (params.reorganize) {
+    lines.push(
+      "【再整理モード】新しいスクショはありません。下記の『これまでの学習データ』を、下記『ユーザー指定の評価基準』に照らして整理し直し、最新版のinsightsを返してください（矛盾を正し、基準に合わない解釈を修正、重要な観点を追記）。readPostsは空配列でよい。",
+    );
+  }
+  if (params.evalCriteria?.trim()) {
+    lines.push("\n【ユーザー指定の評価基準（最優先で守る。以降の判断はこれに従う）】\n" + params.evalCriteria.trim());
+  }
+  if (params.postCount) lines.push(`\n今回のスクショは ${params.postCount} 投稿分（各「▼ 投稿N」ラベルで区切り済み）。`);
   if (params.accountName) lines.push(`対象アカウント: ${params.accountName}`);
   if (params.concept) lines.push(`コンセプト: ${params.concept}`);
   if (params.currentLogic) lines.push(`現在の投稿ロジック: ${params.currentLogic}`);
