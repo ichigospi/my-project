@@ -12,6 +12,14 @@ interface Competitor {
   name: string;
 }
 
+interface TagCat {
+  id: string;
+  accountId: string;
+  parentId: string | null;
+  name: string;
+  sortOrder: number;
+}
+
 // 教育型のクイックタグ（タップで追加）
 const EDU_TAGS = [
   "問題提起",
@@ -50,13 +58,24 @@ function ImportContent() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagCats, setTagCats] = useState<TagCat[]>([]);
 
   useEffect(() => {
     if (!accountId) return;
     api<{ tags: { tag: string; count: number }[] }>(`/api/threads/tags?accountId=${accountId}`)
       .then((r) => setAllTags(r.tags.map((t) => t.tag)))
       .catch(() => {});
+    api<{ categories: TagCat[] }>(`/api/threads/tag-categories?accountId=${accountId}`)
+      .then((r) => setTagCats(r.categories))
+      .catch(() => {});
   }, [accountId]);
+
+  const childrenOf = (pid: string | null) => tagCats.filter((c) => (c.parentId ?? null) === pid);
+  const toggleTag = (t: string) => {
+    const v = t.trim();
+    if (!v) return;
+    setTags((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+  };
 
   const loadCompetitors = useCallback(async () => {
     if (!accountId) return;
@@ -357,7 +376,7 @@ function ImportContent() {
             {EDU_TAGS.map((t) => (
               <button
                 key={t}
-                onClick={() => addTag(t)}
+                onClick={() => toggleTag(t)}
                 className={`text-[11px] px-2 py-1 rounded-lg border ${tags.includes(t) ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-700 hover:border-neutral-500"}`}
               >
                 {t}
@@ -365,6 +384,38 @@ function ImportContent() {
             ))}
           </div>
         </div>
+
+        {/* タグ分類（大/中/小）から選択 */}
+        {childrenOf(null).length > 0 && (
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-neutral-400">カテゴリから選択（タップで追加）</span>
+              <Link href="/threads/research" className="text-[10px] text-sky-400 hover:underline">分類を編集</Link>
+            </div>
+            <div className="space-y-1.5 mt-1 bg-neutral-950/50 border border-neutral-800 rounded-lg p-2">
+              {childrenOf(null).map((big) => (
+                <div key={big.id}>
+                  <div className="text-[11px] font-bold text-neutral-300">📁 {big.name}</div>
+                  {childrenOf(big.id).map((mid) => (
+                    <div key={mid.id} className="flex items-center gap-1.5 flex-wrap pl-2 mt-0.5">
+                      <span className="text-[10px] text-neutral-500">{mid.name}:</span>
+                      {[mid, ...childrenOf(mid.id)].map((node) => (
+                        <button
+                          key={node.id}
+                          onClick={() => toggleTag(node.name)}
+                          className={`text-[11px] px-2 py-0.5 rounded-full ${tags.includes(node.name) ? "bg-indigo-500 text-white" : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"}`}
+                        >
+                          {node === mid ? `＝${node.name}` : node.name}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
           <span className="text-xs text-neutral-400">タグ（目的・競合名・キーワードなど自由に）</span>
           <div className="flex gap-2 mt-1">
