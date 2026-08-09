@@ -25,6 +25,8 @@ interface CompetitorPost {
   planType: string;
   hookType: string;
   postFormat?: string;
+  tags?: string;
+  purpose?: string;
   isHot: boolean;
   competitor: { handle: string };
 }
@@ -90,6 +92,7 @@ function CreateContent() {
 
   // かんたん生成（企画を選んで1ポチ）
   const [easyPlan, setEasyPlan] = useState("");
+  const [easyTag, setEasyTag] = useState("");
   const [easyTopic, setEasyTopic] = useState("");
   const [autoPickedNote, setAutoPickedNote] = useState("");
 
@@ -251,19 +254,24 @@ function CreateContent() {
         const r = await api<{ posts: CompetitorPost[] }>(`/api/threads/competitor-posts?${params}`);
         return r.posts;
       };
+      const base: Record<string, string> = {};
+      if (easyPlan) base.planType = easyPlan;
+      if (easyTag.trim()) base.tag = easyTag.trim();
+      const filterLabel = [easyPlan, easyTag.trim() ? `#${easyTag.trim()}` : ""].filter(Boolean).join("・");
+
       let top: CompetitorPost | null = null;
       let note = "";
-      if (easyPlan) {
-        let posts = await fetchPosts({ planType: easyPlan, hot: "1" });
-        if (posts.length === 0) posts = await fetchPosts({ planType: easyPlan });
+      if (Object.keys(base).length > 0) {
+        let posts = await fetchPosts({ ...base, hot: "1" });
+        if (posts.length === 0) posts = await fetchPosts(base);
         top = posts[0] ?? null;
-        if (top) note = `「${easyPlan}」の伸びてる投稿（@${top.competitor.handle}・❤️${fmtNum(top.likes)}）を元に生成`;
+        if (top) note = `「${filterLabel}」の伸びてる投稿（@${top.competitor.handle}・❤️${fmtNum(top.likes)}）を元に生成`;
       }
       if (!top) {
         let posts = await fetchPosts({ hot: "1" });
         if (posts.length === 0) posts = await fetchPosts({});
         top = posts[0] ?? null;
-        if (top) note = `${easyPlan ? "該当企画が無かったため、" : ""}伸びてる投稿（@${top.competitor.handle}・❤️${fmtNum(top.likes)}）を元に生成`;
+        if (top) note = `${filterLabel ? "該当が無かったため、" : ""}伸びてる投稿（@${top.competitor.handle}・❤️${fmtNum(top.likes)}）を元に生成`;
       }
       if (!top) {
         setError("参考にできる競合投稿がありません。まず🔍リサーチ/ベンチマークでスクショ取込 or 自動収集してください。");
@@ -430,7 +438,16 @@ function CreateContent() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 flex-1 min-w-[200px]">
+          <label className="flex flex-col gap-1 min-w-[150px]">
+            <span className="text-[11px] text-neutral-400">タグ（任意）</span>
+            <input
+              value={easyTag}
+              onChange={(e) => setEasyTag(e.target.value)}
+              className="border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+              placeholder="#権威性 / 競合名 など"
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1 min-w-[180px]">
             <span className="text-[11px] text-neutral-400">テーマ（任意）</span>
             <input
               value={easyTopic}
@@ -688,6 +705,7 @@ function PostPicker({
 }) {
   const [posts, setPosts] = useState<CompetitorPost[]>([]);
   const [q, setQ] = useState("");
+  const [tag, setTag] = useState("");
   const [hotOnly, setHotOnly] = useState(true);
 
   const load = useCallback(async () => {
@@ -695,13 +713,14 @@ function PostPicker({
     const params = new URLSearchParams({ accountId, sort: "likes" });
     if (hotOnly) params.set("hot", "1");
     if (q) params.set("q", q);
+    if (tag.trim()) params.set("tag", tag.trim());
     try {
       const res = await api<{ posts: CompetitorPost[] }>(`/api/threads/competitor-posts?${params}`);
       setPosts(res.posts);
     } catch {
       // ignore
     }
-  }, [accountId, hotOnly, q]);
+  }, [accountId, hotOnly, q, tag]);
 
   useEffect(() => {
     const t = setTimeout(load, 300);
@@ -718,28 +737,59 @@ function PostPicker({
             🔥伸びてる投稿のみ
           </label>
         </div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
-          placeholder="本文を検索..."
-        />
+        <div className="flex gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="flex-1 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+            placeholder="本文を検索..."
+          />
+          <input
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+            className="w-40 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+            placeholder="#タグ検索"
+          />
+        </div>
         <div className="space-y-2 max-h-[55vh] overflow-y-auto">
-          {posts.map((p) => (
+          {posts.map((p) => {
+            let tagList: string[] = [];
+            try {
+              tagList = JSON.parse(p.tags || "[]") as string[];
+            } catch {
+              tagList = [];
+            }
+            return (
             <button
               key={p.id}
               onClick={() => onPick(p)}
               className="w-full text-left bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-500 rounded-lg p-3"
             >
-              <div className="text-[11px] text-neutral-500 flex items-center gap-2">
+              <div className="text-[11px] text-neutral-500 flex items-center gap-2 flex-wrap">
                 <span className="font-bold">@{p.competitor.handle}</span>
                 {p.isHot && <span>🔥</span>}
+                {p.postFormat === "tree" && <span className="px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300">🌳ツリー</span>}
                 {p.planType && <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">{p.planType}</span>}
                 <span>❤️{fmtNum(p.likes)}</span>
               </div>
               <p className="text-xs text-neutral-200 mt-1 line-clamp-3 whitespace-pre-wrap">{p.content}</p>
+              {(tagList.length > 0 || p.purpose) && (
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  {p.purpose && <span className="text-[10px] text-neutral-400">🎯{p.purpose}</span>}
+                  {tagList.map((t) => (
+                    <span
+                      key={t}
+                      onClick={(e) => { e.stopPropagation(); setTag(t); }}
+                      className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200 hover:bg-indigo-500/40 cursor-pointer"
+                    >
+                      #{t}
+                    </span>
+                  ))}
+                </div>
+              )}
             </button>
-          ))}
+            );
+          })}
           {posts.length === 0 && <p className="text-center text-sm text-neutral-500 py-6">投稿が見つかりません</p>}
         </div>
       </div>
