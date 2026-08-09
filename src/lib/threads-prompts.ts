@@ -13,6 +13,7 @@ export interface ThreadsAccountContext {
   worldview?: string;
   uniqueLogic?: string;
   ngWords?: string;
+  learnedInsights?: string; // JSON文字列（実績から蓄積した学習データ）
   tone: string; // JSON文字列
 }
 
@@ -76,6 +77,31 @@ export function buildAccountKnowledgeContext(
   if (account.uniqueLogic)
     lines.push(`- 独自ロジック・独自用語（本文中で自然に繰り返し使う）: ${account.uniqueLogic}`);
   if (account.ngWords) lines.push(`- NG表現（使わない）: ${account.ngWords}`);
+
+  // 実績から蓄積した学習データ（これを最大限活かして精度を上げる）
+  if (account.learnedInsights) {
+    try {
+      const ins = JSON.parse(account.learnedInsights) as {
+        hooks?: string[];
+        strongWords?: string[];
+        growthPatterns?: string[];
+        toneNotes?: string[];
+        logicNotes?: string[];
+      };
+      const insLines: string[] = [];
+      if (ins.hooks?.length) insLines.push(`- 伸びてるフックの型（優先的に使う）: ${ins.hooks.join(" / ")}`);
+      if (ins.strongWords?.length) insLines.push(`- 刺さる強ワード（適所で使う）: ${ins.strongWords.join(" / ")}`);
+      if (ins.growthPatterns?.length) insLines.push(`- 伸びやすい傾向: ${ins.growthPatterns.join(" / ")}`);
+      if (ins.toneNotes?.length) insLines.push(`- 効いている口調: ${ins.toneNotes.join(" / ")}`);
+      if (ins.logicNotes?.length) insLines.push(`- 効いている勝ち筋ロジック: ${ins.logicNotes.join(" / ")}`);
+      if (insLines.length > 0) {
+        lines.push("\n# 学習データ（自投稿の実績から蓄積。ここを最大限活かして精度高く作る）");
+        lines.push(...insLines);
+      }
+    } catch {
+      // 壊れたJSONは無視
+    }
+  }
   try {
     const tone = JSON.parse(account.tone || "{}") as Record<string, string>;
     const toneEntries = Object.entries(tone).filter(([, v]) => v);
@@ -419,35 +445,74 @@ export interface CompetitorPrefillResult {
 // ⑦ 自投稿スクショの傾向分析（伸びる/伸びない傾向 + ロジック提案）
 // ============================================================
 
-export const ANALYZE_POSTS_SYSTEM = `あなたはThreads運用の分析者です。
-ユーザー自身のアカウントの投稿スクリーンショット（各投稿に表示回数・いいね・返信・リポスト等の数値が写っている）と、必要に応じてテキストの実績データを渡します。
-数値の高い投稿（伸びた投稿）と低い投稿（伸びなかった投稿）を比較し、「何が伸びる要因か／何が伸びない要因か」を投稿の中身（フック・構成・テーマ・語り口・長さ・CTA・世界観の出し方など）に踏み込んで分析してください。
+// アカウントに蓄積される学習データ（分析のたびにマージ更新）
+export interface AccountInsights {
+  hooks: string[]; // 伸びてるフックの型
+  strongWords: string[]; // 刺さってる強ワード・言い回し
+  growthPatterns: string[]; // 伸びやすい傾向
+  toneNotes: string[]; // 口調の特徴
+  logicNotes: string[]; // 勝ち筋ロジック
+  analyzedCount?: number;
+  updatedAt?: string;
+}
+
+export const EMPTY_INSIGHTS: AccountInsights = {
+  hooks: [],
+  strongWords: [],
+  growthPatterns: [],
+  toneNotes: [],
+  logicNotes: [],
+};
+
+export const ANALYZE_POSTS_SYSTEM = `あなたはThreads運用の分析者兼「アカウント学習データ」の管理者です。
+ユーザー自身のアカウントの投稿スクリーンショット（各投稿に表示回数・いいね・返信・リポスト等の数値が写っている）と、必要に応じてテキストの実績データ、そして「これまでの学習データ（累積）」を渡します。
+数値の高い投稿（伸びた）と低い投稿（伸びなかった）を比較し、伸びる/伸びない要因を投稿の中身（フック・構成・強ワード・テーマ・語り口・長さ・CTA・世界観の出し方など）に踏み込んで分析してください。
+そのうえで、これまでの学習データを土台に、新しい発見を【マージして更新した最新版の学習データ】を返してください（既存の有効な項目は残し、新項目を追加し、重複や矛盾は整理。各リスト最大12項目まで）。
 
 出力形式（JSONのみを出力。説明文やコードフェンス外の文章は不要）:
 {
-  "summary": "全体の所感を2-3文で。何件を見て、伸びの差がどこから来ていそうか。",
-  "growingTraits": ["伸びている投稿に共通する具体的な特徴（1項目1文）", "..."],
-  "notGrowingTraits": ["伸びていない投稿に共通する具体的な特徴（1項目1文）", "..."],
-  "logicSuggestions": ["このアカウントの投稿ロジックに追記すると良い具体的な指針（1文・命令形で、そのままルールとして使える粒度）", "..."]
+  "summary": "今回の所感を2-3文で。何件を見て、伸びの差がどこから来ていそうか。",
+  "growingTraits": ["今回わかった、伸びている投稿の具体的特徴（1項目1文）", "..."],
+  "notGrowingTraits": ["今回わかった、伸びていない投稿の具体的特徴", "..."],
+  "logicSuggestions": ["投稿ロジックに追記すると良い具体的な指針（命令形・そのまま使える粒度）を3〜6個", "..."],
+  "insights": {
+    "hooks": ["伸びてるフックの型（短く。例: 数字を冒頭に置く／問いかけで始める）", "..."],
+    "strongWords": ["刺さってる強ワード・言い回し（単語やフレーズ）", "..."],
+    "growthPatterns": ["伸びやすい傾向（例: 朝の投稿が伸びる／体験談が伸びる）", "..."],
+    "toneNotes": ["効いている口調・文体の特徴", "..."],
+    "logicNotes": ["繰り返し効いている勝ち筋ロジック", "..."]
+  }
 }
 
 注意:
 - 数値（表示回数・いいね）を根拠に、高い群と低い群の差分として語る
-- 抽象論（「質を上げる」等）でなく、再現できる具体（「冒頭1行を問いかけにする」「体験談は数字を入れる」等）で書く
-- logicSuggestions は3〜6個。そのまま投稿ロジック欄に貼れる短い命令文にする
-- スクショが数枚しか無い場合でも、読み取れた範囲で最大限具体的に`;
+- 抽象論（「質を上げる」等）でなく再現できる具体で書く
+- insights は【累積の最新版】。渡された既存学習データの有効項目は保持し、新しい発見だけ足す・磨く。単純に消さない
+- スクショが数枚でも、読み取れた範囲で最大限具体的に`;
 
 export function buildAnalyzePostsInstruction(params: {
   accountName?: string;
   concept?: string;
   currentLogic?: string;
+  existingInsights?: AccountInsights | null;
   storedPosts?: { content: string; views: number; likes: number; replies: number; reposts: number }[];
   pastedText?: string;
 }): string {
   const lines: string[] = [];
   if (params.accountName) lines.push(`対象アカウント: ${params.accountName}`);
   if (params.concept) lines.push(`コンセプト: ${params.concept}`);
-  if (params.currentLogic) lines.push(`現在の投稿ロジック（重複しない新しい提案を出す）: ${params.currentLogic}`);
+  if (params.currentLogic) lines.push(`現在の投稿ロジック: ${params.currentLogic}`);
+  const ins = params.existingInsights;
+  if (ins && (ins.hooks?.length || ins.strongWords?.length || ins.growthPatterns?.length || ins.toneNotes?.length || ins.logicNotes?.length)) {
+    lines.push("\nこれまでの学習データ（累積。これを土台にマージ更新する）:");
+    if (ins.hooks?.length) lines.push(`- 伸びてるフック: ${ins.hooks.join(" / ")}`);
+    if (ins.strongWords?.length) lines.push(`- 強ワード: ${ins.strongWords.join(" / ")}`);
+    if (ins.growthPatterns?.length) lines.push(`- 伸びやすい傾向: ${ins.growthPatterns.join(" / ")}`);
+    if (ins.toneNotes?.length) lines.push(`- 口調: ${ins.toneNotes.join(" / ")}`);
+    if (ins.logicNotes?.length) lines.push(`- ロジック: ${ins.logicNotes.join(" / ")}`);
+  } else {
+    lines.push("\nこれまでの学習データ: なし（今回が初回。ゼロから作ってよい）");
+  }
   if (params.storedPosts && params.storedPosts.length > 0) {
     lines.push(`\n保存済みの投稿実績（本文一部 / 表示・いいね・返信・リポスト）:`);
     params.storedPosts.forEach((p, i) => {
@@ -455,7 +520,7 @@ export function buildAnalyzePostsInstruction(params: {
     });
   }
   if (params.pastedText) lines.push(`\nユーザー補足:\n${params.pastedText}`);
-  lines.push("\n添付スクショと上記データを踏まえ、伸びる/伸びない傾向とロジック提案をJSONで返してください。");
+  lines.push("\n添付スクショと上記を踏まえ、今回の傾向・ロジック提案と、マージ更新した最新の学習データ(insights)をJSONで返してください。");
   return lines.join("\n");
 }
 
@@ -464,6 +529,7 @@ export interface AnalyzePostsResult {
   growingTraits: string[];
   notGrowingTraits: string[];
   logicSuggestions: string[];
+  insights: AccountInsights;
 }
 
 export const INSIGHT_SYSTEM = `あなたはThreads運用の分析者です。投稿の実績データを見て、考察の下書きを作ります。
