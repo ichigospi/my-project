@@ -14,8 +14,18 @@ interface Insights {
   analyzedCount?: number;
 }
 
+interface ReadPost {
+  label: string;
+  views: number;
+  likes: number;
+  replies: number;
+  reposts: number;
+  excerpt?: string;
+}
+
 interface AnalyzeResult {
   summary: string;
+  readPosts?: ReadPost[];
   growingTraits: string[];
   notGrowingTraits: string[];
   logicSuggestions: string[];
@@ -335,7 +345,7 @@ export default function ThreadsAnalyticsPage() {
         />
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-[10px] text-neutral-600">
-            <span className="text-neutral-400 font-bold">1投稿＝1枠</span>。ツリー投稿は同じ枠に本文→続きの順で複数枚。別の投稿は「＋投稿枠を追加」。合計{totalImages}/{MAX_ANALYZE_IMAGES}枚・{filledGroups.length}投稿。保存済み実績も自動加味。
+            <span className="text-neutral-400 font-bold">1投稿＝1枠</span>。ツリー投稿は同じ枠に本文→続きの順で複数枚。別の投稿は「＋投稿枠を追加」。<span className="text-neutral-400">👁表示回数が写っているほど精度UP</span>。合計{totalImages}/{MAX_ANALYZE_IMAGES}枚・{filledGroups.length}投稿。保存済み実績も自動加味。
           </p>
           <button
             onClick={runAnalyze}
@@ -353,6 +363,48 @@ export default function ThreadsAnalyticsPage() {
             {aResult.summary && (
               <p className="text-xs text-neutral-300 bg-neutral-800/50 rounded-lg p-3 leading-relaxed">{aResult.summary}</p>
             )}
+
+            {/* 読み取った数値（表示回数の確認用） */}
+            {aResult.readPosts && aResult.readPosts.length > 0 && (
+              <div className="bg-neutral-950/60 border border-neutral-800 rounded-lg p-3">
+                <h4 className="text-xs font-bold text-neutral-200 mb-2">👁 読み取った数値（表示回数ベース・降順）</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs min-w-[420px]">
+                    <thead>
+                      <tr className="text-neutral-500 border-b border-neutral-800">
+                        <th className="text-left px-2 py-1 font-medium">投稿</th>
+                        <th className="text-right px-2 py-1 font-medium">👁 表示</th>
+                        <th className="text-right px-2 py-1 font-medium">❤️</th>
+                        <th className="text-right px-2 py-1 font-medium">💬</th>
+                        <th className="text-right px-2 py-1 font-medium">🔁</th>
+                        <th className="text-right px-2 py-1 font-medium">率</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...aResult.readPosts]
+                        .sort((a, b) => b.views - a.views || b.likes - a.likes)
+                        .map((p, i) => (
+                          <tr key={i} className="border-b border-neutral-800/60">
+                            <td className="px-2 py-1 text-neutral-300">
+                              <span className="font-bold">{p.label}</span>
+                              {p.excerpt ? <span className="text-neutral-500"> {p.excerpt}</span> : null}
+                            </td>
+                            <td className="px-2 py-1 text-right text-neutral-100 font-bold">{p.views > 0 ? fmtNum(p.views) : "—"}</td>
+                            <td className="px-2 py-1 text-right text-neutral-300">{fmtNum(p.likes)}</td>
+                            <td className="px-2 py-1 text-right text-neutral-300">{fmtNum(p.replies)}</td>
+                            <td className="px-2 py-1 text-right text-neutral-300">{fmtNum(p.reposts)}</td>
+                            <td className="px-2 py-1 text-right text-neutral-400">
+                              {p.views > 0 ? `${((p.likes / p.views) * 100).toFixed(1)}%` : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[10px] text-neutral-600 mt-1.5">※ 表示回数が違っていたら補足欄で訂正して再分析できます。「率」=いいね÷表示。</p>
+              </div>
+            )}
+
             <div className="grid md:grid-cols-2 gap-3">
               <div className="bg-emerald-500/5 border border-emerald-500/25 rounded-lg p-3">
                 <h4 className="text-xs font-bold text-emerald-300 mb-1.5">📈 伸びる投稿の傾向</h4>

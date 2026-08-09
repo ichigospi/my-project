@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
     };
     return NextResponse.json({
       summary: parsed.summary ?? "",
+      readPosts: parsed.readPosts ?? [],
       growingTraits: parsed.growingTraits ?? [],
       notGrowingTraits: parsed.notGrowingTraits ?? [],
       logicSuggestions: parsed.logicSuggestions ?? [],
