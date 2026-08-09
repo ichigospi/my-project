@@ -65,25 +65,30 @@ export async function POST(request: NextRequest) {
     if (parseRes.error) {
       return NextResponse.json({ error: parseRes.error, retryable: parseRes.retryable }, { status: parseRes.retryable ? 503 : 500 });
     }
-    let parsed = extractJson<ParsedPastePost[]>(parseRes.text);
+    let parsed = coerceToPostArray(extractJson<unknown>(parseRes.text));
+    let lastText = parseRes.text;
     // JSONとして解釈できない場合は厳格指示で1回だけ再試行
-    if (!Array.isArray(parsed)) {
+    if (!parsed) {
       const retry = await callThreadsAI(aiApiKey, {
         systemPrompt: PASTE_PARSE_SYSTEM,
         userInstruction:
           instruction +
-          "\n\n※重要: 有効なJSON配列のみを厳密に出力してください（説明・コードフェンス（```）は一切書かない）。本文が読み取れた投稿だけを配列で返す。",
+          "\n\n※重要: トップレベルが【JSON配列】のデータのみを厳密に出力してください（オブジェクトで包まない・説明・コードフェンス（```）は一切書かない）。本文が読み取れた投稿だけを配列で返す。",
         images,
         model,
         maxTokens: 8192,
       });
-      if (!retry.error) parsed = extractJson<ParsedPastePost[]>(retry.text);
+      if (!retry.error) {
+        lastText = retry.text;
+        parsed = coerceToPostArray(extractJson<unknown>(retry.text));
+      }
     }
-    if (!Array.isArray(parsed) || parsed.length === 0) {
+    if (!parsed || parsed.length === 0) {
       return NextResponse.json(
         {
           error:
             "投稿を抽出できませんでした。スクショに投稿の本文が写っているか確認してください（プロフィール画面ではなく、投稿一覧/投稿詳細のスクショが必要です）。テキスト貼り付けでも試せます。",
+          debug: (lastText || "").slice(0, 300),
         },
         { status: 422 },
       );
@@ -174,4 +179,20 @@ export async function POST(request: NextRequest) {
 function safeDate(s: string): Date | null {
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
+}
+
+// AIの返却を投稿配列に正規化（配列そのまま / {posts:[...]}等のオブジェクト包み / 単一オブジェクトに対応）
+function coerceToPostArray(raw: unknown): ParsedPastePost[] | null {
+  if (Array.isArray(raw)) return raw as ParsedPastePost[];
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    for (const key of ["posts", "items", "results", "data", "投稿", "list"]) {
+      if (Array.isArray(obj[key])) return obj[key] as ParsedPastePost[];
+    }
+    // 単一投稿オブジェクト（contentやtextを持つ）なら1要素の配列に
+    if (typeof obj.content === "string" || typeof obj.text === "string") {
+      return [raw as ParsedPastePost];
+    }
+  }
+  return null;
 }

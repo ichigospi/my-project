@@ -161,8 +161,9 @@ function ImportContent() {
         setSaving(false);
         return;
       }
-      const res = await api<{ createdCount: number; classified: number }>("/api/threads/competitor-posts/parse", {
+      const r = await fetch("/api/threads/competitor-posts/parse", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           competitorId: cid,
           raw: raw.trim() || undefined,
@@ -174,8 +175,14 @@ function ImportContent() {
           model: getThreadsModel(),
         }),
       });
+      const data = (await r.json().catch(() => ({}))) as { createdCount?: number; classified?: number; error?: string; debug?: string };
+      if (!r.ok) {
+        setMsg(`エラー: ${data.error || `HTTP ${r.status}`}${data.debug ? `\n[AI応答の先頭] ${data.debug}` : ""}`);
+        setSaving(false);
+        return;
+      }
       const fmt = postFormat === "tree" ? "長文ツリー" : postFormat === "long" ? "長文" : "短文";
-      setMsg(`✅ ${fmt}として ${res.createdCount}件を企画に追加（${res.classified}件を自動分類）。タグ: ${tags.join(" / ") || "なし"}`);
+      setMsg(`✅ ${fmt}として ${data.createdCount}件を企画に追加（${data.classified}件を自動分類）。タグ: ${tags.join(" / ") || "なし"}`);
       // 投稿系だけリセット（競合・タグは連続登録しやすいよう保持）
       setImages([]);
       setRaw("");
@@ -201,7 +208,7 @@ function ImportContent() {
       </div>
 
       {msg && (
-        <div className={`rounded-lg p-3 text-sm ${msg.startsWith("✅") ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300" : "bg-rose-500/10 border border-rose-500/30 text-rose-300"}`}>
+        <div className={`rounded-lg p-3 text-sm whitespace-pre-wrap ${msg.startsWith("✅") ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300" : "bg-rose-500/10 border border-rose-500/30 text-rose-300"}`}>
           {msg}
         </div>
       )}
