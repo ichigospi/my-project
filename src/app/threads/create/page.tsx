@@ -64,6 +64,20 @@ interface Draft {
   status: string;
 }
 
+// 企画タイプ（competitor-posts の分類と揃える。「その他」は選択肢に出さない）
+const PLAN_TYPE_OPTIONS = [
+  "あるある共感",
+  "ノウハウ・手順",
+  "リスト列挙",
+  "問いかけ・議論喚起",
+  "ストーリー・体験談",
+  "実績・権威",
+  "逆張り・持論",
+  "注意喚起・失敗回避",
+  "診断・チェックリスト",
+  "名言・マインド",
+];
+
 function CreateContent() {
   const [accountId] = useThreadsAccountId();
   const searchParams = useSearchParams();
@@ -73,10 +87,16 @@ function CreateContent() {
   const [refB, setRefB] = useState<CompetitorPost | null>(null);
   const [pickerFor, setPickerFor] = useState<"A" | "B" | null>(null);
 
+  // かんたん生成（企画を選んで1ポチ）
+  const [easyPlan, setEasyPlan] = useState("");
+  const [easyTopic, setEasyTopic] = useState("");
+  const [autoPickedNote, setAutoPickedNote] = useState("");
+
   // 生成設定
   const [mode, setMode] = useState<"single" | "hybrid" | "custom">("single");
   const [modeInstruction, setModeInstruction] = useState("");
   const [extraInstruction, setExtraInstruction] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [selectedLib, setSelectedLib] = useState<Set<string>>(new Set());
   const [model, setModel] = useState<ThreadsAiModel>("claude-sonnet-4-6");
@@ -156,8 +176,13 @@ function CreateContent() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  const generate = async () => {
-    if (!refA) {
+  // 生成本体（かんたん/手動の両方から使う）
+  const runGenerate = async (
+    aPost: CompetitorPost | null,
+    bPost: CompetitorPost | null,
+    opts?: { extra?: string; autoPick?: boolean },
+  ) => {
+    if (!aPost) {
       setError("参考投稿Aを選択してください");
       return;
     }
@@ -175,21 +200,81 @@ function CreateContent() {
         method: "POST",
         body: JSON.stringify({
           accountId,
-          refAPostId: refA.id,
-          refBPostId: refB?.id,
-          mode: refB ? mode : "single",
+          refAPostId: aPost.id,
+          refBPostId: bPost?.id,
+          mode: bPost ? mode : "single",
           modeInstruction,
           libraryItemIds: Array.from(selectedLib),
-          extraInstruction,
+          extraInstruction: opts?.extra ?? extraInstruction,
           count: 3,
           aiApiKey,
           model,
         }),
       });
       setCandidates(res.candidates);
+      // ベスト案を自動採用（完コピ注意でない最初の案、無ければ先頭）
+      if (opts?.autoPick && res.candidates.length > 0) {
+        const bestIdx = res.candidates.findIndex(
+          (c) => !(c.similarity.refA.isCopyRisk || c.similarity.refB?.isCopyRisk),
+        );
+        const idx = bestIdx >= 0 ? bestIdx : 0;
+        setPicked(idx);
+        setEditContent(res.candidates[idx].content);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generate = () => runGenerate(refA, refB);
+
+  // かんたん生成: 企画を選ぶ → その企画で一番伸びてる競合投稿を自動採用 → 生成 → ベスト案を自動採用
+  const easyGenerate = async () => {
+    if (!accountId) {
+      setError("アカウントを選択してください");
+      return;
+    }
+    const aiApiKey = getAiKey();
+    if (!aiApiKey) {
+      setError("AI APIキーが未設定です。設定ページで登録してください。");
+      return;
+    }
+    setGenerating(true);
+    setError("");
+    setAutoPickedNote("");
+    try {
+      const fetchPosts = async (extra: Record<string, string>): Promise<CompetitorPost[]> => {
+        const params = new URLSearchParams({ accountId, sort: "likes", ...extra });
+        const r = await api<{ posts: CompetitorPost[] }>(`/api/threads/competitor-posts?${params}`);
+        return r.posts;
+      };
+      let top: CompetitorPost | null = null;
+      let note = "";
+      if (easyPlan) {
+        let posts = await fetchPosts({ planType: easyPlan, hot: "1" });
+        if (posts.length === 0) posts = await fetchPosts({ planType: easyPlan });
+        top = posts[0] ?? null;
+        if (top) note = `「${easyPlan}」の伸びてる投稿（@${top.competitor.handle}・❤️${fmtNum(top.likes)}）を元に生成`;
+      }
+      if (!top) {
+        let posts = await fetchPosts({ hot: "1" });
+        if (posts.length === 0) posts = await fetchPosts({});
+        top = posts[0] ?? null;
+        if (top) note = `${easyPlan ? "該当企画が無かったため、" : ""}伸びてる投稿（@${top.competitor.handle}・❤️${fmtNum(top.likes)}）を元に生成`;
+      }
+      if (!top) {
+        setError("参考にできる競合投稿がありません。まず🔍リサーチ/ベンチマークでスクショ取込 or 自動収集してください。");
+        setGenerating(false);
+        return;
+      }
+      setRefA(top);
+      setRefB(null);
+      setAutoPickedNote(note);
+      await runGenerate(top, null, { extra: easyTopic.trim(), autoPick: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
       setGenerating(false);
     }
   };
@@ -323,9 +408,57 @@ function CreateContent() {
 
       {error && <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700 mb-4">{error}</div>}
 
+      {/* かんたん生成（企画を選んで1ポチ） */}
+      <div className="bg-gradient-to-r from-indigo-500/15 to-transparent border border-indigo-500/40 rounded-2xl p-4 mb-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-base font-bold text-neutral-100">🎯 かんたん生成</span>
+          <span className="text-[11px] text-neutral-400">企画を選ぶだけ。伸びてる競合投稿を自動でオマージュ元にして完成案を出します。</span>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] text-neutral-400">企画タイプ</span>
+            <select
+              value={easyPlan}
+              onChange={(e) => setEasyPlan(e.target.value)}
+              className="border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm min-w-[180px]"
+            >
+              <option value="">おまかせ（一番伸びてる投稿）</option>
+              {PLAN_TYPE_OPTIONS.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 flex-1 min-w-[200px]">
+            <span className="text-[11px] text-neutral-400">テーマ（任意）</span>
+            <input
+              value={easyTopic}
+              onChange={(e) => setEasyTopic(e.target.value)}
+              className="border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+              placeholder="例: 金運を上げる習慣 / 満月の過ごし方"
+            />
+          </label>
+          <button
+            onClick={easyGenerate}
+            disabled={generating}
+            className="px-6 py-2 rounded-xl bg-white text-black text-sm font-bold hover:bg-neutral-200 disabled:opacity-50 whitespace-nowrap"
+          >
+            {generating ? "生成中..." : "⚡ 1ポチ生成"}
+          </button>
+        </div>
+        {autoPickedNote && <p className="text-[11px] text-indigo-300 mt-2">📌 {autoPickedNote}</p>}
+      </div>
+
       <div className="grid lg:grid-cols-3 gap-4">
-        {/* 左: 参考投稿 + 生成設定 */}
+        {/* 左: 参考投稿 + 生成設定（手動・詳細） */}
         <div className="space-y-3">
+          <button
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="text-xs text-neutral-400 hover:text-neutral-200 underline"
+          >
+            {showAdvanced ? "▼ 手動で参考投稿を選ぶ（詳細）を閉じる" : "▶ 手動で参考投稿を選ぶ（詳細設定）"}
+          </button>
+          {!showAdvanced ? null : (
+          <>
           {refCard("A", refA, savedRefA)}
           {refCard("B", refB, savedRefB)}
 
@@ -413,13 +546,15 @@ function CreateContent() {
           >
             {generating ? "生成中...（数十秒かかります）" : "🚀 オマージュ生成（3案）"}
           </button>
+          </>
+          )}
         </div>
 
         {/* 中央: 生成結果 */}
         <div className="space-y-3">
           {candidates.length === 0 && picked === null && (
             <div className="bg-neutral-900 rounded-xl border border-dashed border-neutral-700 p-8 text-center text-sm text-neutral-500">
-              参考投稿を選んで生成すると、ここに投稿案が3つ表示されます
+              上の「🎯 かんたん生成」で企画を選んで<span className="text-neutral-300 font-bold">⚡1ポチ生成</span>すると、ここに完成案（＋別案）が出ます。
             </div>
           )}
           {candidates.map((c, i) => {
