@@ -50,6 +50,14 @@ function ImportContent() {
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [allTags, setAllTags] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!accountId) return;
+    api<{ tags: { tag: string; count: number }[] }>(`/api/threads/tags?accountId=${accountId}`)
+      .then((r) => setAllTags(r.tags.map((t) => t.tag)))
+      .catch(() => {});
+  }, [accountId]);
 
   const loadCompetitors = useCallback(async () => {
     if (!accountId) return;
@@ -327,6 +335,7 @@ function ImportContent() {
             <input
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
+              list="importTagOptions"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                   e.preventDefault();
@@ -334,9 +343,14 @@ function ImportContent() {
                   setTagInput("");
                 }
               }}
-              placeholder="入力してEnterで追加"
+              placeholder="入力してEnterで追加（既存タグは候補表示）"
               className="flex-1 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
             />
+            <datalist id="importTagOptions">
+              {allTags.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
             <button
               onClick={() => {
                 addTag(tagInput);
