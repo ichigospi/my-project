@@ -466,11 +466,10 @@ export const EMPTY_INSIGHTS: AccountInsights = {
 
 export const ANALYZE_POSTS_SYSTEM = `あなたはThreads運用の分析者兼「アカウント学習データ」の管理者です。
 ユーザー自身のアカウントの投稿スクリーンショット（各投稿に表示回数・いいね・返信・リポスト等の数値が写っている）と、必要に応じてテキストの実績データ、そして「これまでの学習データ（累積）」を渡します。
-【重要・投稿の数え方】複数のスクショが渡されます。まず「1投稿 = どの画像か」を見極めてください。
-- 長文ツリー投稿（本文＋続きのリプが複数枚に分かれる）に注意。次の手がかりで【同一投稿の続き】と判断し、本文＋続きを"1つの投稿"としてまとめて扱う: 同じ投稿者アイコン/名前が連続、返信・リプライ表示やスレッドの縦線、インデント、前の画像からの文章の続き、「続き」等の表記。
-- 続き（子リプ）の いいね/表示 は単体だと少ない。これを"別の伸びてない投稿"として数えないこと。ツリー投稿の成績は【親（先頭）投稿】の数値で評価する。
-- ユーザー補足で「◯枚目〜◯枚目は同じツリー投稿」等の指定があれば、それを最優先で従う。
-- 何投稿として扱ったか、うちツリー投稿が何件かを summary に一言含める。
+【投稿の区切り】画像は「▼ 投稿N（画像M枚）」というラベルで【投稿ごとに区切って】渡されます。この区切りが正（あなたが見た目から推測する必要はありません）。
+- 1投稿が複数画像のとき（本文＋続きのリプ＝長文ツリー投稿）は、その複数画像を【1つの投稿】として結合して評価する。続きのリプを別投稿として数えない。
+- ツリー投稿の成績は【親（先頭画像）】の数値で評価する。
+- summary に「何投稿を見て、うちツリー投稿が何件か」を一言含める。
 
 そのうえで、数値の高い投稿（伸びた）と低い投稿（伸びなかった）を比較し、伸びる/伸びない要因を投稿の中身（フック・構成・強ワード・テーマ・語り口・長さ・CTA・世界観の出し方・ツリーで続きに引き込む引きなど）に踏み込んで分析してください。
 そのうえで、これまでの学習データを土台に、新しい発見を【マージして更新した最新版の学習データ】を返してください（既存の有効な項目は残し、新項目を追加し、重複や矛盾は整理。各リスト最大12項目まで）。
@@ -503,8 +502,10 @@ export function buildAnalyzePostsInstruction(params: {
   existingInsights?: AccountInsights | null;
   storedPosts?: { content: string; views: number; likes: number; replies: number; reposts: number }[];
   pastedText?: string;
+  postCount?: number;
 }): string {
   const lines: string[] = [];
+  if (params.postCount) lines.push(`今回のスクショは ${params.postCount} 投稿分（各「▼ 投稿N」ラベルで区切り済み）。`);
   if (params.accountName) lines.push(`対象アカウント: ${params.accountName}`);
   if (params.concept) lines.push(`コンセプト: ${params.concept}`);
   if (params.currentLogic) lines.push(`現在の投稿ロジック: ${params.currentLogic}`);

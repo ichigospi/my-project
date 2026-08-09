@@ -22,11 +22,40 @@ export async function POST(request: NextRequest) {
     const aiApiKey = body.aiApiKey as string | undefined;
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが未設定です" }, { status: 400 });
 
-    const images: ThreadsAiImage[] = Array.isArray(body.images)
-      ? (body.images as string[]).map(parseDataUrlImage).filter((x): x is ThreadsAiImage => x !== null).slice(0, 20)
-      : [];
+    // 1投稿=1グループ（postGroups）で受け取り、投稿単位でAIに渡す。旧形式(images)も後方互換で受ける。
+    const MAX_TOTAL_IMAGES = 20;
+    let total = 0;
+    const toImgs = (arr: unknown): ThreadsAiImage[] =>
+      (Array.isArray(arr) ? (arr as string[]) : [])
+        .map(parseDataUrlImage)
+        .filter((x): x is ThreadsAiImage => x !== null);
+    let imageGroups: { label: string; images: ThreadsAiImage[] }[] = [];
+    if (Array.isArray(body.postGroups)) {
+      for (const g of body.postGroups as unknown[]) {
+        const imgs: ThreadsAiImage[] = [];
+        for (const img of toImgs(g)) {
+          if (total >= MAX_TOTAL_IMAGES) break;
+          imgs.push(img);
+          total++;
+        }
+        if (imgs.length > 0) imageGroups.push({ label: "", images: imgs });
+      }
+    } else if (Array.isArray(body.images)) {
+      // 旧: フラット。1投稿1枚とみなしてグループ化
+      for (const img of toImgs(body.images)) {
+        if (total >= MAX_TOTAL_IMAGES) break;
+        imageGroups.push({ label: "", images: [img] });
+        total++;
+      }
+    }
+    // ラベルを投稿番号で付与
+    imageGroups = imageGroups.map((g, i) => ({
+      label: `▼ 投稿${i + 1}（画像${g.images.length}枚）${g.images.length > 1 ? " ※本文＋続きのリプ＝この投稿は1つ" : ""}`,
+      images: g.images,
+    }));
+    const postCount = imageGroups.length;
     const pastedText = typeof body.pastedText === "string" ? body.pastedText.trim() : "";
-    if (images.length === 0 && !pastedText) {
+    if (postCount === 0 && !pastedText) {
       return NextResponse.json({ error: "投稿スクショ、またはテキストを入れてください" }, { status: 400 });
     }
 
@@ -61,8 +90,8 @@ export async function POST(request: NextRequest) {
 
     const res = await callThreadsAI(aiApiKey, {
       systemPrompt: ANALYZE_POSTS_SYSTEM,
-      userInstruction: buildAnalyzePostsInstruction({ accountName, concept, currentLogic, existingInsights, storedPosts, pastedText }),
-      images,
+      userInstruction: buildAnalyzePostsInstruction({ accountName, concept, currentLogic, existingInsights, storedPosts, pastedText, postCount }),
+      imageGroups: imageGroups.length > 0 ? imageGroups : undefined,
       model: resolveThreadsAiModel(body.model),
       maxTokens: 3500,
     });
