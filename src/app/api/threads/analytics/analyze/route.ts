@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
     }));
     const postCount = imageGroups.length;
     const pastedText = typeof body.pastedText === "string" ? body.pastedText.trim() : "";
-    if (postCount === 0 && !pastedText) {
+    const reorganize = body.reorganize === true;
+    if (postCount === 0 && !pastedText && !reorganize) {
       return NextResponse.json({ error: "投稿スクショ、またはテキストを入れてください" }, { status: 400 });
     }
 
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
     let accountName: string | undefined;
     let concept: string | undefined;
     let currentLogic: string | undefined;
+    let evalCriteria: string | undefined;
     let existingInsights: AccountInsights | null = null;
     let storedPosts:
       | { content: string; views: number; likes: number; replies: number; reposts: number }[]
@@ -73,6 +75,7 @@ export async function POST(request: NextRequest) {
         accountName = account.name;
         concept = account.concept;
         currentLogic = account.logic;
+        evalCriteria = account.evalCriteria;
         try {
           existingInsights = JSON.parse(account.learnedInsights || "{}") as AccountInsights;
         } catch {
@@ -90,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     const res = await callThreadsAI(aiApiKey, {
       systemPrompt: ANALYZE_POSTS_SYSTEM,
-      userInstruction: buildAnalyzePostsInstruction({ accountName, concept, currentLogic, existingInsights, storedPosts, pastedText, postCount }),
+      userInstruction: buildAnalyzePostsInstruction({ accountName, concept, currentLogic, evalCriteria, existingInsights, storedPosts, pastedText, postCount, reorganize }),
       imageGroups: imageGroups.length > 0 ? imageGroups : undefined,
       model: resolveThreadsAiModel(body.model),
       maxTokens: 3500,
