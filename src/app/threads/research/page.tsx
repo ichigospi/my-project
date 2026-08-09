@@ -33,6 +33,14 @@ interface Competitor {
   handle: string;
 }
 
+interface TagCat {
+  id: string;
+  accountId: string;
+  parentId: string | null;
+  name: string;
+  sortOrder: number;
+}
+
 interface Structure {
   hook?: string;
   body?: string;
@@ -70,6 +78,61 @@ function ResearchContent() {
   // ライブラリ抽出モーダル
   const [extractFrom, setExtractFrom] = useState<CompetitorPost | null>(null);
   const [extractForm, setExtractForm] = useState({ type: "hook", title: "", content: "" });
+  // タグ分類（大/中/小）
+  const [tagCats, setTagCats] = useState<TagCat[]>([]);
+  const [showTagMgr, setShowTagMgr] = useState(false);
+  const [openBig, setOpenBig] = useState<Set<string>>(new Set());
+  const [editTagsPost, setEditTagsPost] = useState<{ id: string; tags: string[] } | null>(null);
+  const [freeTag, setFreeTag] = useState("");
+
+  const loadCats = useCallback(async () => {
+    if (!accountId) return;
+    try {
+      const r = await api<{ categories: TagCat[] }>(`/api/threads/tag-categories?accountId=${accountId}`);
+      setTagCats(r.categories);
+    } catch {
+      // ignore
+    }
+  }, [accountId]);
+
+  const childrenOf = (pid: string | null) => tagCats.filter((c) => (c.parentId ?? null) === pid);
+
+  const addCat = async (parentId: string | null, isBig: boolean) => {
+    const name = window.prompt(isBig ? "大カテゴリ名" : parentId ? "小カテゴリ名" : "中カテゴリ名");
+    if (!name?.trim()) return;
+    await api("/api/threads/tag-categories", { method: "POST", body: JSON.stringify({ accountId, parentId, name: name.trim() }) });
+    await loadCats();
+  };
+  const renameCat = async (c: TagCat) => {
+    const name = window.prompt("新しい名前", c.name);
+    if (!name?.trim() || name.trim() === c.name) return;
+    await api(`/api/threads/tag-categories/${c.id}`, { method: "PATCH", body: JSON.stringify({ name: name.trim() }) });
+    await loadCats();
+  };
+  const deleteCat = async (c: TagCat) => {
+    if (!window.confirm(`「${c.name}」とその配下カテゴリを削除しますか？（投稿のタグ自体は消えません）`)) return;
+    await api(`/api/threads/tag-categories/${c.id}`, { method: "DELETE" });
+    await loadCats();
+  };
+
+  const openTagEdit = (p: CompetitorPost) => {
+    let tags: string[] = [];
+    try {
+      tags = JSON.parse(p.tags || "[]") as string[];
+    } catch {
+      tags = [];
+    }
+    setFreeTag("");
+    setEditTagsPost({ id: p.id, tags });
+  };
+  const togglePostTag = (name: string) =>
+    setEditTagsPost((e) => (e ? { ...e, tags: e.tags.includes(name) ? e.tags.filter((t) => t !== name) : [...e.tags, name] } : e));
+  const savePostTags = async () => {
+    if (!editTagsPost) return;
+    await api(`/api/threads/competitor-posts/${editTagsPost.id}`, { method: "PATCH", body: JSON.stringify({ tags: editTagsPost.tags }) });
+    setEditTagsPost(null);
+    await loadPosts();
+  };
 
   const loadCompetitors = useCallback(async () => {
     if (!accountId) return;
@@ -99,7 +162,8 @@ function ResearchContent() {
 
   useEffect(() => {
     loadCompetitors();
-  }, [loadCompetitors]);
+    loadCats();
+  }, [loadCompetitors, loadCats]);
 
   useEffect(() => {
     loadPosts();
@@ -203,22 +267,90 @@ function ResearchContent() {
           <input type="checkbox" checked={hotOnly} onChange={(e) => { setHotOnly(e.target.checked); setPage(1); }} />
           🔥伸びてる投稿のみ
         </label>
-        <input
-          value={tagFilter}
-          onChange={(e) => { setTagFilter(e.target.value); setPage(1); }}
-          placeholder="#タグ検索"
-          className="w-32 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-2 py-1.5 text-xs"
-        />
         {tagFilter && (
-          <button onClick={() => { setTagFilter(""); setPage(1); }} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
-            解除
-          </button>
+          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-indigo-500/30 text-indigo-100">
+            #{tagFilter}
+            <button onClick={() => { setTagFilter(""); setPage(1); }} className="hover:text-white">×</button>
+          </span>
         )}
         <span className="text-xs text-neutral-500 ml-auto">{total}件</span>
         {selected.size > 0 && (
           <button onClick={runClassify} disabled={classifying} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50">
             {classifying ? "分類中..." : `選択${selected.size}件を再分析`}
           </button>
+        )}
+      </div>
+
+      {/* タグ分類で絞り込み（押すだけ検索） */}
+      <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-bold text-neutral-200">🏷 タグで絞り込み</span>
+          <button onClick={() => setShowTagMgr(true)} className="text-[11px] px-2 py-1 rounded-lg border border-neutral-600 text-neutral-300 hover:bg-neutral-800">
+            ⚙️ タグ分類を管理
+          </button>
+        </div>
+        {childrenOf(null).length === 0 ? (
+          <p className="text-[11px] text-neutral-500">
+            まだタグ分類がありません。「⚙️タグ分類を管理」で大/中/小カテゴリを作ると、ここに押すだけの検索ボタンが並びます。
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {childrenOf(null).map((big) => {
+              const opened = openBig.has(big.id);
+              return (
+                <div key={big.id} className="rounded-lg bg-neutral-950/50 border border-neutral-800">
+                  <div className="flex items-center gap-1.5 px-2 py-1.5">
+                    <button
+                      onClick={() =>
+                        setOpenBig((s) => {
+                          const n = new Set(s);
+                          if (n.has(big.id)) n.delete(big.id); else n.add(big.id);
+                          return n;
+                        })
+                      }
+                      className="text-[11px] text-neutral-400 hover:text-neutral-200 w-4"
+                    >
+                      {opened ? "▼" : "▶"}
+                    </button>
+                    <button
+                      onClick={() => { setTagFilter(big.name); setPage(1); }}
+                      className={`text-xs font-bold px-2 py-0.5 rounded ${tagFilter === big.name ? "bg-white text-black" : "text-neutral-100 hover:bg-neutral-800"}`}
+                    >
+                      {big.name}
+                    </button>
+                  </div>
+                  {opened && (
+                    <div className="px-3 pb-2 space-y-1.5">
+                      {childrenOf(big.id).map((mid) => (
+                        <div key={mid.id} className="flex items-start gap-2 flex-wrap">
+                          <button
+                            onClick={() => { setTagFilter(mid.name); setPage(1); }}
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded ${tagFilter === mid.name ? "bg-white text-black" : "text-neutral-300 hover:bg-neutral-800"}`}
+                          >
+                            {mid.name}
+                          </button>
+                          <div className="flex flex-wrap gap-1">
+                            {childrenOf(mid.id).map((small) => (
+                              <button
+                                key={small.id}
+                                onClick={() => { setTagFilter(small.name); setPage(1); }}
+                                className={`text-[11px] px-2 py-0.5 rounded-full ${tagFilter === small.name ? "bg-indigo-500 text-white" : "bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/30"}`}
+                              >
+                                {small.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {childrenOf(big.id).length === 0 && (
+                        <p className="text-[10px] text-neutral-600">（中カテゴリ未作成）</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -325,6 +457,9 @@ function ResearchContent() {
                     <button onClick={() => toggleHot(p)} className="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800">
                       🔥{p.isHot ? "解除" : "伸び認定"}
                     </button>
+                    <button onClick={() => openTagEdit(p)} className="text-xs px-2.5 py-1.5 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800">
+                      🏷 タグ編集
+                    </button>
                     <button onClick={() => removePost(p)} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-500/40 text-rose-400 hover:bg-rose-500/10">
                       削除
                     </button>
@@ -377,6 +512,130 @@ function ResearchContent() {
             <div className="flex justify-end gap-2">
               <button onClick={() => setExtractFrom(null)} className="px-4 py-2 rounded-lg border border-neutral-700 text-sm text-neutral-300 hover:bg-neutral-800">キャンセル</button>
               <button onClick={saveExtract} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-neutral-200">登録</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* タグ分類の管理（大/中/小） */}
+      {showTagMgr && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setShowTagMgr(false)}>
+          <div className="bg-neutral-900 rounded-2xl w-full max-w-2xl p-5 my-8 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-neutral-100">タグ分類の管理</h3>
+              <button onClick={() => setShowTagMgr(false)} className="text-sm text-neutral-400 hover:text-white">閉じる</button>
+            </div>
+            <p className="text-[11px] text-neutral-500">大 → 中 → 小 の3階層で設計できます。名前がそのままタグとして検索・付与に使われます。</p>
+            <button onClick={() => addCat(null, true)} className="text-xs px-3 py-1.5 rounded-lg bg-white text-black font-bold hover:bg-neutral-200">
+              ＋ 大カテゴリを追加
+            </button>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {childrenOf(null).map((big) => (
+                <div key={big.id} className="rounded-lg border border-neutral-800 bg-neutral-950/50 p-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-neutral-100">📁 {big.name}</span>
+                    <button onClick={() => renameCat(big)} className="text-[10px] text-neutral-400 hover:text-neutral-200 underline">改名</button>
+                    <button onClick={() => deleteCat(big)} className="text-[10px] text-rose-400 hover:text-rose-300 underline">削除</button>
+                    <button onClick={() => addCat(big.id, false)} className="text-[10px] px-2 py-0.5 rounded border border-neutral-600 text-neutral-300 hover:bg-neutral-800">＋中カテゴリ</button>
+                  </div>
+                  <div className="mt-1.5 pl-3 space-y-1.5">
+                    {childrenOf(big.id).map((mid) => (
+                      <div key={mid.id} className="border-l border-neutral-800 pl-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium text-neutral-200">{mid.name}</span>
+                          <button onClick={() => renameCat(mid)} className="text-[10px] text-neutral-400 hover:text-neutral-200 underline">改名</button>
+                          <button onClick={() => deleteCat(mid)} className="text-[10px] text-rose-400 hover:text-rose-300 underline">削除</button>
+                          <button onClick={() => addCat(mid.id, false)} className="text-[10px] px-2 py-0.5 rounded border border-neutral-600 text-neutral-300 hover:bg-neutral-800">＋小カテゴリ</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {childrenOf(mid.id).map((small) => (
+                            <span key={small.id} className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-200">
+                              {small.name}
+                              <button onClick={() => renameCat(small)} className="hover:text-white">✏️</button>
+                              <button onClick={() => deleteCat(small)} className="hover:text-rose-300">×</button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {childrenOf(null).length === 0 && <p className="text-xs text-neutral-500">まだありません。「＋大カテゴリを追加」から作成してください。</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 投稿のタグ編集 */}
+      {editTagsPost && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setEditTagsPost(null)}>
+          <div className="bg-neutral-900 rounded-2xl w-full max-w-lg p-5 my-8 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-neutral-100">投稿のタグ編集</h3>
+            {/* 現在のタグ */}
+            <div>
+              <span className="text-[11px] text-neutral-400">付いているタグ</span>
+              <div className="flex flex-wrap gap-1.5 mt-1 min-h-[1.5rem]">
+                {editTagsPost.tags.length === 0 && <span className="text-[11px] text-neutral-600">なし</span>}
+                {editTagsPost.tags.map((t) => (
+                  <span key={t} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/25 text-indigo-100">
+                    #{t}
+                    <button onClick={() => togglePostTag(t)} className="hover:text-white">×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+            {/* 分類から選ぶ */}
+            {childrenOf(null).length > 0 && (
+              <div>
+                <span className="text-[11px] text-neutral-400">分類から選ぶ（タップでON/OFF）</span>
+                <div className="space-y-1.5 mt-1 max-h-[40vh] overflow-y-auto">
+                  {childrenOf(null).map((big) => (
+                    <div key={big.id}>
+                      <div className="text-[11px] font-bold text-neutral-300">{big.name}</div>
+                      {childrenOf(big.id).map((mid) => (
+                        <div key={mid.id} className="flex items-center gap-1.5 flex-wrap pl-2 mt-0.5">
+                          <span className="text-[10px] text-neutral-500">{mid.name}:</span>
+                          {[mid, ...childrenOf(mid.id)].map((node) => (
+                            <button
+                              key={node.id}
+                              onClick={() => togglePostTag(node.name)}
+                              className={`text-[11px] px-2 py-0.5 rounded-full ${editTagsPost.tags.includes(node.name) ? "bg-indigo-500 text-white" : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"}`}
+                            >
+                              {node === mid ? `＝${node.name}` : node.name}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* 自由入力 */}
+            <div className="flex gap-2">
+              <input
+                value={freeTag}
+                onChange={(e) => setFreeTag(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && freeTag.trim()) {
+                    togglePostTag(freeTag.trim());
+                    setFreeTag("");
+                  }
+                }}
+                placeholder="自由にタグ追加してEnter"
+                className="flex-1 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
+              />
+              <button
+                onClick={() => { if (freeTag.trim()) { togglePostTag(freeTag.trim()); setFreeTag(""); } }}
+                className="px-3 py-2 rounded-lg border border-neutral-700 text-neutral-300 text-sm hover:bg-neutral-800"
+              >
+                追加
+              </button>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setEditTagsPost(null)} className="px-4 py-2 rounded-lg border border-neutral-700 text-sm text-neutral-300 hover:bg-neutral-800">キャンセル</button>
+              <button onClick={savePostTags} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-bold hover:bg-neutral-200">保存</button>
             </div>
           </div>
         </div>

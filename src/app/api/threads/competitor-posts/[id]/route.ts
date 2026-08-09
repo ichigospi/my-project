@@ -26,8 +26,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { id } = await params;
     const body = await request.json();
     const data: Record<string, unknown> = {};
-    for (const key of ["content", "postUrl", "planType", "hookType", "structureJson", "mediaUrls"] as const) {
+    for (const key of ["content", "postUrl", "planType", "hookType", "structureJson", "mediaUrls", "purpose"] as const) {
       if (typeof body[key] === "string") data[key] = body[key];
+    }
+    // tags は配列で受け取りJSON文字列で保存
+    if (Array.isArray(body.tags)) {
+      data.tags = JSON.stringify((body.tags as unknown[]).map((t) => String(t).trim()).filter(Boolean).slice(0, 30));
     }
     for (const key of ["likes", "replies", "reposts", "quotes", "views", "followerCountAt"] as const) {
       if (body[key] !== undefined) data[key] = Number(body[key]);

@@ -376,6 +376,18 @@ model ThreadsAccount {
 }
 
 // ノウハウ・投稿ルール（accountId=null は全アカ共通）
+// タグ分類（大/中/小の階層。parentId で木構造。nameがそのままタグ値）
+model ThreadsTagCategory {
+  id        String   @id @default(cuid())
+  accountId String
+  parentId  String?
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+}
+
 model ThreadsKnowledge {
   id         String   @id @default(cuid())
   accountId  String?

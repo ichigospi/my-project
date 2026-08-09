@@ -67,6 +67,9 @@ const sqls = [
   `CREATE TABLE IF NOT EXISTS "ThreadsAccount" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "handle" TEXT NOT NULL, "concept" TEXT NOT NULL DEFAULT '', "logic" TEXT NOT NULL DEFAULT '', "target" TEXT NOT NULL DEFAULT '', "tone" TEXT NOT NULL DEFAULT '{}', "isActive" BOOLEAN NOT NULL DEFAULT true, "sortOrder" INTEGER NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "ThreadsAccount_handle_key" ON "ThreadsAccount"("handle")`,
 
+  `CREATE TABLE IF NOT EXISTS "ThreadsTagCategory" ("id" TEXT NOT NULL PRIMARY KEY, "accountId" TEXT NOT NULL, "parentId" TEXT, "name" TEXT NOT NULL, "sortOrder" INTEGER NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "ThreadsTagCategory_accountId_idx" ON "ThreadsTagCategory"("accountId")`,
+
   `CREATE TABLE IF NOT EXISTS "ThreadsKnowledge" ("id" TEXT NOT NULL PRIMARY KEY, "accountId" TEXT, "type" TEXT NOT NULL, "title" TEXT NOT NULL DEFAULT '', "content" TEXT NOT NULL, "tags" TEXT NOT NULL DEFAULT '[]', "isInjected" BOOLEAN NOT NULL DEFAULT true, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE INDEX IF NOT EXISTS "ThreadsKnowledge_accountId_type_idx" ON "ThreadsKnowledge"("accountId", "type")`,
 
