@@ -422,6 +422,7 @@ model ThreadsCompetitorPost {
   postedAt        DateTime?
   collectedAt     DateTime @default(now())
   source          String   @default("manual") // "manual" | "keyword_api" | "scraper"
+  postFormat      String   @default("")     // 投稿形式: "short"(短文) | "long"(長文) | "tree"(長文ツリー)
   // AI自動分類
   planType        String   @default("")     // 企画タイプ
   hookType        String   @default("")

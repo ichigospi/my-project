@@ -18,6 +18,7 @@ interface CompetitorPost {
   postedAt: string | null;
   planType: string;
   hookType: string;
+  postFormat: string;
   structureJson: string;
   isHot: boolean;
   multiplier: number | null;
@@ -231,6 +232,11 @@ function ResearchContent() {
                         title={`直近10投稿の中央値に対する${p.multiplierBasis === "views" ? "表示回数" : "いいね"}の倍率`}
                       >
                         {p.multiplierBasis === "views" ? "👁" : "❤️"}×{p.multiplier}
+                      </span>
+                    )}
+                    {(p.postFormat === "tree" || p.postFormat === "long") && (
+                      <span className="px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold">
+                        {p.postFormat === "tree" ? "🌳長文ツリー" : "📄長文"}
                       </span>
                     )}
                     {p.planType && <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">{p.planType}</span>}
