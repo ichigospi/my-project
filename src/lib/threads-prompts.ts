@@ -138,28 +138,22 @@ export function buildAccountKnowledgeContext(
 // ============================================================
 
 export const PASTE_PARSE_SYSTEM = `あなたはThreads投稿データの整理係です。
-ユーザーがThreadsの画面からコピーした雑多なテキスト、またはThreads画面のスクリーンショット画像を渡すので、投稿を読み取ってJSONで返してください。
-スクリーンショットの場合は、画像内の投稿本文といいね・コメント・リポスト等の数値を正確に読み取ってください。
-指示で「1つの投稿として結合」と言われた場合は、複数画像/テキストを読む順に1つの content にまとめ、配列は1要素だけ返してください（長文ツリー投稿＝本文＋続きのリプの取り込みに使います）。
+ユーザーがThreadsの画面からコピーした雑多なテキスト、またはThreads画面のスクリーンショット画像を渡すので、投稿を読み取って【指定フォーマット】で返してください。
+スクリーンショットの場合は、画像内の投稿本文といいね・コメント・リポスト・表示回数を正確に読み取ってください。
+指示で「1つの投稿として結合」と言われた場合は、複数画像/テキストを読む順に1つのCONTENTにまとめ、[POST]ブロックを1つだけ返してください（長文ツリー投稿＝本文＋続きのリプの取り込み）。
 
-出力形式（JSON配列のみを出力。説明文・コードフェンス外の文章は不要）:
-[
-  {
-    "content": "投稿本文（改行は保持）",
-    "likes": 数値（不明なら0）,
-    "replies": 数値（不明なら0）,
-    "reposts": 数値（不明なら0）,
-    "views": 数値（不明なら0）,
-    "postUrl": "URLがあれば",
-    "postedAt": "ISO8601形式の日時（分かる場合のみ。'3日前'等の相対表記は今日の日付から逆算）",
-    "authorHandle": "@なしのハンドル（分かる場合のみ）"
-  }
-]
+出力フォーマット（この形式だけを出力。前置き・説明・コードフェンス（\`\`\`）は一切書かない）。投稿ごとに繰り返す:
+[POST]
+META: likes=<数値>; replies=<数値>; reposts=<数値>; views=<数値>; url=<URL/なければ空>; date=<YYYY-MM-DD/不明なら空>; handle=<@なしのハンドル/不明なら空>
+CONTENT:
+<投稿本文をそのまま。改行・絵文字・「」『』"" などの記号も原文のまま。JSONではないのでエスケープ不要>
+[/POST]
 
 注意:
-- 「いいね」「コメント」「再投稿」等のUI文字列や数字は本文に含めない
-- 1.2万 のような表記は 12000 に変換する
-- 本文の改行・絵文字はそのまま保持する`;
+- これはJSONではない。CONTENTは原文をそのまま入れる（引用符もそのまま・エスケープしない）
+- 「いいね」「コメント」「再投稿」等のUI文字列や数値は CONTENT に含めない
+- 数値は 1.2万→12000 のように半角数字へ。不明は0
+- 相対表記（'3日前'等）は今日の日付から逆算して date に入れる`;
 
 export type PostFormat = "short" | "long" | "tree" | "";
 
@@ -174,16 +168,16 @@ export function buildPasteParseInstruction(params: {
   if (postFormat === "tree") {
     lines.push(
       "これは【1つの長文ツリー投稿】です。本文（親投稿）＋続きのリプライが複数枚の画像またはテキストに分かれています。",
-      "すべてを読む順に結合し、content に1つにまとめて、配列は【1要素だけ】返してください。",
+      "すべてを読む順に結合し、1つのCONTENTにまとめ、[POST]ブロックを【1つだけ】返してください。",
       "本文と各続きの境目には、改行2つと「─────（続き）─────」の区切り行を入れてください。",
       "いいね・コメント・表示回数などの数値は【親投稿（1枚目/最初）】のものを使ってください（続きのリプの数値は使わない）。",
     );
   } else if (postFormat === "long") {
     lines.push(
-      "これは【1つの長文投稿】です。複数の画像/テキストに分かれていても、1つの投稿として結合し、配列は【1要素だけ】返してください。",
+      "これは【1つの長文投稿】です。複数の画像/テキストに分かれていても、1つの投稿として結合し、[POST]ブロックを【1つだけ】返してください。",
     );
   } else {
-    lines.push("投稿ごとに分解してください（複数の投稿が含まれる場合は配列で複数返す）。");
+    lines.push("投稿ごとに[POST]ブロックを分けて返してください（複数の投稿が含まれる場合は複数ブロック）。");
   }
   if (raw?.trim()) {
     lines.push("", "対象テキスト:", raw);
@@ -202,6 +196,60 @@ export interface ParsedPastePost {
   postUrl?: string;
   postedAt?: string;
   authorHandle?: string;
+}
+
+// [POST]...[/POST] 区切りフォーマットをパース（本文に引用符・記号が入っても壊れない）
+export function parsePastedBlocks(text: string): ParsedPastePost[] {
+  const out: ParsedPastePost[] = [];
+  const segments = text.split(/\[POST\]/i).slice(1);
+  for (const seg of segments) {
+    const endIdx = seg.search(/\[\/POST\]/i);
+    const body = endIdx >= 0 ? seg.slice(0, endIdx) : seg;
+
+    // META行（CONTENTより前）
+    const meta: Record<string, string> = {};
+    const metaMatch = body.match(/META:\s*([^\n]*)/i);
+    if (metaMatch) {
+      for (const part of metaMatch[1].split(";")) {
+        const eq = part.indexOf("=");
+        if (eq > 0) meta[part.slice(0, eq).trim().toLowerCase()] = part.slice(eq + 1).trim();
+      }
+    }
+    // CONTENT: 以降を本文として取得（原文そのまま）
+    const cm = body.match(/CONTENT:[ \t]*\r?\n?/i);
+    if (!cm || cm.index === undefined) continue;
+    const content = body.slice(cm.index + cm[0].length).trim();
+    if (!content) continue;
+
+    const num = (k: string): number => {
+      let v = (meta[k] || "").trim();
+      if (!v) return 0;
+      // 全角数字→半角
+      v = v.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0));
+      const m = v.match(/([\d,.]+)\s*(万|千|[kKmM])?/);
+      if (!m) return 0;
+      let n = parseFloat(m[1].replace(/,/g, ""));
+      if (isNaN(n)) return 0;
+      const unit = m[2] || "";
+      if (unit === "万") n *= 10000;
+      else if (unit === "千") n *= 1000;
+      else if (/[kK]/.test(unit)) n *= 1000;
+      else if (/[mM]/.test(unit)) n *= 1000000;
+      return Math.round(n);
+    };
+    const clean = (v?: string) => (v && v.toLowerCase() !== "空" && v !== "-" ? v.trim() : "");
+    out.push({
+      content,
+      likes: num("likes"),
+      replies: num("replies"),
+      reposts: num("reposts"),
+      views: num("views"),
+      postUrl: clean(meta["url"]),
+      postedAt: clean(meta["date"]) || undefined,
+      authorHandle: clean(meta["handle"]).replace(/^@/, "") || undefined,
+    });
+  }
+  return out;
 }
 
 // ============================================================
