@@ -425,6 +425,8 @@ model ThreadsCompetitorPost {
   collectedAt     DateTime @default(now())
   source          String   @default("manual") // "manual" | "keyword_api" | "scraper"
   postFormat      String   @default("")     // 投稿形式: "short"(短文) | "long"(長文) | "tree"(長文ツリー)
+  tags            String   @default("[]")   // 企画タグJSON配列（目的・教育・競合名など。タグ検索用）
+  purpose         String   @default("")     // この企画の目的（自由記述）
   // AI自動分類
   planType        String   @default("")     // 企画タイプ
   hookType        String   @default("")

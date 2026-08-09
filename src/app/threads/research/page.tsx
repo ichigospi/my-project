@@ -19,6 +19,8 @@ interface CompetitorPost {
   planType: string;
   hookType: string;
   postFormat: string;
+  tags: string;
+  purpose: string;
   structureJson: string;
   isHot: boolean;
   multiplier: number | null;
@@ -59,6 +61,7 @@ function ResearchContent() {
   const [planType, setPlanType] = useState("");
   const [hotOnly, setHotOnly] = useState(false);
   const [minViews, setMinViews] = useState("");
+  const [tagFilter, setTagFilter] = useState(searchParams.get("tag") ?? "");
   const [sort, setSort] = useState("likes");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -85,13 +88,14 @@ function ResearchContent() {
       if (planType) params.set("planType", planType);
       if (hotOnly) params.set("hot", "1");
       if (minViews && Number(minViews) > 0) params.set("minViews", String(Number(minViews)));
+      if (tagFilter.trim()) params.set("tag", tagFilter.trim());
       const res = await api<{ total: number; posts: CompetitorPost[] }>(`/api/threads/competitor-posts?${params}`);
       setPosts(res.posts);
       setTotal(res.total);
     } catch (e) {
       setMessage(`エラー: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [accountId, competitorId, planType, hotOnly, minViews, sort, page]);
+  }, [accountId, competitorId, planType, hotOnly, minViews, tagFilter, sort, page]);
 
   useEffect(() => {
     loadCompetitors();
@@ -199,6 +203,17 @@ function ResearchContent() {
           <input type="checkbox" checked={hotOnly} onChange={(e) => { setHotOnly(e.target.checked); setPage(1); }} />
           🔥伸びてる投稿のみ
         </label>
+        <input
+          value={tagFilter}
+          onChange={(e) => { setTagFilter(e.target.value); setPage(1); }}
+          placeholder="#タグ検索"
+          className="w-32 border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-2 py-1.5 text-xs"
+        />
+        {tagFilter && (
+          <button onClick={() => { setTagFilter(""); setPage(1); }} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
+            解除
+          </button>
+        )}
         <span className="text-xs text-neutral-500 ml-auto">{total}件</span>
         {selected.size > 0 && (
           <button onClick={runClassify} disabled={classifying} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50">
@@ -244,6 +259,35 @@ function ResearchContent() {
                     <span className="text-neutral-500">{fmtDate(p.postedAt)}</span>
                   </div>
                   <p className={`text-sm text-neutral-200 mt-2 whitespace-pre-wrap ${isOpen ? "" : "line-clamp-3"}`}>{p.content}</p>
+                  {/* 企画の目的・タグ */}
+                  {(() => {
+                    let tagList: string[] = [];
+                    try {
+                      tagList = JSON.parse(p.tags || "[]") as string[];
+                    } catch {
+                      tagList = [];
+                    }
+                    if (tagList.length === 0 && !p.purpose) return null;
+                    return (
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {p.purpose && <span className="text-[11px] text-neutral-400">🎯{p.purpose}</span>}
+                        {tagList.map((t) => (
+                          <button
+                            key={t}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTagFilter(t);
+                              setPage(1);
+                            }}
+                            className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200 hover:bg-indigo-500/40"
+                            title="このタグで絞り込み"
+                          >
+                            #{t}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center gap-3 mt-2 text-xs text-neutral-500 flex-wrap">
                     {/* Threadsは競合の閲覧数を公開しないため、値がある場合（手入力等）のみ表示 */}
                     {p.views > 0 && <span>👁 {fmtNum(p.views)}</span>}

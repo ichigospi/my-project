@@ -42,6 +42,10 @@ export async function POST(request: NextRequest) {
     const postFormat: "short" | "long" | "tree" | "" = ["short", "long", "tree"].includes(body.postFormat)
       ? body.postFormat
       : "";
+    const tags: string[] = Array.isArray(body.tags)
+      ? (body.tags as unknown[]).map((t) => String(t).trim()).filter(Boolean).slice(0, 30)
+      : [];
+    const purpose = typeof body.purpose === "string" ? body.purpose.trim() : "";
 
     // ① パース（テキスト・スクショどちらでも。長文ツリー/長文は1投稿に結合）
     const today = new Date().toISOString().slice(0, 10);
@@ -81,6 +85,8 @@ export async function POST(request: NextRequest) {
           postedAt: p.postedAt ? safeDate(p.postedAt) : null,
           source: "manual",
           postFormat,
+          tags: JSON.stringify(tags),
+          purpose,
         },
       });
       created.push(post);

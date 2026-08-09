@@ -11,6 +11,7 @@ const tabs = [
   { href: "/threads/accounts", label: "アカウント", emoji: "👤" },
   { href: "/threads/knowledge", label: "ノウハウ", emoji: "📚" },
   { href: "/threads/competitors", label: "ベンチマーク", emoji: "👥" },
+  { href: "/threads/import", label: "投稿読込", emoji: "📥" },
   { href: "/threads/research", label: "リサーチ", emoji: "🔍" },
   { href: "/threads/calendar", label: "開運日", emoji: "🗓️" },
   { href: "/threads/library", label: "ライブラリ", emoji: "🧲" },
