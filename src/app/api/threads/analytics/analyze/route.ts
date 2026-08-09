@@ -91,19 +91,38 @@ export async function POST(request: NextRequest) {
       if (drafts.length > 0) storedPosts = drafts;
     }
 
+    const model = resolveThreadsAiModel(body.model);
+    const baseInstruction = buildAnalyzePostsInstruction({ accountName, concept, currentLogic, evalCriteria, existingInsights, storedPosts, pastedText, postCount, reorganize });
+
     const res = await callThreadsAI(aiApiKey, {
       systemPrompt: ANALYZE_POSTS_SYSTEM,
-      userInstruction: buildAnalyzePostsInstruction({ accountName, concept, currentLogic, evalCriteria, existingInsights, storedPosts, pastedText, postCount, reorganize }),
+      userInstruction: baseInstruction,
       imageGroups: imageGroups.length > 0 ? imageGroups : undefined,
-      model: resolveThreadsAiModel(body.model),
-      maxTokens: 3500,
+      model,
+      maxTokens: 8000,
     });
     if (res.error) {
       return NextResponse.json({ error: res.error }, { status: res.retryable ? 503 : 500 });
     }
-    const parsed = extractJson<AnalyzePostsResult>(res.text);
+    let parsed = extractJson<AnalyzePostsResult>(res.text);
+    // JSONとして解釈できない（途中で切れた等）場合は、厳格指示で1回だけ再試行
     if (!parsed) {
-      return NextResponse.json({ error: "分析結果を解析できませんでした。もう一度お試しください" }, { status: 502 });
+      const retry = await callThreadsAI(aiApiKey, {
+        systemPrompt: ANALYZE_POSTS_SYSTEM,
+        userInstruction:
+          baseInstruction +
+          "\n\n※重要: 有効なJSONのみを厳密に出力してください。前置き・説明・コードフェンス（```）は一切書かない。各リストは簡潔にし、途中で切れないよう全体を必ず閉じること。",
+        imageGroups: imageGroups.length > 0 ? imageGroups : undefined,
+        model,
+        maxTokens: 8000,
+      });
+      if (!retry.error) parsed = extractJson<AnalyzePostsResult>(retry.text);
+    }
+    if (!parsed) {
+      return NextResponse.json(
+        { error: "分析結果を解析できませんでした。投稿枚数を減らすか、もう一度お試しください" },
+        { status: 502 },
+      );
     }
     const insights: AccountInsights = {
       hooks: parsed.insights?.hooks ?? existingInsights?.hooks ?? [],
