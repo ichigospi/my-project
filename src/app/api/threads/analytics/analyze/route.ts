@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが未設定です" }, { status: 400 });
 
     const images: ThreadsAiImage[] = Array.isArray(body.images)
-      ? (body.images as string[]).map(parseDataUrlImage).filter((x): x is ThreadsAiImage => x !== null)
+      ? (body.images as string[]).map(parseDataUrlImage).filter((x): x is ThreadsAiImage => x !== null).slice(0, 20)
       : [];
     const pastedText = typeof body.pastedText === "string" ? body.pastedText.trim() : "";
     if (images.length === 0 && !pastedText) {

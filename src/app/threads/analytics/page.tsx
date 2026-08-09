@@ -23,6 +23,7 @@ interface AnalyzeResult {
 }
 
 const EMPTY_INSIGHTS: Insights = { hooks: [], strongWords: [], growthPatterns: [], toneNotes: [], logicNotes: [] };
+const MAX_ANALYZE_IMAGES = 20;
 
 const INSIGHT_GROUPS: { key: keyof Insights; label: string; emoji: string }[] = [
   { key: "hooks", label: "伸びてるフック", emoji: "🪝" },
@@ -245,7 +246,7 @@ export default function ThreadsAnalyticsPage() {
         })()}
         <div className="flex items-center gap-2 flex-wrap">
           <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
-            📷 投稿スクショを選択
+            📷 投稿スクショを追加
             <input
               type="file"
               accept="image/*"
@@ -254,23 +255,17 @@ export default function ThreadsAnalyticsPage() {
               onChange={async (e) => {
                 const files = Array.from(e.target.files ?? []);
                 if (files.length === 0) return;
-                const urls = await filesToDataUrls(files, 1600, 10);
-                setAImages((prev) => [...prev, ...urls].slice(0, 10));
+                const urls = await filesToDataUrls(files, 1600, MAX_ANALYZE_IMAGES);
+                setAImages((prev) => [...prev, ...urls].slice(0, MAX_ANALYZE_IMAGES));
                 e.target.value = "";
               }}
             />
           </label>
           {aImages.length > 0 && (
             <>
-              <div className="flex gap-1.5 flex-wrap">
-                {aImages.map((src, i) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={src} alt={`投稿${i + 1}`} className="h-10 w-10 object-cover rounded border border-neutral-600" />
-                ))}
-              </div>
-              <span className="text-[11px] text-neutral-500">{aImages.length}枚</span>
+              <span className="text-[11px] text-neutral-400 font-bold">{aImages.length}枚</span>
               <button onClick={() => setAImages([])} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
-                クリア
+                全クリア
               </button>
             </>
           )}
@@ -279,9 +274,26 @@ export default function ThreadsAnalyticsPage() {
             disabled={analyzing}
             className="ml-auto px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
           >
-            {analyzing ? "分析中...（30秒〜1分）" : "傾向を分析する"}
+            {analyzing ? "分析中...（30秒〜1分）" : `傾向を分析する${aImages.length > 0 ? `（${aImages.length}枚）` : ""}`}
           </button>
         </div>
+        {aImages.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap">
+            {aImages.map((src, i) => (
+              <div key={i} className="relative group">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={`投稿${i + 1}`} className="h-14 w-14 object-cover rounded border border-neutral-600" />
+                <button
+                  onClick={() => setAImages((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-neutral-900 border border-neutral-600 text-neutral-300 text-[10px] leading-none flex items-center justify-center hover:bg-rose-600 hover:text-white"
+                  title="この1枚を削除"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <textarea
           value={aNote}
           onChange={(e) => setANote(e.target.value)}
@@ -289,7 +301,9 @@ export default function ThreadsAnalyticsPage() {
           className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-xs"
           placeholder="（任意）補足があれば。例: 最近リーチが落ちてる / この2枚が特に伸びた 等"
         />
-        <p className="text-[10px] text-neutral-600">最大10枚。表示回数やいいね数が写っているほど精度が上がります。保存済みの投稿実績も自動で加味します。</p>
+        <p className="text-[10px] text-neutral-600">
+          複数の投稿をまとめてOK。「追加」を何度押しても足せます（最大{MAX_ANALYZE_IMAGES}枚）。表示回数やいいね数が写っているほど精度が上がります。保存済みの投稿実績も自動で加味します。
+        </p>
 
         {aError && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-xs text-rose-300">{aError}</div>}
 
