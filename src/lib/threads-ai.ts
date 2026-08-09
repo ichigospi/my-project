@@ -35,6 +35,8 @@ export interface ThreadsAiOptions {
   userInstruction?: string;
   // スクリーンショット等の画像（userInstructionと一緒に送る）
   images?: ThreadsAiImage[];
+  // 投稿ごとに画像をグループ化して渡す（1投稿=1グループ。ツリー投稿の判定を明確にする用）
+  imageGroups?: { label: string; images: ThreadsAiImage[] }[];
   // マルチターン（壁打ちチャット用）。指定時は userInstruction より優先
   messages?: { role: "user" | "assistant"; content: string }[];
   model?: ThreadsAiModel;
@@ -101,6 +103,17 @@ export async function callThreadsAI(
   let messages: Anthropic.MessageParam[];
   if (options.messages && options.messages.length > 0) {
     messages = options.messages;
+  } else if (options.imageGroups && options.imageGroups.length > 0) {
+    // 投稿ごとにラベル→画像の順で並べ、最後に指示文（グループ境界をモデルに明示）
+    const content: Anthropic.ContentBlockParam[] = [];
+    for (const g of options.imageGroups) {
+      content.push({ type: "text", text: g.label });
+      for (const img of g.images) {
+        content.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } });
+      }
+    }
+    content.push({ type: "text", text: options.userInstruction ?? "" });
+    messages = [{ role: "user", content }];
   } else if (options.images && options.images.length > 0) {
     // 画像 + テキストの複合メッセージ（スクショ読み取り用）
     const content: Anthropic.ContentBlockParam[] = options.images.map((img) => ({

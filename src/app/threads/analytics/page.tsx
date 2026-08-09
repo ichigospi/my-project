@@ -58,8 +58,8 @@ export default function ThreadsAnalyticsPage() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"top" | "recent">("top");
 
-  // スクショ傾向分析
-  const [aImages, setAImages] = useState<string[]>([]);
+  // スクショ傾向分析（1投稿=1枠。ツリー投稿は同じ枠に本文＋続きを複数枚）
+  const [postGroups, setPostGroups] = useState<string[][]>([[]]);
   const [aNote, setANote] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [aResult, setAResult] = useState<AnalyzeResult | null>(null);
@@ -105,13 +105,35 @@ export default function ThreadsAnalyticsPage() {
     }
   };
 
+  const totalImages = postGroups.reduce((s, g) => s + g.length, 0);
+  const filledGroups = postGroups.filter((g) => g.length > 0);
+
+  const addImagesToGroup = async (gi: number, files: File[]) => {
+    if (files.length === 0) return;
+    const urls = await filesToDataUrls(files, 1600, MAX_ANALYZE_IMAGES);
+    setPostGroups((prev) => {
+      const cur = prev.reduce((s, g) => s + g.length, 0);
+      const room = Math.max(0, MAX_ANALYZE_IMAGES - cur);
+      const add = urls.slice(0, room);
+      return prev.map((g, i) => (i === gi ? [...g, ...add] : g));
+    });
+  };
+  const removeImage = (gi: number, ii: number) =>
+    setPostGroups((prev) => prev.map((g, i) => (i === gi ? g.filter((_, j) => j !== ii) : g)));
+  const addGroup = () => setPostGroups((prev) => [...prev, []]);
+  const removeGroup = (gi: number) =>
+    setPostGroups((prev) => {
+      const next = prev.filter((_, i) => i !== gi);
+      return next.length === 0 ? [[]] : next;
+    });
+
   const runAnalyze = async () => {
     const aiApiKey = getAiKey();
     if (!aiApiKey) {
       setAError("AI APIキーが未設定です（設定画面で登録してください）");
       return;
     }
-    if (aImages.length === 0 && !aNote.trim()) {
+    if (filledGroups.length === 0 && !aNote.trim()) {
       setAError("投稿スクショを1枚以上入れてください（テキスト補足のみでも可）");
       return;
     }
@@ -125,7 +147,7 @@ export default function ThreadsAnalyticsPage() {
         method: "POST",
         body: JSON.stringify({
           accountId: accountId || undefined,
-          images: aImages.length > 0 ? aImages : undefined,
+          postGroups: filledGroups.length > 0 ? filledGroups : undefined,
           pastedText: aNote.trim() || undefined,
           aiApiKey,
           model: getThreadsModel(),
@@ -244,69 +266,85 @@ export default function ThreadsAnalyticsPage() {
             </div>
           );
         })()}
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-neutral-200 cursor-pointer whitespace-nowrap">
-            📷 投稿スクショを追加
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={async (e) => {
-                const files = Array.from(e.target.files ?? []);
-                if (files.length === 0) return;
-                const urls = await filesToDataUrls(files, 1600, MAX_ANALYZE_IMAGES);
-                setAImages((prev) => [...prev, ...urls].slice(0, MAX_ANALYZE_IMAGES));
-                e.target.value = "";
-              }}
-            />
-          </label>
-          {aImages.length > 0 && (
-            <>
-              <span className="text-[11px] text-neutral-400 font-bold">{aImages.length}枚</span>
-              <button onClick={() => setAImages([])} className="text-[11px] text-neutral-500 hover:text-neutral-300 underline">
-                全クリア
-              </button>
-            </>
-          )}
-          <button
-            onClick={runAnalyze}
-            disabled={analyzing}
-            className="ml-auto px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
-          >
-            {analyzing ? "分析中...（30秒〜1分）" : `傾向を分析する${aImages.length > 0 ? `（${aImages.length}枚）` : ""}`}
-          </button>
-        </div>
-        {aImages.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap">
-            {aImages.map((src, i) => (
-              <div key={i} className="relative group">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={`投稿${i + 1}`} className="h-14 w-14 object-cover rounded border border-neutral-600" />
+        {/* 1投稿=1枠。ツリー投稿は同じ枠に本文＋続きを複数枚 */}
+        <div className="space-y-2">
+          {postGroups.map((group, gi) => (
+            <div key={gi} className="bg-neutral-950/60 border border-neutral-700 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-neutral-200">📮 投稿{gi + 1}</span>
                 <button
-                  onClick={() => setAImages((prev) => prev.filter((_, idx) => idx !== i))}
-                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-neutral-900 border border-neutral-600 text-neutral-300 text-[10px] leading-none flex items-center justify-center hover:bg-rose-600 hover:text-white"
-                  title="この1枚を削除"
+                  onClick={() => removeGroup(gi)}
+                  className="text-[11px] text-neutral-500 hover:text-rose-400"
+                  title="この投稿枠を削除"
                 >
-                  ×
+                  枠を削除
                 </button>
               </div>
-            ))}
-          </div>
-        )}
+              <div className="flex items-center gap-2 flex-wrap">
+                {group.map((src, ii) => (
+                  <div key={ii} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt={`投稿${gi + 1}-${ii + 1}`} className="h-16 w-16 object-cover rounded border border-neutral-600" />
+                    {ii === 0 && group.length > 1 && (
+                      <span className="absolute bottom-0 left-0 text-[8px] bg-black/70 text-neutral-200 px-1 rounded-tr">本文</span>
+                    )}
+                    <button
+                      onClick={() => removeImage(gi, ii)}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-neutral-900 border border-neutral-600 text-neutral-300 text-[10px] leading-none flex items-center justify-center hover:bg-rose-600 hover:text-white"
+                      title="この画像を削除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <label className="h-16 w-16 rounded-lg border border-dashed border-neutral-600 text-neutral-400 hover:border-neutral-400 hover:text-neutral-200 cursor-pointer flex flex-col items-center justify-center text-[10px] leading-tight text-center">
+                  <span className="text-lg leading-none">＋</span>
+                  <span>{group.length === 0 ? "スクショ" : "続き"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      await addImagesToGroup(gi, files);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {group.length > 1 && (
+                <p className="text-[10px] text-teal-300/80 mt-1.5">🌳 この枠は本文＋続き＝1つの長文ツリー投稿として分析します（数値は本文基準）。</p>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={addGroup}
+            className="w-full py-2 rounded-lg border border-dashed border-neutral-600 text-xs text-neutral-300 hover:border-neutral-400 hover:bg-neutral-800/50"
+          >
+            ＋ 投稿枠を追加（別の投稿はこちら）
+          </button>
+        </div>
+
         <textarea
           value={aNote}
           onChange={(e) => setANote(e.target.value)}
           rows={2}
           className="w-full border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-xs"
-          placeholder="（任意）補足。例: この2枚が特に伸びた / 3〜4枚目は同じツリー投稿の続き"
+          placeholder="（任意）補足。例: 投稿2が特に伸びた / 最近リーチが落ちてる"
         />
-        <p className="text-[10px] text-neutral-600">
-          複数の投稿をまとめてOK。「追加」を何度押しても足せます（最大{MAX_ANALYZE_IMAGES}枚）。表示回数やいいね数が写っているほど精度が上がります。保存済みの投稿実績も自動で加味します。
-        </p>
-        <p className="text-[10px] text-amber-300/80">
-          🌳 長文ツリー投稿（本文＋続きのリプ）は、本文→続きの順で並べて入れてください。AIが「1投稿の続き」として判定します。判定が不安なときは補足欄に「◯〜◯枚目は同じツリー」と書けば確実です。
-        </p>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-[10px] text-neutral-600">
+            <span className="text-neutral-400 font-bold">1投稿＝1枠</span>。ツリー投稿は同じ枠に本文→続きの順で複数枚。別の投稿は「＋投稿枠を追加」。合計{totalImages}/{MAX_ANALYZE_IMAGES}枚・{filledGroups.length}投稿。保存済み実績も自動加味。
+          </p>
+          <button
+            onClick={runAnalyze}
+            disabled={analyzing}
+            className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
+          >
+            {analyzing ? "分析中...（30秒〜1分）" : `傾向を分析する${filledGroups.length > 0 ? `（${filledGroups.length}投稿）` : ""}`}
+          </button>
+        </div>
 
         {aError && <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-xs text-rose-300">{aError}</div>}
 
