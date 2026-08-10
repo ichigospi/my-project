@@ -16,6 +16,13 @@ import {
   type RefSnapshotView,
 } from "@/lib/threads-client";
 
+interface TagCat {
+  id: string;
+  parentId: string | null;
+  name: string;
+  sortOrder: number;
+}
+
 interface CompetitorPost {
   id: string;
   content: string;
@@ -98,6 +105,8 @@ function CreateContent() {
   const [easyIdx, setEasyIdx] = useState(0);
   const [pickingSource, setPickingSource] = useState(false);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagCats, setTagCats] = useState<TagCat[]>([]);
+  const catChildren = (pid: string | null) => tagCats.filter((c) => (c.parentId ?? null) === pid);
 
   // 生成設定
   const [mode, setMode] = useState<"single" | "hybrid" | "custom">("single");
@@ -165,6 +174,9 @@ function CreateContent() {
       .catch(() => {});
     api<{ tags: { tag: string; count: number }[] }>(`/api/threads/tags?accountId=${accountId}`)
       .then((r) => setAllTags(r.tags.map((t) => t.tag)))
+      .catch(() => {});
+    api<{ categories: TagCat[] }>(`/api/threads/tag-categories?accountId=${accountId}`)
+      .then((r) => setTagCats(r.categories))
       .catch(() => {});
   }, [accountId]);
 
@@ -448,14 +460,37 @@ function CreateContent() {
             </select>
           </label>
           <label className="flex flex-col gap-1 flex-1 min-w-[180px]">
-            <span className="text-[11px] text-neutral-400">タグ（一部入力で候補・任意）</span>
-            <input
+            <span className="text-[11px] text-neutral-400">タグで絞る（分類から選択・任意）</span>
+            <select
               value={easyTag}
               onChange={(e) => setEasyTag(e.target.value)}
-              list="threadsTagOptions"
               className="border border-neutral-700 bg-neutral-950 text-neutral-100 rounded-lg px-3 py-2 text-sm"
-              placeholder="#権威性 / 競合名 など"
-            />
+            >
+              <option value="">絞らない（すべて）</option>
+              {tagCats.length > 0 ? (
+                catChildren(null).map((big) => (
+                  <optgroup key={big.id} label={big.name}>
+                    {/* 大カテゴリ自身もタグとして選べる。中/小はインデント表示 */}
+                    {[
+                      { id: big.id, name: big.name, depth: 0 },
+                      ...catChildren(big.id).flatMap((mid) => [
+                        { id: mid.id, name: mid.name, depth: 1 },
+                        ...catChildren(mid.id).map((small) => ({ id: small.id, name: small.name, depth: 2 })),
+                      ]),
+                    ].map((node) => (
+                      <option key={node.id} value={node.name}>
+                        {"　".repeat(node.depth)}
+                        {node.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))
+              ) : (
+                allTags.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))
+              )}
+            </select>
           </label>
           <button
             onClick={easyPickSource}
