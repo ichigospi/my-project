@@ -25,8 +25,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     const { id } = await params;
     const target = await prisma.threadsTagCategory.findUnique({ where: { id } });
     if (!target) return NextResponse.json({ ok: true });
-    // 同一アカウント内の全ノードを取得して子孫idを算出
-    const all = await prisma.threadsTagCategory.findMany({ where: { accountId: target.accountId }, select: { id: true, parentId: true } });
+    // 全ノードを取得して子孫idを算出（分類は全アカウント共有のためaccountIdで絞らない）
+    const all = await prisma.threadsTagCategory.findMany({ select: { id: true, parentId: true } });
     const toDelete = new Set<string>([id]);
     let changed = true;
     while (changed) {
