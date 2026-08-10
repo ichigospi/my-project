@@ -482,6 +482,7 @@ model ThreadsPostDraft {
   // 生成
   content        String   @default("")     // オマージュ投稿案（手動編集可）
   generationMeta String   @default("{}")   // 使用フック/CTA/企画、合成モード、モデル、類似度
+  eduTags        String   @default("[]")   // 実施した教育の種類（JSON配列。教育バランス分析用）
   mediaUrls      String   @default("[]")
   // 運用（投稿の公開はスマホから手動）
   status         String   @default("draft") // draft|approved|scheduled|published|rejected

@@ -115,3 +115,27 @@ export const DRAFT_STATUS_LABELS: Record<string, { label: string; cls: string }>
   published: { label: "投稿済", cls: "bg-emerald-500/20 text-emerald-300" },
   rejected: { label: "却下", cls: "bg-rose-500/20 text-rose-300" },
 };
+
+// 実施した「教育」の種類（11教育型に対応。投稿ごとにタグ付けして教育バランスを可視化）
+export const THREADS_EDU_TYPES = [
+  "①問題提起",
+  "②常識破壊",
+  "③信頼獲得",
+  "④ストーリー・信念",
+  "⑤選ばれた理由",
+  "⑥権威性",
+  "⑦感謝",
+  "⑧投資・変化",
+  "⑨GIVE・循環",
+  "⑩囲い込み",
+  "⑪タイムライン遡り",
+] as const;
+
+// 教育タグの表示色（バランスチャート/バッジ共通）
+export function eduColor(index: number): string {
+  const colors = [
+    "#f43f5e", "#fb923c", "#facc15", "#a3e635", "#34d399",
+    "#22d3ee", "#60a5fa", "#818cf8", "#c084fc", "#e879f9", "#fb7185",
+  ];
+  return colors[index % colors.length];
+}

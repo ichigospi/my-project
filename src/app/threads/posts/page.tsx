@@ -12,7 +12,10 @@ import {
   getThreadsModel,
   parseSnapshot,
   toLocalInputValue,
+  filesToDataUrls,
   DRAFT_STATUS_LABELS,
+  THREADS_EDU_TYPES,
+  eduColor,
   type RefSnapshotView,
 } from "@/lib/threads-client";
 
@@ -33,8 +36,25 @@ interface DraftRow {
   metricsUpdatedAt: string | null;
   insight: string;
   ownerComment: string;
+  eduTags: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface EduBalance {
+  totalPosts: number;
+  taggedPosts: number;
+  untaggedPosts: number;
+  balance: { tag: string; count: number; avgViews: number; avgLikes: number }[];
+}
+
+function parseEduTags(json: string | undefined): string[] {
+  try {
+    const p = JSON.parse(json || "[]");
+    return Array.isArray(p) ? (p.filter((t) => typeof t === "string") as string[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 const STATUS_FILTERS = [
@@ -55,6 +75,7 @@ function PostsContent() {
   const [status, setStatus] = useState("");
   const [openId, setOpenId] = useState<string | null>(searchParams.get("draftId"));
   const [message, setMessage] = useState("");
+  const [eduBalance, setEduBalance] = useState<EduBalance | null>(null);
 
   const load = useCallback(async () => {
     if (!accountId) return;
@@ -69,9 +90,22 @@ function PostsContent() {
     }
   }, [accountId, status, page]);
 
+  const loadEduBalance = useCallback(async () => {
+    if (!accountId) return;
+    try {
+      setEduBalance(await api<EduBalance>(`/api/threads/stats/edu-balance?accountId=${accountId}`));
+    } catch {
+      // ignore
+    }
+  }, [accountId]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadEduBalance();
+  }, [loadEduBalance]);
 
   const openDraft = drafts.find((d) => d.id === openId) ?? null;
 
@@ -86,6 +120,9 @@ function PostsContent() {
           + 新規作成
         </Link>
       </div>
+
+      {/* 教育バランス（投稿済みで実施した教育の配分） */}
+      <EduBalancePanel data={eduBalance} />
 
       <div className="flex gap-1.5 flex-wrap">
         {STATUS_FILTERS.map((f) => (
@@ -134,6 +171,26 @@ function PostsContent() {
                   </td>
                   <td className="px-3 py-2.5 text-neutral-200">
                     <span className="line-clamp-2 whitespace-pre-wrap">{d.content || "（本文なし）"}</span>
+                    {(() => {
+                      const tags = parseEduTags(d.eduTags);
+                      if (tags.length === 0) return null;
+                      return (
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {tags.map((t) => {
+                            const idx = THREADS_EDU_TYPES.indexOf(t as (typeof THREADS_EDU_TYPES)[number]);
+                            return (
+                              <span
+                                key={t}
+                                className="text-[9px] px-1.5 py-0.5 rounded-full text-black font-bold"
+                                style={{ backgroundColor: eduColor(idx >= 0 ? idx : 0) }}
+                              >
+                                {t}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-3 py-2.5 text-neutral-500">
                     {refA ? (
@@ -193,10 +250,83 @@ function PostsContent() {
           onChanged={async (msg) => {
             if (msg) setMessage(msg);
             await load();
+            await loadEduBalance();
           }}
         />
       )}
     </main>
+  );
+}
+
+// 教育バランス: 実施した教育の配分を横棒グラフで表示
+function EduBalancePanel({ data }: { data: EduBalance | null }) {
+  if (!data || data.totalPosts === 0) {
+    return (
+      <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-neutral-200">🎓 教育バランス</span>
+          <span className="text-[11px] text-neutral-500">投稿済みで実施した教育の配分</span>
+        </div>
+        <p className="text-xs text-neutral-500 mt-2">
+          まだ実績がありません。作成時に「行った教育」を選んで保存し、投稿済みにすると、ここに配分が表示されます。
+        </p>
+      </div>
+    );
+  }
+  // 表示順は11教育型の定義順に揃える（未実施も薄く並べてバランスの偏りを見やすく）
+  const countMap = new Map(data.balance.map((b) => [b.tag, b]));
+  const maxCount = Math.max(1, ...data.balance.map((b) => b.count));
+  const rows: { tag: string; index: number; count: number; avgViews: number; avgLikes: number }[] =
+    THREADS_EDU_TYPES.map((tag, i) => ({
+      tag,
+      index: i,
+      count: countMap.get(tag)?.count ?? 0,
+      avgViews: countMap.get(tag)?.avgViews ?? 0,
+      avgLikes: countMap.get(tag)?.avgLikes ?? 0,
+    }));
+  // 定義外のタグ（自由入力等）も末尾に足す
+  for (const b of data.balance) {
+    if (!THREADS_EDU_TYPES.includes(b.tag as (typeof THREADS_EDU_TYPES)[number])) {
+      rows.push({ tag: b.tag, index: rows.length, count: b.count, avgViews: b.avgViews, avgLikes: b.avgLikes });
+    }
+  }
+  const doneKinds = data.balance.length;
+
+  return (
+    <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-bold text-neutral-200">🎓 教育バランス</span>
+        <span className="text-[11px] text-neutral-500">投稿済みで実施した教育の配分</span>
+        <span className="ml-auto text-[11px] text-neutral-400">
+          投稿済 {data.totalPosts}件 / 教育タグ付き {data.taggedPosts}件・{doneKinds}種
+          {data.untaggedPosts > 0 && <span className="text-neutral-600">（未タグ {data.untaggedPosts}件）</span>}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {rows.map((r) => (
+          <div key={r.tag} className="flex items-center gap-2">
+            <span className="text-[11px] text-neutral-300 w-28 shrink-0 text-right truncate" title={r.tag}>{r.tag}</span>
+            <div className="flex-1 h-5 bg-neutral-950 rounded overflow-hidden relative">
+              <div
+                className="h-full rounded transition-all"
+                style={{
+                  width: `${(r.count / maxCount) * 100}%`,
+                  backgroundColor: r.count > 0 ? eduColor(r.index) : "transparent",
+                  opacity: r.count > 0 ? 0.85 : 1,
+                }}
+              />
+            </div>
+            <span className="text-[11px] text-neutral-300 w-8 shrink-0 tabular-nums">{r.count}</span>
+            <span className="text-[10px] text-neutral-500 w-24 shrink-0 tabular-nums hidden sm:block">
+              {r.count > 0 ? `👁${fmtNum(r.avgViews)}/❤️${fmtNum(r.avgLikes)}` : "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-neutral-600">
+        棒＝実施した投稿数。右の数値は平均（表示回数/いいね）。偏り（やっていない教育）が一目で分かります。
+      </p>
+    </div>
   );
 }
 
@@ -221,8 +351,10 @@ function DraftDrawer({
   });
   const [insight, setInsight] = useState(draft.insight);
   const [ownerComment, setOwnerComment] = useState(draft.ownerComment);
+  const [eduTags, setEduTags] = useState<string[]>(parseEduTags(draft.eduTags));
   const [busy, setBusy] = useState("");
   const [copied, setCopied] = useState(false);
+  const [metricMsg, setMetricMsg] = useState("");
   // 画像（一覧APIは軽量化のためmediaUrlsを持たないので、詳細から取得）
   const [images, setImages] = useState<string[]>([]);
   const [imageStyle, setImageStyle] = useState("");
@@ -289,6 +421,38 @@ function DraftDrawer({
     await navigator.clipboard.writeText(content);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  // 実施した教育タグをトグル（即PATCH保存）
+  const toggleEdu = async (edu: string) => {
+    const next = eduTags.includes(edu) ? eduTags.filter((t) => t !== edu) : [...eduTags, edu];
+    setEduTags(next);
+    await patch({ eduTags: next }, "edu");
+  };
+
+  // 投稿後のスクショから実績を読み取って各フィールドに反映
+  const readMetricsFromScreenshot = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const aiApiKey = getAiKey();
+    if (!aiApiKey) {
+      setMetricMsg("エラー: AI APIキーが未設定です（設定画面で登録）");
+      return;
+    }
+    setBusy("read-metrics");
+    setMetricMsg("");
+    try {
+      const images = await filesToDataUrls(Array.from(files), 1600, 6);
+      const res = await api<{ views: number; likes: number; replies: number; reposts: number }>(
+        `/api/threads/drafts/${draft.id}/read-metrics`,
+        { method: "POST", body: JSON.stringify({ aiApiKey, model: getThreadsModel(), images }) },
+      );
+      setMetrics({ views: res.views, likes: res.likes, replies: res.replies, reposts: res.reposts });
+      setMetricMsg(`✅ 読み取りました（👁${fmtNum(res.views)} ❤️${fmtNum(res.likes)} 💬${fmtNum(res.replies)} 🔁${fmtNum(res.reposts)}）。内容を確認して「実績を保存」を押してください。`);
+    } catch (e) {
+      setMetricMsg(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy("");
+    }
   };
 
   const genInsight = async () => {
@@ -418,6 +582,31 @@ function DraftDrawer({
         {refA && refBlock("A", refA)}
         {refB && refBlock("B", refB)}
 
+        {/* 実施した教育タグ（教育バランスに反映） */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 space-y-2">
+          <span className="text-xs font-bold text-neutral-300">🎓 この投稿で行った教育（複数可）</span>
+          <div className="flex flex-wrap gap-1.5">
+            {THREADS_EDU_TYPES.map((edu, i) => {
+              const on = eduTags.includes(edu);
+              return (
+                <button
+                  key={edu}
+                  type="button"
+                  disabled={busy === "edu"}
+                  onClick={() => toggleEdu(edu)}
+                  className={`text-[11px] px-2 py-1 rounded-full border transition-colors disabled:opacity-50 ${
+                    on ? "text-black font-bold border-transparent" : "text-neutral-400 border-neutral-700 hover:border-neutral-500"
+                  }`}
+                  style={on ? { backgroundColor: eduColor(i) } : undefined}
+                >
+                  {edu}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-neutral-600">選ぶと即保存。教育バランス（上部グラフ）に反映されます。</p>
+        </div>
+
         {/* 運用: 承認 → 予定 → 投稿済み */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 space-y-3">
           <span className="text-xs font-bold text-neutral-300">運用ステータス</span>
@@ -502,6 +691,23 @@ function DraftDrawer({
               <span className="text-xs font-bold text-neutral-300">実績（Threadsアプリの数字を入力）</span>
               {draft.metricsUpdatedAt && <span className="text-[10px] text-neutral-500">最終更新 {fmtDate(draft.metricsUpdatedAt)}</span>}
             </div>
+            {/* スクショから自動読み取り */}
+            <label className={`flex items-center justify-center gap-2 w-full text-xs py-2 rounded-lg border border-dashed border-sky-500/40 text-sky-300 hover:bg-sky-500/10 cursor-pointer ${busy === "read-metrics" ? "opacity-50 pointer-events-none" : ""}`}>
+              {busy === "read-metrics" ? "読み取り中..." : "📸 投稿後のスクショから表示回数を読み取る"}
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  readMetricsFromScreenshot(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {metricMsg && (
+              <p className={`text-[11px] ${metricMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{metricMsg}</p>
+            )}
             <div className="grid grid-cols-4 gap-2">
               {([
                 ["views", "👁 表示"],

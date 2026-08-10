@@ -12,6 +12,8 @@ import {
   setThreadsModel,
   parseSnapshot,
   THREADS_AI_MODELS,
+  THREADS_EDU_TYPES,
+  eduColor,
   type ThreadsAiModel,
   type RefSnapshotView,
 } from "@/lib/threads-client";
@@ -124,6 +126,7 @@ function CreateContent() {
   const [editContent, setEditContent] = useState("");
   const [savedDraft, setSavedDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [eduTags, setEduTags] = useState<string[]>([]);
 
   // 壁打ち
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -314,7 +317,7 @@ function CreateContent() {
     setError("");
     try {
       if (savedDraft) {
-        await api(`/api/threads/drafts/${savedDraft.id}`, { method: "PATCH", body: JSON.stringify({ content: editContent }) });
+        await api(`/api/threads/drafts/${savedDraft.id}`, { method: "PATCH", body: JSON.stringify({ content: editContent, eduTags }) });
         setSavedDraft({ ...savedDraft, content: editContent });
       } else {
         const meta = picked !== null && candidates[picked] ? { mapping: candidates[picked].mapping, model, mode } : { model };
@@ -326,6 +329,7 @@ function CreateContent() {
             refAPostId: refA?.id,
             refBPostId: refB?.id,
             generationMeta: meta,
+            eduTags,
           }),
         });
         setSavedDraft(d);
@@ -721,6 +725,30 @@ function CreateContent() {
                 <span>{editContent.length}文字</span>
                 {savedDraft && <span className="text-emerald-400">保存済み → 右で壁打ちできます</span>}
               </div>
+
+              {/* 実施した教育タグ（採用時に記録 → 教育バランス分析に使う） */}
+              <div className="border-t border-neutral-800 pt-2 space-y-1.5">
+                <span className="text-[11px] text-neutral-400">🎓 この投稿で行った教育（複数可・任意）</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {THREADS_EDU_TYPES.map((edu, i) => {
+                    const on = eduTags.includes(edu);
+                    return (
+                      <button
+                        key={edu}
+                        type="button"
+                        onClick={() => setEduTags((prev) => (on ? prev.filter((t) => t !== edu) : [...prev, edu]))}
+                        className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${
+                          on ? "text-black font-bold border-transparent" : "text-neutral-400 border-neutral-700 hover:border-neutral-500"
+                        }`}
+                        style={on ? { backgroundColor: eduColor(i) } : undefined}
+                      >
+                        {edu}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="flex gap-2">
                 <button
                   onClick={saveDraft}
