@@ -2,16 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// GET /api/threads/competitors?accountId=xxx
-export async function GET(request: NextRequest) {
+// GET /api/threads/competitors
+// 競合は全アカウント共有（切替で引き継がれる）。accountId は無視して全件返す。
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const accountId = searchParams.get("accountId");
-    if (!accountId) {
-      return NextResponse.json({ error: "accountId は必須" }, { status: 400 });
-    }
     const competitors = await prisma.threadsCompetitor.findMany({
-      where: { accountId },
       orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
       include: {
         _count: { select: { posts: true } },

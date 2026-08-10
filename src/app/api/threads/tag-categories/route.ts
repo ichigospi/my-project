@@ -2,14 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// GET /api/threads/tag-categories?accountId=xxx
-export async function GET(request: NextRequest) {
+// GET /api/threads/tag-categories
+// タグ分類は全アカウント共有（切替で引き継がれる）。accountId は無視して全件返す。
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const accountId = searchParams.get("accountId");
-    if (!accountId) return NextResponse.json({ categories: [] });
     const categories = await prisma.threadsTagCategory.findMany({
-      where: { accountId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
     return NextResponse.json({ categories });

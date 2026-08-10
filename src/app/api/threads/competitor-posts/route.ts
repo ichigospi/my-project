@@ -16,14 +16,12 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get("q");
     const page = Math.max(1, Number(searchParams.get("page") || 1));
 
+    // 競合投稿は全アカウント共有。competitorId 指定時のみ1競合に絞る（accountId は無視）。
     const where: Record<string, unknown> = {};
     if (competitorId) {
       where.competitorId = competitorId;
-    } else if (accountId) {
-      where.competitor = { accountId };
-    } else {
-      return NextResponse.json({ error: "accountId か competitorId は必須" }, { status: 400 });
     }
+    void accountId;
     if (planType) where.planType = planType;
     if (hot === "1") where.isHot = true;
     if (q) where.content = { contains: q };

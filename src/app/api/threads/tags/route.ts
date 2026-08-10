@@ -1,17 +1,12 @@
-// アカウント配下の競合投稿で使われているタグ一覧（サジェスト用・出現数降順）
-import { NextRequest, NextResponse } from "next/server";
+// 競合投稿で使われているタグ一覧（サジェスト用・出現数降順）。全アカウント共有。
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const accountId = searchParams.get("accountId");
-    if (!accountId) return NextResponse.json({ tags: [] });
-
     const posts = await prisma.threadsCompetitorPost.findMany({
-      where: { competitor: { accountId } },
       select: { tags: true },
-      take: 2000,
+      take: 5000,
     });
     const counts = new Map<string, number>();
     for (const p of posts) {
