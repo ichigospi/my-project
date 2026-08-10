@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
           scheduledAt: true,
           publishedAt: true,
           postUrl: true,
+          eduTags: true,
           views: true,
           likes: true,
           replies: true,
@@ -81,6 +82,7 @@ export async function POST(request: NextRequest) {
         refBPostId: body.refBPostId || null,
         refBSnapshot: refB ? JSON.stringify(refB) : "{}",
         generationMeta: typeof body.generationMeta === "string" ? body.generationMeta : JSON.stringify(body.generationMeta ?? {}),
+        eduTags: Array.isArray(body.eduTags) ? JSON.stringify(body.eduTags) : typeof body.eduTags === "string" ? body.eduTags : "[]",
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
       },
     });

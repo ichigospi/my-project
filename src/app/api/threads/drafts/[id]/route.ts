@@ -36,6 +36,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     for (const key of ["content", "generationMeta", "mediaUrls", "postUrl", "insight", "ownerComment"] as const) {
       if (typeof body[key] === "string") data[key] = body[key];
     }
+    // 実施した教育タグ（配列で来たらJSON文字列化）
+    if (body.eduTags !== undefined) {
+      data.eduTags = Array.isArray(body.eduTags) ? JSON.stringify(body.eduTags) : typeof body.eduTags === "string" ? body.eduTags : "[]";
+    }
     if (body.scheduledAt !== undefined) {
       data.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
     }
