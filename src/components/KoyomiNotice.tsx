@@ -96,30 +96,31 @@ export default function KoyomiNotice() {
           {mm}/{dd}（{jstWeekday(a.iso)}）
         </span>
         <span
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-neutral-700/60 text-neutral-200"
-          title={`${a.ganshi}（${a.ganshiYomi}）`}
-        >
-          干支 {a.ganshi}
-        </span>
-        <span
           className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold ${rokuyoClass(a.rokuyo.label)}`}
           title={`${a.rokuyo.label}（${a.rokuyo.yomi}）: ${a.rokuyo.desc}`}
         >
           六曜 {a.rokuyo.label}
         </span>
-        {a.kamiyoshi && (
+        {/* 暦注下段（神吉日・大明日・母倉日・天恩日・鬼宿日） */}
+        {a.gedan.map((e) => (
           <span
-            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-bold bg-indigo-500/25 text-indigo-200"
-            title="神吉日: 神社参拝・神事・祈願に吉"
+            key={e.label}
+            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-bold ${
+              e.strong ? "bg-amber-400/25 text-amber-200" : "bg-indigo-500/20 text-indigo-200"
+            }`}
+            title={e.desc}
           >
-            ⛩️ 神吉日
+            {e.emoji}
+            {e.label}
           </span>
-        )}
+        ))}
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-neutral-700/50 text-neutral-300" title="二十八宿">
+          {a.shuku}宿
+        </span>
         <span className="text-[11px] text-neutral-500">
           旧暦 {a.kyureki.leap ? "閏" : ""}
           {a.kyureki.month}/{a.kyureki.day}
         </span>
-        <span className="hidden md:inline text-[11px] text-neutral-500">{a.rokuyo.desc}</span>
       </div>
 
       {/* 2段目: 開運日 */}
