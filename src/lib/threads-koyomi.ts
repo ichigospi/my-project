@@ -474,15 +474,85 @@ export function isKamiyoshi(y: number, m: number, d: number): boolean {
   return KAMIYOSHI_INDEXES.has(ganshiIndex(y, m, d));
 }
 
+// ===== 大明日（だいみょうにち・暦注下段） =====
+// 25種の干支。太陽が隅々まで照らす吉日。複数暦サイトで一致を確認した干支インデックス集合。
+const DAIMYO_INDEXES = new Set<number>([
+  5, 6, 7, 8, 9, 13, 15, 18, 20, 23, 28, 31, 38, 40, 41, 42, 43, 45, 46, 47, 52, 54, 55, 56, 57,
+]);
+export function isDaimyo(y: number, m: number, d: number): boolean {
+  return DAIMYO_INDEXES.has(ganshiIndex(y, m, d));
+}
+
+// ===== 天恩日（てんおんにち・暦注下段） =====
+// 天の恩恵を受ける吉日。5日連続×3組（甲子〜戊辰 / 己卯〜癸未 / 己酉〜癸丑）。
+const TENON_INDEXES = new Set<number>([0, 1, 2, 3, 4, 15, 16, 17, 18, 19, 45, 46, 47, 48, 49]);
+export function isTenon(y: number, m: number, d: number): boolean {
+  return TENON_INDEXES.has(ganshiIndex(y, m, d));
+}
+
+// ===== 母倉日（ぼそうにち・暦注下段） =====
+// 母が子を育むような吉日。節月の季節ごとに、その季節を「生む」五行の十二支の日。
+// 春=亥子 / 夏=寅卯 / 秋=辰戌丑未 / 冬=申酉。2026年8月(13/19/25)ほかで検証済み。
+const BOSOU_BRANCHES: Record<number, number[]> = {
+  0: [11, 0], // 春: 亥・子
+  1: [2, 3], // 夏: 寅・卯
+  2: [4, 10, 1, 7], // 秋: 辰・戌・丑・未
+  3: [8, 9], // 冬: 申・酉
+};
+export function isBosou(y: number, m: number, d: number): boolean {
+  const season = seasonFromSetsuBranch(setsuBranchForYMD(y, m, d));
+  const branch = ganshiIndex(y, m, d) % 12;
+  return (BOSOU_BRANCHES[season] ?? []).includes(branch);
+}
+
+// ===== 二十八宿 =====
+// 天球を28分割した星宿。日ごとに1つずつ循環。アンカー: 2026-08-14 = 鬼宿(index22)。
+// 2026-08-14=鬼 / 2026-02-17=室 の2点で検証済み。
+const SHUKU_28 = [
+  "角", "亢", "氐", "房", "心", "尾", "箕", "斗", "牛", "女", "虚", "危", "室", "壁",
+  "奎", "婁", "胃", "昴", "畢", "觜", "参", "井", "鬼", "柳", "星", "張", "翼", "軫",
+];
+const SHUKU_ANCHOR_MS = Date.UTC(2026, 7, 14); // 2026-08-14
+const SHUKU_ANCHOR_INDEX = 22; // 鬼
+export function shuku28(y: number, m: number, d: number): { index: number; name: string } {
+  const diff = Math.round((Date.UTC(y, m - 1, d) - SHUKU_ANCHOR_MS) / DAY_MS);
+  const index = (((SHUKU_ANCHOR_INDEX + diff) % 28) + 28) % 28;
+  return { index, name: SHUKU_28[index] };
+}
+// 鬼宿日（大開運日）= 二十八宿が「鬼」
+export function isKishuku(y: number, m: number, d: number): boolean {
+  return shuku28(y, m, d).index === SHUKU_ANCHOR_INDEX;
+}
+
 // ===== 当日の暦（まとめ） =====
+// 暦注下段・選日の該当項目（吉/凶と一言説明つき）
+export interface GedanEvent {
+  label: string;
+  emoji: string;
+  desc: string;
+  good: boolean; // 吉日か
+  strong?: boolean; // 特に強い開運（鬼宿日など）
+}
+
 export interface DayAlmanac {
   iso: string;
-  ganshi: string; // 干支名（例: 庚申）
+  ganshi: string; // 干支名（例: 庚申）。表示は任意。
   ganshiYomi: string;
   rokuyo: Rokuyo;
   kyureki: Kyureki;
-  kamiyoshi: boolean; // 神吉日か
+  shuku: string; // 二十八宿名（例: 鬼）
+  gedan: GedanEvent[]; // 該当する暦注下段・選日（神吉日/大明日/母倉日/天恩日/鬼宿日）
   lucky: LuckyEvent[]; // 一粒万倍日/天赦日/寅/巳/満月/新月
+}
+
+function gedanForDate(y: number, m: number, d: number): GedanEvent[] {
+  const out: GedanEvent[] = [];
+  if (isKishuku(y, m, d)) out.push({ label: "鬼宿日", emoji: "🌟", desc: "鬼が宿にいて邪魔されない大開運日。婚礼以外は万事に吉", good: true, strong: true });
+  if (isTenon(y, m, d)) out.push({ label: "天恩日", emoji: "🎁", desc: "天の恩恵を受ける日。慶事・新しい始めごとに吉", good: true });
+  if (isDaimyo(y, m, d)) out.push({ label: "大明日", emoji: "☀️", desc: "太陽が隅々まで照らす吉日。旅行・引越・結婚に吉", good: true });
+  if (isKamiyoshi(y, m, d)) out.push({ label: "神吉日", emoji: "⛩️", desc: "神社参拝・神事・祈願に吉", good: true });
+  if (isBosou(y, m, d)) out.push({ label: "母倉日", emoji: "🤱", desc: "母が子を育むような吉日。婚礼・移転・家庭ごとに吉", good: true });
+  return out;
 }
 
 // 指定JST暦日（未指定なら今日）の暦をまとめて返す
@@ -502,7 +572,8 @@ export function dayAlmanac(y?: number, m?: number, d?: number): DayAlmanac {
     ganshiYomi: ganshiYomi(yy, mm, dd),
     rokuyo: rokuyoForDate(yy, mm, dd),
     kyureki: kyureki(yy, mm, dd),
-    kamiyoshi: isKamiyoshi(yy, mm, dd),
+    shuku: shuku28(yy, mm, dd).name,
+    gedan: gedanForDate(yy, mm, dd),
     lucky: luckyForDate(yy, mm, dd),
   };
 }

@@ -41,20 +41,34 @@ function TodayAlmanac() {
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm font-bold text-neutral-100">📅 今日の暦</span>
         <span className="text-sm font-bold text-neutral-300">{m}/{d}（{wd}）</span>
-        <span className="px-2 py-0.5 rounded text-xs font-bold bg-neutral-700/60 text-neutral-200" title={a.ganshiYomi}>
-          干支 {a.ganshi}
-        </span>
         <span className={`px-2 py-0.5 rounded text-xs font-bold ${rokuyoClass(a.rokuyo.label)}`} title={`${a.rokuyo.yomi}: ${a.rokuyo.desc}`}>
           六曜 {a.rokuyo.label}
         </span>
-        {a.kamiyoshi && (
-          <span className="px-2 py-0.5 rounded text-xs font-bold bg-indigo-500/25 text-indigo-200" title="神社参拝・神事・祈願に吉">
-            ⛩️ 神吉日
+        {a.gedan.map((e) => (
+          <span
+            key={e.label}
+            className={`px-2 py-0.5 rounded text-xs font-bold ${e.strong ? "bg-amber-400/25 text-amber-200" : "bg-indigo-500/20 text-indigo-200"}`}
+            title={e.desc}
+          >
+            {e.emoji}
+            {e.label}
           </span>
-        )}
+        ))}
+        <span className="px-2 py-0.5 rounded text-xs font-bold bg-neutral-700/50 text-neutral-300" title="二十八宿">
+          {a.shuku}宿
+        </span>
         <span className="text-xs text-neutral-500">旧暦 {a.kyureki.leap ? "閏" : ""}{a.kyureki.month}/{a.kyureki.day}</span>
       </div>
       <p className="text-[11px] text-neutral-500 mt-1.5">六曜「{a.rokuyo.label}」= {a.rokuyo.desc}</p>
+      {(a.gedan.length > 0 || a.lucky.length > 0) && (
+        <div className="flex flex-col gap-1 mt-2">
+          {a.gedan.map((e) => (
+            <p key={e.label} className="text-[11px] text-neutral-400">
+              <span className="font-bold text-neutral-200">{e.emoji}{e.label}</span> = {e.desc}
+            </p>
+          ))}
+        </div>
+      )}
       {a.lucky.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {a.lucky.map((e, i) => (
