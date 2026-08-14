@@ -339,3 +339,170 @@ export function upcomingNotices(today: Date = new Date()): UpcomingNotice[] {
 export function offsetLabel(offset: 0 | 1 | 2): string {
   return offset === 0 ? "今日" : offset === 1 ? "明日" : "2日後";
 }
+
+// ===== 干支の名称 =====
+const STEMS = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
+const BRANCHES = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
+const STEM_YOMI = ["きのえ", "きのと", "ひのえ", "ひのと", "つちのえ", "つちのと", "かのえ", "かのと", "みずのえ", "みずのと"];
+const BRANCH_YOMI = ["ね", "うし", "とら", "う", "たつ", "み", "うま", "ひつじ", "さる", "とり", "いぬ", "い"];
+
+// 指定JST暦日の干支名（例: 庚申）
+export function ganshiName(y: number, m: number, d: number): string {
+  const g = ganshiIndex(y, m, d);
+  return STEMS[g % 10] + BRANCHES[g % 12];
+}
+export function ganshiYomi(y: number, m: number, d: number): string {
+  const g = ganshiIndex(y, m, d);
+  return `${STEM_YOMI[g % 10]}${BRANCH_YOMI[g % 12]}`;
+}
+
+// ===== 六曜（旧暦から算出） =====
+// JST時刻ms(UTC基準の実時刻)をJST暦日の0時ms(Date.UTC形式)に丸める
+function floorToJstDayMs(utcMs: number): number {
+  const jst = new Date(utcMs + JST_OFFSET_MS);
+  return Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate());
+}
+
+// afterUTCms 以降で、太陽黄経が targetLon を上向きに通過するUTC時刻(ms)を二分法で求める
+function findLongitudeCrossingUTC(targetLon: number, afterUTCms: number, spanDays = 50): number {
+  let lo = afterUTCms;
+  let hi = afterUTCms + spanDays * DAY_MS;
+  const f = (ms: number) => angDiff(sunLongitudeDeg(jdFromUTCms(ms)), targetLon);
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (f(mid) < 0) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+}
+
+// 旧暦の月 [s0ms, s1ms)（JST暦日の0時ms）に含まれる「中気」の月番号(1..12)を返す。無ければ null（＝閏月）
+function chukiMonthInLunar(s0ms: number, s1ms: number): number | null {
+  const s0UTC = s0ms - JST_OFFSET_MS; // s0のJST0時に相当するUTC実時刻
+  const L0 = sunLongitudeDeg(jdFromUTCms(s0UTC));
+  const k = Math.floor(L0 / 30);
+  const target = ((k + 1) * 30) % 360; // L0の次の30°倍（＝この月に来る可能性のある中気）
+  const crossUTC = findLongitudeCrossingUTC(target, s0UTC);
+  const crossDay = floorToJstDayMs(crossUTC);
+  if (crossDay >= s0ms && crossDay < s1ms) {
+    const n = (target / 30 + 2) % 12; // 冬至270°→11月, 雨水330°→1月, 春分0°→2月 ...
+    return n === 0 ? 12 : n;
+  }
+  return null;
+}
+
+// 新月（朔）のJST暦日ms一覧（target前後の広い範囲）
+// moonPhasesInRangeは1ヶ月用に最適化され広い範囲では取りこぼすため、ここでkを直接広く回す。
+function newMoonDaysAround(targetMs: number): number[] {
+  const yearFrac = 1970 + targetMs / (365.25 * DAY_MS);
+  const kApprox = (yearFrac - 2000) * 12.3685;
+  const kMid = Math.round(kApprox);
+  const set = new Set<number>();
+  for (let k = kMid - 24; k <= kMid + 24; k++) {
+    const jde = moonPhaseJDE(k, 0); // 新月
+    const utcMs = (jde - 2440587.5) * DAY_MS;
+    set.add(floorToJstDayMs(utcMs));
+  }
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+export interface Kyureki {
+  month: number; // 旧暦月 1..12（閏月も基準月の番号）
+  day: number; // 旧暦日 1..30
+  leap: boolean; // 閏月か
+}
+
+// 指定JST暦日の旧暦（天保暦・定気法。近年の日付で検証済み）
+export function kyureki(y: number, m: number, d: number): Kyureki {
+  const target = Date.UTC(y, m - 1, d);
+  const moons = newMoonDaysAround(target);
+  let i = -1;
+  for (let j = 0; j < moons.length; j++) {
+    if (moons[j] <= target) i = j;
+    else break;
+  }
+  if (i < 0 || i + 1 >= moons.length) {
+    // 範囲外フォールバック（通常起きない）
+    return { month: m, day: d, leap: false };
+  }
+  const s0 = moons[i];
+  const s1 = moons[i + 1];
+  const day = Math.round((target - s0) / DAY_MS) + 1;
+  const chuki = chukiMonthInLunar(s0, s1);
+  if (chuki !== null) {
+    return { month: chuki, day, leap: false };
+  }
+  // 中気を含まない月＝閏月。前月の月番号を引き継ぐ
+  let prev: number | null = null;
+  if (i - 1 >= 0) prev = chukiMonthInLunar(moons[i - 1], s0);
+  const month = prev ?? ((): number => {
+    // 前月も取れない場合は翌月番号-1で近似
+    const next = chukiMonthInLunar(s1, moons[i + 2] ?? s1 + 30 * DAY_MS);
+    return next ? ((next + 10) % 12) + 1 : m;
+  })();
+  return { month, day, leap: true };
+}
+
+export interface Rokuyo {
+  label: string; // 例: 友引
+  yomi: string;
+  desc: string; // 一言の意味
+}
+
+// (旧暦月 + 旧暦日) % 6 で決まる。0=大安,1=赤口,2=先勝,3=友引,4=先負,5=仏滅
+const ROKUYO_TABLE: Rokuyo[] = [
+  { label: "大安", yomi: "たいあん", desc: "万事に吉。最も縁起の良い日" },
+  { label: "赤口", yomi: "しゃっこう", desc: "正午前後のみ吉。他は凶" },
+  { label: "先勝", yomi: "せんしょう", desc: "午前が吉。何事も早めが吉" },
+  { label: "友引", yomi: "ともびき", desc: "朝夕は吉、正午は凶。祝い事に吉" },
+  { label: "先負", yomi: "せんぶ", desc: "午後が吉。急がず控えめに" },
+  { label: "仏滅", yomi: "ぶつめつ", desc: "万事に凶とされる日" },
+];
+
+export function rokuyoForDate(y: number, m: number, d: number): Rokuyo {
+  const k = kyureki(y, m, d);
+  return ROKUYO_TABLE[(k.month + k.day) % 6];
+}
+
+// ===== 神吉日（かみよしにち・暦注下段） =====
+// 日の六十干支のうち33種が神吉日（神事・参拝に吉）。国立系・複数暦サイトで一致を確認した干支インデックス集合。
+const KAMIYOSHI_INDEXES = new Set<number>([
+  1, 3, 5, 6, 8, 9, 13, 15, 18, 20, 21, 24, 27, 30, 32, 33, 35, 36, 37, 39, 41, 42, 43, 44, 45, 47, 48, 51, 54, 55, 56, 57, 59,
+]);
+
+export function isKamiyoshi(y: number, m: number, d: number): boolean {
+  return KAMIYOSHI_INDEXES.has(ganshiIndex(y, m, d));
+}
+
+// ===== 当日の暦（まとめ） =====
+export interface DayAlmanac {
+  iso: string;
+  ganshi: string; // 干支名（例: 庚申）
+  ganshiYomi: string;
+  rokuyo: Rokuyo;
+  kyureki: Kyureki;
+  kamiyoshi: boolean; // 神吉日か
+  lucky: LuckyEvent[]; // 一粒万倍日/天赦日/寅/巳/満月/新月
+}
+
+// 指定JST暦日（未指定なら今日）の暦をまとめて返す
+export function dayAlmanac(y?: number, m?: number, d?: number): DayAlmanac {
+  let yy = y;
+  let mm = m;
+  let dd = d;
+  if (yy === undefined || mm === undefined || dd === undefined) {
+    const jst = new Date(Date.now() + JST_OFFSET_MS);
+    yy = jst.getUTCFullYear();
+    mm = jst.getUTCMonth() + 1;
+    dd = jst.getUTCDate();
+  }
+  return {
+    iso: `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`,
+    ganshi: ganshiName(yy, mm, dd),
+    ganshiYomi: ganshiYomi(yy, mm, dd),
+    rokuyo: rokuyoForDate(yy, mm, dd),
+    kyureki: kyureki(yy, mm, dd),
+    kamiyoshi: isKamiyoshi(yy, mm, dd),
+    lucky: luckyForDate(yy, mm, dd),
+  };
+}

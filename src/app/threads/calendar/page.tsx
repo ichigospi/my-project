@@ -2,8 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { luckyCalendar, type DayLucky } from "@/lib/threads-koyomi";
+import { useEffect, useMemo, useState } from "react";
+import { dayAlmanac, luckyCalendar, type DayAlmanac, type DayLucky } from "@/lib/threads-koyomi";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -19,6 +19,57 @@ const LEGEND = [
 function todayJst() {
   const jst = new Date(Date.now() + 9 * 3600 * 1000);
   return { y: jst.getUTCFullYear(), m: jst.getUTCMonth() + 1, d: jst.getUTCDate() };
+}
+
+const WD = ["日", "月", "火", "水", "木", "金", "土"];
+function rokuyoClass(label: string): string {
+  if (label === "大安") return "bg-emerald-500/25 text-emerald-200";
+  if (label === "友引") return "bg-teal-500/20 text-teal-200";
+  if (label === "仏滅" || label === "赤口") return "bg-rose-500/20 text-rose-200";
+  return "bg-neutral-700/60 text-neutral-200";
+}
+
+// 今日の暦カード（干支・六曜・神吉日・旧暦・開運日）
+function TodayAlmanac() {
+  const [a, setA] = useState<DayAlmanac | null>(null);
+  useEffect(() => setA(dayAlmanac()), []);
+  if (!a) return null;
+  const [y, m, d] = a.iso.split("-").map(Number);
+  const wd = WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return (
+    <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-bold text-neutral-100">📅 今日の暦</span>
+        <span className="text-sm font-bold text-neutral-300">{m}/{d}（{wd}）</span>
+        <span className="px-2 py-0.5 rounded text-xs font-bold bg-neutral-700/60 text-neutral-200" title={a.ganshiYomi}>
+          干支 {a.ganshi}
+        </span>
+        <span className={`px-2 py-0.5 rounded text-xs font-bold ${rokuyoClass(a.rokuyo.label)}`} title={`${a.rokuyo.yomi}: ${a.rokuyo.desc}`}>
+          六曜 {a.rokuyo.label}
+        </span>
+        {a.kamiyoshi && (
+          <span className="px-2 py-0.5 rounded text-xs font-bold bg-indigo-500/25 text-indigo-200" title="神社参拝・神事・祈願に吉">
+            ⛩️ 神吉日
+          </span>
+        )}
+        <span className="text-xs text-neutral-500">旧暦 {a.kyureki.leap ? "閏" : ""}{a.kyureki.month}/{a.kyureki.day}</span>
+      </div>
+      <p className="text-[11px] text-neutral-500 mt-1.5">六曜「{a.rokuyo.label}」= {a.rokuyo.desc}</p>
+      {a.lucky.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {a.lucky.map((e, i) => (
+            <span
+              key={i}
+              className={`text-[11px] px-1.5 py-0.5 rounded font-bold ${e.strong ? "bg-amber-400/25 text-amber-200" : "bg-neutral-800 text-neutral-300"}`}
+            >
+              {e.emoji}
+              {e.label}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function CalendarPage() {
@@ -49,6 +100,9 @@ export default function CalendarPage() {
           天赦日・一粒万倍日・寅の日・巳の日・満月・新月。占い/開運アカウントの投稿タイミングに。
         </p>
       </div>
+
+      {/* 今日の暦 */}
+      <TodayAlmanac />
 
       {/* 月ナビ */}
       <div className="flex items-center justify-between">
