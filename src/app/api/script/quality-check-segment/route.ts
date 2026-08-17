@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
+import { referenceModeQcNote } from "@/lib/structure-mode";
 
 // 分割出力の1パート(部分台本)を、パート向けの観点で軽量評価する。
 // 全体前提の「文字数5000」「終盤CTAの有無」では誤減点しないよう、part k/N を伝える。
@@ -91,6 +92,7 @@ A〜Dの4カテゴリを必ず含めること。
 
 【スタイル】${styleLabel}
 
+${(body as { structureMode?: string }).structureMode === "reference" ? referenceModeQcNote() : ""}
 【台本ルール（観点A・Cの基準）】
 ${rulesText || "（指定なし）"}
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock } from "@/lib/tarot-draw";
+import { referenceModeBlock } from "@/lib/structure-mode";
 
 // 骨組み出力は最大16Kトークンと長く生成に時間がかかるため、関数の実行上限を延長する
 export const maxDuration = 300;
@@ -15,6 +16,8 @@ function jstToday(): string {
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText, primaryAnalysisId } = body;
+  // 構成モード: reference=テンプレ構成を適用せず元ネタの構成を完全トレース（不変ルールは据え置き）
+  const structureMode: string = body.structureMode === "reference" ? "reference" : "template";
   const aiModel = resolveAiModel(body.aiModel);
   // 主軸（メイン）元ネタの決定: ユーザー指定があればそれ、無ければ最多再生
   const primaryId: string | undefined = (() => {
@@ -88,7 +91,7 @@ ${currentSkeleton}
 【参考動画の分析】
 ${analysisTexts}
 ${profileText}
-
+${structureMode === "reference" ? referenceModeBlock(style) : ""}
 ${rulesText || ""}
 
 【ユーザーの修正依頼】
@@ -203,6 +206,7 @@ ${buildTarotDrawBlock()}
 - 体験談・具体例は元ネタのものをそのまま使わず、自チャンネルの語り手のキャラ・設定に合った人物像・相談内容に置き換えて設計する
 - 骨組みの各セクションの参考元表記には「主軸から／サブから移植／チャンネルルール由来」のいずれかを明記すること
 ` : ""}
+${structureMode === "reference" ? referenceModeBlock(style) : ""}
 ${rulesText || ""}
 ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
 

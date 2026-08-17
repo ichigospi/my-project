@@ -181,6 +181,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)),
           referenceAnalyses,
+          structureMode: project.structureMode,
           aiApiKey,
           aiModel: getAiModel("generate"),
           refCharCount: getRefCharCount(),
@@ -240,7 +241,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         proposal: project.structureProposal, channelProfile, style: project.style, topic: project.title,
-        additionalNotes, rulesText, referenceAnalyses: buildRefs(), aiApiKey, aiModel: getAiModel("generate"),
+        additionalNotes, rulesText, referenceAnalyses: buildRefs(), structureMode: project.structureMode, aiApiKey, aiModel: getAiModel("generate"),
         segment: { index, total: parts.length, skeletonPart: parts[index], previousScript, partTargetChars, totalTargetChars },
         refCharCount,
       }),
@@ -304,7 +305,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const previousScript = segs.slice(0, idx).map((s) => s.script).join("\n\n");
       const body = JSON.stringify({
         segmentScript: segs[idx].script, partIndex: idx, partTotal: plannedTotalParts(),
-        previousScript, referenceAnalyses: buildRefs(), rulesText, style: project.style, aiApiKey, aiModel: getAiModel("check"),
+        previousScript, referenceAnalyses: buildRefs(), rulesText, style: project.style, structureMode: project.structureMode, aiApiKey, aiModel: getAiModel("check"),
       });
       let data: Record<string, unknown> | null = null;
       let lastErr = "";
@@ -481,6 +482,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         aiApiKey,
         aiModel: getAiModel("check"),
         style: project.style,
+        structureMode: project.structureMode,
       });
 
       // Railway proxy が "upstream error"(プレーンテキスト) を返すと res.json() が

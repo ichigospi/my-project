@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock } from "@/lib/tarot-draw";
+import { referenceModeBlock } from "@/lib/structure-mode";
 
 // 6,500〜7,500文字級の台本生成は出力トークン・所要時間ともに大きいため実行上限を延長
 export const maxDuration = 300;
@@ -63,6 +64,8 @@ function jstToday(): string {
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey, rulesText, referenceAnalyses } = body;
+  // 構成モード: reference=テンプレ構成を適用せず元ネタ（＝それをトレースした骨組み）の構成に従う
+  const structureMode: string = body.structureMode === "reference" ? "reference" : "template";
   const segment: { index: number; total: number; skeletonPart?: string; previousScript?: string; partTargetChars?: number; totalTargetChars?: number } | undefined = body.segment;
   const aiModel = resolveAiModel(body.aiModel);
   // 主軸元ネタの文字数（±500字ルールの基準。クライアントで実測して送られる）
@@ -217,6 +220,7 @@ ${tarotDraw}
 【台本の骨組み（この構成に沿って台本を書くこと）】
 ${skeletonText}
 
+${structureMode === "reference" ? referenceModeBlock(style) : ""}
 ${rulesText || ""}
 ${additionalNotes ? `【追加指示】\n${additionalNotes}` : ""}
 
