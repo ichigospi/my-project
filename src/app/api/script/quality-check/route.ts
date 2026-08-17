@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
+import { referenceModeQcNote } from "@/lib/structure-mode";
 
 // 8観点+比較マトリクスの生成は出力が大きく時間がかかるため、関数のタイムアウトを延長
 export const maxDuration = 300;
@@ -410,7 +411,7 @@ export async function POST(request: NextRequest) {
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
     if (!script?.trim()) return NextResponse.json({ error: "台本がありません" }, { status: 400 });
 
-    const userPrompt = buildUserPrompt({
+    let userPrompt = buildUserPrompt({
       script,
       title: title || "",
       profile,
@@ -418,6 +419,10 @@ export async function POST(request: NextRequest) {
       winningPatterns,
       referenceAnalyses: referenceAnalyses || [],
     });
+    // 元ネタ準拠モード: テンプレ構成に従っていないこと自体は指摘対象から外す
+    if ((body as { structureMode?: string }).structureMode === "reference") {
+      userPrompt += referenceModeQcNote();
+    }
 
     const isAnthropic = aiApiKey.startsWith("sk-ant-");
     const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);

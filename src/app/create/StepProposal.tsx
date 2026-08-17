@@ -7,6 +7,7 @@ import { getAiModel } from "@/lib/ai-model";
 import { getAnalyses, getProfileByChannel } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
+import { getPresetFor } from "@/lib/project-store";
 import type { ScriptProject } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
@@ -24,6 +25,9 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   const [applyingFix, setApplyingFix] = useState(false);
   const [fixNote, setFixNote] = useState("");
   const [fixSummary, setFixSummary] = useState("");
+  // 構成差分チェック（元ネタがテンプレ構成と大きく違うか）
+  const [diffChecking, setDiffChecking] = useState(false);
+  const [diffModal, setDiffModal] = useState<NonNullable<ScriptProject["structureDiff"]> | null>(null);
 
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
   const applySkeletonFix = async (revisionNote: string) => {
@@ -86,7 +90,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult,
         role: analyses.length > 1 ? (a.id === effectivePrimaryId ? "main" : "sub") : undefined,
       }));
-      const body = JSON.stringify({ skeleton, referenceAnalyses, rulesText, style: project.style, aiApiKey, aiModel: getAiModel("check") });
+      const body = JSON.stringify({ skeleton, referenceAnalyses, rulesText, style: project.style, structureMode: project.structureMode, aiApiKey, aiModel: getAiModel("check") });
       let data: Record<string, unknown> | null = null;
       let lastErr = "";
       for (let attempt = 0; attempt < 4; attempt++) {
@@ -137,10 +141,12 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     return analyses.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), analyses[0]).id;
   })();
 
-  const handleGenerate = async () => {
+  // 骨組み生成の実体（構成モード確定後に呼ぶ）
+  const runGenerate = async (mode: "template" | "reference", diff?: ScriptProject["structureDiff"]) => {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
+    setDiffModal(null);
     setGenerating(true);
     setError("");
 
@@ -153,6 +159,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         body: JSON.stringify({
           analyses, style: project.style, topic: project.title,
           primaryAnalysisId: effectivePrimaryId || undefined,
+          structureMode: mode,
           channelProfile: getProfileByChannel(project.channelId || ""), aiApiKey, aiModel: getAiModel("generate"),
           userPrompt: promptText || undefined,
           currentSkeleton: skeleton || undefined,
@@ -164,9 +171,11 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       else if (data.skeleton) {
         setSkeleton(data.skeleton);
         setPromptText("");
-        // 骨組みテキストをproposalに保存
+        // 骨組みテキスト＋構成モードをプロジェクトに保存（台本生成・品質チェックにも引き継ぐ）
         onUpdate({
           ...project,
+          structureMode: mode,
+          ...(diff ? { structureDiff: diff } : {}),
           structureProposal: {
             suggestedTitle: project.title,
             concept: data.skeleton,
@@ -178,6 +187,46 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       }
     } catch { setError("構成提案に失敗"); }
     finally { setGenerating(false); }
+  };
+
+  const handleGenerate = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+
+    // 構成モードが未確定なら、まず元ネタとテンプレ構成の差分をチェックする（結果はキャッシュ）
+    let mode = project.structureMode;
+    let diff = project.structureDiff;
+    if (!mode) {
+      const main = analyses.find((a) => a.id === effectivePrimaryId);
+      const diffKey = [...(project.analyses || [])].sort().join(",") + "|" + effectivePrimaryId;
+      if (main?.analysisResult) {
+        if (!diff || diff.key !== diffKey) {
+          setDiffChecking(true);
+          setError("");
+          try {
+            const preset = getPresetFor(project.genre as Genre, project.style as Style, project.channelId);
+            const res = await fetch("/api/script/structure-diff", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                mainAnalysis: { videoTitle: main.videoTitle, analysisResult: main.analysisResult },
+                categoryRules: preset?.rules || "",
+                style: project.style, aiApiKey, aiModel: getAiModel("check"),
+              }),
+            });
+            const d = await res.json();
+            if (!d.error) diff = { key: diffKey, divergent: !!d.divergent, differences: (d.differences as string[]) || [], summary: (d.summary as string) || "" };
+          } catch { /* チェック失敗時は従来通りテンプレ構成で続行 */ }
+          finally { setDiffChecking(false); }
+        }
+        if (diff?.divergent) {
+          // 乖離が大きい → ユーザーにどちらで作るかポップアップで確認（選択後にrunGenerateが走る）
+          setDiffModal(diff);
+          return;
+        }
+      }
+      mode = "template";
+    }
+    await runGenerate(mode, diff);
   };
 
   // マークダウンを簡易HTML変換
@@ -342,12 +391,56 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       {/* 骨組みタブ */}
       {viewTab === "skeleton" && (
         <>
+          {/* 構成モード表示・切替（一度でも確定したら表示） */}
+          {project.structureMode && (
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <span className="text-xs text-gray-500">構成:</span>
+              {(["template", "reference"] as const).map((m) => (
+                <button key={m} onClick={() => onUpdate({ ...project, structureMode: m })}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${project.structureMode === m ? "bg-accent text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+                  {m === "template" ? "いつものテンプレ" : "元ネタ準拠"}
+                </button>
+              ))}
+              <span className="text-xs text-gray-400">変更したら骨組みを再生成してください</span>
+            </div>
+          )}
+
           {/* 生成ボタン */}
           {!skeleton && (
-            <button onClick={handleGenerate} disabled={generating}
+            <button onClick={handleGenerate} disabled={generating || diffChecking}
               className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50 mb-6">
-              {generating ? "骨組みを生成中..." : "台本の骨組みを生成"}
+              {diffChecking ? "元ネタの構成をチェック中..." : generating ? "骨組みを生成中..." : "台本の骨組みを生成"}
             </button>
+          )}
+
+          {/* 構成乖離ポップアップ: 元ネタ準拠かテンプレか選択 */}
+          {diffModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6">
+                <h3 className="font-bold text-base mb-2">元ネタの構成がいつものテンプレと大きく違います</h3>
+                {diffModal.differences.length > 0 && (
+                  <ul className="mb-3 space-y-1">
+                    {diffModal.differences.map((d, i) => (
+                      <li key={i} className="text-sm text-gray-700">・{d}</li>
+                    ))}
+                  </ul>
+                )}
+                {diffModal.summary && <p className="text-xs text-gray-500 mb-4">{diffModal.summary}</p>}
+                <p className="text-xs text-gray-500 mb-4">
+                  どちらを選んでも、文字数（元ネタ±500字）・口調・語彙・重複禁止・CTA導線などの必須ルールはそのまま守られます。
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button onClick={() => runGenerate("reference", diffModal)}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
+                    元ネタ準拠で作る（構成被りを避ける）
+                  </button>
+                  <button onClick={() => runGenerate("template", diffModal)}
+                    className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 text-sm font-medium hover:bg-gray-50">
+                    いつもの構成で作る
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {skeleton && (

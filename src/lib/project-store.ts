@@ -69,6 +69,10 @@ export interface ScriptProject {
   analyses: string[]; // ScriptAnalysis IDs
   // 参考動画のうち構成の主軸（メイン）にする分析ID。未指定時は最多再生がメイン。他はサブ（要素どり）
   primaryAnalysisId?: string;
+  // 構成モード: template=いつものテンプレ構成 / reference=元ネタの構成を完全トレース（乖離検出時にユーザーが選択）
+  structureMode?: "template" | "reference";
+  // 構成差分チェックの結果キャッシュ。keyは参考動画の組み合わせ（変わったら再チェック）
+  structureDiff?: { key: string; divergent: boolean; differences: string[]; summary: string };
   structureProposal: StructureProposal | null;
   generatedScript: string;
   telopScript: TelopLine[] | null;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
+import { referenceModeQcNote } from "@/lib/structure-mode";
 
 // 骨組み(構成)を構成ルール遵守・元台本ズレの観点で評価する。
 // 出力は台本品質チェックと同じ QualityCheckResult 形（categories/overallScore/topPriority）で返し、
@@ -147,7 +148,7 @@ export async function POST(request: NextRequest) {
       ? SYSTEM_PROMPT.replace("目安4,500〜5,000文字", "目安5,000〜6,000文字")
       : SYSTEM_PROMPT;
     const userPrompt = `${systemPrompt}
-
+${(body as { structureMode?: string }).structureMode === "reference" ? referenceModeQcNote() : ""}
 【スタイル】${styleLabel}
 
 【台本ルール（この構成を守れているか＝観点A・Cの基準）】
