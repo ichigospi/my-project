@@ -141,6 +141,9 @@ export default function RevenueStatsPage() {
   const rankingMax = useMemo(() => Math.max(1, ...ranking.map((r) => r.total)), [ranking]);
   const rankingTotal = rankType === "income" ? period.income : period.expense;
 
+  // 桁が多いときだけ文字サイズを落として折り返さないようにする
+  const periodIncomeText = period.income.toLocaleString("ja-JP");
+
   const setCustom = (which: "from" | "to", value: string) => {
     setPreset("custom");
     if (which === "from") setFrom(value);
@@ -226,11 +229,14 @@ export default function RevenueStatsPage() {
         </section>
 
         {/* 期間サマリー */}
-        <section className="mt-4 rounded-3xl bg-white/[0.04] border border-white/10 p-5">
-          <div className="text-[11px] text-white/40">この期間の売上</div>
-          <div className="mt-1 text-3xl font-bold tracking-tight text-emerald-300">
-            {period.income.toLocaleString("ja-JP")}
-            <span className="text-base font-semibold text-white/40 ml-1">円</span>
+        <section className="mt-2 rounded-3xl bg-white/[0.04] border border-white/10 px-5 pt-4 pb-5">
+          <div
+            className={`font-bold tracking-tight text-emerald-300 leading-none ${
+              periodIncomeText.length > 9 ? "text-4xl" : "text-5xl"
+            }`}
+          >
+            {periodIncomeText}
+            <span className="text-xl font-semibold text-white/40 ml-1.5">円</span>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
