@@ -106,6 +106,10 @@ const sqls = [
   `CREATE INDEX IF NOT EXISTS "ReplyDraft_customerName_idx" ON "ReplyDraft"("customerName")`,
   `CREATE TABLE IF NOT EXISTS "ReplyScenario" ("id" TEXT NOT NULL PRIMARY KEY, "stage" TEXT NOT NULL DEFAULT 'other', "category" TEXT NOT NULL DEFAULT 'general', "title" TEXT NOT NULL, "detail" TEXT NOT NULL DEFAULT '', "explanation" TEXT NOT NULL DEFAULT '', "exampleMessage" TEXT NOT NULL, "source" TEXT NOT NULL DEFAULT 'manual', "isActive" BOOLEAN NOT NULL DEFAULT true, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE INDEX IF NOT EXISTS "ReplyScenario_stage_idx" ON "ReplyScenario"("stage")`,
+
+  // ===== 収益カレンダーツール =====
+  `CREATE TABLE IF NOT EXISTS "RevenueEntry" ("id" TEXT NOT NULL PRIMARY KEY, "date" TEXT NOT NULL, "type" TEXT NOT NULL DEFAULT 'income', "amount" INTEGER NOT NULL, "label" TEXT NOT NULL DEFAULT '', "category" TEXT NOT NULL DEFAULT '', "memo" TEXT NOT NULL DEFAULT '', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS "RevenueEntry_date_idx" ON "RevenueEntry"("date")`,
 ];
 
 for (const sql of sqls) {

@@ -645,3 +645,18 @@ model ReplyScenario {
 
   @@index([stage])
 }
+
+// ===== 収益カレンダーツール（単体） =====
+model RevenueEntry {
+  id        String   @id @default(cuid())
+  date      String   // YYYY-MM-DD
+  type      String   @default("income") // income | expense
+  amount    Int      // 常に正の値。収入/支出はtypeで判定
+  label     String   @default("") // 項目名（例: 給料、アフィリ報酬）
+  category  String   @default("") // 任意のカテゴリ（例: 物販、コンサル）
+  memo      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
