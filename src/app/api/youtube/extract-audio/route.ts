@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execSync } from "child_process";
-import { mkdirSync, existsSync, statSync, rmSync, readdirSync } from "fs";
+import { execSync, execFileSync } from "child_process";
+import { mkdirSync, statSync, rmSync, readdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { localCookieStrategies, summarizeStrategyErrors } from "@/lib/ytdlp-cookies";
 
 // YouTube動画から音声(MP3)を抽出するローカル専用ルート。
 // 字幕なし＆OCRも効かない動画(音声のみのトーク)を Whisper で書き起こすための前段。
@@ -48,10 +49,51 @@ export async function POST(request: NextRequest) {
     const outputTemplate = join(tempDir, "audio.%(ext)s");
 
     // 音声のみ取得。低品質(quality 5≈64kbps)で容量を抑える(書き起こし用途では十分)
-    const ytdlpCmd = `"${ytdlpPath}" -x --audio-format mp3 --audio-quality 5 -o "${outputTemplate}" --no-warnings "${videoUrl}"`;
+    // extract-frames と同様、Cookie戦略×プレイヤークライアントのフォールバックで
+    // YouTube側のbotチェック・ダウンロード拒否に耐性を持たせる
+    const clients = ["tv", "ios", "web"];
+    const strategies = localCookieStrategies();
+    const strategyErrors: { label: string; err: string }[] = [];
+    let downloaded = false;
 
-    console.log(`[extract-audio] downloading: ${videoId}`);
-    execSync(ytdlpCmd, { env: execEnv, stdio: "pipe", maxBuffer: 200 * 1024 * 1024 });
+    for (const strategy of strategies) {
+      if (downloaded) break;
+      let lastError = "";
+      for (const client of clients) {
+        try {
+          console.log(`[extract-audio] trying: ${strategy.label} + ${client} (${videoId})`);
+          execFileSync(ytdlpPath, [
+            ...strategy.args,
+            "-x", "--audio-format", "mp3", "--audio-quality", "5",
+            "-o", outputTemplate,
+            "--no-warnings", "--no-playlist",
+            "--socket-timeout", "30",
+            "--extractor-args", `youtube:player_client=${client}`,
+            videoUrl,
+          ], { env: execEnv, stdio: "pipe", timeout: 600000, maxBuffer: 200 * 1024 * 1024 });
+
+          const got = readdirSync(tempDir).some(f => f.startsWith("audio.") && (f.endsWith(".mp3") || f.endsWith(".m4a")));
+          if (got) {
+            console.log(`[extract-audio] download success: ${strategy.label} + ${client}`);
+            downloaded = true;
+            break;
+          }
+        } catch (e) {
+          lastError = e instanceof Error ? e.message : String(e);
+          if ((e as { stderr?: Buffer }).stderr) {
+            lastError = (e as { stderr: Buffer }).stderr.toString().slice(-500);
+          }
+          continue;
+        }
+      }
+      if (!downloaded && lastError) strategyErrors.push({ label: strategy.label, err: lastError });
+    }
+
+    if (!downloaded) {
+      const summary = summarizeStrategyErrors(strategyErrors);
+      console.error("[extract-audio] all strategies failed:\n", summary);
+      return NextResponse.json({ error: `音声のダウンロードに全て失敗しました。\n${summary}` }, { status: 500 });
+    }
 
     const files = readdirSync(tempDir);
     const audioFile = files.find(f => f.startsWith("audio.") && (f.endsWith(".mp3") || f.endsWith(".m4a")));
