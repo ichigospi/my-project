@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync, mkdirSync, rmSync, writeFileSync
 import { join } from "path";
 import { tmpdir } from "os";
 import { prisma } from "@/lib/prisma";
+import { localCookieStrategies, summarizeStrategyErrors } from "@/lib/ytdlp-cookies";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -94,16 +95,11 @@ export async function POST(request: NextRequest) {
 
     // 複数のプレイヤークライアントを順番に試す
     const clients = ["tv", "ios", "mediaconnect", "web", "web_creator", "mweb"];
-    // ローカル: Cookie無し → 各ブラウザCookieの順で試す
+    // ローカル: Cookie無し → インストール済みブラウザのCookieの順で試す（未インストールのブラウザは除外）
     // 本番: Cookie有無でクライアント順序変更
     const cookieStrategies: { label: string; args: string[] }[] = [];
     if (isLocal) {
-      cookieStrategies.push({ label: "no-cookie", args: [] });
-      cookieStrategies.push({ label: "chrome", args: ["--cookies-from-browser", "chrome"] });
-      if (process.platform === "darwin") {
-        cookieStrategies.push({ label: "safari", args: ["--cookies-from-browser", "safari"] });
-      }
-      cookieStrategies.push({ label: "firefox", args: ["--cookies-from-browser", "firefox"] });
+      cookieStrategies.push(...localCookieStrategies());
     } else if (cookiePath && existsSync(cookiePath)) {
       cookieStrategies.push({ label: "cookie-file", args: ["--cookies", cookiePath] });
       cookieStrategies.push({ label: "no-cookie", args: [] });
@@ -112,10 +108,12 @@ export async function POST(request: NextRequest) {
     }
 
     let downloaded = false;
-    let lastError = "";
+    // 戦略ごとの失敗理由を全部残す（最後の1件だけだと本当の原因が隠れるため）
+    const strategyErrors: { label: string; err: string }[] = [];
 
     for (const strategy of cookieStrategies) {
       if (downloaded) break;
+      let lastError = "";
       for (const client of clients) {
         try {
           const args: string[] = [
@@ -146,11 +144,13 @@ export async function POST(request: NextRequest) {
           continue;
         }
       }
+      if (!downloaded && lastError) strategyErrors.push({ label: strategy.label, err: lastError });
     }
 
     if (!downloaded) {
-      console.error("[extract-frames] all strategies failed:", lastError.slice(0, 300));
-      return NextResponse.json({ error: `動画のダウンロードに全て失敗しました。\n最後のエラー: ${lastError.slice(0, 200)}` }, { status: 500 });
+      const summary = summarizeStrategyErrors(strategyErrors);
+      console.error("[extract-frames] all strategies failed:\n", summary);
+      return NextResponse.json({ error: `動画のダウンロードに全て失敗しました。\n${summary}` }, { status: 500 });
     }
 
     // 3秒間隔でフレーム抽出（重複除去なし＝全フレーム送信）
