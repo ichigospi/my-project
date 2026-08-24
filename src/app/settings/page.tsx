@@ -55,6 +55,8 @@ function SettingsContent() {
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [litmediaApiKey, setLitmediaApiKeyState] = useState("");
   const [showLitmediaKey, setShowLitmediaKey] = useState(false);
+  const [minimaxApiKey, setMinimaxApiKeyState] = useState("");
+  const [showMinimaxKey, setShowMinimaxKey] = useState(false);
   const [litmediaConnecting, setLitmediaConnecting] = useState(false);
   const [litmediaAuthMsg, setLitmediaAuthMsg] = useState("");
   const [cookieStatus, setCookieStatus] = useState<{ hasCookies: boolean; size: number; uploadedAt?: string; expiresAt?: string; isExpired?: boolean } | null>(null);
@@ -84,6 +86,7 @@ function SettingsContent() {
       setAiApiKeyState(getApiKey("ai_api_key"));
       setOpenaiApiKeyState(getApiKey("openai_api_key"));
       setLitmediaApiKeyState(getApiKey("litmedia_api_key"));
+      setMinimaxApiKeyState(getApiKey("minimax_api_key"));
       setChannelCount(getChannels().length);
       // モデル選択はpullでサーバーの共有値がlocalStorageに反映された後に読む
       setAiModelGenerate(getAiModel("generate"));
@@ -244,6 +247,7 @@ function SettingsContent() {
     setApiKey("ai_api_key", aiApiKey);
     setApiKey("openai_api_key", openaiApiKey);
     setApiKey("litmedia_api_key", litmediaApiKey);
+    setApiKey("minimax_api_key", minimaxApiKey);
     setAiModel("generate", aiModelGenerate);
     setAiModel("check", aiModelCheck);
     // サーバーにも共有設定を保存
@@ -476,6 +480,32 @@ function SettingsContent() {
             <button type="button" onClick={() => setShowLitmediaKey(!showLitmediaKey)}
               className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
               {showLitmediaKey ? "隠す" : "表示"}
+            </button>
+          </div>
+        </div>
+
+        {/* MiniMax H3 */}
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-semibold mb-1">MiniMax APIキー</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            動画作成の「AI動画 (MiniMax H3)」で使います。実写風の短いクリップを、生成した基本画像から作れます。
+            キーは{" "}
+            <a href="https://platform.minimax.io/" target="_blank" rel="noopener noreferrer" className="text-accent underline">
+              platform.minimax.io
+            </a>{" "}
+            で発行します(目安: 768Pで約$0.08/秒、2Kで約$0.13/秒)
+          </p>
+          <div className="relative">
+            <input
+              type={showMinimaxKey ? "text" : "password"}
+              value={minimaxApiKey}
+              onChange={(e) => setMinimaxApiKeyState(e.target.value)}
+              placeholder="MiniMax APIキー"
+              className="w-full px-4 py-2.5 pr-16 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+            />
+            <button type="button" onClick={() => setShowMinimaxKey(!showMinimaxKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+              {showMinimaxKey ? "隠す" : "表示"}
             </button>
           </div>
         </div>

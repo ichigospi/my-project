@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { submitTextToVideo, LitMediaError } from "@/lib/litmedia";
-import { saveAsset, assetUrl, addToLibrary } from "@/lib/video-assets";
+import { submitVideo, MiniMaxError } from "@/lib/minimax-h3";
+import { saveAsset, assetUrl, addToLibrary, assetToDataUrl } from "@/lib/video-assets";
 
 export const maxDuration = 300;
 
 // AI素材の生成を開始する。
-// openai_image は同期(即URLを返す)、sora_video / litvideo_video は taskId を返して
-// /api/video/asset-status でポーリングする。
+// openai_image は同期(即URLを返す)、sora_video / litvideo_video / minimax_h3_video は
+// taskId を返して /api/video/asset-status でポーリングする。
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const {
@@ -17,6 +18,9 @@ export async function POST(request: NextRequest) {
     openaiApiKey,
     litmediaApiKey,
     litmediaModelId,
+    minimaxApiKey,
+    minimaxResolution,
+    imageUrl, // 指定すると画像→動画(開始フレームとして使う)
   } = body;
 
   if (!provider || !prompt) {
@@ -79,11 +83,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "generating", taskId });
     }
 
+    if (provider === "minimax_h3_video") {
+      if (!minimaxApiKey) return NextResponse.json({ error: "MiniMax APIキーが必要です" }, { status: 400 });
+      // 自前の素材URLは外部から見えないので base64 にして渡す
+      const imageDataUrl = imageUrl ? await assetToDataUrl(String(imageUrl)) : undefined;
+      const taskId = await submitVideo(minimaxApiKey, {
+        prompt,
+        imageDataUrl,
+        aspect,
+        duration,
+        resolution: minimaxResolution,
+      });
+      return NextResponse.json({ status: "generating", taskId });
+    }
+
     return NextResponse.json({ error: `不明なprovider: ${provider}` }, { status: 400 });
   } catch (e) {
     console.error("POST /api/video/generate-asset", e);
     if (e instanceof LitMediaError) {
       return NextResponse.json({ error: `LitMedia: ${e.message} (code: ${e.code})` }, { status: 502 });
+    }
+    if (e instanceof MiniMaxError) {
+      return NextResponse.json({ error: `MiniMax: ${e.message} (code: ${e.code})` }, { status: 502 });
     }
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

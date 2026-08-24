@@ -4,7 +4,7 @@
 // 開いたときに 404 なら再生成を促す。
 
 export type VideoAspect = "9:16" | "16:9" | "1:1";
-export type AssetProvider = "openai_image" | "sora_video" | "litvideo_video" | "upload" | "none";
+export type AssetProvider = "openai_image" | "sora_video" | "litvideo_video" | "minimax_h3_video" | "upload" | "none";
 export type AssetStatus = "none" | "generating" | "ready" | "error";
 
 export interface VideoTelop {
@@ -30,6 +30,13 @@ export interface VideoScene {
   assetUrls?: string[]; // シーン内カット割り用の素材リスト(順番に切り替わる)
   assetTaskId?: string;
   assetError?: string;
+  // ---- 画像→動画(MiniMax H3)用 ----
+  // 先に基本画像を作り、それを開始フレームにして動かす。
+  sourceImageUrl?: string; // 元になる基本画像
+  sourceImageStatus?: AssetStatus;
+  sourceImageError?: string;
+  motionPrompt?: string; // 動かし方の指示(英語)。空なら visualPrompt を使う
+  minimaxResolution?: string; // 768P(既定) / 2K
   mute?: boolean;
   zoom?: boolean; // 画像素材をゆっくりズームさせる(既定: 有効)
   narrationUrl?: string; // TTSで生成したナレーション音声

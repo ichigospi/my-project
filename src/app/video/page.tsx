@@ -1,7 +1,7 @@
 "use client";
 
 // 動画作成ページ: 台本(/create)からシーン構成を生成し、
-// AI素材(OpenAI画像 / Sora動画 / LitVideo動画)や手持ち素材を割り当てて、
+// AI素材(OpenAI画像 / Sora動画 / LitVideo動画 / MiniMax H3動画)や手持ち素材を割り当てて、
 // テロップ・BGM付きでレンダリングする。
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -25,6 +25,7 @@ const SOURCE_LABELS: Record<string, string> = {
   openai_image: "AI画像",
   sora_video: "Sora",
   litvideo_video: "LitVideo",
+  minimax_h3_video: "MiniMax H3",
   upload: "アップロード",
 };
 
@@ -41,9 +42,28 @@ const PROVIDER_OPTIONS: { id: AssetProvider; label: string; needs: string }[] = 
   { id: "openai_image", label: "AI画像 (gpt-image-1)", needs: "OpenAIキー" },
   { id: "litvideo_video", label: "AI動画 (LitVideo)", needs: "LitMediaキー" },
   { id: "sora_video", label: "AI動画 (Sora)", needs: "OpenAIキー" },
+  { id: "minimax_h3_video", label: "AI動画 (MiniMax H3・実写風/画像から)", needs: "MiniMaxキー" },
   { id: "upload", label: "手持ち素材", needs: "" },
   { id: "none", label: "背景色のみ", needs: "" },
 ];
+
+// H3の画質(公式APIの単価目安)
+const MINIMAX_RESOLUTION_OPTIONS = [
+  { id: "768P", label: "768P(標準・約$0.08/秒)" },
+  { id: "2K", label: "2K(高画質・約$0.13/秒)" },
+];
+
+// 生成ボタンとプロンプト欄を出すAI素材プロバイダ
+const AI_PROVIDERS: AssetProvider[] = ["openai_image", "sora_video", "litvideo_video", "minimax_h3_video"];
+
+function isAiProvider(provider: AssetProvider): boolean {
+  return AI_PROVIDERS.includes(provider);
+}
+
+// H3には「動かし方」を渡す。未入力なら画のプロンプトで代用する
+function assetPromptOf(scene: VideoScene): string {
+  return scene.provider === "minimax_h3_video" ? scene.motionPrompt || scene.visualPrompt : scene.visualPrompt;
+}
 
 interface PlanScene {
   section?: string;
@@ -51,6 +71,7 @@ interface PlanScene {
   duration?: number;
   telops?: { text: string; start?: number; end?: number }[];
   visualPrompt?: string;
+  motionPrompt?: string;
 }
 
 function VideoPageInner() {
@@ -68,6 +89,8 @@ function VideoPageInner() {
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [libraryPersistent, setLibraryPersistent] = useState(true);
   const [libraryOpenFor, setLibraryOpenFor] = useState<string | null>(null);
+  // ライブラリから選んだ素材の入れ先(シーン素材 or H3の元画像)
+  const [libraryMode, setLibraryMode] = useState<"asset" | "source">("asset");
   const [showLibrary, setShowLibrary] = useState(false);
   const currentRef = useRef<VideoProject | null>(null);
   currentRef.current = current;
@@ -191,13 +214,16 @@ function VideoPageInner() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "シーン構成の生成に失敗しました");
+      const minimaxKey = getApiKey("minimax_api_key");
       const litmediaKey = getApiKey("litmedia_api_key");
       const openaiKey = getApiKey("openai_api_key");
-      const defaultProvider: AssetProvider = litmediaKey
-        ? "litvideo_video"
-        : openaiKey
-          ? "openai_image"
-          : "none";
+      const defaultProvider: AssetProvider = minimaxKey
+        ? "minimax_h3_video"
+        : litmediaKey
+          ? "litvideo_video"
+          : openaiKey
+            ? "openai_image"
+            : "none";
       const scenes: VideoScene[] = (data.scenes as PlanScene[]).map((s) => ({
         id: genVideoId(),
         section: s.section || "",
@@ -205,6 +231,7 @@ function VideoPageInner() {
         duration: Math.min(Math.max(Number(s.duration) || 6, 2), 120),
         telops: (s.telops || []).filter((t) => t.text).map((t) => ({ ...t, anim: "fade" as const })),
         visualPrompt: s.visualPrompt || "",
+        motionPrompt: s.motionPrompt || "",
         provider: defaultProvider,
         assetStatus: "none",
       }));
@@ -224,6 +251,8 @@ function VideoPageInner() {
     if (!cur) return;
     const openaiApiKey = getApiKey("openai_api_key");
     const litmediaApiKey = getApiKey("litmedia_api_key");
+    const minimaxApiKey = getApiKey("minimax_api_key");
+    const isH3 = scene.provider === "minimax_h3_video";
     updateScene(scene.id, { assetStatus: "generating", assetError: undefined, assetUrl: undefined });
     try {
       const res = await fetch("/api/video/generate-asset", {
@@ -231,11 +260,15 @@ function VideoPageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: scene.provider,
-          prompt: scene.visualPrompt,
+          prompt: assetPromptOf(scene),
           aspect: cur.aspect,
           duration: scene.duration,
           openaiApiKey,
           litmediaApiKey,
+          minimaxApiKey,
+          // H3は基本画像があればそれを開始フレームにする(なければテキストから)
+          imageUrl: isH3 ? scene.sourceImageUrl : undefined,
+          minimaxResolution: isH3 ? scene.minimaxResolution : undefined,
         }),
       });
       const data = await res.json();
@@ -251,15 +284,51 @@ function VideoPageInner() {
     }
   }, [updateScene, appendAsset, loadLibrary]);
 
+  // H3の画像→動画で使う「基本画像」を生成する(gpt-image-1)
+  const generateSourceImage = useCallback(async (scene: VideoScene) => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    const openaiApiKey = getApiKey("openai_api_key");
+    if (!openaiApiKey) {
+      updateScene(scene.id, {
+        sourceImageStatus: "error",
+        sourceImageError: "設定ページでOpenAI APIキーを設定してください",
+      });
+      return;
+    }
+    updateScene(scene.id, { sourceImageStatus: "generating", sourceImageError: undefined });
+    try {
+      const res = await fetch("/api/video/generate-asset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "openai_image",
+          prompt: scene.visualPrompt,
+          aspect: cur.aspect,
+          openaiApiKey,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "基本画像の生成に失敗しました");
+      updateScene(scene.id, { sourceImageUrl: data.url, sourceImageStatus: "ready" });
+      loadLibrary();
+    } catch (e) {
+      updateScene(scene.id, {
+        sourceImageStatus: "error",
+        sourceImageError: String(e instanceof Error ? e.message : e),
+      });
+    }
+  }, [updateScene, loadLibrary]);
+
   const handleGenerateAll = async () => {
     const cur = currentRef.current;
     if (!cur) return;
     for (const scene of cur.scenes) {
       if (
-        (scene.provider === "openai_image" || scene.provider === "sora_video" || scene.provider === "litvideo_video") &&
+        isAiProvider(scene.provider) &&
         scene.assetStatus !== "ready" &&
         scene.assetStatus !== "generating" &&
-        scene.visualPrompt
+        assetPromptOf(scene)
       ) {
         await generateAsset(scene);
       }
@@ -280,9 +349,10 @@ function VideoPageInner() {
             body: JSON.stringify({
               provider: scene.provider,
               taskId: scene.assetTaskId,
-              prompt: scene.visualPrompt,
+              prompt: assetPromptOf(scene),
               openaiApiKey: getApiKey("openai_api_key"),
               litmediaApiKey: getApiKey("litmedia_api_key"),
+              minimaxApiKey: getApiKey("minimax_api_key"),
             }),
           });
           const data = await res.json();
@@ -400,8 +470,17 @@ function VideoPageInner() {
   }, [appendAsset]);
 
   // ---- 素材ライブラリ ----
+  // ライブラリ一覧(元画像モードでは画像だけを出す)
+  const libraryEntriesFor = (mode: "asset" | "source") =>
+    library.filter((e) => (mode === "source" ? e.kind === "image" : e.kind !== "audio"));
+
   const pickFromLibrary = (sceneId: string, entry: LibraryEntry) => {
-    appendAsset(sceneId, `/api/video/assets/${entry.id}`);
+    const url = `/api/video/assets/${entry.id}`;
+    if (libraryMode === "source") {
+      updateScene(sceneId, { sourceImageUrl: url, sourceImageStatus: "ready", sourceImageError: undefined });
+    } else {
+      appendAsset(sceneId, url);
+    }
     setLibraryOpenFor(null);
   };
 
@@ -843,10 +922,10 @@ function VideoPageInner() {
                           <option key={o.id} value={o.id}>{o.label}</option>
                         ))}
                       </select>
-                      {(scene.provider === "openai_image" || scene.provider === "sora_video" || scene.provider === "litvideo_video") && (
+                      {isAiProvider(scene.provider) && (
                         <button
                           onClick={() => generateAsset(scene)}
-                          disabled={scene.assetStatus === "generating" || !scene.visualPrompt}
+                          disabled={scene.assetStatus === "generating" || !assetPromptOf(scene)}
                           className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors disabled:opacity-50"
                         >
                           {scene.assetStatus === "generating" ? "生成中..." : scene.assetStatus === "ready" ? "再生成" : "生成"}
@@ -869,6 +948,7 @@ function VideoPageInner() {
                       )}
                       <button
                         onClick={() => {
+                          setLibraryMode("asset");
                           setLibraryOpenFor(libraryOpenFor === scene.id ? null : scene.id);
                           loadLibrary();
                         }}
@@ -880,12 +960,16 @@ function VideoPageInner() {
                     </div>
                     {libraryOpenFor === scene.id && (
                       <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-100 max-h-64 overflow-y-auto">
-                        <p className="text-xs text-gray-500 mb-2">素材ライブラリから選ぶ(過去に生成・アップロードした素材)</p>
-                        {library.filter((e) => e.kind !== "audio").length === 0 ? (
+                        <p className="text-xs text-gray-500 mb-2">
+                          {libraryMode === "source"
+                            ? "H3で動かす元画像を選ぶ(画像のみ)"
+                            : "素材ライブラリから選ぶ(過去に生成・アップロードした素材)"}
+                        </p>
+                        {libraryEntriesFor(libraryMode).length === 0 ? (
                           <p className="text-xs text-gray-400">まだ素材がありません</p>
                         ) : (
                           <div className="grid grid-cols-3 gap-2">
-                            {library.filter((e) => e.kind !== "audio").map((entry) => (
+                            {libraryEntriesFor(libraryMode).map((entry) => (
                               <button
                                 key={entry.id}
                                 onClick={() => pickFromLibrary(scene.id, entry)}
@@ -908,15 +992,98 @@ function VideoPageInner() {
                       </div>
                     )}
                   </div>
-                  {(scene.provider === "openai_image" || scene.provider === "sora_video" || scene.provider === "litvideo_video") && (
+                  {isAiProvider(scene.provider) && (
                     <div>
-                      <label className="text-xs text-gray-500">生成プロンプト(英語推奨)</label>
+                      <label className="text-xs text-gray-500">
+                        {scene.provider === "minimax_h3_video" ? "画のプロンプト(基本画像用・英語推奨)" : "生成プロンプト(英語推奨)"}
+                      </label>
                       <textarea
                         value={scene.visualPrompt}
                         onChange={(e) => updateScene(scene.id, { visualPrompt: e.target.value })}
                         rows={2}
                         className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm mt-1 font-mono"
                       />
+                    </div>
+                  )}
+                  {scene.provider === "minimax_h3_video" && (
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 space-y-3">
+                      <div>
+                        <label className="text-xs text-gray-500">元になる基本画像(この画像を動かします)</label>
+                        <div className="flex items-start gap-2 mt-1">
+                          {scene.sourceImageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={scene.sourceImageUrl}
+                              alt=""
+                              className="w-20 h-28 object-cover rounded-lg border border-gray-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-20 h-28 shrink-0 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-[10px] text-gray-400 text-center px-1">
+                              画像なし
+                              <br />
+                              (テキストから生成)
+                            </div>
+                          )}
+                          <div className="flex flex-col gap-1.5">
+                            <button
+                              onClick={() => generateSourceImage(scene)}
+                              disabled={scene.sourceImageStatus === "generating" || !scene.visualPrompt}
+                              className="px-3 py-1.5 rounded-lg border border-accent text-accent text-xs hover:bg-accent hover:text-white transition-colors disabled:opacity-50"
+                            >
+                              {scene.sourceImageStatus === "generating"
+                                ? "生成中..."
+                                : scene.sourceImageUrl
+                                  ? "画像を作り直す"
+                                  : "上のプロンプトで基本画像を生成"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setLibraryMode("source");
+                                setLibraryOpenFor(libraryOpenFor === scene.id ? null : scene.id);
+                                loadLibrary();
+                              }}
+                              className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:border-accent hover:text-accent"
+                            >
+                              📁 ライブラリから選ぶ
+                            </button>
+                            {scene.sourceImageUrl && (
+                              <button
+                                onClick={() => updateScene(scene.id, { sourceImageUrl: undefined, sourceImageStatus: "none" })}
+                                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 hover:border-danger hover:text-danger"
+                              >
+                                画像を外す
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {scene.sourceImageStatus === "error" && (
+                          <p className="text-xs text-danger mt-1">{scene.sourceImageError}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">動かし方(H3に渡すプロンプト・英語推奨)</label>
+                        <textarea
+                          value={scene.motionPrompt || ""}
+                          onChange={(e) => updateScene(scene.id, { motionPrompt: e.target.value })}
+                          rows={2}
+                          placeholder="slow push in, candle flame flickers gently, dust motes drifting in the light"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-accent outline-none text-sm mt-1 font-mono"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">空のままなら上の画のプロンプトをそのまま使います</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs text-gray-500">画質</label>
+                        <select
+                          value={scene.minimaxResolution || "768P"}
+                          onChange={(e) => updateScene(scene.id, { minimaxResolution: e.target.value })}
+                          className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white"
+                        >
+                          {MINIMAX_RESOLUTION_OPTIONS.map((r) => (
+                            <option key={r.id} value={r.id}>{r.label}</option>
+                          ))}
+                        </select>
+                        <span className="text-[10px] text-gray-400">H3のクリップは4〜15秒。範囲外の尺は自動で丸められます</span>
+                      </div>
                     </div>
                   )}
                   {scene.assetStatus === "error" && (

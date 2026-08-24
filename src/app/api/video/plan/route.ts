@@ -33,7 +33,8 @@ ${isLongForm
   : `- narration はそのシーンで読み上げる/伝える内容の要約(台本の言葉を活かす)`}
 - telops は画面に出す字幕。1テロップ15〜25文字、1シーンに${isLongForm ? "2〜5" : "1〜3"}個。start/end はシーン内の秒数で、シーンの尺に収める
 - visualPrompt はそのシーンの映像をAI生成するための英語プロンプト。被写体・雰囲気・カメラワークを具体的に。テキスト描画の指示は入れない。動画全体でトーン(色調・世界観)を統一する。短いクリップをループ再生して使うため、雲・光・水面・炎・パーティクル・風景のような「始まりと終わりが目立たない環境的な動き」の映像を基本にする(seamless loop, ambient motion)
-- 実在の人物名・ロゴ・著作物は visualPrompt に入れない
+- motionPrompt は visualPrompt の画像を動画として動かすための英語プロンプト。カメラの動き(slow push in / gentle pan / static)と被写体の動き(炎の揺らぎ・風・光の移ろい・微かな呼吸)だけを1〜2文で短く書く。画面の中身を作り直す指示や新しい被写体は書かない
+- 実在の人物名・ロゴ・著作物は visualPrompt / motionPrompt に入れない
 
 以下のJSON配列のみを出力:
 [
@@ -42,7 +43,8 @@ ${isLongForm
     "narration": "シーンで読み上げる文章",
     "duration": ${isLongForm ? 30 : 6},
     "telops": [{"text": "テロップ文", "start": 0.5, "end": 5.5}],
-    "visualPrompt": "cinematic ..."
+    "visualPrompt": "cinematic ...",
+    "motionPrompt": "slow push in, candle flame flickers gently, dust motes drifting in the light"
   }
 ]`;
 

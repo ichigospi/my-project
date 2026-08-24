@@ -57,6 +57,24 @@ export async function importAssetFromUrl(url: string, fallbackExt: string): Prom
   return saveAsset(buf, ext);
 }
 
+/** 素材URLを data URI に変換する(外部APIに画像そのものを渡すとき用)。
+ * 自前の素材は /api/video/assets/... で外部から見えないため、base64にして送る。 */
+export async function assetToDataUrl(url: string): Promise<string> {
+  if (url.startsWith("data:")) return url;
+  const m = url.match(/^\/api\/video\/assets\/([^/?#]+)$/);
+  if (!m) {
+    if (/^https?:\/\//.test(url)) return url;
+    throw new Error(`素材URLを解決できません: ${url}`);
+  }
+  const localPath = assetPath(decodeURIComponent(m[1]));
+  if (!localPath || !existsSync(localPath)) {
+    throw new Error("元画像が見つかりません。画像を生成し直してください");
+  }
+  const ext = (localPath.split(".").pop() || "png").toLowerCase();
+  const buf = await readFile(localPath);
+  return `data:${CONTENT_TYPES[ext] || "image/png"};base64,${buf.toString("base64")}`;
+}
+
 // ---- 素材ライブラリ(生成済みAI素材の使い回し用インデックス) ----
 // 素材ファイルと同じディレクトリの library.json に保存する。
 // VIDEO_ASSET_DIR を永続ボリュームにすれば再デプロイ後も使い回せる。
