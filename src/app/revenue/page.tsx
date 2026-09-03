@@ -184,7 +184,7 @@ export default function RevenueCalendarPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b1020] text-white">
+    <div className="min-h-screen bg-white text-gray-900">
       <RevenueNav />
 
       <main className="max-w-lg mx-auto px-4 pb-32">
@@ -192,7 +192,7 @@ export default function RevenueCalendarPage() {
         <div className="flex items-center justify-between mt-4">
           <button
             onClick={() => shiftMonth(-1)}
-            className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/70 active:scale-95 transition"
+            className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 active:scale-95 transition"
             aria-label="前の月"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -204,12 +204,12 @@ export default function RevenueCalendarPage() {
             <div className="text-xl font-bold tracking-tight">
               {year}年{month}月
             </div>
-            <div className="text-[11px] text-white/40">タップで今月へ</div>
+            <div className="text-[11px] text-gray-400">タップで今月へ</div>
           </button>
 
           <button
             onClick={() => shiftMonth(1)}
-            className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/70 active:scale-95 transition"
+            className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 active:scale-95 transition"
             aria-label="次の月"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -219,13 +219,13 @@ export default function RevenueCalendarPage() {
         </div>
 
         {/* カレンダー */}
-        <section className="mt-4 rounded-3xl bg-white/[0.04] border border-white/10 p-3">
+        <section className="mt-4 rounded-3xl bg-white border border-gray-200 shadow-sm p-3">
           <div className="grid grid-cols-7 mb-1">
             {DOW.map((d, i) => (
               <div
                 key={d}
                 className={`text-center text-[11px] font-semibold py-1 ${
-                  i === 0 ? "text-rose-300/80" : i === 6 ? "text-sky-300/80" : "text-white/40"
+                  i === 0 ? "text-rose-500/80" : i === 6 ? "text-sky-500" : "text-gray-400"
                 }`}
               >
                 {d}
@@ -246,21 +246,21 @@ export default function RevenueCalendarPage() {
                   onClick={() => openDay(key)}
                   className={`h-16 rounded-xl flex flex-col items-center justify-start pt-1.5 px-0.5 border transition active:scale-95 ${
                     isToday
-                      ? "bg-emerald-400/10 border-emerald-400/60"
+                      ? "bg-emerald-50 border-emerald-500"
                       : net !== undefined
-                      ? "bg-white/[0.06] border-white/10"
-                      : "bg-transparent border-white/[0.06]"
+                      ? "bg-gray-50 border-gray-200"
+                      : "bg-transparent border-gray-100"
                   }`}
                 >
                   <span
                     className={`text-[11px] font-semibold leading-none ${
                       isToday
-                        ? "text-emerald-300"
+                        ? "text-emerald-600"
                         : dow === 0
-                        ? "text-rose-300/90"
+                        ? "text-rose-500/90"
                         : dow === 6
-                        ? "text-sky-300/90"
-                        : "text-white/70"
+                        ? "text-sky-500"
+                        : "text-gray-600"
                     }`}
                   >
                     {day}
@@ -268,7 +268,7 @@ export default function RevenueCalendarPage() {
                   {net !== undefined && (
                     <span
                       className={`mt-auto mb-1.5 text-[11px] font-bold leading-none tracking-tight ${
-                        net >= 0 ? "text-emerald-300" : "text-rose-300"
+                        net >= 0 ? "text-emerald-600" : "text-rose-500"
                       }`}
                     >
                       {compactAmount(net)}
@@ -281,20 +281,20 @@ export default function RevenueCalendarPage() {
         </section>
 
         {/* 月サマリー */}
-        <section className="mt-4 grid grid-cols-3 rounded-3xl bg-white/[0.04] border border-white/10 overflow-hidden">
+        <section className="mt-4 grid grid-cols-3 rounded-3xl bg-white border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-3 text-center">
-            <div className="text-[11px] text-white/40">収入</div>
-            <div className="mt-1 text-emerald-300 font-bold text-sm tracking-tight">{yen(summary.income)}</div>
+            <div className="text-[11px] text-gray-400">収入</div>
+            <div className="mt-1 text-emerald-600 font-bold text-sm tracking-tight">{yen(summary.income)}</div>
           </div>
-          <div className="p-3 text-center border-x border-white/10">
-            <div className="text-[11px] text-white/40">支出</div>
-            <div className="mt-1 text-rose-300 font-bold text-sm tracking-tight">{yen(summary.expense)}</div>
+          <div className="p-3 text-center border-x border-gray-200">
+            <div className="text-[11px] text-gray-400">支出</div>
+            <div className="mt-1 text-rose-500 font-bold text-sm tracking-tight">{yen(summary.expense)}</div>
           </div>
           <div className="p-3 text-center">
-            <div className="text-[11px] text-white/40">合計</div>
+            <div className="text-[11px] text-gray-400">合計</div>
             <div
               className={`mt-1 font-bold text-sm tracking-tight ${
-                summary.net >= 0 ? "text-white" : "text-rose-300"
+                summary.net >= 0 ? "text-gray-900" : "text-rose-500"
               }`}
             >
               {yen(summary.net)}
@@ -303,30 +303,30 @@ export default function RevenueCalendarPage() {
         </section>
 
         {error && !selected && (
-          <div className="mt-4 rounded-2xl bg-rose-500/10 border border-rose-400/30 text-rose-200 text-sm px-4 py-3">
+          <div className="mt-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-3">
             {error}
           </div>
         )}
 
         {/* 当月の記録一覧 */}
         <section className="mt-6">
-          <h2 className="text-sm font-semibold text-white/50 px-1">
+          <h2 className="text-sm font-semibold text-gray-500 px-1">
             {month}月の記録
-            <span className="ml-2 text-white/30">{summary.count}件</span>
+            <span className="ml-2 text-gray-400">{summary.count}件</span>
           </h2>
 
           {loading ? (
             <div className="mt-3 space-y-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-14 rounded-2xl bg-white/[0.04] animate-pulse" />
+                <div key={i} className="h-14 rounded-2xl bg-gray-100 animate-pulse" />
               ))}
             </div>
           ) : grouped.length === 0 ? (
-            <div className="mt-3 rounded-3xl border border-dashed border-white/15 py-10 text-center">
-              <p className="text-white/40 text-sm">まだ記録がありません</p>
+            <div className="mt-3 rounded-3xl border border-dashed border-gray-200 py-10 text-center">
+              <p className="text-gray-400 text-sm">まだ記録がありません</p>
               <button
                 onClick={openToday}
-                className="mt-3 px-4 py-2 rounded-xl bg-emerald-400 text-[#0b1020] text-sm font-bold active:scale-95 transition"
+                className="mt-3 px-4 py-2 rounded-xl bg-emerald-500 text-white text-sm font-bold active:scale-95 transition"
               >
                 今日の売上を入力
               </button>
@@ -334,14 +334,14 @@ export default function RevenueCalendarPage() {
           ) : (
             <div className="mt-3 space-y-3">
               {grouped.map((group) => (
-                <div key={group.date} className="rounded-2xl bg-white/[0.04] border border-white/10 overflow-hidden">
+                <div key={group.date} className="rounded-2xl bg-white border border-gray-200 shadow-sm overflow-hidden">
                   <button
                     onClick={() => openDay(group.date)}
-                    className="w-full flex items-center justify-between px-4 py-2 bg-white/[0.03] active:bg-white/[0.06] transition"
+                    className="w-full flex items-center justify-between px-4 py-2 bg-gray-50 active:bg-gray-100 transition"
                   >
-                    <span className="text-[12px] text-white/50">{formatDateLabel(group.date)}</span>
+                    <span className="text-[12px] text-gray-500">{formatDateLabel(group.date)}</span>
                     <span
-                      className={`text-[12px] font-bold ${group.net >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+                      className={`text-[12px] font-bold ${group.net >= 0 ? "text-emerald-600" : "text-rose-500"}`}
                     >
                       {yen(group.net)}
                     </span>
@@ -349,21 +349,21 @@ export default function RevenueCalendarPage() {
                   {group.entries.map((entry) => (
                     <div
                       key={entry.id}
-                      className="flex items-center gap-3 px-4 py-3 border-t border-white/5"
+                      className="flex items-center gap-3 px-4 py-3 border-t border-gray-100"
                     >
                       <button onClick={() => startEdit(entry)} className="flex-1 text-left min-w-0">
                         <div className="text-sm font-medium truncate">
                           {entry.label || (entry.type === "expense" ? "支出" : "売上")}
                         </div>
                         {(entry.category || entry.memo) && (
-                          <div className="text-[11px] text-white/40 truncate">
+                          <div className="text-[11px] text-gray-400 truncate">
                             {[entry.category, entry.memo].filter(Boolean).join(" / ")}
                           </div>
                         )}
                       </button>
                       <div
                         className={`text-sm font-bold tracking-tight ${
-                          entry.type === "expense" ? "text-rose-300" : "text-emerald-300"
+                          entry.type === "expense" ? "text-rose-500" : "text-emerald-600"
                         }`}
                       >
                         {entry.type === "expense" ? "-" : "+"}
@@ -371,7 +371,7 @@ export default function RevenueCalendarPage() {
                       </div>
                       <button
                         onClick={() => remove(entry.id)}
-                        className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/30 active:text-rose-300 transition"
+                        className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 active:text-rose-500 transition"
                         aria-label="削除"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -395,7 +395,7 @@ export default function RevenueCalendarPage() {
         <div className="max-w-lg mx-auto px-4">
           <button
             onClick={openToday}
-            className="pointer-events-auto w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 text-[#0b1020] font-bold shadow-xl shadow-emerald-500/20 active:scale-[0.98] transition"
+            className="pointer-events-auto w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold shadow-xl shadow-emerald-500/20 active:scale-[0.98] transition"
           >
             ＋ 今日の売上を入力
           </button>
@@ -405,24 +405,24 @@ export default function RevenueCalendarPage() {
       {/* 日別の入力シート */}
       {selected && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeSheet} />
+          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={closeSheet} />
 
           <div
-            className="relative w-full max-w-lg bg-[#111834] border-t border-white/10 rounded-t-3xl max-h-[88vh] overflow-y-auto"
+            className="relative w-full max-w-lg bg-white border-t border-gray-200 rounded-t-3xl max-h-[88vh] overflow-y-auto"
             style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
           >
-            <div className="sticky top-0 bg-[#111834] px-5 pt-3 pb-3 border-b border-white/10">
-              <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-3" />
+            <div className="sticky top-0 bg-white px-5 pt-3 pb-3 border-b border-gray-200">
+              <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-3" />
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-bold">{formatDateLabel(selected)}</div>
-                  <div className="text-[11px] text-white/40">
+                  <div className="text-[11px] text-gray-400">
                     {selectedEntries.length}件 /{" "}
                     <span
                       className={
                         selectedEntries.reduce((s, e) => s + signedAmount(e), 0) >= 0
-                          ? "text-emerald-300"
-                          : "text-rose-300"
+                          ? "text-emerald-600"
+                          : "text-rose-500"
                       }
                     >
                       {yen(selectedEntries.reduce((s, e) => s + signedAmount(e), 0))}
@@ -431,7 +431,7 @@ export default function RevenueCalendarPage() {
                 </div>
                 <button
                   onClick={closeSheet}
-                  className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center text-white/50"
+                  className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500"
                   aria-label="閉じる"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -450,8 +450,8 @@ export default function RevenueCalendarPage() {
                       key={entry.id}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl border ${
                         editingId === entry.id
-                          ? "bg-emerald-400/10 border-emerald-400/40"
-                          : "bg-white/[0.04] border-white/10"
+                          ? "bg-emerald-50 border-emerald-500"
+                          : "bg-gray-50 border-gray-200"
                       }`}
                     >
                       <button onClick={() => startEdit(entry)} className="flex-1 text-left min-w-0">
@@ -459,14 +459,14 @@ export default function RevenueCalendarPage() {
                           {entry.label || (entry.type === "expense" ? "支出" : "売上")}
                         </div>
                         {(entry.category || entry.memo) && (
-                          <div className="text-[11px] text-white/40 truncate">
+                          <div className="text-[11px] text-gray-400 truncate">
                             {[entry.category, entry.memo].filter(Boolean).join(" / ")}
                           </div>
                         )}
                       </button>
                       <span
                         className={`text-sm font-bold ${
-                          entry.type === "expense" ? "text-rose-300" : "text-emerald-300"
+                          entry.type === "expense" ? "text-rose-500" : "text-emerald-600"
                         }`}
                       >
                         {entry.type === "expense" ? "-" : "+"}
@@ -474,7 +474,7 @@ export default function RevenueCalendarPage() {
                       </span>
                       <button
                         onClick={() => remove(entry.id)}
-                        className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/30 active:text-rose-300"
+                        className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 active:text-rose-500"
                         aria-label="削除"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -487,9 +487,9 @@ export default function RevenueCalendarPage() {
               )}
 
               {/* 入力フォーム */}
-              <div className="rounded-2xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+              <div className="rounded-2xl bg-gray-50 border border-gray-200 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-white/50">
+                  <span className="text-[11px] font-semibold text-gray-500">
                     {editingId ? "記録を編集" : "新しく記録する"}
                   </span>
                   {editingId && (
@@ -498,7 +498,7 @@ export default function RevenueCalendarPage() {
                         setEditingId(null);
                         setForm(EMPTY_FORM);
                       }}
-                      className="text-[11px] text-white/40 underline"
+                      className="text-[11px] text-gray-400 underline"
                     >
                       新規入力に戻す
                     </button>
@@ -506,7 +506,7 @@ export default function RevenueCalendarPage() {
                 </div>
 
                 {/* 収入 / 支出 */}
-                <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-black/20">
+                <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-gray-100">
                   {(["income", "expense"] as RevenueType[]).map((t) => (
                     <button
                       key={t}
@@ -514,9 +514,9 @@ export default function RevenueCalendarPage() {
                       className={`py-2 rounded-lg text-sm font-semibold transition ${
                         form.type === t
                           ? t === "income"
-                            ? "bg-emerald-400 text-[#0b1020]"
-                            : "bg-rose-400 text-[#0b1020]"
-                          : "text-white/50"
+                            ? "bg-emerald-500 text-white"
+                            : "bg-rose-500 text-white"
+                          : "text-gray-500"
                       }`}
                     >
                       {t === "income" ? "収入" : "支出"}
@@ -525,16 +525,16 @@ export default function RevenueCalendarPage() {
                 </div>
 
                 {/* 金額 */}
-                <div className="flex items-end gap-2 border-b border-white/10 pb-2">
+                <div className="flex items-end gap-2 border-b border-gray-200 pb-2">
                   <input
                     type="text"
                     inputMode="numeric"
                     value={form.amount}
                     onChange={(e) => setForm({ ...form, amount: e.target.value })}
                     placeholder="0"
-                    className="flex-1 bg-transparent text-3xl font-bold tracking-tight outline-none placeholder:text-white/20"
+                    className="flex-1 bg-transparent text-3xl font-bold tracking-tight outline-none placeholder:text-gray-300"
                   />
-                  <span className="text-white/40 pb-1">円</span>
+                  <span className="text-gray-400 pb-1">円</span>
                 </div>
 
                 {/* 項目名 */}
@@ -544,7 +544,7 @@ export default function RevenueCalendarPage() {
                     value={form.label}
                     onChange={(e) => setForm({ ...form, label: e.target.value })}
                     placeholder="項目名（例: 売上、報酬）"
-                    className="w-full bg-black/20 rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-white/25 border border-white/10 focus:border-emerald-400/50"
+                    className="w-full bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-emerald-500"
                   />
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {QUICK_LABELS.map((l) => (
@@ -553,8 +553,8 @@ export default function RevenueCalendarPage() {
                         onClick={() => setForm({ ...form, label: l })}
                         className={`px-2.5 py-1 rounded-lg text-[11px] border transition ${
                           form.label === l
-                            ? "bg-white text-[#0b1020] border-white"
-                            : "bg-white/5 text-white/50 border-white/10"
+                            ? "bg-gray-900 text-white border-gray-900"
+                            : "bg-white text-gray-600 border-gray-200"
                         }`}
                       >
                         {l}
@@ -570,23 +570,23 @@ export default function RevenueCalendarPage() {
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
                     placeholder="カテゴリ（任意）"
-                    className="bg-black/20 rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-white/25 border border-white/10 focus:border-emerald-400/50"
+                    className="bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-emerald-500"
                   />
                   <input
                     type="text"
                     value={form.memo}
                     onChange={(e) => setForm({ ...form, memo: e.target.value })}
                     placeholder="メモ（任意）"
-                    className="bg-black/20 rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-white/25 border border-white/10 focus:border-emerald-400/50"
+                    className="bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-emerald-500"
                   />
                 </div>
 
-                {error && <div className="text-rose-300 text-[12px]">{error}</div>}
+                {error && <div className="text-rose-500 text-[12px]">{error}</div>}
 
                 <button
                   onClick={save}
                   disabled={saving}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-400 text-[#0b1020] font-bold disabled:opacity-50 active:scale-[0.98] transition"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold disabled:opacity-50 active:scale-[0.98] transition"
                 >
                   {saving ? "保存中..." : editingId ? "更新する" : "記録する"}
                 </button>
