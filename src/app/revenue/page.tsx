@@ -395,7 +395,7 @@ export default function RevenueCalendarPage() {
         <div className="max-w-lg mx-auto px-4">
           <button
             onClick={openToday}
-            className="pointer-events-auto w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold shadow-xl shadow-violet-500/20 active:scale-[0.98] transition"
+            className="pointer-events-auto w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-700 to-violet-400 text-white font-bold shadow-xl shadow-violet-500/25 active:scale-[0.98] transition"
           >
             ＋ 今日の売上を入力
           </button>
@@ -586,7 +586,7 @@ export default function RevenueCalendarPage() {
                 <button
                   onClick={save}
                   disabled={saving}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold disabled:opacity-50 active:scale-[0.98] transition"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-700 to-violet-400 text-white font-bold disabled:opacity-50 active:scale-[0.98] transition"
                 >
                   {saving ? "保存中..." : editingId ? "更新する" : "記録する"}
                 </button>

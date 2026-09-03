@@ -296,7 +296,7 @@ export default function RevenueStatsPage() {
                       <div
                         className={`h-full rounded-full ${
                           summary.net >= 0
-                            ? "bg-gradient-to-r from-violet-500 to-purple-500"
+                            ? "bg-gradient-to-r from-violet-700 to-violet-400"
                             : "bg-gradient-to-r from-rose-500 to-orange-500"
                         }`}
                         style={{ width: `${Math.max(width, 2)}%` }}
@@ -350,7 +350,7 @@ export default function RevenueStatsPage() {
                       <div
                         className={`h-full rounded-full ${
                           rankType === "income"
-                            ? "bg-gradient-to-r from-violet-500 to-purple-500"
+                            ? "bg-gradient-to-r from-violet-700 to-violet-400"
                             : "bg-gradient-to-r from-rose-500 to-orange-500"
                         }`}
                         style={{ width: `${Math.max(Math.round((r.total / rankingMax) * 100), 2)}%` }}
