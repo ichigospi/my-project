@@ -151,49 +151,49 @@ export default function RevenueStatsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b1020] text-white">
+    <div className="min-h-screen bg-white text-gray-900">
       <RevenueNav />
 
       <main className="max-w-lg mx-auto px-4 pb-16">
         {/* 累計 */}
-        <section className="mt-4 rounded-3xl p-5 bg-gradient-to-br from-emerald-400/20 via-teal-400/10 to-transparent border border-emerald-400/20">
-          <div className="text-[11px] font-semibold text-emerald-200/70">累計売上（全期間）</div>
+        <section className="mt-4 rounded-3xl p-5 bg-gradient-to-br from-violet-50 via-purple-50 to-white border border-violet-200">
+          <div className="text-[11px] font-semibold text-violet-700">累計売上（全期間）</div>
           <div className="mt-1 text-4xl font-bold tracking-tight">
             {allTime.income.toLocaleString("ja-JP")}
-            <span className="text-lg font-semibold text-white/50 ml-1">円</span>
+            <span className="text-lg font-semibold text-gray-500 ml-1">円</span>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-2xl bg-black/20 py-2.5">
-              <div className="text-[10px] text-white/40">累計支出</div>
-              <div className="text-sm font-bold text-rose-300 mt-0.5">{yen(allTime.expense)}</div>
+            <div className="rounded-2xl bg-white border border-gray-200 py-2.5">
+              <div className="text-[10px] text-gray-400">累計支出</div>
+              <div className="text-sm font-bold text-rose-500 mt-0.5">{yen(allTime.expense)}</div>
             </div>
-            <div className="rounded-2xl bg-black/20 py-2.5">
-              <div className="text-[10px] text-white/40">累計利益</div>
-              <div className={`text-sm font-bold mt-0.5 ${allTime.net >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+            <div className="rounded-2xl bg-white border border-gray-200 py-2.5">
+              <div className="text-[10px] text-gray-400">累計利益</div>
+              <div className={`text-sm font-bold mt-0.5 ${allTime.net >= 0 ? "text-violet-600" : "text-rose-500"}`}>
                 {yen(allTime.net)}
               </div>
             </div>
-            <div className="rounded-2xl bg-black/20 py-2.5">
-              <div className="text-[10px] text-white/40">記録件数</div>
+            <div className="rounded-2xl bg-white border border-gray-200 py-2.5">
+              <div className="text-[10px] text-gray-400">記録件数</div>
               <div className="text-sm font-bold mt-0.5">{allTime.count}件</div>
             </div>
           </div>
           {entries.length > 0 && (
-            <div className="mt-3 text-[11px] text-white/40">
+            <div className="mt-3 text-[11px] text-gray-400">
               {allFrom.replace(/-/g, "/")} 〜 {allTo.replace(/-/g, "/")}
             </div>
           )}
         </section>
 
         {error && (
-          <div className="mt-4 rounded-2xl bg-rose-500/10 border border-rose-400/30 text-rose-200 text-sm px-4 py-3">
+          <div className="mt-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-3">
             {error}
           </div>
         )}
 
         {/* 期間選択 */}
         <section className="mt-6">
-          <h2 className="text-sm font-semibold text-white/50 px-1">期間を絞って見る</h2>
+          <h2 className="text-sm font-semibold text-gray-500 px-1">期間を絞って見る</h2>
 
           <div className="mt-3 flex flex-wrap gap-1.5">
             {PRESETS.map((p) => (
@@ -202,8 +202,8 @@ export default function RevenueStatsPage() {
                 onClick={() => setPreset(p.key)}
                 className={`px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition active:scale-95 ${
                   preset === p.key
-                    ? "bg-white text-[#0b1020] border-white"
-                    : "bg-white/5 text-white/55 border-white/10"
+                    ? "bg-gray-900 text-white border-gray-900"
+                    : "bg-gray-50 text-gray-600 border-gray-200"
                 }`}
               >
                 {p.label}
@@ -216,88 +216,88 @@ export default function RevenueStatsPage() {
               type="date"
               value={from}
               onChange={(e) => setCustom("from", e.target.value)}
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-400/50 [color-scheme:dark]"
+              className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-violet-500"
             />
-            <span className="text-white/30">〜</span>
+            <span className="text-gray-400">〜</span>
             <input
               type="date"
               value={to}
               onChange={(e) => setCustom("to", e.target.value)}
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-400/50 [color-scheme:dark]"
+              className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-violet-500"
             />
           </div>
         </section>
 
         {/* 期間サマリー */}
-        <section className="mt-2 rounded-3xl bg-white/[0.04] border border-white/10 px-5 pt-4 pb-5">
+        <section className="mt-2 rounded-3xl bg-white border border-gray-200 shadow-sm px-5 pt-4 pb-5">
           <div
-            className={`font-bold tracking-tight text-emerald-300 leading-none ${
+            className={`font-bold tracking-tight text-violet-600 leading-none ${
               periodIncomeText.length > 9 ? "text-4xl" : "text-5xl"
             }`}
           >
             {periodIncomeText}
-            <span className="text-xl font-semibold text-white/40 ml-1.5">円</span>
+            <span className="text-xl font-semibold text-gray-400 ml-1.5">円</span>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl bg-black/20 px-3 py-2.5">
-              <div className="text-[10px] text-white/40">支出</div>
-              <div className="text-sm font-bold text-rose-300 mt-0.5">{yen(period.expense)}</div>
+            <div className="rounded-2xl bg-white border border-gray-200 px-3 py-2.5">
+              <div className="text-[10px] text-gray-400">支出</div>
+              <div className="text-sm font-bold text-rose-500 mt-0.5">{yen(period.expense)}</div>
             </div>
-            <div className="rounded-2xl bg-black/20 px-3 py-2.5">
-              <div className="text-[10px] text-white/40">差引合計</div>
-              <div className={`text-sm font-bold mt-0.5 ${period.net >= 0 ? "text-white" : "text-rose-300"}`}>
+            <div className="rounded-2xl bg-white border border-gray-200 px-3 py-2.5">
+              <div className="text-[10px] text-gray-400">差引合計</div>
+              <div className={`text-sm font-bold mt-0.5 ${period.net >= 0 ? "text-gray-900" : "text-rose-500"}`}>
                 {yen(period.net)}
               </div>
             </div>
-            <div className="rounded-2xl bg-black/20 px-3 py-2.5">
-              <div className="text-[10px] text-white/40">1日平均（{periodDays}日）</div>
+            <div className="rounded-2xl bg-white border border-gray-200 px-3 py-2.5">
+              <div className="text-[10px] text-gray-400">1日平均（{periodDays}日）</div>
               <div className="text-sm font-bold mt-0.5">{yen(Math.round(period.income / periodDays))}</div>
             </div>
-            <div className="rounded-2xl bg-black/20 px-3 py-2.5">
-              <div className="text-[10px] text-white/40">記録のあった日</div>
+            <div className="rounded-2xl bg-white border border-gray-200 px-3 py-2.5">
+              <div className="text-[10px] text-gray-400">記録のあった日</div>
               <div className="text-sm font-bold mt-0.5">
-                {activeDays}日 <span className="text-white/40 font-normal">/ {period.count}件</span>
+                {activeDays}日 <span className="text-gray-400 font-normal">/ {period.count}件</span>
               </div>
             </div>
           </div>
 
           {bestDay && (
-            <div className="mt-2 rounded-2xl bg-emerald-400/10 border border-emerald-400/20 px-3 py-2.5 flex items-center justify-between">
-              <span className="text-[11px] text-emerald-200/70">最高日 {formatShortDate(bestDay.date)}</span>
-              <span className="text-sm font-bold text-emerald-300">{yen(bestDay.net)}</span>
+            <div className="mt-2 rounded-2xl bg-violet-50 border border-violet-200 px-3 py-2.5 flex items-center justify-between">
+              <span className="text-[11px] text-violet-700">最高日 {formatShortDate(bestDay.date)}</span>
+              <span className="text-sm font-bold text-violet-600">{yen(bestDay.net)}</span>
             </div>
           )}
         </section>
 
         {/* 月別推移 */}
         <section className="mt-6">
-          <h2 className="text-sm font-semibold text-white/50 px-1">月別の推移</h2>
+          <h2 className="text-sm font-semibold text-gray-500 px-1">月別の推移</h2>
           {loading ? (
-            <div className="mt-3 h-32 rounded-3xl bg-white/[0.04] animate-pulse" />
+            <div className="mt-3 h-32 rounded-3xl bg-gray-100 animate-pulse" />
           ) : monthly.length === 0 ? (
-            <p className="mt-3 text-sm text-white/30 px-1">この期間の記録はありません</p>
+            <p className="mt-3 text-sm text-gray-400 px-1">この期間の記録はありません</p>
           ) : (
-            <div className="mt-3 rounded-3xl bg-white/[0.04] border border-white/10 p-4 space-y-2.5">
+            <div className="mt-3 rounded-3xl bg-white border border-gray-200 shadow-sm p-4 space-y-2.5">
               {monthly.map(({ month, summary }) => {
                 const width = Math.round((Math.abs(summary.net) / monthlyMax) * 100);
                 const [y, m] = month.split("-");
                 return (
                   <div key={month}>
                     <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="text-white/50">
+                      <span className="text-gray-500">
                         {Number(y)}年{Number(m)}月
                       </span>
-                      <span className={summary.net >= 0 ? "text-emerald-300 font-bold" : "text-rose-300 font-bold"}>
+                      <span className={summary.net >= 0 ? "text-violet-600 font-bold" : "text-rose-500 font-bold"}>
                         {yen(summary.net)}
                       </span>
                     </div>
-                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                       <div
                         className={`h-full rounded-full ${
                           summary.net >= 0
-                            ? "bg-gradient-to-r from-emerald-400 to-teal-400"
-                            : "bg-gradient-to-r from-rose-400 to-orange-400"
+                            ? "bg-gradient-to-r from-violet-500 to-purple-500"
+                            : "bg-gradient-to-r from-rose-500 to-orange-500"
                         }`}
                         style={{ width: `${Math.max(width, 2)}%` }}
                       />
@@ -312,14 +312,14 @@ export default function RevenueStatsPage() {
         {/* 項目別 */}
         <section className="mt-6">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-sm font-semibold text-white/50">項目別の内訳</h2>
-            <div className="flex gap-1 p-0.5 rounded-xl bg-white/5 border border-white/10">
+            <h2 className="text-sm font-semibold text-gray-500">項目別の内訳</h2>
+            <div className="flex gap-1 p-0.5 rounded-xl bg-gray-100 border border-gray-200">
               {(["income", "expense"] as RevenueType[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setRankType(t)}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                    rankType === t ? "bg-white text-[#0b1020]" : "text-white/50"
+                    rankType === t ? "bg-gray-900 text-white" : "text-gray-500"
                   }`}
                 >
                   {t === "income" ? "収入" : "支出"}
@@ -329,9 +329,9 @@ export default function RevenueStatsPage() {
           </div>
 
           {ranking.length === 0 ? (
-            <p className="mt-3 text-sm text-white/30 px-1">この期間の記録はありません</p>
+            <p className="mt-3 text-sm text-gray-400 px-1">この期間の記録はありません</p>
           ) : (
-            <div className="mt-3 rounded-3xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+            <div className="mt-3 rounded-3xl bg-white border border-gray-200 shadow-sm p-4 space-y-3">
               {ranking.map((r) => {
                 const share = rankingTotal > 0 ? Math.round((r.total / rankingTotal) * 100) : 0;
                 return (
@@ -339,19 +339,19 @@ export default function RevenueStatsPage() {
                     <div className="flex items-center justify-between text-[12px] mb-1">
                       <span className="truncate">
                         {r.name}
-                        <span className="text-white/30 ml-1.5 text-[11px]">{r.count}件</span>
+                        <span className="text-gray-400 ml-1.5 text-[11px]">{r.count}件</span>
                       </span>
                       <span className="font-bold ml-2 shrink-0">
                         {yen(r.total)}
-                        <span className="text-white/30 font-normal ml-1.5">{share}%</span>
+                        <span className="text-gray-400 font-normal ml-1.5">{share}%</span>
                       </span>
                     </div>
-                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                       <div
                         className={`h-full rounded-full ${
                           rankType === "income"
-                            ? "bg-gradient-to-r from-emerald-400 to-teal-400"
-                            : "bg-gradient-to-r from-rose-400 to-orange-400"
+                            ? "bg-gradient-to-r from-violet-500 to-purple-500"
+                            : "bg-gradient-to-r from-rose-500 to-orange-500"
                         }`}
                         style={{ width: `${Math.max(Math.round((r.total / rankingMax) * 100), 2)}%` }}
                       />

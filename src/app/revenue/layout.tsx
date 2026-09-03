@@ -15,5 +15,5 @@ export default function RevenueLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <div className="min-h-screen bg-[#0b1020]">{children}</div>;
+  return <div className="min-h-screen bg-white">{children}</div>;
 }
