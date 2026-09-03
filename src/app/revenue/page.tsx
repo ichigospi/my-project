@@ -246,7 +246,7 @@ export default function RevenueCalendarPage() {
                   onClick={() => openDay(key)}
                   className={`h-16 rounded-xl flex flex-col items-center justify-start pt-1.5 px-0.5 border transition active:scale-95 ${
                     isToday
-                      ? "bg-emerald-50 border-emerald-500"
+                      ? "bg-violet-50 border-violet-500"
                       : net !== undefined
                       ? "bg-gray-50 border-gray-200"
                       : "bg-transparent border-gray-100"
@@ -255,7 +255,7 @@ export default function RevenueCalendarPage() {
                   <span
                     className={`text-[11px] font-semibold leading-none ${
                       isToday
-                        ? "text-emerald-600"
+                        ? "text-violet-600"
                         : dow === 0
                         ? "text-rose-500/90"
                         : dow === 6
@@ -268,7 +268,7 @@ export default function RevenueCalendarPage() {
                   {net !== undefined && (
                     <span
                       className={`mt-auto mb-1.5 text-[11px] font-bold leading-none tracking-tight ${
-                        net >= 0 ? "text-emerald-600" : "text-rose-500"
+                        net >= 0 ? "text-violet-600" : "text-rose-500"
                       }`}
                     >
                       {compactAmount(net)}
@@ -284,7 +284,7 @@ export default function RevenueCalendarPage() {
         <section className="mt-4 grid grid-cols-3 rounded-3xl bg-white border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-3 text-center">
             <div className="text-[11px] text-gray-400">収入</div>
-            <div className="mt-1 text-emerald-600 font-bold text-sm tracking-tight">{yen(summary.income)}</div>
+            <div className="mt-1 text-violet-600 font-bold text-sm tracking-tight">{yen(summary.income)}</div>
           </div>
           <div className="p-3 text-center border-x border-gray-200">
             <div className="text-[11px] text-gray-400">支出</div>
@@ -326,7 +326,7 @@ export default function RevenueCalendarPage() {
               <p className="text-gray-400 text-sm">まだ記録がありません</p>
               <button
                 onClick={openToday}
-                className="mt-3 px-4 py-2 rounded-xl bg-emerald-500 text-white text-sm font-bold active:scale-95 transition"
+                className="mt-3 px-4 py-2 rounded-xl bg-violet-500 text-white text-sm font-bold active:scale-95 transition"
               >
                 今日の売上を入力
               </button>
@@ -341,7 +341,7 @@ export default function RevenueCalendarPage() {
                   >
                     <span className="text-[12px] text-gray-500">{formatDateLabel(group.date)}</span>
                     <span
-                      className={`text-[12px] font-bold ${group.net >= 0 ? "text-emerald-600" : "text-rose-500"}`}
+                      className={`text-[12px] font-bold ${group.net >= 0 ? "text-violet-600" : "text-rose-500"}`}
                     >
                       {yen(group.net)}
                     </span>
@@ -363,7 +363,7 @@ export default function RevenueCalendarPage() {
                       </button>
                       <div
                         className={`text-sm font-bold tracking-tight ${
-                          entry.type === "expense" ? "text-rose-500" : "text-emerald-600"
+                          entry.type === "expense" ? "text-rose-500" : "text-violet-600"
                         }`}
                       >
                         {entry.type === "expense" ? "-" : "+"}
@@ -395,7 +395,7 @@ export default function RevenueCalendarPage() {
         <div className="max-w-lg mx-auto px-4">
           <button
             onClick={openToday}
-            className="pointer-events-auto w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold shadow-xl shadow-emerald-500/20 active:scale-[0.98] transition"
+            className="pointer-events-auto w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold shadow-xl shadow-violet-500/20 active:scale-[0.98] transition"
           >
             ＋ 今日の売上を入力
           </button>
@@ -421,7 +421,7 @@ export default function RevenueCalendarPage() {
                     <span
                       className={
                         selectedEntries.reduce((s, e) => s + signedAmount(e), 0) >= 0
-                          ? "text-emerald-600"
+                          ? "text-violet-600"
                           : "text-rose-500"
                       }
                     >
@@ -450,7 +450,7 @@ export default function RevenueCalendarPage() {
                       key={entry.id}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl border ${
                         editingId === entry.id
-                          ? "bg-emerald-50 border-emerald-500"
+                          ? "bg-violet-50 border-violet-500"
                           : "bg-gray-50 border-gray-200"
                       }`}
                     >
@@ -466,7 +466,7 @@ export default function RevenueCalendarPage() {
                       </button>
                       <span
                         className={`text-sm font-bold ${
-                          entry.type === "expense" ? "text-rose-500" : "text-emerald-600"
+                          entry.type === "expense" ? "text-rose-500" : "text-violet-600"
                         }`}
                       >
                         {entry.type === "expense" ? "-" : "+"}
@@ -514,7 +514,7 @@ export default function RevenueCalendarPage() {
                       className={`py-2 rounded-lg text-sm font-semibold transition ${
                         form.type === t
                           ? t === "income"
-                            ? "bg-emerald-500 text-white"
+                            ? "bg-violet-500 text-white"
                             : "bg-rose-500 text-white"
                           : "text-gray-500"
                       }`}
@@ -544,7 +544,7 @@ export default function RevenueCalendarPage() {
                     value={form.label}
                     onChange={(e) => setForm({ ...form, label: e.target.value })}
                     placeholder="項目名（例: 売上、報酬）"
-                    className="w-full bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-emerald-500"
+                    className="w-full bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-violet-500"
                   />
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {QUICK_LABELS.map((l) => (
@@ -570,14 +570,14 @@ export default function RevenueCalendarPage() {
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
                     placeholder="カテゴリ（任意）"
-                    className="bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-emerald-500"
+                    className="bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-violet-500"
                   />
                   <input
                     type="text"
                     value={form.memo}
                     onChange={(e) => setForm({ ...form, memo: e.target.value })}
                     placeholder="メモ（任意）"
-                    className="bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-emerald-500"
+                    className="bg-white rounded-xl px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 border border-gray-200 focus:border-violet-500"
                   />
                 </div>
 
@@ -586,7 +586,7 @@ export default function RevenueCalendarPage() {
                 <button
                   onClick={save}
                   disabled={saving}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold disabled:opacity-50 active:scale-[0.98] transition"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold disabled:opacity-50 active:scale-[0.98] transition"
                 >
                   {saving ? "保存中..." : editingId ? "更新する" : "記録する"}
                 </button>

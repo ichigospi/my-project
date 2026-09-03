@@ -156,8 +156,8 @@ export default function RevenueStatsPage() {
 
       <main className="max-w-lg mx-auto px-4 pb-16">
         {/* 累計 */}
-        <section className="mt-4 rounded-3xl p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-white border border-emerald-200">
-          <div className="text-[11px] font-semibold text-emerald-700">累計売上（全期間）</div>
+        <section className="mt-4 rounded-3xl p-5 bg-gradient-to-br from-violet-50 via-purple-50 to-white border border-violet-200">
+          <div className="text-[11px] font-semibold text-violet-700">累計売上（全期間）</div>
           <div className="mt-1 text-4xl font-bold tracking-tight">
             {allTime.income.toLocaleString("ja-JP")}
             <span className="text-lg font-semibold text-gray-500 ml-1">円</span>
@@ -169,7 +169,7 @@ export default function RevenueStatsPage() {
             </div>
             <div className="rounded-2xl bg-white border border-gray-200 py-2.5">
               <div className="text-[10px] text-gray-400">累計利益</div>
-              <div className={`text-sm font-bold mt-0.5 ${allTime.net >= 0 ? "text-emerald-600" : "text-rose-500"}`}>
+              <div className={`text-sm font-bold mt-0.5 ${allTime.net >= 0 ? "text-violet-600" : "text-rose-500"}`}>
                 {yen(allTime.net)}
               </div>
             </div>
@@ -216,14 +216,14 @@ export default function RevenueStatsPage() {
               type="date"
               value={from}
               onChange={(e) => setCustom("from", e.target.value)}
-              className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+              className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-violet-500"
             />
             <span className="text-gray-400">〜</span>
             <input
               type="date"
               value={to}
               onChange={(e) => setCustom("to", e.target.value)}
-              className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
+              className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-violet-500"
             />
           </div>
         </section>
@@ -231,7 +231,7 @@ export default function RevenueStatsPage() {
         {/* 期間サマリー */}
         <section className="mt-2 rounded-3xl bg-white border border-gray-200 shadow-sm px-5 pt-4 pb-5">
           <div
-            className={`font-bold tracking-tight text-emerald-600 leading-none ${
+            className={`font-bold tracking-tight text-violet-600 leading-none ${
               periodIncomeText.length > 9 ? "text-4xl" : "text-5xl"
             }`}
           >
@@ -263,9 +263,9 @@ export default function RevenueStatsPage() {
           </div>
 
           {bestDay && (
-            <div className="mt-2 rounded-2xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 flex items-center justify-between">
-              <span className="text-[11px] text-emerald-700">最高日 {formatShortDate(bestDay.date)}</span>
-              <span className="text-sm font-bold text-emerald-600">{yen(bestDay.net)}</span>
+            <div className="mt-2 rounded-2xl bg-violet-50 border border-violet-200 px-3 py-2.5 flex items-center justify-between">
+              <span className="text-[11px] text-violet-700">最高日 {formatShortDate(bestDay.date)}</span>
+              <span className="text-sm font-bold text-violet-600">{yen(bestDay.net)}</span>
             </div>
           )}
         </section>
@@ -288,7 +288,7 @@ export default function RevenueStatsPage() {
                       <span className="text-gray-500">
                         {Number(y)}年{Number(m)}月
                       </span>
-                      <span className={summary.net >= 0 ? "text-emerald-600 font-bold" : "text-rose-500 font-bold"}>
+                      <span className={summary.net >= 0 ? "text-violet-600 font-bold" : "text-rose-500 font-bold"}>
                         {yen(summary.net)}
                       </span>
                     </div>
@@ -296,7 +296,7 @@ export default function RevenueStatsPage() {
                       <div
                         className={`h-full rounded-full ${
                           summary.net >= 0
-                            ? "bg-gradient-to-r from-emerald-500 to-teal-500"
+                            ? "bg-gradient-to-r from-violet-500 to-purple-500"
                             : "bg-gradient-to-r from-rose-500 to-orange-500"
                         }`}
                         style={{ width: `${Math.max(width, 2)}%` }}
@@ -350,7 +350,7 @@ export default function RevenueStatsPage() {
                       <div
                         className={`h-full rounded-full ${
                           rankType === "income"
-                            ? "bg-gradient-to-r from-emerald-500 to-teal-500"
+                            ? "bg-gradient-to-r from-violet-500 to-purple-500"
                             : "bg-gradient-to-r from-rose-500 to-orange-500"
                         }`}
                         style={{ width: `${Math.max(Math.round((r.total / rankingMax) * 100), 2)}%` }}
