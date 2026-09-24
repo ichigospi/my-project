@@ -1,0 +1,16 @@
+{
+  "name": "Threads投稿自動作成ツール",
+  "short_name": "Threads作成",
+  "description": "競合分析 × オマージュ作成 × 反応計測",
+  "start_url": "/threads",
+  "scope": "/threads",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/threads-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

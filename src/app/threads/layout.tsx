@@ -1,5 +1,27 @@
+import type { Metadata, Viewport } from "next";
 import ThreadsHeader from "@/components/ThreadsHeader";
+import ThreadsMobileNav from "@/components/ThreadsMobileNav";
 import KoyomiNotice from "@/components/KoyomiNotice";
+
+// スマホのホーム画面に追加したとき、Threadsツールとして単独起動させる（/threadsを開く）
+export const metadata: Metadata = {
+  title: "Threads投稿自動作成ツール",
+  description: "競合分析 × オマージュ作成 × 反応計測",
+  manifest: "/threads-manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Threads作成",
+  },
+  icons: { apple: "/threads-icon.svg" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#000000",
+};
 
 export default function ThreadsLayout({
   children,
@@ -21,8 +43,11 @@ export default function ThreadsLayout({
       <div className="relative z-10 flex flex-col min-h-screen">
         <ThreadsHeader />
         <KoyomiNotice />
-        <div className="flex-1">{children}</div>
+        {/* スマホは下部タブバーぶんの余白を確保 */}
+        <div className="flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">{children}</div>
       </div>
+      {/* スマホ用の下部タブバー（PC非表示） */}
+      <ThreadsMobileNav />
     </div>
   );
 }
