@@ -134,7 +134,7 @@ export default function ThreadsHeader() {
         )}
       </div>
 
-      <nav className="px-2 md:px-4 flex overflow-x-auto">
+      <nav className="hidden lg:flex px-2 md:px-4 overflow-x-auto">
         {tabs.map((tab) => {
           const isActive = tab.exact
             ? pathname === tab.href
