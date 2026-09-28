@@ -73,8 +73,8 @@ else
     echo "✅ .env.local 検出"
 fi
 
-# 依存関係インストール（初回 or 更新時）
-if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ]; then
+# 依存関係インストール（初回 or 更新時。zip展開で空のnode_modulesが出来ることがあるため中身で判定）
+if [ ! -d "node_modules/next" ] || [ "package.json" -nt "node_modules/.package-lock.json" ]; then
     echo "📦 パッケージをインストール中..."
     npm install
     echo ""
