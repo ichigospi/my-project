@@ -55,7 +55,8 @@ if not exist ".env.local" (
 )
 
 REM npm install
-if not exist "node_modules" (
+REM (zip展開で空のnode_modulesが出来ることがあるため、フォルダの有無でなく中身で判定)
+if not exist "node_modules\next" (
     echo Installing packages...
     call npm install
     echo.
