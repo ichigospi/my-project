@@ -65,9 +65,9 @@ export default function OcrPage() {
     // ヘルスチェック
     fetch("/api/health/local")
       .then((res) => res.json())
-      .then((data: { db: boolean; ytdlp: boolean; ffmpeg: boolean }) => {
+      .then((data: { db: boolean; ytdlp: boolean; ffmpeg: boolean; dbError?: string }) => {
         const warnings: string[] = [];
-        if (!data.db) warnings.push("データベースに接続できません。start-local.bat を再起動してデータベースURLを設定してください");
+        if (!data.db) warnings.push(`データベースに接続できません。start-local.bat を再起動してデータベースURLを設定してください${data.dbError ? `\n詳細: ${data.dbError}` : ""}`);
         if (!data.ytdlp) warnings.push("yt-dlpがインストールされていません");
         if (!data.ffmpeg) warnings.push("ffmpegがインストールされていません");
         setHealthWarnings(warnings);

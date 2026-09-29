@@ -3,14 +3,15 @@ import { execSync } from "child_process";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const result = { db: false, ytdlp: false, ffmpeg: false };
+  const result: { db: boolean; ytdlp: boolean; ffmpeg: boolean; dbError?: string } = { db: false, ytdlp: false, ffmpeg: false };
 
   // DB接続チェック
   try {
     await prisma.appSetting.findFirst();
     result.db = true;
-  } catch {
-    /* DB接続失敗 */
+  } catch (e) {
+    // 原因究明のためエラー内容を返す（画面の警告に表示される）
+    result.dbError = String(e).slice(0, 300);
   }
 
   const isWindows = process.platform === "win32";
