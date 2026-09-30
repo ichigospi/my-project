@@ -45,11 +45,11 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   useEffect(() => { setPatterns(getPatterns()); }, []);
 
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
-  const applySkeletonFix = async (revisionNote: string) => {
-    if (!revisionNote.trim()) return;
-    if (!skeleton.trim()) { setError("骨組みがありません"); return; }
+  const applySkeletonFix = async (revisionNote: string): Promise<boolean> => {
+    if (!revisionNote.trim()) return false;
+    if (!skeleton.trim()) { setError("骨組みがありません"); return false; }
     const aiApiKey = getApiKey("ai_api_key");
-    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return false; }
     setApplyingFix(true);
     setError("");
     setFixSummary("");
@@ -60,8 +60,8 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       });
       const raw = await res.text();
       let data: Record<string, unknown> | null = null;
-      try { data = JSON.parse(raw); } catch { setError(`修正に失敗しました（応答が不正）: ${raw.slice(0, 120)}`); return; }
-      if (data?.error) { setError(data.error as string); return; }
+      try { data = JSON.parse(raw); } catch { setError(`修正に失敗しました（応答が不正）: ${raw.slice(0, 120)}`); return false; }
+      if (data?.error) { setError(data.error as string); return false; }
       if (typeof data?.skeleton === "string") {
         setSkeleton(data.skeleton);
         if (project.structureProposal) {
@@ -71,8 +71,10 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
         // 内容が変わったので古いチェック結果は破棄（再チェックを促す）
         setSkeletonCheck(null);
         setFixNote("");
+        return true;
       }
-    } catch { setError("骨組みの修正に失敗しました"); }
+      return false;
+    } catch { setError("骨組みの修正に失敗しました"); return false; }
     finally { setApplyingFix(false); }
   };
 
@@ -157,7 +159,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   })();
 
   // 骨組み生成の実体（構成モード確定後に呼ぶ）
-  const runGenerate = async (mode: "template" | "reference", diff?: ScriptProject["structureDiff"]) => {
+  const runGenerate = async (mode: "template" | "reference", diff?: ScriptProject["structureDiff"], opts?: { patternIds?: string[]; extraPrompt?: string }) => {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
@@ -167,7 +169,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
 
     try {
       const rules = buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId);
-      const rulesText = formatRulesForPrompt(rules) + buildSelectedPatternsBlock(project.selectedPatternIds);
+      const rulesText = formatRulesForPrompt(rules) + buildSelectedPatternsBlock(opts?.patternIds ?? project.selectedPatternIds);
       const res = await fetch("/api/script/propose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -176,7 +178,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
           primaryAnalysisId: effectivePrimaryId || undefined,
           structureMode: mode,
           channelProfile: getProfileByChannel(project.channelId || ""), aiApiKey, aiModel: getAiModel("generate"),
-          userPrompt: promptText || undefined,
+          userPrompt: [promptText, opts?.extraPrompt].filter(Boolean).join("\n") || undefined,
           currentSkeleton: skeleton || undefined,
           rulesText,
         }),
@@ -191,6 +193,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
           ...project,
           structureMode: mode,
           ...(diff ? { structureDiff: diff } : {}),
+          ...(opts?.patternIds ? { selectedPatternIds: opts.patternIds } : {}),
           structureProposal: {
             suggestedTitle: project.title,
             concept: data.skeleton,
@@ -264,6 +267,74 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     onUpdate({ ...project, selectedPatternIds: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
   };
 
+  // ===== パターン参照（骨組みのセクション単位/構成全体の差し替え） =====
+  const [picker, setPicker] = useState<{ mode: "section" | "structure"; heading?: string } | null>(null);
+  const [prevSkeleton, setPrevSkeleton] = useState<string | null>(null);
+
+  // セクション見出しから関連カテゴリを推定（おすすめ表示用）
+  const recommendedCategories = (heading: string): string[] => {
+    const hints: [RegExp, string[]][] = [
+      [/オープニング|冒頭|フック|選民|掴み/, ["フック", "視聴維持"]],
+      [/CTA|終盤|クロージング|鑑定|LINE|締め/, ["CTA", "売上アドバイス"]],
+      [/理想|未来|祝福|欲求/, ["理想の未来"]],
+      [/悩み|共感|深掘|問題提起/, ["悩み深掘り"]],
+      [/常識|仮想敵|批判|破壊/, ["常識破壊"]],
+      [/維持|離脱|引き/, ["視聴維持"]],
+      [/構成|本編/, ["構成"]],
+    ];
+    const out = new Set<string>();
+    for (const [re, cats] of hints) if (re.test(heading)) cats.forEach((c) => out.add(c));
+    return [...out];
+  };
+
+  // 選んだパターンを適用（セクション: 差分パッチで文脈保持リライト / 構成全体: パターン必須で再生成）
+  const handleApplyPattern = async (p: PatternItem) => {
+    if (!picker) return;
+    const target = picker;
+    setPicker(null);
+    const before = skeleton;
+
+    if (target.mode === "structure") {
+      if (!confirm(`構成全体をパターン「${p.title}」に沿って再生成しますか？（現在の骨組みは置き換わります）`)) return;
+      setPrevSkeleton(before || null);
+      const ids = [...new Set([...(project.selectedPatternIds || []), p.id])];
+      await runGenerate(project.structureMode || "template", undefined, {
+        patternIds: ids,
+        extraPrompt: `構成は【選択パターン】の「${p.title}」を最優先の設計図として組み立ててください。`,
+      });
+      return;
+    }
+
+    const note = `以下の【対象セクション】を、【使用パターン】を核に書き換えてください。
+
+【絶対ルール】
+・書き換えてよいのは「${target.heading}」セクションの内部だけ。他のセクションは1文字も変えない
+・動画のテーマ・タイトルの約束は維持する。パターン内の例・雛形は必ずこの動画のテーマに合わせて具体化する
+・直前・直後のセクションとの接続が自然になるよう、受けの一文・次への振りはこのセクション内で調整する
+・尺・文字数配分・このセクションの構成上の役割は変えない
+・口調・語彙ルールは従来通り
+
+【対象セクション】
+${target.heading}
+
+【使用パターン】[${p.category}] ${p.title}
+${p.content}`;
+    const ok = await applySkeletonFix(note);
+    if (ok) setPrevSkeleton(before);
+  };
+
+  // 差し替えを1世代だけ元に戻せる
+  const handleUndoPattern = () => {
+    if (prevSkeleton === null) return;
+    setSkeleton(prevSkeleton);
+    if (project.structureProposal) {
+      onUpdate({ ...project, structureProposal: { ...project.structureProposal, concept: prevSkeleton } });
+    }
+    setPrevSkeleton(null);
+    setSkeletonCheck(null);
+    setFixSummary("");
+  };
+
   const handleGenerate = async () => {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
@@ -311,7 +382,21 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       .map((line, i) => {
         // 見出し
         if (line.startsWith("# ")) return <h2 key={i} className="text-xl font-bold mt-6 mb-3">{line.slice(2)}</h2>;
-        if (line.startsWith("## ")) return <h3 key={i} className="text-lg font-bold mt-5 mb-2 text-accent">{line.slice(3)}</h3>;
+        if (line.startsWith("## ")) {
+          const heading = line.slice(3);
+          return (
+            <h3 key={i} className="text-lg font-bold mt-5 mb-2 text-accent flex items-center gap-2 flex-wrap">
+              <span>{heading}</span>
+              {patterns.length > 0 && (
+                <button onClick={() => setPicker({ mode: "section", heading })}
+                  className="text-[10px] px-2 py-0.5 rounded-full border border-accent/40 text-accent hover:bg-accent hover:text-white transition-colors font-normal shrink-0"
+                  title="このセクションをライブラリのパターンで差し替え（文脈は維持されます）">
+                  🔁 パターン参照
+                </button>
+              )}
+            </h3>
+          );
+        }
         if (line.startsWith("### ")) return <h4 key={i} className="text-base font-semibold mt-4 mb-1">{line.slice(4)}</h4>;
         // 引用（参考元ブロック）
         if (line.startsWith("> ")) return <p key={i} className="pl-4 border-l-2 border-accent/30 text-sm text-gray-600 my-1">{line.slice(2)}</p>;
@@ -466,6 +551,12 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       {/* 骨組みタブ */}
       {viewTab === "skeleton" && (
         <>
+          {applyingFix && (
+            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
+              <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              骨組みを修正中...（対象セクション以外は変更されません）
+            </div>
+          )}
           {/* 構成モード表示・切替（一度でも確定したら表示） */}
           {project.structureMode && (
             <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -598,6 +689,49 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
             </button>
           )}
 
+          {/* パターン参照モーダル: セクション/構成全体の差し替え用パターン選択 */}
+          {picker && (() => {
+            const pool = picker.mode === "structure" ? patterns.filter((p) => p.category === "構成") : patterns;
+            const recs = picker.mode === "section" ? recommendedCategories(picker.heading || "") : [];
+            const sorted = [...pool].sort((a, b) => (recs.includes(b.category) ? 1 : 0) - (recs.includes(a.category) ? 1 : 0));
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPicker(null)}>
+                <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-5 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                  <h3 className="font-bold text-base mb-1">
+                    {picker.mode === "structure" ? "構成パターンを選択" : "パターンを選択"}
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-3">
+                    {picker.mode === "structure"
+                      ? "選んだパターンを最優先の設計図として骨組みを再生成します（テーマ・元ネタ設定はそのまま）"
+                      : `「${picker.heading}」を選んだパターンで差し替えます。テーマ・前後の繋がり・尺は自動で維持されます`}
+                  </p>
+                  {sorted.length === 0 && (
+                    <p className="text-sm text-gray-400 py-6 text-center">
+                      該当するパターンがありません。<br />添削部屋で提案を「ライブラリに追加」すると、ここから使えるようになります
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    {sorted.map((p) => (
+                      <div key={p.id} className={`rounded-lg border p-3 ${recs.includes(p.category) ? "border-accent/40 bg-accent/5" : "border-gray-200"}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{p.category}</span>
+                          {recs.includes(p.category) && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">おすすめ</span>}
+                          <span className="text-sm font-semibold">{p.title}</span>
+                          <button onClick={() => handleApplyPattern(p)}
+                            className="ml-auto shrink-0 px-3 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90">
+                            {picker.mode === "structure" ? "この構成で再生成" : "差し替え"}
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-600 leading-5 line-clamp-3 whitespace-pre-wrap">{p.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => setPicker(null)} className="mt-3 px-4 py-2 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 w-full">閉じる</button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* 構成乖離ポップアップ: 元ネタ準拠かテンプレか選択 */}
           {diffModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -643,6 +777,20 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
                   </button>
                 </div>
                 <div className="flex gap-2">
+                  {prevSkeleton !== null && (
+                    <button onClick={handleUndoPattern}
+                      className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-600 text-sm hover:bg-purple-50"
+                      title="直前のパターン差し替え/再生成を取り消して元の骨組みに戻します">
+                      ↩ 差し替え前に戻す
+                    </button>
+                  )}
+                  {patterns.some((p) => p.category === "構成") && (
+                    <button onClick={() => setPicker({ mode: "structure" })} disabled={generating}
+                      className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50"
+                      title="構成カテゴリのパターンを選んで骨組み全体を再生成します">
+                      🏗 構成全体をパターン参照
+                    </button>
+                  )}
                   <button onClick={handleGenerate} disabled={generating}
                     className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50">
                     {generating ? "生成中..." : "再生成"}
