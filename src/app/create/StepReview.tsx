@@ -8,11 +8,13 @@
 
 import { useMemo, useState } from "react";
 import { diffTexts, segKey, type DiffSeg } from "@/lib/text-diff";
-import { addPattern, removePattern } from "@/lib/pattern-store";
+import { addPattern, removePattern, normalizeCategory } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { notifyChatwork, reviewMessage } from "@/lib/notify";
 import { getProfileByChannel } from "@/lib/script-analysis-store";
-import type { ScriptProject, ReviewComment, RuleProposal } from "@/lib/project-store";
+import { getApiKey } from "@/lib/channel-store";
+import { getAiModel } from "@/lib/ai-model";
+import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction } from "@/lib/project-store";
 
 export default function StepReview({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const [tab, setTab] = useState<"preview" | "edit">("preview");
@@ -20,6 +22,12 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
   const [openSeg, setOpenSeg] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  // FB動画置き場
+  const [fbUrl, setFbUrl] = useState("");
+  const [fbImages, setFbImages] = useState<Record<string, string[]>>({}); // videoId -> スクショdataURL（抽出用の一時保持）
+  const [fbTranscripts, setFbTranscripts] = useState<Record<string, string>>({}); // videoId -> 貼り付けテキスト
+  const [fbExtracting, setFbExtracting] = useState<string | null>(null);
+  const [fbError, setFbError] = useState("");
 
   const submitted = project.submittedScript || "";
   const reviewed = project.reviewedScript ?? submitted;
@@ -110,6 +118,76 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
     if (p.adoptedPatternId) removePattern(p.adoptedPatternId);
     updateProposal(p.id, { status: "proposed", adoptedPatternId: undefined });
     setTimeout(() => { pushSharedSettings(); }, 300);
+  };
+
+  // ===== FB動画置き場 =====
+  const fbVideos = project.fbVideos || [];
+
+  const addFbVideo = () => {
+    const v: FbVideo = { id: `fb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, url: fbUrl.trim(), createdAt: new Date().toISOString() };
+    onUpdate({ ...project, fbVideos: [...fbVideos, v] });
+    setFbUrl("");
+  };
+
+  const removeFbVideo = (id: string) => {
+    if (!confirm("このFB動画を削除しますか？（抽出済みの指示も消えます）")) return;
+    onUpdate({ ...project, fbVideos: fbVideos.filter((v) => v.id !== id) });
+  };
+
+  // スクショ読み込み（大きい画像は幅1600pxに縮小してから送る）
+  const loadFbImages = (videoId: string, files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const maxW = 1600;
+          const scale = img.width > maxW ? maxW / img.width : 1;
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          setFbImages((prev) => ({ ...prev, [videoId]: [...(prev[videoId] || []), dataUrl] }));
+        };
+        img.src = String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // スクショ/テキストから指示を抽出
+  const extractInstructions = async (v: FbVideo) => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setFbError("AI APIキーを設定してください"); return; }
+    const images = fbImages[v.id] || [];
+    const transcript = (fbTranscripts[v.id] ?? v.transcript ?? "").trim();
+    if (images.length === 0 && !transcript) { setFbError("文字起こしのスクショを追加するか、テキストを貼り付けてください"); return; }
+    setFbExtracting(v.id);
+    setFbError("");
+    try {
+      const res = await fetch("/api/review/extract-instructions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: transcript || undefined, images: images.length > 0 ? images : undefined, aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const data = await res.json();
+      if (data.error) { setFbError(data.error); return; }
+      const items = (data.items || []) as FbInstruction[];
+      onUpdate({
+        ...project,
+        fbVideos: fbVideos.map((x) => (x.id === v.id ? { ...x, transcript: transcript || x.transcript, extracted: items } : x)),
+      });
+      setFbImages((prev) => ({ ...prev, [v.id]: [] }));
+    } catch { setFbError("指示の抽出に失敗しました"); }
+    finally { setFbExtracting(null); }
+  };
+
+  const copyInstruction = (it: FbInstruction, key: string) => {
+    const head = it.type === "ツール修正" ? "【ツール修正要請】" : it.type === "台本ルール" ? "【台本ルール要請】" : "【台本修正指示】";
+    navigator.clipboard.writeText(`${head}${it.category ? `[${it.category}] ` : ""}\n${it.content}\n（元発言: ${it.quote}）`);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
   };
 
   const statusBadge =
@@ -239,6 +317,98 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
           </div>
         </div>
       )}
+
+      {/* FB動画置き場 */}
+      <div className="bg-card-bg rounded-xl p-4 border border-gray-100 mb-6">
+        <h3 className="font-semibold text-sm mb-1">🎥 FB動画（Loom）</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          FB動画のリンクを置き、Loomの文字起こしのスクショを貼ると、AIが「ツール修正／台本ルール／この台本の修正」に分類して指示を抜き出します
+        </p>
+        <div className="flex gap-2 mb-3">
+          <input type="text" value={fbUrl} onChange={(e) => setFbUrl(e.target.value)} placeholder="LoomのURL（https://www.loom.com/share/...）"
+            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-accent" />
+          <button onClick={addFbVideo} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 shrink-0">追加</button>
+        </div>
+        {fbError && <p className="text-xs text-red-500 mb-2">{fbError}</p>}
+        <div className="space-y-3">
+          {fbVideos.map((v) => (
+            <div key={v.id} className="rounded-lg border border-gray-200 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                {v.url ? (
+                  <a href={v.url} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline truncate">{v.url}</a>
+                ) : (
+                  <span className="text-sm text-gray-400">（リンクなし）</span>
+                )}
+                <span className="text-[10px] text-gray-400 shrink-0">{new Date(v.createdAt).toLocaleDateString("ja-JP")}</span>
+                <button onClick={() => removeFbVideo(v.id)} className="ml-auto text-gray-300 hover:text-red-500 text-sm shrink-0">✕</button>
+              </div>
+
+              {/* スクショ取り込み＋テキスト貼り付け */}
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <label className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs cursor-pointer hover:bg-gray-50">
+                  📷 文字起こしのスクショを追加
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { loadFbImages(v.id, e.target.files); e.target.value = ""; }} />
+                </label>
+                {(fbImages[v.id] || []).length > 0 && (
+                  <span className="text-xs text-gray-500">{(fbImages[v.id] || []).length}枚選択中
+                    <button onClick={() => setFbImages((prev) => ({ ...prev, [v.id]: [] }))} className="ml-1 text-gray-400 hover:text-red-500">（クリア）</button>
+                  </span>
+                )}
+                <button onClick={() => extractInstructions(v)} disabled={fbExtracting === v.id}
+                  className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50">
+                  {fbExtracting === v.id ? "読み取り・抽出中..." : "🧠 指示を抽出"}
+                </button>
+              </div>
+              <textarea value={fbTranscripts[v.id] ?? v.transcript ?? ""}
+                onChange={(e) => setFbTranscripts((prev) => ({ ...prev, [v.id]: e.target.value }))}
+                placeholder="（任意）文字起こしテキストを直接貼り付けてもOK"
+                className="w-full h-16 p-2 rounded border border-gray-200 text-xs leading-5 focus:outline-none focus:border-accent mb-2" />
+
+              {/* 抽出結果 */}
+              {(v.extracted || []).length > 0 && (
+                <div className="space-y-2">
+                  {(["ツール修正", "台本ルール", "台本修正"] as const).map((t) => {
+                    const items = (v.extracted || []).filter((it) => it.type === t);
+                    if (items.length === 0) return null;
+                    const style = t === "ツール修正" ? { icon: "🔧", cls: "bg-blue-50 border-blue-100" }
+                      : t === "台本ルール" ? { icon: "📏", cls: "bg-amber-50 border-amber-100" }
+                      : { icon: "✏️", cls: "bg-gray-50 border-gray-100" };
+                    return (
+                      <div key={t} className={`rounded-lg border p-2.5 ${style.cls}`}>
+                        <p className="text-xs font-bold mb-1.5">{style.icon} {t}（{items.length}件）{t === "ツール修正" && <span className="font-normal text-gray-500">— コピーしてClaudeチャットへ</span>}</p>
+                        <div className="space-y-1.5">
+                          {items.map((it, ii) => {
+                            const key = `${v.id}_${t}_${ii}`;
+                            return (
+                              <div key={ii} className="bg-white rounded p-2 text-xs leading-5">
+                                <p className="text-gray-800">{it.content}</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">元発言:「{it.quote}」</p>
+                                <div className="flex gap-2 mt-1">
+                                  <button onClick={() => copyInstruction(it, key)} className="text-accent hover:underline text-[11px]">{copied === key ? "✓ コピーしました" : "コピー"}</button>
+                                  {t === "台本ルール" && (
+                                    <button onClick={() => {
+                                        addPattern({ category: normalizeCategory(it.category || "その他"), title: it.content.slice(0, 24), content: it.content, channelId: project.channelId });
+                                        setTimeout(() => { pushSharedSettings(); }, 300);
+                                        setCopied(key + "_lib");
+                                        setTimeout(() => setCopied(null), 2000);
+                                      }} className="text-accent hover:underline text-[11px]">
+                                      {copied === key + "_lib" ? "✓ 追加しました" : "ライブラリに追加"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* 判定ボタン */}
       {project.scriptReviewStatus !== "approved" && (
