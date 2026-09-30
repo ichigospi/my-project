@@ -24,7 +24,16 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
   const submitted = project.submittedScript || "";
   const reviewed = project.reviewedScript ?? submitted;
   const comments = project.reviewComments || [];
-  const proposals = project.ruleProposals || [];
+  // 同一内容（カテゴリ＋タイトル）の提案は最初の1件だけ表示（過去の重複送信データ対策）
+  const proposals = (() => {
+    const seen = new Set<string>();
+    return (project.ruleProposals || []).filter((p) => {
+      const key = `${p.category}|${p.title}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
 
   const segs: DiffSeg[] = useMemo(() => diffTexts(submitted, reviewed), [submitted, reviewed]);
   const changedCount = segs.filter((s) => s.type !== "same").length;
