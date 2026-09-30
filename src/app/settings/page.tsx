@@ -56,6 +56,8 @@ function SettingsContent() {
   const [litmediaApiKey, setLitmediaApiKeyState] = useState("");
   const [chatworkToken, setChatworkTokenState] = useState("");
   const [chatworkRoomId, setChatworkRoomIdState] = useState("");
+  const [chatworkOwnerId, setChatworkOwnerIdState] = useState("");
+  const [chatworkWriterIds, setChatworkWriterIdsState] = useState("");
   const [showChatworkToken, setShowChatworkToken] = useState(false);
   const [testingChatwork, setTestingChatwork] = useState(false);
   const [chatworkTestResult, setChatworkTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -91,6 +93,8 @@ function SettingsContent() {
       setLitmediaApiKeyState(getApiKey("litmedia_api_key"));
       setChatworkTokenState(getApiKey("chatwork_api_token"));
       setChatworkRoomIdState(getApiKey("chatwork_room_id"));
+      setChatworkOwnerIdState(getApiKey("chatwork_owner_id"));
+      setChatworkWriterIdsState(getApiKey("chatwork_writer_ids"));
       setChannelCount(getChannels().length);
       // モデル選択はpullでサーバーの共有値がlocalStorageに反映された後に読む
       setAiModelGenerate(getAiModel("generate"));
@@ -279,6 +283,8 @@ function SettingsContent() {
     setApiKey("litmedia_api_key", litmediaApiKey);
     setApiKey("chatwork_api_token", chatworkToken);
     setApiKey("chatwork_room_id", chatworkRoomId);
+    setApiKey("chatwork_owner_id", chatworkOwnerId);
+    setApiKey("chatwork_writer_ids", chatworkWriterIds);
     setAiModel("generate", aiModelGenerate);
     setAiModel("check", aiModelCheck);
     // サーバーにも共有設定を保存
@@ -543,6 +549,25 @@ function SettingsContent() {
               placeholder="ルームID（数字のみ）"
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
             />
+            <div>
+              <input
+                type="text"
+                value={chatworkOwnerId}
+                onChange={(e) => setChatworkOwnerIdState(e.target.value)}
+                placeholder="オーナーのアカウントID（数字。台本提出時にToが付く）"
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+              />
+            </div>
+            <div>
+              <input
+                type="text"
+                value={chatworkWriterIds}
+                onChange={(e) => setChatworkWriterIdsState(e.target.value)}
+                placeholder="ライターのアカウントID（複数はカンマ区切り。合格/再提出時にToが付く）"
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+              />
+              <p className="text-xs text-gray-400 mt-1">アカウントIDはChatworkのプロフィール画面に表示される数字です（未入力ならメンションなしで送信）</p>
+            </div>
             <button onClick={testChatwork} disabled={testingChatwork}
               className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
               {testingChatwork ? "送信中..." : "テスト送信"}

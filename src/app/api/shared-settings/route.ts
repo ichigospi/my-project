@@ -9,6 +9,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 const SHARED_KEYS = [
   "shared_yt_api_key", "shared_ai_api_key", "shared_openai_api_key", "shared_litmedia_api_key",
   "shared_chatwork_api_token", "shared_chatwork_room_id",
+  "shared_chatwork_owner_id", "shared_chatwork_writer_ids",
   "shared_ai_model_generate", "shared_ai_model_check", "shared_channels", "shared_hooks",
   "shared_ctas", "shared_thumbnail_words", "shared_titles", "shared_profile",
   "shared_profiles_list", "shared_winning_patterns", "shared_presets",
@@ -58,6 +59,8 @@ export async function GET() {
       litmedia_api_key: map["shared_litmedia_api_key"] || "",
       chatwork_api_token: map["shared_chatwork_api_token"] || "",
       chatwork_room_id: map["shared_chatwork_room_id"] || "",
+      chatwork_owner_id: map["shared_chatwork_owner_id"] || "",
+      chatwork_writer_ids: map["shared_chatwork_writer_ids"] || "",
       ai_model_generate: map["shared_ai_model_generate"] || "",
       ai_model_check: map["shared_ai_model_check"] || "",
       channels: parse("shared_channels", [] as unknown[]),
@@ -119,6 +122,8 @@ export async function POST(request: NextRequest) {
     if (body.litmedia_api_key) updates.push({ key: "shared_litmedia_api_key", value: body.litmedia_api_key });
     if (body.chatwork_api_token) updates.push({ key: "shared_chatwork_api_token", value: body.chatwork_api_token });
     if (body.chatwork_room_id) updates.push({ key: "shared_chatwork_room_id", value: body.chatwork_room_id });
+    if (body.chatwork_owner_id) updates.push({ key: "shared_chatwork_owner_id", value: body.chatwork_owner_id });
+    if (body.chatwork_writer_ids) updates.push({ key: "shared_chatwork_writer_ids", value: body.chatwork_writer_ids });
     // AIモデル選択も空文字での上書きは受け付けない（未設定端末のpushで共有設定を消さない）
     if (body.ai_model_generate) updates.push({ key: "shared_ai_model_generate", value: body.ai_model_generate });
     if (body.ai_model_check) updates.push({ key: "shared_ai_model_check", value: body.ai_model_check });
