@@ -55,7 +55,8 @@ if not exist ".env.local" (
 )
 
 REM npm install
-REM (zip展開で空のnode_modulesが出来ることがあるため、フォルダの有無でなく中身で判定)
+REM Check node_modules\next instead of the folder itself:
+REM an empty node_modules folder can come from zip extraction.
 if not exist "node_modules\next" (
     echo Installing packages...
     call npm install
