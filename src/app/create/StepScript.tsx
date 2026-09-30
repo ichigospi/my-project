@@ -10,6 +10,7 @@ import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt, withChannelVocabRules } from "@/lib/rules-injector";
+import { buildSelectedPatternsBlock } from "@/lib/pattern-store";
 import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow } from "@/lib/project-store";
 
 // 簡易ハッシュ（チェック時の台本と現在の台本が一致するか判定用）
@@ -179,7 +180,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           style: project.style,
           topic: project.title,
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
-          rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)),
+          rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)) + buildSelectedPatternsBlock(project.selectedPatternIds),
           referenceAnalyses,
           structureMode: project.structureMode,
           aiApiKey,
@@ -228,7 +229,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const preset = getPresetFor(project.genre, project.style, project.channelId);
     const channelProfile = getProfileByChannel(project.channelId || "");
     const additionalNotes = preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "";
-    const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
+    const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)) + buildSelectedPatternsBlock(project.selectedPatternIds);
     const parts = splitSkeletonText(project.structureProposal?.concept || "", count);
     // 総目標文字数（プリセット）を、骨組みの各パートの分量比で重み付けして per-part に配分
     // 元ネタの文字数が分かる場合はそれを総目標に（±500字ルール）。無ければスタイル別レンジ
@@ -628,6 +629,21 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   };
 
   const handleCopy = () => { navigator.clipboard.writeText(project.generatedScript); };
+
+  // 台本を添削部屋に提出（進捗=台本添削待ち。再提出時は差分・コメントをリセットして新しい基準にする）
+  const handleSubmitForReview = () => {
+    if (!project.generatedScript?.trim()) { setError("台本がありません"); return; }
+    if (!confirm("台本を添削部屋に提出しますか？（進捗が「台本添削待ち」になります）")) return;
+    onUpdate({
+      ...project,
+      submittedScript: project.generatedScript,
+      reviewedScript: project.generatedScript,
+      reviewComments: [],
+      scriptReviewStatus: "pending",
+      status: "review",
+    });
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     setSyncDone(false);
@@ -892,6 +908,11 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-semibold">{project.title}</h3>
               <div className="flex gap-2">
+                <button onClick={handleSubmitForReview}
+                  className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700"
+                  title="添削部屋に台本を提出し、進捗を「台本添削待ち」にします">
+                  📤 台本を提出
+                </button>
                 <button onClick={handleCopy} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">コピー</button>
                 <button onClick={handleExport} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">エクスポート</button>
                 <button onClick={handleSync} disabled={syncing}

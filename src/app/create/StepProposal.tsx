@@ -8,7 +8,8 @@ import { getAnalyses, getProfileByChannel } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor } from "@/lib/project-store";
-import type { ScriptProject } from "@/lib/project-store";
+import { getPatterns, buildSelectedPatternsBlock, type PatternItem } from "@/lib/pattern-store";
+import type { ScriptProject, RuleProposal } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
@@ -28,6 +29,14 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   // 構成差分チェック（元ネタがテンプレ構成と大きく違うか）
   const [diffChecking, setDiffChecking] = useState(false);
   const [diffModal, setDiffModal] = useState<NonNullable<ScriptProject["structureDiff"]> | null>(null);
+  // 追加ルール提案
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestions, setSuggestions] = useState<{ category: string; title: string; content: string; reason: string; include: boolean }[]>([]);
+  const [sentToReview, setSentToReview] = useState(false);
+  // パターンライブラリ
+  const [patterns, setPatterns] = useState<PatternItem[]>([]);
+  const [showPatterns, setShowPatterns] = useState(false);
+  useEffect(() => { setPatterns(getPatterns()); }, []);
 
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
   const applySkeletonFix = async (revisionNote: string) => {
@@ -152,7 +161,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
 
     try {
       const rules = buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId);
-      const rulesText = formatRulesForPrompt(rules);
+      const rulesText = formatRulesForPrompt(rules) + buildSelectedPatternsBlock(project.selectedPatternIds);
       const res = await fetch("/api/script/propose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -187,6 +196,50 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       }
     } catch { setError("構成提案に失敗"); }
     finally { setGenerating(false); }
+  };
+
+  // 追加ルール提案: 元ネタ台本＋骨組みをプロマーケター視点で分析し、再利用できるパターンを提案
+  const handleSuggestRules = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    setSuggesting(true); setError(""); setSentToReview(false);
+    try {
+      const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
+      const res = await fetch("/api/script/suggest-rules", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analyses: analyses.map((a) => ({
+            videoTitle: a.videoTitle, views: a.views, transcript: a.transcript,
+            analysisResult: a.analysisResult ? { summary: a.analysisResult.summary, overallPattern: a.analysisResult.overallPattern } : null,
+          })),
+          skeleton, style: project.style, genre: project.genre, rulesText,
+          aiApiKey, aiModel: getAiModel("check"),
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+      setSuggestions(((data.suggestions || []) as { category: string; title: string; content: string; reason: string }[]).map((s) => ({ ...s, include: true })));
+    } catch { setError("追加ルール提案に失敗しました"); }
+    finally { setSuggesting(false); }
+  };
+
+  // 確認・編集済みの提案を添削部屋へ送る
+  const handleSendProposals = () => {
+    const chosen = suggestions.filter((s) => s.include);
+    if (chosen.length === 0) { setError("送る提案にチェックを入れてください"); return; }
+    const items: RuleProposal[] = chosen.map((s) => ({
+      id: `rp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      category: s.category, title: s.title, content: s.content, reason: s.reason,
+      status: "proposed", createdAt: new Date().toISOString(),
+    }));
+    onUpdate({ ...project, ruleProposals: [...(project.ruleProposals || []), ...items] });
+    setSentToReview(true);
+    setSuggestions([]);
+  };
+
+  const togglePattern = (id: string) => {
+    const cur = project.selectedPatternIds || [];
+    onUpdate({ ...project, selectedPatternIds: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
   };
 
   const handleGenerate = async () => {
@@ -402,6 +455,68 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
                 </button>
               ))}
               <span className="text-xs text-gray-400">変更したら骨組みを再生成してください</span>
+            </div>
+          )}
+
+          {/* パターンライブラリから選択（構成提案に注入するパターン） */}
+          {patterns.length > 0 && (
+            <div className="mb-4 bg-card-bg rounded-xl border border-gray-100 p-3">
+              <button onClick={() => setShowPatterns(!showPatterns)} className="w-full flex items-center justify-between text-sm font-medium">
+                <span>📚 パターンを選択（{(project.selectedPatternIds || []).filter((id) => patterns.some((p) => p.id === id)).length}件選択中 / 全{patterns.length}件）</span>
+                <span className="text-gray-400">{showPatterns ? "▲" : "▼"}</span>
+              </button>
+              {showPatterns && (
+                <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
+                  {patterns.map((p) => (
+                    <label key={p.id} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-gray-50 rounded p-1.5">
+                      <input type="checkbox" checked={(project.selectedPatternIds || []).includes(p.id)} onChange={() => togglePattern(p.id)} className="mt-0.5" />
+                      <span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent font-medium mr-1">{p.category}</span>
+                        <span className="font-semibold">{p.title}</span>
+                        <span className="block text-gray-500 mt-0.5 line-clamp-2">{p.content}</span>
+                      </span>
+                    </label>
+                  ))}
+                  <p className="text-[11px] text-gray-400">選択したパターンは骨組み生成・台本生成の両方に「必ず取り入れる」ルールとして注入されます。変更したら骨組みを再生成してください</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 追加ルール提案 */}
+          <div className="mb-4">
+            <button onClick={handleSuggestRules} disabled={suggesting || analyses.length === 0}
+              className="px-4 py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent hover:text-white transition-colors disabled:opacity-40"
+              title="元ネタ台本から、今後使えそうな勝ちパターンをプロマーケター視点で提案します">
+              {suggesting ? "元ネタを分析中..." : "💡 追加ルール提案"}
+            </button>
+            {sentToReview && <span className="ml-3 text-xs text-green-600 font-medium">✓ 添削部屋に送りました（オーナーが確認します）</span>}
+          </div>
+
+          {suggestions.length > 0 && (
+            <div className="mb-6 bg-card-bg rounded-xl border border-accent/30 p-4">
+              <h3 className="font-semibold text-sm mb-1">💡 パターン提案（{suggestions.length}件）</h3>
+              <p className="text-xs text-gray-400 mb-3">内容を確認・編集し、チェックを入れて「添削部屋に送る」を押してください（オーナーが確認してルール化します）</p>
+              <div className="space-y-3">
+                {suggestions.map((s, i) => (
+                  <div key={i} className={`rounded-lg border p-3 ${s.include ? "border-gray-200" : "border-gray-100 opacity-50"}`}>
+                    <label className="flex items-center gap-2 mb-1 cursor-pointer">
+                      <input type="checkbox" checked={s.include}
+                        onChange={() => setSuggestions(suggestions.map((x, xi) => (xi === i ? { ...x, include: !x.include } : x)))} />
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{s.category}</span>
+                      <span className="text-sm font-semibold">{s.title}</span>
+                    </label>
+                    <textarea value={s.content}
+                      onChange={(e) => setSuggestions(suggestions.map((x, xi) => (xi === i ? { ...x, content: e.target.value } : x)))}
+                      className="w-full h-20 p-2 rounded border border-gray-200 text-xs leading-5 focus:outline-none focus:border-accent" />
+                    <p className="text-[11px] text-gray-500 mt-1">理由: {s.reason}</p>
+                  </div>
+                ))}
+              </div>
+              <button onClick={handleSendProposals}
+                className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
+                チェックした提案を添削部屋に送る
+              </button>
             </div>
           )}
 
