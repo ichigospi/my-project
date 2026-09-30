@@ -88,6 +88,8 @@ export interface ScriptProject {
   // 追加ルール提案の下書き（生成後、送信しなくても残り続ける）と過去の提案（再提案時に格納）
   suggestionDrafts?: SuggestionDraft[];
   suggestionArchive?: { archivedAt: string; items: SuggestionDraft[] }[];
+  // 添削部屋のFB動画（Loomリンク＋文字起こしスクショから抽出した指示）
+  fbVideos?: FbVideo[];
   // 構成提案で選択したパターンライブラリのID
   selectedPatternIds?: string[];
   // 企画チェック（step1〜2 後にいつでも依頼可能）
@@ -135,6 +137,22 @@ export interface SuggestionDraft {
   reason: string;
   include: boolean;
   createdAt?: string;
+}
+
+// 添削部屋のFB動画置き場（Loom等のリンク＋文字起こしから抽出した指示）
+export interface FbVideo {
+  id: string;
+  url: string;               // Loom等のリンク（空でも可）
+  transcript?: string;       // スクショOCR/貼り付けで取り込んだ文字起こし
+  extracted?: FbInstruction[]; // AIが抽出した指示
+  createdAt: string;
+}
+
+export interface FbInstruction {
+  type: "ツール修正" | "台本ルール" | "台本修正";
+  content: string;   // 指示として整形されたテキスト
+  quote: string;     // 元になった発言の引用
+  category?: string; // 台本ルールの場合のパターンカテゴリ候補
 }
 
 export interface TitleCandidate {
