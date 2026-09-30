@@ -3,6 +3,7 @@
 
 import { getApiKey, setApiKey, getChannels, saveChannels } from "./channel-store";
 import { getStoredAiModel, applyAiModelFromServer } from "./ai-model";
+import { getPatterns, mergePatterns, type PatternItem } from "./pattern-store";
 import {
   getProfile, saveProfile,
   getAllProfiles, saveProfileByChannel,
@@ -228,6 +229,11 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
     // サーバーの共有設定を正として反映する（設定画面で保存すればpushで全端末に配布される）
     if (data.ai_model_generate) applyAiModelFromServer("generate", data.ai_model_generate);
     if (data.ai_model_check) applyAiModelFromServer("check", data.ai_model_check);
+
+    // パターンライブラリ: idごとにupdatedAtが新しい方を採用してマージ
+    if (Array.isArray(data.patterns)) {
+      mergePatterns(data.patterns as PatternItem[]);
+    }
 
     // 自分のチャンネル(MyChannel): 同名マージ + id統一書き換え
     // ※ projects/tasks/hooks 等のマージ「前」に走らせる必要がある
@@ -572,6 +578,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       litmedia_api_key: getApiKey("litmedia_api_key"),
       ai_model_generate: getStoredAiModel("generate"),
       ai_model_check: getStoredAiModel("check"),
+      patterns: getPatterns(),
       channels: getChannels(),
       hooks: getHooks(),
       ctas: getCTAs(),

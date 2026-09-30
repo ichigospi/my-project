@@ -11,6 +11,7 @@ import StepReferences from "./StepReferences";
 import StepAnalyze from "./StepAnalyze";
 import StepProposal from "./StepProposal";
 import StepScript from "./StepScript";
+import StepReview from "./StepReview";
 
 const STEPS = [
   { id: "genre", label: "ジャンル" },
@@ -19,6 +20,7 @@ const STEPS = [
   { id: "analyzing", label: "分析" },
   { id: "proposal", label: "構成提案" },
   { id: "script", label: "台本出力" },
+  { id: "review", label: "添削部屋" },
 ];
 
 export default function CreatePage() {
@@ -101,7 +103,16 @@ export default function CreatePage() {
         )}
 
         <div className="space-y-3">
-          {projects.map((p, pi) => {
+          {[...projects]
+            .sort((x, y) => {
+              // 添削待ちを最上部に、次に再提出待ち
+              const rank = (p: ScriptProject) =>
+                p.status === "review" && p.scriptReviewStatus === "pending" ? 0
+                : p.status === "review" && p.scriptReviewStatus === "rejected" ? 1
+                : 2;
+              return rank(x) - rank(y);
+            })
+            .map((p, pi) => {
             // 元ネタ（選択済み参考動画）のサムネイル。未選択なら候補全体から表示
             const selectedRefs = (p.referenceVideos || []).filter((v) => v.selected && v.thumbnailUrl);
             const refThumbs = (selectedRefs.length > 0 ? selectedRefs : (p.referenceVideos || []).filter((v) => v.thumbnailUrl)).slice(0, 3);
@@ -117,7 +128,18 @@ export default function CreatePage() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleResume(p)}>
-                  <p className="font-semibold text-sm">{p.title || "（タイトル未定）"}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-sm">{p.title || "（タイトル未定）"}</p>
+                    {p.status === "review" && p.scriptReviewStatus === "pending" && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-600 text-white font-bold shrink-0">🟣 台本添削待ち</span>
+                    )}
+                    {p.status === "review" && p.scriptReviewStatus === "rejected" && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500 text-white font-bold shrink-0">🔁 再提出待ち</span>
+                    )}
+                    {p.scriptReviewStatus === "approved" && p.submittedScript && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-600 text-white font-bold shrink-0">✅ 添削合格</span>
+                    )}
+                  </div>
                   {refThumbs.length > 0 && (
                     <p className="text-[11px] text-gray-400 truncate mt-0.5" title={refThumbs.map((v) => v.title).join(" / ")}>
                       元ネタ: {refThumbs.map((v) => v.title).join(" / ")}
@@ -277,7 +299,8 @@ export default function CreatePage() {
       {activeProject.status === "references" && <StepReferences project={activeProject} onUpdate={updateProject} />}
       {activeProject.status === "analyzing" && <StepAnalyze project={activeProject} onUpdate={updateProject} />}
       {activeProject.status === "proposal" && <StepProposal project={activeProject} onUpdate={updateProject} />}
-      {(activeProject.status === "script" || activeProject.status === "completed") && <StepScript project={activeProject} onUpdate={updateProject} />}
+      {activeProject.status === "script" && <StepScript project={activeProject} onUpdate={updateProject} />}
+      {(activeProject.status === "review" || activeProject.status === "completed") && <StepReview project={activeProject} onUpdate={updateProject} />}
     </div>
   );
 }

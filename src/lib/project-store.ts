@@ -77,8 +77,16 @@ export interface ScriptProject {
   generatedScript: string;
   telopScript: TelopLine[] | null;
   thumbnailTexts: string[];
-  status: "genre" | "title" | "references" | "analyzing" | "proposal" | "script" | "completed";
+  status: "genre" | "title" | "references" | "analyzing" | "proposal" | "script" | "review" | "completed";
   channelId?: string;
+  // 添削部屋（ステップ⑦）: ライターが「台本提出」した時点の台本と、オーナーが添削中の台本
+  submittedScript?: string;
+  reviewedScript?: string;
+  reviewComments?: ReviewComment[];
+  // 追加ルール提案（構成提案→添削部屋に送られる）
+  ruleProposals?: RuleProposal[];
+  // 構成提案で選択したパターンライブラリのID
+  selectedPatternIds?: string[];
   // 企画チェック（step1〜2 後にいつでも依頼可能）
   reviewStatus?: ReviewStatus;
   reviewNote?: string;
@@ -93,6 +101,26 @@ export interface ScriptProject {
   scriptSegments?: ScriptSegment[];
   createdAt: string;
   updatedAt: string;
+}
+
+// 添削部屋のコメント（変更箇所に紐づく。keyは差分セグメントの内容から生成）
+export interface ReviewComment {
+  id: string;          // セグメントキー（type|original|text）
+  original: string;    // 変更前テキスト
+  changed: string;     // 変更後テキスト
+  comment: string;     // オーナーコメント
+  createdAt: string;
+}
+
+// 追加ルール提案（構成提案でAIが提案→ライターが編集して送信→添削部屋でオーナーが確認）
+export interface RuleProposal {
+  id: string;
+  category: string;    // フック/CTA/視聴維持/売上アドバイス/理想の未来/悩み深掘り/常識破壊/構成/その他
+  title: string;
+  content: string;     // ルールとして使えるテキスト
+  reason: string;      // マーケター視点の提案理由
+  status: "proposed" | "adopted" | "dismissed";
+  createdAt: string;
 }
 
 export interface TitleCandidate {
