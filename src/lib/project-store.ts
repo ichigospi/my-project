@@ -85,6 +85,9 @@ export interface ScriptProject {
   reviewComments?: ReviewComment[];
   // 追加ルール提案（構成提案→添削部屋に送られる）
   ruleProposals?: RuleProposal[];
+  // 追加ルール提案の下書き（生成後、送信しなくても残り続ける）と過去の提案（再提案時に格納）
+  suggestionDrafts?: SuggestionDraft[];
+  suggestionArchive?: { archivedAt: string; items: SuggestionDraft[] }[];
   // 構成提案で選択したパターンライブラリのID
   selectedPatternIds?: string[];
   // 企画チェック（step1〜2 後にいつでも依頼可能）
@@ -121,6 +124,16 @@ export interface RuleProposal {
   reason: string;      // マーケター視点の提案理由
   status: "proposed" | "adopted" | "dismissed";
   createdAt: string;
+}
+
+// 追加ルール提案の下書き（構成提案ページで編集・選択できる状態のまま保持）
+export interface SuggestionDraft {
+  category: string;
+  title: string;
+  content: string;
+  reason: string;
+  include: boolean;
+  createdAt?: string;
 }
 
 export interface TitleCandidate {
