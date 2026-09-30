@@ -249,16 +249,20 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     onUpdate({ ...project, suggestionDrafts: list });
   };
 
-  // 確認・編集済みの提案を添削部屋へ送る（送った後も下書きは残る）
+  // 確認・編集済みの提案を添削部屋へ送る（送った後も下書きは残る。既に登録済みの同内容はスキップして重複させない）
   const handleSendProposals = () => {
     const chosen = suggestions.filter((s) => s.include);
     if (chosen.length === 0) { setError("送る提案にチェックを入れてください"); return; }
-    const items: RuleProposal[] = chosen.map((s) => ({
+    const existing = new Set((project.ruleProposals || []).map((p) => `${p.category}|${p.title}`));
+    const fresh = chosen.filter((s) => !existing.has(`${s.category}|${s.title}`));
+    if (fresh.length === 0) { setError("チェックした提案はすべて送信済みです（添削部屋に登録されています）"); return; }
+    const items: RuleProposal[] = fresh.map((s) => ({
       id: `rp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       category: s.category, title: s.title, content: s.content, reason: s.reason,
       status: "proposed", createdAt: new Date().toISOString(),
     }));
     onUpdate({ ...project, ruleProposals: [...(project.ruleProposals || []), ...items], suggestionDrafts: suggestions });
+    setError("");
     setSentToReview(true);
   };
 

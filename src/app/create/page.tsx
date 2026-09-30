@@ -27,6 +27,8 @@ export default function CreatePage() {
   const { activeChannel } = useChannel();
   const [projects, setProjects] = useState<ScriptProject[]>([]);
   const [activeProject, setActiveProject] = useState<ScriptProject | null>(null);
+  // 表示中ステップの上書き（nullならステータス通りの部屋を表示）
+  const [viewStep, setViewStep] = useState<string | null>(null);
 
   useEffect(() => { pullSharedSettings().then(() => setProjects(getProjectsByChannel(activeChannel?.id || ""))); }, [activeChannel]);
 
@@ -39,7 +41,7 @@ export default function CreatePage() {
     pushSharedSettings();
   };
 
-  const handleResume = (p: ScriptProject) => { setActiveProject(p); };
+  const handleResume = (p: ScriptProject) => { setActiveProject(p); setViewStep(null); };
 
   const handleDelete = (id: string) => {
     deleteProject(id);
@@ -49,6 +51,8 @@ export default function CreatePage() {
 
   const updateProject = (updated: ScriptProject) => {
     const prev = activeProject;
+    // ステータスが進んだ場合は表示上書きを解除し、新しいステータスの部屋に追従する
+    if (prev && updated.status !== prev.status) setViewStep(null);
     saveProject(updated);
     setActiveProject(updated);
     setProjects(getProjectsByChannel(activeChannel?.id || ""));
@@ -70,15 +74,20 @@ export default function CreatePage() {
     }
   };
 
-  const handleBack = () => { setActiveProject(null); setProjects(getProjectsByChannel(activeChannel?.id || "")); };
+  const handleBack = () => { setActiveProject(null); setViewStep(null); setProjects(getProjectsByChannel(activeChannel?.id || "")); };
 
   const stepIndex = activeProject ? STEPS.findIndex((s) => s.id === activeProject.status) : -1;
   // completedの場合は最後のステップ扱い
   const effectiveStepIndex = stepIndex === -1 && activeProject?.status === "completed" ? STEPS.length - 1 : stepIndex;
 
-  const goToStep = (status: ScriptProject["status"]) => {
+  // 表示中のステップ（進捗ステータスとは独立。⑥⑦を行き来しても「台本添削待ち」等の進捗を壊さない）
+  const displayedStepId = viewStep ?? (activeProject?.status === "completed" ? "review" : activeProject?.status);
+  const displayedIndex = STEPS.findIndex((s) => s.id === displayedStepId);
+
+  const goToStep = (stepId: string) => {
     if (!activeProject) return;
-    updateProject({ ...activeProject, status });
+    // ステータスは変更せず、表示だけ切り替える（到達済みステップ間は自由に行き来できる）
+    setViewStep(stepId);
   };
 
   // プロジェクト一覧
@@ -277,14 +286,14 @@ export default function CreatePage() {
         {STEPS.map((s, i) => (
           <div key={s.id} className="flex items-center">
             <button
-              onClick={() => goToStep(s.id as ScriptProject["status"])}
+              onClick={() => goToStep(s.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                i === effectiveStepIndex ? "bg-accent text-white" : i < effectiveStepIndex ? "bg-accent/10 text-accent cursor-pointer hover:bg-accent/20" : i > effectiveStepIndex ? "bg-gray-100 text-gray-400" : ""
+                i === displayedIndex ? "bg-accent text-white" : i <= effectiveStepIndex ? "bg-accent/10 text-accent cursor-pointer hover:bg-accent/20" : "bg-gray-100 text-gray-400"
               }`}
               disabled={i > effectiveStepIndex}
             >
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                i === effectiveStepIndex ? "bg-white/20" : i < effectiveStepIndex ? "bg-accent/20" : "bg-gray-200"
+                i === displayedIndex ? "bg-white/20" : i < effectiveStepIndex ? "bg-accent/20" : "bg-gray-200"
               }`}>{i < effectiveStepIndex ? "✓" : i + 1}</span>
               {s.label}
             </button>
@@ -293,14 +302,14 @@ export default function CreatePage() {
         ))}
       </div>
 
-      {/* ステップ本体 */}
-      {activeProject.status === "genre" && <StepGenre project={activeProject} onUpdate={updateProject} />}
-      {activeProject.status === "title" && <StepTitle project={activeProject} onUpdate={updateProject} />}
-      {activeProject.status === "references" && <StepReferences project={activeProject} onUpdate={updateProject} />}
-      {activeProject.status === "analyzing" && <StepAnalyze project={activeProject} onUpdate={updateProject} />}
-      {activeProject.status === "proposal" && <StepProposal project={activeProject} onUpdate={updateProject} />}
-      {activeProject.status === "script" && <StepScript project={activeProject} onUpdate={updateProject} />}
-      {(activeProject.status === "review" || activeProject.status === "completed") && <StepReview project={activeProject} onUpdate={updateProject} />}
+      {/* ステップ本体（表示ステップに従う。進捗ステータスは変えずに行き来できる） */}
+      {displayedStepId === "genre" && <StepGenre project={activeProject} onUpdate={updateProject} />}
+      {displayedStepId === "title" && <StepTitle project={activeProject} onUpdate={updateProject} />}
+      {displayedStepId === "references" && <StepReferences project={activeProject} onUpdate={updateProject} />}
+      {displayedStepId === "analyzing" && <StepAnalyze project={activeProject} onUpdate={updateProject} />}
+      {displayedStepId === "proposal" && <StepProposal project={activeProject} onUpdate={updateProject} />}
+      {displayedStepId === "script" && <StepScript project={activeProject} onUpdate={updateProject} />}
+      {displayedStepId === "review" && <StepReview project={activeProject} onUpdate={updateProject} />}
     </div>
   );
 }
