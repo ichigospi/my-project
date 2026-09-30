@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { diffTexts, segKey, type DiffSeg } from "@/lib/text-diff";
-import { addPattern } from "@/lib/pattern-store";
+import { addPattern, removePattern } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { notifyChatwork, reviewMessage } from "@/lib/notify";
 import { getProfileByChannel } from "@/lib/script-analysis-store";
@@ -99,8 +99,16 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
   };
 
   const adoptToLibrary = (p: RuleProposal) => {
-    addPattern({ category: p.category, title: p.title, content: p.content, channelId: project.channelId });
-    updateProposal(p.id, { status: "adopted" });
+    const item = addPattern({ category: p.category, title: p.title, content: p.content, channelId: project.channelId });
+    updateProposal(p.id, { status: "adopted", adoptedPatternId: item.id });
+    setTimeout(() => { pushSharedSettings(); }, 300);
+  };
+
+  // ライブラリ追加の取り消し（パターンを削除して提案を未採用に戻す）
+  const unadoptFromLibrary = (p: RuleProposal) => {
+    if (!confirm(`「${p.title}」のライブラリ追加を取り消しますか？`)) return;
+    if (p.adoptedPatternId) removePattern(p.adoptedPatternId);
+    updateProposal(p.id, { status: "proposed", adoptedPatternId: undefined });
     setTimeout(() => { pushSharedSettings(); }, 300);
   };
 
@@ -218,6 +226,9 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
                   <button onClick={() => copyProposal(p)} className="px-3 py-1 rounded text-xs border border-gray-300 hover:bg-gray-50">{copied === p.id ? "✓ コピーしました" : "コピー"}</button>
                   {p.status !== "adopted" && (
                     <button onClick={() => adoptToLibrary(p)} className="px-3 py-1 rounded text-xs bg-accent text-white hover:bg-accent/90">ライブラリに追加</button>
+                  )}
+                  {p.status === "adopted" && (
+                    <button onClick={() => unadoptFromLibrary(p)} className="px-3 py-1 rounded text-xs border border-red-200 text-red-500 hover:bg-red-50">追加を取り消す</button>
                   )}
                   {p.status === "proposed" && (
                     <button onClick={() => updateProposal(p.id, { status: "dismissed" })} className="px-3 py-1 rounded text-xs text-gray-400 hover:text-gray-600">却下</button>

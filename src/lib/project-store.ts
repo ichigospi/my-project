@@ -123,6 +123,7 @@ export interface RuleProposal {
   content: string;     // ルールとして使えるテキスト
   reason: string;      // マーケター視点の提案理由
   status: "proposed" | "adopted" | "dismissed";
+  adoptedPatternId?: string; // ライブラリ追加時のパターンID（取り消し用）
   createdAt: string;
 }
 

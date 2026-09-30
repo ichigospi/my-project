@@ -8,7 +8,8 @@ import { getAnalyses, getProfileByChannel } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor } from "@/lib/project-store";
-import { getPatterns, buildSelectedPatternsBlock, type PatternItem } from "@/lib/pattern-store";
+import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
+import { pushSharedSettings } from "@/lib/shared-sync";
 import type { ScriptProject, RuleProposal, SuggestionDraft } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
@@ -275,16 +276,21 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   const [picker, setPicker] = useState<{ mode: "section" | "structure"; heading?: string } | null>(null);
   const [prevSkeleton, setPrevSkeleton] = useState<string | null>(null);
 
-  // セクション見出しから関連カテゴリを推定（おすすめ表示用）
+  // セクション見出しから対応カテゴリを推定（優先表示用）
   const recommendedCategories = (heading: string): string[] => {
     const hints: [RegExp, string[]][] = [
-      [/オープニング|冒頭|フック|選民|掴み/, ["フック", "視聴維持"]],
-      [/CTA|終盤|クロージング|鑑定|LINE|締め/, ["CTA", "売上アドバイス"]],
-      [/理想|未来|祝福|欲求/, ["理想の未来"]],
-      [/悩み|共感|深掘|問題提起/, ["悩み深掘り"]],
-      [/常識|仮想敵|批判|破壊/, ["常識破壊"]],
-      [/維持|離脱|引き/, ["視聴維持"]],
-      [/構成|本編/, ["構成"]],
+      [/選民|おめでとう|選ばれ|オープニング|冒頭|フック|掴み/, ["選民フック"]],
+      [/離脱|予告|最後に|オープンループ|引き/, ["導入の離脱防止"]],
+      [/問題提起|自分ごと|気づいて/, ["問題提起"]],
+      [/悩み|深掘|共感|寄り添/, ["悩みの深掘りと共感"]],
+      [/常識|仮想敵|批判|破壊|ひっくり返/, ["仮想敵批判と常識破壊"]],
+      [/解決|ワーク|実践|アドバイス|ステップ|方法/, ["解決策アドバイス"]],
+      [/理想|未来|祝福|欲求|叶っ/, ["理想の未来"]],
+      [/LINE|鑑定|重CTA/, ["LINE登録CTA"]],
+      [/終盤|クロージング|締め/, ["LINE登録CTA", "口コミ", "チャンネル登録・高評価・コメント訴求"]],
+      [/登録|高評価|コメント|軽CTA|儀式/, ["チャンネル登録・高評価・コメント訴求"]],
+      [/口コミ|実績|社会的証明|喜びの声|報告/, ["口コミ"]],
+      [/構成|本編/, ["全体構成"]],
     ];
     const out = new Set<string>();
     for (const [re, cats] of hints) if (re.test(heading)) cats.forEach((c) => out.add(c));
@@ -583,16 +589,31 @@ ${p.content}`;
                 <span className="text-gray-400">{showPatterns ? "▲" : "▼"}</span>
               </button>
               {showPatterns && (
-                <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
-                  {patterns.map((p) => (
-                    <label key={p.id} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-gray-50 rounded p-1.5">
-                      <input type="checkbox" checked={(project.selectedPatternIds || []).includes(p.id)} onChange={() => togglePattern(p.id)} className="mt-0.5" />
-                      <span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent font-medium mr-1">{p.category}</span>
-                        <span className="font-semibold">{p.title}</span>
-                        <span className="block text-gray-500 mt-0.5 line-clamp-2">{p.content}</span>
-                      </span>
-                    </label>
+                <div className="mt-3 space-y-2 max-h-80 overflow-y-auto">
+                  {PATTERN_CATEGORIES.filter((cat) => patterns.some((p) => p.category === cat)).map((cat) => (
+                    <div key={cat}>
+                      <p className="text-[11px] font-bold text-gray-500 mt-2 mb-1">{cat}</p>
+                      {patterns.filter((p) => p.category === cat).map((p) => (
+                        <div key={p.id} className="flex items-start gap-2 text-xs hover:bg-gray-50 rounded p-1.5">
+                          <input type="checkbox" checked={(project.selectedPatternIds || []).includes(p.id)} onChange={() => togglePattern(p.id)} className="mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <span className="font-semibold">{p.title}</span>
+                            <span className="block text-gray-500 mt-0.5 line-clamp-2">{p.content}</span>
+                          </div>
+                          <select value={p.category}
+                            onChange={(e) => { updatePattern(p.id, { category: e.target.value }); setPatterns(getPatterns()); setTimeout(() => { pushSharedSettings(); }, 300); }}
+                            className="shrink-0 text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-600 max-w-[110px]"
+                            title="カテゴリを変更（後から自由に再割り振りできます）">
+                            {PATTERN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <button onClick={() => {
+                              if (!confirm(`パターン「${p.title}」を取り消しますか？（全端末のライブラリから削除されます）`)) return;
+                              removePattern(p.id); setPatterns(getPatterns()); setTimeout(() => { pushSharedSettings(); }, 300);
+                            }}
+                            className="shrink-0 text-gray-300 hover:text-red-500 text-sm leading-none mt-0.5" title="ライブラリから取り消し">✕</button>
+                        </div>
+                      ))}
+                    </div>
                   ))}
                   <p className="text-[11px] text-gray-400">選択したパターンは骨組み生成・台本生成の両方に「必ず取り入れる」ルールとして注入されます。変更したら骨組みを再生成してください</p>
                 </div>
@@ -695,7 +716,7 @@ ${p.content}`;
 
           {/* パターン参照モーダル: セクション/構成全体の差し替え用パターン選択 */}
           {picker && (() => {
-            const pool = picker.mode === "structure" ? patterns.filter((p) => p.category === "構成") : patterns;
+            const pool = picker.mode === "structure" ? patterns.filter((p) => p.category === "全体構成") : patterns;
             const recs = picker.mode === "section" ? recommendedCategories(picker.heading || "") : [];
             const sorted = [...pool].sort((a, b) => (recs.includes(b.category) ? 1 : 0) - (recs.includes(a.category) ? 1 : 0));
             return (
@@ -788,10 +809,10 @@ ${p.content}`;
                       ↩ 差し替え前に戻す
                     </button>
                   )}
-                  {patterns.some((p) => p.category === "構成") && (
+                  {patterns.some((p) => p.category === "全体構成") && (
                     <button onClick={() => setPicker({ mode: "structure" })} disabled={generating}
                       className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50"
-                      title="構成カテゴリのパターンを選んで骨組み全体を再生成します">
+                      title="全体構成カテゴリのパターンを選んで骨組み全体を再生成します">
                       🏗 構成全体をパターン参照
                     </button>
                   )}
