@@ -54,6 +54,11 @@ function SettingsContent() {
   const [showAiKey, setShowAiKey] = useState(false);
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [litmediaApiKey, setLitmediaApiKeyState] = useState("");
+  const [chatworkToken, setChatworkTokenState] = useState("");
+  const [chatworkRoomId, setChatworkRoomIdState] = useState("");
+  const [showChatworkToken, setShowChatworkToken] = useState(false);
+  const [testingChatwork, setTestingChatwork] = useState(false);
+  const [chatworkTestResult, setChatworkTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [showLitmediaKey, setShowLitmediaKey] = useState(false);
   const [litmediaConnecting, setLitmediaConnecting] = useState(false);
   const [litmediaAuthMsg, setLitmediaAuthMsg] = useState("");
@@ -84,6 +89,8 @@ function SettingsContent() {
       setAiApiKeyState(getApiKey("ai_api_key"));
       setOpenaiApiKeyState(getApiKey("openai_api_key"));
       setLitmediaApiKeyState(getApiKey("litmedia_api_key"));
+      setChatworkTokenState(getApiKey("chatwork_api_token"));
+      setChatworkRoomIdState(getApiKey("chatwork_room_id"));
       setChannelCount(getChannels().length);
       // モデル選択はpullでサーバーの共有値がlocalStorageに反映された後に読む
       setAiModelGenerate(getAiModel("generate"));
@@ -239,11 +246,39 @@ function SettingsContent() {
     setCookieResult({ ok: true, message: "Cookieを削除しました" });
   };
 
+  // Chatworkテスト送信（保存済みの共有設定を使うため、先に保存してから叩く）
+  const testChatwork = async () => {
+    if (!chatworkToken || !chatworkRoomId) {
+      setChatworkTestResult({ ok: false, message: "APIトークンとルームIDを入力してください" });
+      return;
+    }
+    setTestingChatwork(true);
+    setChatworkTestResult(null);
+    try {
+      setApiKey("chatwork_api_token", chatworkToken);
+      setApiKey("chatwork_room_id", chatworkRoomId);
+      await pushSharedSettings();
+      const res = await fetch("/api/notify/chatwork", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "[info][title]接続テスト[/title]YouTube×スピ 自動化ツールとの連携テストです[/info]" }),
+      });
+      const data = await res.json();
+      if (data.ok) setChatworkTestResult({ ok: true, message: "送信成功！Chatworkのルームを確認してください" });
+      else setChatworkTestResult({ ok: false, message: data.error || data.reason || "送信に失敗しました" });
+    } catch {
+      setChatworkTestResult({ ok: false, message: "送信に失敗しました" });
+    } finally {
+      setTestingChatwork(false);
+    }
+  };
+
   const handleSave = () => {
     setApiKey("yt_api_key", youtubeApiKey);
     setApiKey("ai_api_key", aiApiKey);
     setApiKey("openai_api_key", openaiApiKey);
     setApiKey("litmedia_api_key", litmediaApiKey);
+    setApiKey("chatwork_api_token", chatworkToken);
+    setApiKey("chatwork_room_id", chatworkRoomId);
     setAiModel("generate", aiModelGenerate);
     setAiModel("check", aiModelCheck);
     // サーバーにも共有設定を保存
@@ -477,6 +512,44 @@ function SettingsContent() {
               className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
               {showLitmediaKey ? "隠す" : "表示"}
             </button>
+          </div>
+        </div>
+
+        {/* Chatwork連携（台本提出・合格・再提出の通知） */}
+        <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-semibold mb-1">Chatwork連携（任意）</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            設定すると「台本提出」「合格」「再提出依頼」の際に指定ルームへ自動でメッセージが送信されます。
+            APIトークンはChatworkの「サービス連携 → API Token」で発行、ルームIDは対象ルームのURL末尾の数字（#!ridの後）です。
+          </p>
+          <div className="space-y-3">
+            <div className="relative">
+              <input
+                type={showChatworkToken ? "text" : "password"}
+                value={chatworkToken}
+                onChange={(e) => setChatworkTokenState(e.target.value)}
+                placeholder="Chatwork APIトークン"
+                className="w-full px-4 py-2.5 pr-16 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+              />
+              <button type="button" onClick={() => setShowChatworkToken(!showChatworkToken)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+                {showChatworkToken ? "隠す" : "表示"}
+              </button>
+            </div>
+            <input
+              type="text"
+              value={chatworkRoomId}
+              onChange={(e) => setChatworkRoomIdState(e.target.value)}
+              placeholder="ルームID（数字のみ）"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
+            />
+            <button onClick={testChatwork} disabled={testingChatwork}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
+              {testingChatwork ? "送信中..." : "テスト送信"}
+            </button>
+            {chatworkTestResult && (
+              <p className={`text-xs ${chatworkTestResult.ok ? "text-green-600" : "text-red-500"}`}>{chatworkTestResult.message}</p>
+            )}
           </div>
         </div>
 
