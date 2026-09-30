@@ -113,7 +113,7 @@ export function parseYouTubeUrl(url: string): { handle?: string; channelId?: str
 }
 
 // APIキー管理
-export type ApiKeyName = "yt_api_key" | "ai_api_key" | "openai_api_key" | "litmedia_api_key" | "chatwork_api_token" | "chatwork_room_id";
+export type ApiKeyName = "yt_api_key" | "ai_api_key" | "openai_api_key" | "litmedia_api_key" | "chatwork_api_token" | "chatwork_room_id" | "chatwork_owner_id" | "chatwork_writer_ids";
 
 export function getApiKey(key: ApiKeyName): string {
   if (typeof window === "undefined") return "";

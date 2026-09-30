@@ -1,5 +1,6 @@
 // Chatwork通知の送信ヘルパー（fire-and-forget）。
 // 未設定・失敗しても本処理（台本提出・合格等）は止めない。
+import { getApiKey } from "./channel-store";
 
 export function notifyChatwork(message: string) {
   try {
@@ -16,7 +17,18 @@ export function notifyChatwork(message: string) {
   } catch { /* ignore */ }
 }
 
+// カンマ/空白区切りのアカウントID文字列を [To:id] タグ列に変換
+function toTags(raw: string): string {
+  return (raw || "")
+    .split(/[,、\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d+$/.test(s))
+    .map((id) => `[To:${id}]`)
+    .join("");
+}
+
 // 台本レビュー系の定型メッセージ（Chatwork記法）
+// 提出→オーナーにメンション / 合格・再提出→ライターにメンション
 export function reviewMessage(kind: "submitted" | "approved" | "rejected", channelName: string, title: string): string {
   const heads = {
     submitted: "📤 台本が提出されました（添削待ち）",
@@ -28,5 +40,6 @@ export function reviewMessage(kind: "submitted" | "approved" | "rejected", chann
     approved: "添削後の台本が最終稿として反映されています。",
     rejected: "オーナーコメントを確認し、台本を修正して再提出してください。",
   } as const;
-  return `[info][title]${heads[kind]}[/title]チャンネル: ${channelName || "未設定"}\n企画: ${title || "（タイトル未定）"}\n${bodies[kind]}[/info]`;
+  const mention = kind === "submitted" ? toTags(getApiKey("chatwork_owner_id")) : toTags(getApiKey("chatwork_writer_ids"));
+  return `${mention ? mention + "\n" : ""}[info][title]${heads[kind]}[/title]チャンネル: ${channelName || "未設定"}\n企画: ${title || "（タイトル未定）"}\n${bodies[kind]}[/info]`;
 }
