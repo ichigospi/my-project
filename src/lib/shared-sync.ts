@@ -3,7 +3,7 @@
 
 import { getApiKey, setApiKey, getChannels, saveChannels } from "./channel-store";
 import { getStoredAiModel, applyAiModelFromServer } from "./ai-model";
-import { getPatterns, mergePatterns, type PatternItem } from "./pattern-store";
+import { getPatternsForSync, mergePatterns, type PatternItem } from "./pattern-store";
 import {
   getProfile, saveProfile,
   getAllProfiles, saveProfileByChannel,
@@ -594,7 +594,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       chatwork_writer_ids: getApiKey("chatwork_writer_ids"),
       ai_model_generate: getStoredAiModel("generate"),
       ai_model_check: getStoredAiModel("check"),
-      patterns: getPatterns(),
+      patterns: getPatternsForSync(),
       channels: getChannels(),
       hooks: getHooks(),
       ctas: getCTAs(),
