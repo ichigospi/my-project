@@ -93,7 +93,7 @@ ${refText || "（元ネタなし）"}`;
         res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: anthropicHeaders(aiApiKey, aiModel),
-          body: JSON.stringify({ model: aiModel, max_tokens: 4000, messages: [{ role: "user", content: userPrompt }], ...anthropicExtraBody(aiModel) }),
+          body: JSON.stringify({ model: aiModel, max_tokens: 8000, messages: [{ role: "user", content: userPrompt }], ...anthropicExtraBody(aiModel) }),
         });
         if (res.status === 429 || res.status === 529) {
           if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
@@ -110,7 +110,7 @@ ${refText || "（元ネタなし）"}`;
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: userPrompt }], max_tokens: 4000, response_format: { type: "json_object" } }),
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: userPrompt }], max_tokens: 8000, response_format: { type: "json_object" } }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res.status }); }
       const odata = await res.json();
@@ -119,7 +119,11 @@ ${refText || "（元ネタなし）"}`;
     }
 
     const parsed = parseJSON(raw);
-    if (!parsed || !Array.isArray(parsed.suggestions)) return NextResponse.json({ error: "AI応答の解析に失敗しました" }, { status: 500 });
+    if (!parsed || !Array.isArray(parsed.suggestions)) {
+      // 原因診断用に応答の先頭を返す（トークン切れ・形式崩れ等の判別）
+      console.error("[suggest-rules] parse failed. raw head:", raw.slice(0, 300));
+      return NextResponse.json({ error: `AI応答の解析に失敗しました（応答先頭: ${raw.slice(0, 120) || "空"}…）` }, { status: 500 });
+    }
     return NextResponse.json({ suggestions: parsed.suggestions });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "追加ルール提案に失敗しました";

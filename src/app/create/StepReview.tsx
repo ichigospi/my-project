@@ -10,6 +10,8 @@ import { useMemo, useState } from "react";
 import { diffTexts, segKey, type DiffSeg } from "@/lib/text-diff";
 import { addPattern } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
+import { notifyChatwork, reviewMessage } from "@/lib/notify";
+import { getProfileByChannel } from "@/lib/script-analysis-store";
 import type { ScriptProject, ReviewComment, RuleProposal } from "@/lib/project-store";
 
 export default function StepReview({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
@@ -74,6 +76,7 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
     } else {
       onUpdate({ ...project, scriptReviewStatus: "rejected" });
     }
+    notifyChatwork(reviewMessage(result, getProfileByChannel(project.channelId || "").channelName || "", project.title));
   };
 
   const updateProposal = (id: string, patch: Partial<RuleProposal>) => {
