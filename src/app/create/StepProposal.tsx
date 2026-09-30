@@ -9,7 +9,7 @@ import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor } from "@/lib/project-store";
 import { getPatterns, buildSelectedPatternsBlock, type PatternItem } from "@/lib/pattern-store";
-import type { ScriptProject, RuleProposal } from "@/lib/project-store";
+import type { ScriptProject, RuleProposal, SuggestionDraft } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
@@ -29,10 +29,16 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   // 構成差分チェック（元ネタがテンプレ構成と大きく違うか）
   const [diffChecking, setDiffChecking] = useState(false);
   const [diffModal, setDiffModal] = useState<NonNullable<ScriptProject["structureDiff"]> | null>(null);
-  // 追加ルール提案
+  // 追加ルール提案（プロジェクトに永続化。送信しなくても残り続ける）
   const [suggesting, setSuggesting] = useState(false);
-  const [suggestions, setSuggestions] = useState<{ category: string; title: string; content: string; reason: string; include: boolean }[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionDraft[]>([]);
+  const [sugTab, setSugTab] = useState<"current" | "past">("current");
   const [sentToReview, setSentToReview] = useState(false);
+  // プロジェクト切替時に保存済みの下書きを読み込む
+  useEffect(() => {
+    setSuggestions((project.suggestionDrafts || []).map((d) => ({ ...d })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
   // パターンライブラリ
   const [patterns, setPatterns] = useState<PatternItem[]>([]);
   const [showPatterns, setShowPatterns] = useState(false);
@@ -198,10 +204,12 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     finally { setGenerating(false); }
   };
 
-  // 追加ルール提案: 元ネタ台本＋骨組みをプロマーケター視点で分析し、再利用できるパターンを提案
+  // 追加ルール提案: 元ネタ台本＋骨組みをプロマーケター視点で分析し、再利用できるパターンを提案。
+  // 既に提案がある場合は「再提案」となり、現在の提案は過去タブに格納される
   const handleSuggestRules = async () => {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    if (suggestions.length > 0 && !confirm("再提案しますか？（現在の提案は「過去の提案」タブに格納されます）")) return;
     setSuggesting(true); setError(""); setSentToReview(false);
     try {
       const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
@@ -218,12 +226,27 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       });
       const data = await res.json();
       if (data.error) { setError(data.error); return; }
-      setSuggestions(((data.suggestions || []) as { category: string; title: string; content: string; reason: string }[]).map((s) => ({ ...s, include: true })));
+      const now = new Date().toISOString();
+      const newDrafts: SuggestionDraft[] = ((data.suggestions || []) as { category: string; title: string; content: string; reason: string }[])
+        .map((s) => ({ ...s, include: true, createdAt: now }));
+      // 現在の提案を過去タブへ格納し、新しい提案を保存（プロジェクトに永続化）
+      const archive = suggestions.length > 0
+        ? [{ archivedAt: now, items: suggestions }, ...(project.suggestionArchive || [])]
+        : (project.suggestionArchive || []);
+      setSuggestions(newDrafts);
+      setSugTab("current");
+      onUpdate({ ...project, suggestionDrafts: newDrafts, suggestionArchive: archive });
     } catch { setError("追加ルール提案に失敗しました"); }
     finally { setSuggesting(false); }
   };
 
-  // 確認・編集済みの提案を添削部屋へ送る
+  // 下書きの編集をプロジェクトに保存（textareaのblur・チェック切替時）
+  const persistDrafts = (list: SuggestionDraft[]) => {
+    setSuggestions(list);
+    onUpdate({ ...project, suggestionDrafts: list });
+  };
+
+  // 確認・編集済みの提案を添削部屋へ送る（送った後も下書きは残る）
   const handleSendProposals = () => {
     const chosen = suggestions.filter((s) => s.include);
     if (chosen.length === 0) { setError("送る提案にチェックを入れてください"); return; }
@@ -232,9 +255,8 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       category: s.category, title: s.title, content: s.content, reason: s.reason,
       status: "proposed", createdAt: new Date().toISOString(),
     }));
-    onUpdate({ ...project, ruleProposals: [...(project.ruleProposals || []), ...items] });
+    onUpdate({ ...project, ruleProposals: [...(project.ruleProposals || []), ...items], suggestionDrafts: suggestions });
     setSentToReview(true);
-    setSuggestions([]);
   };
 
   const togglePattern = (id: string) => {
@@ -488,35 +510,83 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
             <button onClick={handleSuggestRules} disabled={suggesting || analyses.length === 0}
               className="px-4 py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent hover:text-white transition-colors disabled:opacity-40"
               title="元ネタ台本から、今後使えそうな勝ちパターンをプロマーケター視点で提案します">
-              {suggesting ? "元ネタを分析中..." : "💡 追加ルール提案"}
+              {suggesting ? "元ネタを分析中..." : suggestions.length > 0 ? "🔄 再提案（現在の提案は過去タブへ）" : "💡 追加ルール提案"}
             </button>
             {sentToReview && <span className="ml-3 text-xs text-green-600 font-medium">✓ 添削部屋に送りました（オーナーが確認します）</span>}
           </div>
 
-          {suggestions.length > 0 && (
+          {(suggestions.length > 0 || (project.suggestionArchive || []).length > 0) && (
             <div className="mb-6 bg-card-bg rounded-xl border border-accent/30 p-4">
-              <h3 className="font-semibold text-sm mb-1">💡 パターン提案（{suggestions.length}件）</h3>
-              <p className="text-xs text-gray-400 mb-3">内容を確認・編集し、チェックを入れて「添削部屋に送る」を押してください（オーナーが確認してルール化します）</p>
-              <div className="space-y-3">
-                {suggestions.map((s, i) => (
-                  <div key={i} className={`rounded-lg border p-3 ${s.include ? "border-gray-200" : "border-gray-100 opacity-50"}`}>
-                    <label className="flex items-center gap-2 mb-1 cursor-pointer">
-                      <input type="checkbox" checked={s.include}
-                        onChange={() => setSuggestions(suggestions.map((x, xi) => (xi === i ? { ...x, include: !x.include } : x)))} />
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{s.category}</span>
-                      <span className="text-sm font-semibold">{s.title}</span>
-                    </label>
-                    <textarea value={s.content}
-                      onChange={(e) => setSuggestions(suggestions.map((x, xi) => (xi === i ? { ...x, content: e.target.value } : x)))}
-                      className="w-full h-20 p-2 rounded border border-gray-200 text-xs leading-5 focus:outline-none focus:border-accent" />
-                    <p className="text-[11px] text-gray-500 mt-1">理由: {s.reason}</p>
-                  </div>
-                ))}
+              {/* タブ: 最新の提案 / 過去の提案 */}
+              <div className="flex gap-2 mb-3">
+                <button onClick={() => setSugTab("current")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium ${sugTab === "current" ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
+                  最新の提案（{suggestions.length}）
+                </button>
+                <button onClick={() => setSugTab("past")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium ${sugTab === "past" ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
+                  過去の提案（{(project.suggestionArchive || []).reduce((n, b) => n + b.items.length, 0)}）
+                </button>
               </div>
-              <button onClick={handleSendProposals}
-                className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
-                チェックした提案を添削部屋に送る
-              </button>
+
+              {sugTab === "current" && suggestions.length > 0 && (
+                <>
+                  <p className="text-xs text-gray-400 mb-3">内容を確認・編集し、チェックを入れて「添削部屋に送る」を押してください（提案は送信しなくても保存されます）</p>
+                  <div className="space-y-3">
+                    {suggestions.map((s, i) => (
+                      <div key={i} className={`rounded-lg border p-3 ${s.include ? "border-gray-200" : "border-gray-100 opacity-50"}`}>
+                        <label className="flex items-center gap-2 mb-1 cursor-pointer">
+                          <input type="checkbox" checked={s.include}
+                            onChange={() => persistDrafts(suggestions.map((x, xi) => (xi === i ? { ...x, include: !x.include } : x)))} />
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{s.category}</span>
+                          <span className="text-sm font-semibold">{s.title}</span>
+                        </label>
+                        <textarea value={s.content}
+                          onChange={(e) => setSuggestions(suggestions.map((x, xi) => (xi === i ? { ...x, content: e.target.value } : x)))}
+                          onBlur={() => persistDrafts(suggestions)}
+                          className="w-full h-20 p-2 rounded border border-gray-200 text-xs leading-5 focus:outline-none focus:border-accent" />
+                        <p className="text-[11px] text-gray-500 mt-1">理由: {s.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={handleSendProposals}
+                    className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
+                    チェックした提案を添削部屋に送る
+                  </button>
+                </>
+              )}
+              {sugTab === "current" && suggestions.length === 0 && (
+                <p className="text-xs text-gray-400">最新の提案はありません。「追加ルール提案」を押すと生成されます</p>
+              )}
+
+              {sugTab === "past" && (
+                <div className="space-y-4">
+                  {(project.suggestionArchive || []).length === 0 && (
+                    <p className="text-xs text-gray-400">過去の提案はありません（再提案すると、その時点の提案がここに格納されます）</p>
+                  )}
+                  {(project.suggestionArchive || []).map((batch, bi) => (
+                    <div key={bi}>
+                      <p className="text-[11px] font-medium text-gray-500 mb-1.5">
+                        📁 {new Date(batch.archivedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} の提案（{batch.items.length}件）
+                      </p>
+                      <div className="space-y-2">
+                        {batch.items.map((s, si) => (
+                          <div key={si} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-medium">{s.category}</span>
+                              <span className="text-sm font-semibold text-gray-700">{s.title}</span>
+                              <button onClick={() => navigator.clipboard.writeText(`[${s.category}] ${s.title}\n${s.content}`)}
+                                className="ml-auto text-[11px] text-accent hover:underline shrink-0">コピー</button>
+                            </div>
+                            <p className="text-xs text-gray-600 whitespace-pre-wrap leading-5">{s.content}</p>
+                            <p className="text-[11px] text-gray-400 mt-1">理由: {s.reason}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
