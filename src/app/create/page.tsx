@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getProjectsByChannel, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus } from "@/lib/project-store";
+import { getProjectsByChannel, getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus } from "@/lib/project-store";
 import type { ScriptProject, Genre, Style, ReviewStatus } from "@/lib/project-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
@@ -31,6 +31,23 @@ export default function CreatePage() {
   const [viewStep, setViewStep] = useState<string | null>(null);
 
   useEffect(() => { pullSharedSettings().then(() => setProjects(getProjectsByChannel(activeChannel?.id || ""))); }, [activeChannel]);
+
+  // Chatwork通知等からの直リンク対応: /create?project=<id>&step=review
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const pid = sp.get("project");
+    if (!pid) return;
+    pullSharedSettings().then(() => {
+      const p = getProjects().find((x) => x.id === pid);
+      if (p) {
+        setActiveProject(p);
+        const step = sp.get("step");
+        if (step && STEPS.some((s) => s.id === step)) setViewStep(step);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleNew = () => {
     const p = createProject("love", "healing", activeChannel?.id);
