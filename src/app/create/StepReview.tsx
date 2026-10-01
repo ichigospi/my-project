@@ -7,7 +7,7 @@
 // - 最後に「再提出を依頼」「合格」ボタン → プロジェクト一覧に反映
 
 import { useMemo, useState } from "react";
-import { diffTexts, segKey, type DiffSeg } from "@/lib/text-diff";
+import { diffTexts, segKey, formatTranscript, type DiffSeg } from "@/lib/text-diff";
 import { addPattern, removePattern, normalizeCategory } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
@@ -53,12 +53,6 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [project.id]
   );
-  const formatTranscript = (t: string) =>
-    t.replace(/\r/g, "")
-      .replace(/[ \t　]+/g, " ")
-      .replace(/([。．！!？?])\s*/g, "$1\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
 
   if (!submitted) {
     return (

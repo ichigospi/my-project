@@ -70,3 +70,13 @@ export function diffTexts(oldText: string, newText: string): DiffSeg[] {
 export function segKey(seg: DiffSeg): string {
   return `${seg.type}|${seg.original}|${seg.text}`;
 }
+
+// 元ネタ台本の表示用整形: 文末（。！？）で改行し、余分な空白を除去して読みやすくする
+export function formatTranscript(t: string): string {
+  return (t || "")
+    .replace(/\r/g, "")
+    .replace(/[ \t　]+/g, " ")
+    .replace(/([。．！!？?])\s*/g, "$1\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

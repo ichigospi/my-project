@@ -11,6 +11,7 @@ import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt, withChannelVocabRules } from "@/lib/rules-injector";
 import { buildSelectedPatternsBlock } from "@/lib/pattern-store";
+import { formatTranscript } from "@/lib/text-diff";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
 import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow } from "@/lib/project-store";
 
@@ -108,6 +109,10 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   }, []);
 
   const [generating, setGenerating] = useState(false);
+  // 元ネタ台本の表示（畳める）
+  const [showRefScript, setShowRefScript] = useState(false);
+  const [refScriptTab, setRefScriptTab] = useState(0);
+  const refScripts = getAnalyses().filter((a) => project.analyses?.includes(a.id) && a.transcript);
   const [convertingTelop, setConvertingTelop] = useState(false);
   const [suggestingThumb, setSuggestingThumb] = useState(false);
   const [revising, setRevising] = useState(false);
@@ -687,6 +692,41 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       <h2 className="text-xl font-bold mb-6">⑥ 台本出力</h2>
 
       <ScriptProfileWarning channelId={project.channelId} />
+
+      {/* 元ネタ台本（畳める。文末改行で整形表示） */}
+      {refScripts.length > 0 && (
+        <div className="bg-card-bg rounded-xl border border-gray-100 mb-4 max-w-3xl">
+          <button onClick={() => setShowRefScript(!showRefScript)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold">
+            <span>📄 元ネタ台本（{refScripts.length}本）</span>
+            <span className="text-gray-400 font-normal text-xs">{showRefScript ? "▲ 閉じる" : "▼ 表示"}</span>
+          </button>
+          {showRefScript && (() => {
+            const a = refScripts[Math.min(refScriptTab, refScripts.length - 1)];
+            return (
+              <div className="px-4 pb-4">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  {refScripts.length > 1 && refScripts.map((r, i) => (
+                    <button key={r.id} onClick={() => setRefScriptTab(i)}
+                      className={`px-2 py-1 rounded text-[11px] ${Math.min(refScriptTab, refScripts.length - 1) === i ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      title={r.videoTitle}>
+                      {i + 1}
+                    </button>
+                  ))}
+                  <span className="text-xs text-gray-500 truncate" title={a.videoTitle}>
+                    「{a.videoTitle}」（{a.channelName} / {a.transcript.replace(/\s/g, "").length}字）
+                  </span>
+                  <button onClick={() => navigator.clipboard.writeText(a.transcript)}
+                    className="ml-auto text-xs text-accent hover:underline shrink-0">コピー</button>
+                </div>
+                <div className="max-h-[55vh] overflow-y-auto text-sm leading-7 whitespace-pre-wrap text-gray-700 border-t border-gray-100 pt-3">
+                  {formatTranscript(a.transcript)}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {!project.generatedScript && (
         <div className="text-center py-12">
