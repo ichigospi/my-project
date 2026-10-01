@@ -11,7 +11,7 @@ import { diffTexts, segKey, type DiffSeg } from "@/lib/text-diff";
 import { addPattern, removePattern, normalizeCategory } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
-import { getProfileByChannel } from "@/lib/script-analysis-store";
+import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
 import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction } from "@/lib/project-store";
@@ -45,6 +45,20 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
 
   const segs: DiffSeg[] = useMemo(() => diffTexts(submitted, reviewed), [submitted, reviewed]);
   const changedCount = segs.filter((s) => s.type !== "same").length;
+
+  // 元ネタ台本（台本の右隣に表示。文末で改行して読みやすく整形）
+  const [refTab, setRefTab] = useState(0);
+  const refScripts = useMemo(
+    () => getAnalyses().filter((a) => project.analyses?.includes(a.id) && a.transcript),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [project.id]
+  );
+  const formatTranscript = (t: string) =>
+    t.replace(/\r/g, "")
+      .replace(/[ \t　]+/g, " ")
+      .replace(/([。．！!？?])\s*/g, "$1\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
 
   if (!submitted) {
     return (
@@ -204,7 +218,7 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
     : { label: "🟣 台本添削待ち", cls: "bg-purple-100 text-purple-700" };
 
   return (
-    <div className="w-full max-w-3xl">
+    <div className={`w-full ${refScripts.length > 0 ? "max-w-[1500px]" : "max-w-3xl"}`}>
       <div className="flex items-center gap-3 mb-2">
         <h2 className="text-xl font-bold">⑦ 添削部屋</h2>
         <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusBadge.cls}`}>{statusBadge.label}</span>
@@ -213,6 +227,9 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
         紫色＝オーナーが変更した箇所（クリックで変更前とコメントを表示）。変更箇所: {changedCount}件 / コメント: {comments.length}件
       </p>
 
+      <div className={`grid gap-4 mb-6 items-start ${refScripts.length > 0 ? "lg:grid-cols-2" : ""}`}>
+        {/* 左: 添削対象の台本 */}
+        <div className="min-w-0">
       {/* タブ */}
       <div className="flex gap-2 mb-3">
         <button onClick={() => { saveDraft(); setTab("preview"); }}
@@ -274,6 +291,35 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
           })}
         </div>
       )}
+        </div>
+
+        {/* 右: 元ネタ台本（読みやすく整形して表示） */}
+        {refScripts.length > 0 && (() => {
+          const a = refScripts[Math.min(refTab, refScripts.length - 1)];
+          return (
+            <div className="min-w-0 bg-card-bg rounded-xl border border-gray-100 p-4 h-fit lg:sticky lg:top-4">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <h3 className="font-semibold text-sm">📄 元ネタ台本</h3>
+                {refScripts.length > 1 && refScripts.map((r, i) => (
+                  <button key={r.id} onClick={() => setRefTab(i)}
+                    className={`px-2 py-1 rounded text-[11px] ${Math.min(refTab, refScripts.length - 1) === i ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    title={r.videoTitle}>
+                    {i + 1}
+                  </button>
+                ))}
+                <button onClick={() => navigator.clipboard.writeText(a.transcript)}
+                  className="ml-auto text-xs text-accent hover:underline shrink-0">コピー</button>
+              </div>
+              <p className="text-xs text-gray-500 mb-2 truncate" title={a.videoTitle}>
+                「{a.videoTitle}」（{a.channelName} / {a.transcript.replace(/\s/g, "").length}字）
+              </p>
+              <div className="max-h-[70vh] overflow-y-auto text-sm leading-7 whitespace-pre-wrap text-gray-700 border-t border-gray-100 pt-3">
+                {formatTranscript(a.transcript)}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
 
       {/* コメント一覧 */}
       {comments.length > 0 && (
