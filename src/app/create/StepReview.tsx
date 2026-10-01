@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { diffTexts, segKey, type DiffSeg } from "@/lib/text-diff";
 import { addPattern, removePattern, normalizeCategory } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
-import { notifyChatwork, reviewMessage } from "@/lib/notify";
+import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
 import { getProfileByChannel } from "@/lib/script-analysis-store";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
@@ -93,7 +93,15 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
     } else {
       onUpdate({ ...project, scriptReviewStatus: "rejected" });
     }
-    notifyChatwork(reviewMessage(result, getProfileByChannel(project.channelId || "").channelName || "", project.title));
+    notifyChatwork(
+      reviewMessage(result, getProfileByChannel(project.channelId || "").channelName || "", project.title, {
+        reviewUrl: reviewRoomUrl(project.id),
+        refUrls: refVideoUrls(project.referenceVideos),
+      }),
+      result === "rejected"
+        ? { body: `【台本修正・再提出】「${project.title || "（タイトル未定）"}」のオーナーコメントを確認し、修正して再提出してください\n添削部屋: ${reviewRoomUrl(project.id)}`, assign: "writers" }
+        : undefined
+    );
   };
 
   const updateProposal = (id: string, patch: Partial<RuleProposal>) => {

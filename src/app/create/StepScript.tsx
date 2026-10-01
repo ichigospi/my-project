@@ -11,7 +11,7 @@ import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt, withChannelVocabRules } from "@/lib/rules-injector";
 import { buildSelectedPatternsBlock } from "@/lib/pattern-store";
-import { notifyChatwork, reviewMessage } from "@/lib/notify";
+import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
 import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow } from "@/lib/project-store";
 
 // 簡易ハッシュ（チェック時の台本と現在の台本が一致するか判定用）
@@ -643,7 +643,13 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       scriptReviewStatus: "pending",
       status: "review",
     });
-    notifyChatwork(reviewMessage("submitted", getProfileByChannel(project.channelId || "").channelName || "", project.title));
+    notifyChatwork(
+      reviewMessage("submitted", getProfileByChannel(project.channelId || "").channelName || "", project.title, {
+        reviewUrl: reviewRoomUrl(project.id),
+        refUrls: refVideoUrls(project.referenceVideos),
+      }),
+      { body: `【台本添削】「${project.title || "（タイトル未定）"}」の添削をお願いします\n添削部屋: ${reviewRoomUrl(project.id)}`, assign: "owner" }
+    );
   };
 
   const handleSync = async () => {

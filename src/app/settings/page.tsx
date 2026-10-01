@@ -61,6 +61,8 @@ function SettingsContent() {
   const [showChatworkToken, setShowChatworkToken] = useState(false);
   const [testingChatwork, setTestingChatwork] = useState(false);
   const [chatworkTestResult, setChatworkTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [cwMembers, setCwMembers] = useState<{ accountId: string; name: string; role: string }[] | null>(null);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [showLitmediaKey, setShowLitmediaKey] = useState(false);
   const [litmediaConnecting, setLitmediaConnecting] = useState(false);
   const [litmediaAuthMsg, setLitmediaAuthMsg] = useState("");
@@ -248,6 +250,29 @@ function SettingsContent() {
     await fetch("/api/youtube/cookies", { method: "DELETE" });
     setCookieStatus({ hasCookies: false, size: 0 });
     setCookieResult({ ok: true, message: "Cookieを削除しました" });
+  };
+
+  // ルームのメンバー一覧を取得（アカウントIDをクリックで設定できるように）
+  const fetchCwMembers = async () => {
+    if (!chatworkToken || !chatworkRoomId) {
+      setChatworkTestResult({ ok: false, message: "先にAPIトークンとルームIDを入力してください" });
+      return;
+    }
+    setLoadingMembers(true);
+    setChatworkTestResult(null);
+    try {
+      const res = await fetch("/api/notify/chatwork-members", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: chatworkToken, roomId: chatworkRoomId }),
+      });
+      const data = await res.json();
+      if (data.error) setChatworkTestResult({ ok: false, message: data.error });
+      else setCwMembers(data.members || []);
+    } catch {
+      setChatworkTestResult({ ok: false, message: "メンバー取得に失敗しました" });
+    } finally {
+      setLoadingMembers(false);
+    }
   };
 
   // Chatworkテスト送信（保存済みの共有設定を使うため、先に保存してから叩く）
@@ -567,6 +592,35 @@ function SettingsContent() {
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
               />
               <p className="text-xs text-gray-400 mt-1">アカウントIDはChatworkのプロフィール画面に表示される数字です（未入力ならメンションなしで送信）</p>
+            </div>
+            <div>
+              <button onClick={fetchCwMembers} disabled={loadingMembers}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
+                {loadingMembers ? "取得中..." : "👥 ルームのメンバー一覧から選ぶ"}
+              </button>
+              {cwMembers && (
+                <div className="mt-2 border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-56 overflow-y-auto">
+                  {cwMembers.map((m) => {
+                    const writerList = chatworkWriterIds.split(/[,、\s]+/).filter(Boolean);
+                    const isOwner = chatworkOwnerId.trim() === m.accountId;
+                    const isWriter = writerList.includes(m.accountId);
+                    return (
+                      <div key={m.accountId} className="flex items-center gap-2 px-3 py-2 text-sm">
+                        <span className="flex-1 min-w-0 truncate">{m.name} <span className="text-xs text-gray-400">(ID: {m.accountId})</span></span>
+                        <button onClick={() => setChatworkOwnerIdState(isOwner ? "" : m.accountId)}
+                          className={`px-2 py-1 rounded text-xs ${isOwner ? "bg-accent text-white" : "border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
+                          {isOwner ? "✓ オーナー" : "オーナーに設定"}
+                        </button>
+                        <button onClick={() => setChatworkWriterIdsState(isWriter ? writerList.filter((x) => x !== m.accountId).join(",") : [...writerList, m.accountId].join(","))}
+                          className={`px-2 py-1 rounded text-xs ${isWriter ? "bg-purple-600 text-white" : "border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
+                          {isWriter ? "✓ ライター" : "ライターに追加"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {cwMembers && <p className="text-xs text-gray-400 mt-1">選んだら下の「保存」を押してください</p>}
             </div>
             <button onClick={testChatwork} disabled={testingChatwork}
               className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
