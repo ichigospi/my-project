@@ -30,6 +30,10 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   // 構成差分チェック（元ネタがテンプレ構成と大きく違うか）
   const [diffChecking, setDiffChecking] = useState(false);
   const [diffModal, setDiffModal] = useState<NonNullable<ScriptProject["structureDiff"]> | null>(null);
+  // タロットの抽象ロジック（編集用ローカル状態）
+  const [abstractDraft, setAbstractDraft] = useState<string | null>(null);
+  useEffect(() => { setAbstractDraft(project.abstractLogic ?? null); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
   // 追加ルール提案（プロジェクトに永続化。送信しなくても残り続ける）
   const [suggesting, setSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestionDraft[]>([]);
@@ -160,9 +164,12 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   })();
 
   // 骨組み生成の実体（構成モード確定後に呼ぶ）
-  const runGenerate = async (mode: "template" | "reference", diff?: ScriptProject["structureDiff"], opts?: { patternIds?: string[]; extraPrompt?: string }) => {
+  // タロットは2段階: 抽象ロジック（カードリーディング設計）→ 確認・編集 → 具体展開
+  const runGenerate = async (mode: "template" | "reference", diff?: ScriptProject["structureDiff"], opts?: { patternIds?: string[]; extraPrompt?: string; phase?: "abstract" | "concrete" }) => {
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+
+    const phase = opts?.phase ?? (project.style === "tarot" ? ((abstractDraft ?? project.abstractLogic) ? "concrete" : "abstract") : undefined);
 
     setDiffModal(null);
     setGenerating(true);
@@ -178,6 +185,8 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
           analyses, style: project.style, topic: project.title,
           primaryAnalysisId: effectivePrimaryId || undefined,
           structureMode: mode,
+          phase,
+          abstractLogic: phase === "concrete" ? (abstractDraft ?? project.abstractLogic) : undefined,
           channelProfile: getProfileByChannel(project.channelId || ""), aiApiKey, aiModel: getAiModel("generate"),
           userPrompt: [promptText, opts?.extraPrompt].filter(Boolean).join("\n") || undefined,
           currentSkeleton: skeleton || undefined,
@@ -187,6 +196,20 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
       const data = await res.json();
       if (data.error) { setError(data.error); }
       else if (data.skeleton) {
+        if (phase === "abstract") {
+          // 抽象ロジックとして保存（骨組みはまだ作らない）
+          setAbstractDraft(data.skeleton);
+          onUpdate({
+            ...project,
+            structureMode: mode,
+            ...(diff ? { structureDiff: diff } : {}),
+            ...(opts?.patternIds ? { selectedPatternIds: opts.patternIds } : {}),
+            abstractLogic: data.skeleton,
+          });
+          setPromptText("");
+          setGenerating(false);
+          return;
+        }
         setSkeleton(data.skeleton);
         setPromptText("");
         // 骨組みテキスト＋構成モードをプロジェクトに保存（台本生成・品質チェックにも引き継ぐ）
@@ -195,6 +218,7 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
           structureMode: mode,
           ...(diff ? { structureDiff: diff } : {}),
           ...(opts?.patternIds ? { selectedPatternIds: opts.patternIds } : {}),
+          ...(abstractDraft !== null ? { abstractLogic: abstractDraft } : {}),
           structureProposal: {
             suggestedTitle: project.title,
             concept: data.skeleton,
@@ -706,11 +730,35 @@ ${p.content}`;
             </div>
           )}
 
+          {/* タロット: 抽象ロジック（カードリーディング設計）の確認・編集 */}
+          {project.style === "tarot" && (abstractDraft ?? project.abstractLogic) && (
+            <div className="mb-4 bg-amber-50/60 rounded-xl border border-amber-200 p-4">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <h3 className="font-semibold text-sm">🧩 抽象ロジック（カードリーディング設計）</h3>
+                <span className="text-[11px] text-gray-500">流れ・訴求の骨子を確認・編集してから具体展開してください</span>
+              </div>
+              <textarea value={abstractDraft ?? ""} onChange={(e) => setAbstractDraft(e.target.value)}
+                onBlur={() => { if (abstractDraft !== null && abstractDraft !== project.abstractLogic) onUpdate({ ...project, abstractLogic: abstractDraft }); }}
+                className="w-full h-72 p-3 rounded-lg border border-amber-200 bg-white text-xs leading-5 focus:outline-none focus:border-accent font-sans" />
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button onClick={() => runGenerate(project.structureMode || "template", undefined, { phase: "concrete" })} disabled={generating}
+                  className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
+                  {generating ? "生成中..." : "▶ 具体ロジックに展開（骨組みを生成）"}
+                </button>
+                <button onClick={() => { if (confirm("抽象ロジックを作り直しますか？（カードも引き直されます）")) runGenerate(project.structureMode || "template", undefined, { phase: "abstract" }); }} disabled={generating}
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
+                  🔁 抽象からやり直す
+                </button>
+              </div>
+              {skeleton && <p className="text-[11px] text-gray-500 mt-2">※展開済みの骨組みがあります。ここを編集して「具体ロジックに展開」すると骨組みが作り直されます</p>}
+            </div>
+          )}
+
           {/* 生成ボタン */}
-          {!skeleton && (
+          {!skeleton && !(project.style === "tarot" && (abstractDraft ?? project.abstractLogic)) && (
             <button onClick={handleGenerate} disabled={generating || diffChecking}
               className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50 mb-6">
-              {diffChecking ? "元ネタの構成をチェック中..." : generating ? "骨組みを生成中..." : "台本の骨組みを生成"}
+              {diffChecking ? "元ネタの構成をチェック中..." : generating ? (project.style === "tarot" ? "抽象ロジックを生成中..." : "骨組みを生成中...") : (project.style === "tarot" ? "カードリーディングの抽象ロジックを生成" : "台本の骨組みを生成")}
             </button>
           )}
 
