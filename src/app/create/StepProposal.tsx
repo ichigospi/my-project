@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
@@ -30,10 +30,26 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   // 構成差分チェック（元ネタがテンプレ構成と大きく違うか）
   const [diffChecking, setDiffChecking] = useState(false);
   const [diffModal, setDiffModal] = useState<NonNullable<ScriptProject["structureDiff"]> | null>(null);
-  // タロットの抽象ロジック（編集用ローカル状態）
+  // タロットの抽象ロジック（編集用ローカル状態。プロジェクトに永続化され、画面遷移しても残る）
   const [abstractDraft, setAbstractDraft] = useState<string | null>(null);
   useEffect(() => { setAbstractDraft(project.abstractLogic ?? null); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
+  // 保存済みの抽象ロジックが（同期等で）後から入ってきた場合、未編集なら取り込む
+  useEffect(() => {
+    if ((abstractDraft === null || abstractDraft === "") && project.abstractLogic) setAbstractDraft(project.abstractLogic);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.abstractLogic]);
+  // 画面遷移（アンマウント）時に未保存の編集を自動保存（blur前に移動しても消えないように）
+  const abstractSaveRef = useRef<{ draft: string | null; project: ScriptProject; onUpdate: (p: ScriptProject) => void }>({ draft: null, project, onUpdate });
+  abstractSaveRef.current = { draft: abstractDraft, project, onUpdate };
+  useEffect(() => {
+    return () => {
+      const { draft, project: p, onUpdate: upd } = abstractSaveRef.current;
+      if (draft !== null && draft.trim() !== "" && draft !== (p.abstractLogic || "")) {
+        upd({ ...p, abstractLogic: draft });
+      }
+    };
+  }, []);
   // 追加ルール提案（プロジェクトに永続化。送信しなくても残り続ける）
   const [suggesting, setSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestionDraft[]>([]);
@@ -731,14 +747,14 @@ ${p.content}`;
           )}
 
           {/* タロット: 抽象ロジック（カードリーディング設計）の確認・編集 */}
-          {project.style === "tarot" && (abstractDraft ?? project.abstractLogic) && (
+          {project.style === "tarot" && (abstractDraft !== null ? true : !!project.abstractLogic) && (
             <div className="mb-4 bg-amber-50/60 rounded-xl border border-amber-200 p-4">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <h3 className="font-semibold text-sm">🧩 抽象ロジック（カードリーディング設計）</h3>
                 <span className="text-[11px] text-gray-500">流れ・訴求の骨子を確認・編集してから具体展開してください</span>
               </div>
               <textarea value={abstractDraft ?? ""} onChange={(e) => setAbstractDraft(e.target.value)}
-                onBlur={() => { if (abstractDraft !== null && abstractDraft !== project.abstractLogic) onUpdate({ ...project, abstractLogic: abstractDraft }); }}
+                onBlur={() => { if (abstractDraft !== null && abstractDraft.trim() !== "" && abstractDraft !== project.abstractLogic) onUpdate({ ...project, abstractLogic: abstractDraft }); }}
                 className="w-full h-72 p-3 rounded-lg border border-amber-200 bg-white text-xs leading-5 focus:outline-none focus:border-accent font-sans" />
               <div className="flex flex-wrap gap-2 mt-2">
                 <button onClick={() => runGenerate(project.structureMode || "template", undefined, { phase: "concrete" })} disabled={generating}
