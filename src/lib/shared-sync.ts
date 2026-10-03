@@ -4,6 +4,7 @@
 import { getApiKey, setApiKey, getChannels, saveChannels } from "./channel-store";
 import { getStoredAiModel, applyAiModelFromServer } from "./ai-model";
 import { getPatternsForSync, mergePatterns, type PatternItem } from "./pattern-store";
+import { getGenreKnowledgeMap, mergeGenreKnowledge, type GenreKnowledge } from "./genre-knowledge";
 import {
   getProfile, saveProfile,
   getAllProfiles, saveProfileByChannel,
@@ -245,6 +246,10 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
     // パターンライブラリ: idごとにupdatedAtが新しい方を採用してマージ
     if (Array.isArray(data.patterns)) {
       mergePatterns(data.patterns as PatternItem[]);
+    }
+    // ジャンルナレッジ: ジャンルごとにupdatedAtが新しい方を採用
+    if (data.genreKnowledge && typeof data.genreKnowledge === "object") {
+      mergeGenreKnowledge(data.genreKnowledge as Partial<Record<import("./project-store").Genre, GenreKnowledge>>);
     }
 
     // 自分のチャンネル(MyChannel): 同名マージ + id統一書き換え
@@ -595,6 +600,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       ai_model_generate: getStoredAiModel("generate"),
       ai_model_check: getStoredAiModel("check"),
       patterns: getPatternsForSync(),
+      genreKnowledge: getGenreKnowledgeMap(),
       channels: getChannels(),
       hooks: getHooks(),
       ctas: getCTAs(),
