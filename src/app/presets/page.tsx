@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getPresetsByChannel, savePreset, deletePreset, genId, GENRE_LABELS, STYLE_LABELS } from "@/lib/project-store";
+import { getPresetsByChannel, savePreset, deletePreset, genId, GENRE_LABELS, STYLE_LABELS, detectGenre } from "@/lib/project-store";
+import { getGenreKnowledgeMap, setGenreKnowledge } from "@/lib/genre-knowledge";
+import { getApiKey } from "@/lib/channel-store";
+import { getAiModel } from "@/lib/ai-model";
 import { getProfileByChannel, saveProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { ScriptRulePreset, Genre, Style } from "@/lib/project-store";
@@ -15,7 +18,12 @@ export default function PresetsPage() {
   const [saved, setSaved] = useState(false);
   const [profile, setProfileState] = useState<ChannelProfile | null>(null);
   const [analyses, setAnalysesState] = useState<ScriptAnalysis[]>([]);
-  const [tab, setTab] = useState<"common" | "presets">("common");
+  const [tab, setTab] = useState<"common" | "presets" | "knowledge">("common");
+  // ジャンルナレッジ
+  const [knowledgeMap, setKnowledgeMap] = useState(getGenreKnowledgeMap());
+  const [knowledgeDraft, setKnowledgeDraft] = useState<Record<string, string>>({});
+  const [extracting, setExtracting] = useState<string | null>(null);
+  const [knowledgeError, setKnowledgeError] = useState("");
 
   useEffect(() => {
     const channelId = activeChannel?.id || "";
@@ -28,6 +36,7 @@ export default function PresetsPage() {
       setPresets(getPresetsByChannel(channelId));
       setProfileState(getProfileByChannel(channelId));
       setAnalysesState(getAnalyses());
+      setKnowledgeMap(getGenreKnowledgeMap());
     }).catch(() => { /* pull失敗時もローカル表示は維持 */ });
   }, [activeChannel]);
 
@@ -97,7 +106,75 @@ export default function PresetsPage() {
           className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "presets" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
           カテゴリ別プリセット
         </button>
+        <button onClick={() => { setTab("knowledge"); setEditing(null); }}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "knowledge" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+          ジャンルナレッジ
+        </button>
       </div>
+
+      {/* ジャンルナレッジタブ: 分析済み元台本から抽出した勝ち筋（生成時に自動注入） */}
+      {tab === "knowledge" && (
+        <div className="max-w-2xl space-y-4">
+          <p className="text-sm text-gray-500">
+            分析済みの元台本（ジャンル自動判定・再生数上位10本）からAIが勝ち筋を抽出します。
+            内容は編集でき、骨組み・台本生成・品質チェックに「参考情報」として自動注入されます（ルールが常に優先）。
+          </p>
+          {knowledgeError && <p className="text-sm text-red-500">{knowledgeError}</p>}
+          {(Object.entries(GENRE_LABELS) as [Genre, string][]).map(([g, label]) => {
+            const saved = knowledgeMap[g];
+            const draft = knowledgeDraft[g] ?? saved?.content ?? "";
+            const genreAnalyses = analyses
+              .filter((a) => a.transcript && detectGenre(a.videoTitle || "") === g)
+              .sort((x, y) => (y.views || 0) - (x.views || 0));
+            return (
+              <div key={g} className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <h3 className="font-semibold text-sm">{label}</h3>
+                  <span className="text-xs text-gray-400">対象: {genreAnalyses.length}本{saved?.updatedAt ? ` ／ 最終更新: ${new Date(saved.updatedAt).toLocaleDateString("ja-JP")}` : ""}</span>
+                  <button onClick={async () => {
+                      const aiApiKey = getApiKey("ai_api_key");
+                      if (!aiApiKey) { setKnowledgeError("AI APIキーを設定してください"); return; }
+                      if (genreAnalyses.length === 0) { setKnowledgeError(`${label}の分析済み台本（書き起こしあり）がありません`); return; }
+                      if (saved?.content && !confirm(`${label}のナレッジを再抽出して置き換えますか？（編集した内容は上書きされます）`)) return;
+                      setExtracting(g); setKnowledgeError("");
+                      try {
+                        const res = await fetch("/api/script/extract-genre-knowledge", {
+                          method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            genre: label,
+                            analyses: genreAnalyses.slice(0, 10).map((a) => ({ videoTitle: a.videoTitle, views: a.views, transcript: a.transcript, analysisResult: a.analysisResult ? { summary: a.analysisResult.summary, overallPattern: a.analysisResult.overallPattern, hooks: a.analysisResult.hooks, ctas: a.analysisResult.ctas } : null })),
+                            aiApiKey, aiModel: getAiModel("check"),
+                          }),
+                        });
+                        const data = await res.json();
+                        if (data.error) { setKnowledgeError(data.error); return; }
+                        setGenreKnowledge(g, data.knowledge);
+                        setKnowledgeMap(getGenreKnowledgeMap());
+                        setKnowledgeDraft((prev) => ({ ...prev, [g]: data.knowledge }));
+                        setTimeout(() => { pushSharedSettings(); }, 300);
+                      } catch { setKnowledgeError("抽出に失敗しました"); }
+                      finally { setExtracting(null); }
+                    }} disabled={extracting !== null}
+                    className="ml-auto px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50">
+                    {extracting === g ? "抽出中..." : "🧠 分析済み台本から更新"}
+                  </button>
+                </div>
+                <textarea value={draft}
+                  onChange={(e) => setKnowledgeDraft((prev) => ({ ...prev, [g]: e.target.value }))}
+                  onBlur={() => {
+                    if ((knowledgeDraft[g] ?? null) !== null && knowledgeDraft[g] !== (saved?.content || "")) {
+                      setGenreKnowledge(g, knowledgeDraft[g]);
+                      setKnowledgeMap(getGenreKnowledgeMap());
+                      setTimeout(() => { pushSharedSettings(); }, 300);
+                    }
+                  }}
+                  placeholder="（未抽出）「分析済み台本から更新」を押すと、このジャンルの勝ち筋がここに入ります"
+                  className="w-full h-48 p-3 rounded-lg border border-gray-200 text-xs leading-5 focus:outline-none focus:border-accent" />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* チャンネル共通ルールタブ */}
       {tab === "common" && profile && (

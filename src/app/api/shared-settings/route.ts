@@ -17,7 +17,7 @@ const SHARED_KEYS = [
   "shared_analysis_logs", "shared_weekly_snapshots", "shared_performance_records",
   "shared_ideas", "shared_idea_rules", "shared_idea_rules_list",
   "shared_my_channels", "shared_my_channel_data_list",
-  "shared_winning_patterns_list", "shared_ai_insights", "shared_patterns",
+  "shared_winning_patterns_list", "shared_ai_insights", "shared_patterns", "shared_genre_knowledge",
 ];
 
 export async function GET() {
@@ -97,6 +97,7 @@ export async function GET() {
         : (map["shared_winning_patterns"] ? [parse("shared_winning_patterns", null)] : []),
       aiInsights: parse("shared_ai_insights", [] as unknown[]),
       patterns: parse("shared_patterns", [] as unknown[]),
+      genreKnowledge: parse("shared_genre_knowledge", {} as Record<string, unknown>),
       _skipped: skipped,
     });
   } catch (e) {
@@ -151,6 +152,7 @@ export async function POST(request: NextRequest) {
     if (body.ideaRulesList !== undefined) updates.push({ key: "shared_idea_rules_list", value: JSON.stringify(body.ideaRulesList) });
     if (body.aiInsights !== undefined) updates.push({ key: "shared_ai_insights", value: JSON.stringify(body.aiInsights) });
     if (body.patterns !== undefined) updates.push({ key: "shared_patterns", value: JSON.stringify(body.patterns) });
+    if (body.genreKnowledge !== undefined) updates.push({ key: "shared_genre_knowledge", value: JSON.stringify(body.genreKnowledge) });
 
     // キーごとに独立して書き込む。1つが失敗（容量超過等）しても残りは同期する。
     const failed: { key: string; size: number; error: string }[] = [];

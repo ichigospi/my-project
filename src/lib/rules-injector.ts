@@ -2,6 +2,7 @@
 import { getProfile, getProfileByChannel, getAnalyses, type ChannelProfile } from "./script-analysis-store";
 import { getPresetFor, type Genre, type Style } from "./project-store";
 import { getWinningPatternsByChannel } from "./winning-patterns-store";
+import { buildGenreKnowledgeBlock } from "./genre-knowledge";
 
 export interface InjectedRules {
   channelContext: string;
@@ -150,7 +151,9 @@ export function buildInjectedRules(genre?: Genre, style?: Style, channelId?: str
   const channelContext = buildChannelContext(profile);
   const commonRules = [profile.commonRules?.trim(), channelVocabRules(profile, style)].filter(Boolean).join("\n\n");
   const ngExpressions = profile.ngExpressions?.trim() || "";
-  const categoryRules = preset ? `${preset.rules}\n\nフックパターン: ${preset.hookPattern}\nCTAパターン: ${preset.ctaPattern}` : "";
+  const categoryRules = preset
+    ? `${preset.rules}\n\nフックパターン: ${preset.hookPattern}\nCTAパターン: ${preset.ctaPattern}${buildGenreKnowledgeBlock(genre)}`
+    : buildGenreKnowledgeBlock(genre);
   const referenceExamples = buildReferenceExamples(profile);
   const winningPatterns = buildWinningPatterns(channelId || "");
 
