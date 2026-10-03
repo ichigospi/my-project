@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     // 音声のみ取得。低品質(quality 5≈64kbps)で容量を抑える(書き起こし用途では十分)
     // extract-frames と同様、Cookie戦略×プレイヤークライアントのフォールバックで
     // YouTube側のbotチェック・ダウンロード拒否に耐性を持たせる
-    const clients = ["tv", "ios", "web", "mweb"];
+    const clients = ["default", "tv", "ios", "web", "mweb"]; // default=クライアント指定なし（yt-dlpの自動選択。最新仕様ではこれが最も確実）
     const strategies = localCookieStrategies();
     const strategyErrors: { label: string; err: string }[] = [];
     let downloaded = false;
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
             "-o", outputTemplate,
             "--no-warnings", "--no-playlist",
             "--socket-timeout", "30",
-            "--extractor-args", `youtube:player_client=${client}`,
+            ...(client === "default" ? [] : ["--extractor-args", `youtube:player_client=${client}`]),
             videoUrl,
           ], { env: execEnv, stdio: "pipe", timeout: 600000, maxBuffer: 200 * 1024 * 1024 });
 
