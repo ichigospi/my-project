@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getApiKey, setApiKey } from "@/lib/channel-store";
 import { saveAnalysis, generateId, syncFromServer } from "@/lib/script-analysis-store";
 import { pullSharedSettings } from "@/lib/shared-sync";
@@ -43,6 +43,18 @@ export default function OcrPage() {
   const [error, setError] = useState("");
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [healthWarnings, setHealthWarnings] = useState<string[]>([]);
+  // 読み取り(OCR)フローの中止用。音声(Whisper)フローは対象外
+  const cancelRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const [canCancel, setCanCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  const requestCancel = () => {
+    cancelRef.current = true;
+    setCancelling(true);
+    setProgress("中止しています...");
+    abortRef.current?.abort();
+  };
 
   const addLog = (msg: string) => {
     setDebugLog((prev) => [...prev, `${new Date().toLocaleTimeString()} ${msg}`]);
@@ -101,6 +113,14 @@ export default function OcrPage() {
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
     setProcessing(true);
+    cancelRef.current = false;
+    setCancelling(false);
+    setCanCancel(true);
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
+    const throwIfCancelled = () => {
+      if (cancelRef.current) throw new Error("__cancelled__");
+    };
     setCurrentVideo(item.videoTitle);
     setDebugLog([]);
     addLog(`処理開始: skipSubtitle=${skipSubtitle}, videoId=${item.videoId}`);
@@ -113,8 +133,10 @@ export default function OcrPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoId: item.videoId, skipSubtitle }),
+        signal,
       });
       let frameData = await frameRes.json();
+      throwIfCancelled();
       addLog(`応答: method=${frameData.method || "none"}, transcript=${frameData.transcript?.length || 0}文字, frames=${frameData.frames?.length || 0}枚, error=${frameData.error || "none"}`);
 
       let transcript = "";
@@ -137,8 +159,10 @@ export default function OcrPage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ videoId: item.videoId, skipSubtitle: true }),
+            signal,
           });
           frameData = await retryRes.json();
+          throwIfCancelled();
           addLog(`リトライ応答: frames=${frameData.frames?.length || 0}枚, error=${frameData.error || "none"}`);
           if (frameData.error) throw new Error(frameData.error);
         }
@@ -156,6 +180,7 @@ export default function OcrPage() {
         const ocrTexts: string[] = [];
 
         for (let i = 0; i < frames.length; i += batchSize) {
+          throwIfCancelled();
           const batch = frames.slice(i, i + batchSize);
           const batchNum = Math.floor(i / batchSize) + 1;
           setProgress(`OCR ${batchNum}/${totalBatches}`);
@@ -166,22 +191,28 @@ export default function OcrPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ images: batch, aiApiKey }),
+                signal,
               });
               const ocrData = await ocrRes.json();
               if (ocrData.retryable) {
                 setProgress(`OCR ${batchNum}/${totalBatches} リトライ${retry + 1}/5`);
                 await new Promise((r) => setTimeout(r, 15000 * (retry + 1)));
+                throwIfCancelled();
                 continue;
               }
               if (ocrData.text?.trim()) ocrTexts.push(ocrData.text.trim());
               addLog(`OCR batch${batchNum}: ${ocrData.text?.length || 0}文字`);
               break;
-            } catch {
+            } catch (err) {
+              throwIfCancelled();
+              if (err instanceof Error && err.message === "__cancelled__") throw err;
               if (retry < 4) await new Promise((r) => setTimeout(r, 10000));
+              throwIfCancelled();
             }
           }
           if (i + batchSize < frames.length) await new Promise((r) => setTimeout(r, 3000));
         }
+        throwIfCancelled();
 
         // Step 3: テキスト整理
         transcript = ocrTexts.join("\n\n");
@@ -229,17 +260,26 @@ export default function OcrPage() {
       setProgress(`完了！（${transcript.length}文字取得）`);
       fetchQueue();
     } catch (e) {
-      const errMsg = e instanceof Error ? e.message : "読み取り失敗";
-      setError(errMsg);
-      await fetch("/api/ocr-queue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "error", id: item.id, error: errMsg }),
-      });
-      fetchQueue();
+      // 中止の場合はエラー扱いにせず、動画は読み取り待ちのまま残す
+      if (cancelRef.current || (e instanceof Error && (e.message === "__cancelled__" || e.name === "AbortError"))) {
+        addLog("読み取りを中止しました");
+        setProgress("中止しました（動画は読み取り待ちに残っています）");
+      } else {
+        const errMsg = e instanceof Error ? e.message : "読み取り失敗";
+        setError(errMsg);
+        await fetch("/api/ocr-queue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "error", id: item.id, error: errMsg }),
+        });
+        fetchQueue();
+      }
     } finally {
       setProcessing(false);
       setCurrentVideo("");
+      setCanCancel(false);
+      setCancelling(false);
+      abortRef.current = null;
     }
   };
 
@@ -359,10 +399,14 @@ export default function OcrPage() {
     }
   };
 
-  // 全件一括処理
+  // 全件一括処理（中止されたら残りも実行しない）
   const processAll = async () => {
     for (const item of pendingItems) {
       await processOne(item);
+      if (cancelRef.current) {
+        setProgress("一括読み取りを中止しました（残りは読み取り待ちのままです）");
+        break;
+      }
     }
   };
 
@@ -401,11 +445,17 @@ export default function OcrPage() {
       {processing && (
         <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse" />
-            <div>
-              <p className="text-sm font-medium">{currentVideo}</p>
+            <div className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{currentVideo}</p>
               <p className="text-xs text-yellow-700">{progress}</p>
             </div>
+            {canCancel && (
+              <button onClick={requestCancel} disabled={cancelling}
+                className="px-4 py-1.5 rounded-lg text-xs font-medium border border-red-300 text-red-600 bg-white hover:bg-red-50 disabled:opacity-50 shrink-0">
+                {cancelling ? "中止中..." : "⏹ 中止"}
+              </button>
+            )}
           </div>
         </div>
       )}
