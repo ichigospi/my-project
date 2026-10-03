@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 複数のプレイヤークライアントを順番に試す
-    const clients = ["tv", "ios", "mediaconnect", "web", "web_creator", "mweb"];
+    const clients = ["default", "tv", "ios", "mediaconnect", "web", "web_creator", "mweb"]; // default=クライアント指定なし（yt-dlpの自動選択）
     // ローカル: Cookie無し → インストール済みブラウザのCookieの順で試す（未インストールのブラウザは除外）
     // 本番: Cookie有無でクライアント順序変更
     const cookieStrategies: { label: string; args: string[] }[] = [];
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
             "--socket-timeout", "30",
             "--no-check-certificates",
             "--geo-bypass",
-            "--extractor-args", `youtube:player_client=${client}`,
+            ...(client === "default" ? [] : ["--extractor-args", `youtube:player_client=${client}`]),
             videoUrl,
           ];
 
