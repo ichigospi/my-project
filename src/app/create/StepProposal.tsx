@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
-import { getAnalyses, getProfileByChannel } from "@/lib/script-analysis-store";
+import { getAnalyses, deleteAnalysis, getProfileByChannel } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor } from "@/lib/project-store";
@@ -64,6 +64,20 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   const [patterns, setPatterns] = useState<PatternItem[]>([]);
   const [showPatterns, setShowPatterns] = useState(false);
   useEffect(() => { setPatterns(getPatterns()); }, []);
+  // 台本テキストの拡大表示モーダル
+  const [zoomView, setZoomView] = useState<ScriptAnalysis | null>(null);
+
+  // ミスった読み取り結果を個別に削除（ライブラリ＋このプロジェクトの参照から外す）
+  const handleDeleteAnalysis = (a: ScriptAnalysis) => {
+    if (!confirm(`「${a.videoTitle}」の読み取り結果を削除しますか？\n\n分析ライブラリからも削除され、元に戻せません。\n（読み取りをやり直す場合は、分析ステップで再度読み取ってください）`)) return;
+    deleteAnalysis(a.id);
+    setAnalyses((prev) => prev.filter((x) => x.id !== a.id));
+    onUpdate({
+      ...project,
+      analyses: project.analyses.filter((id) => id !== a.id),
+      ...(project.primaryAnalysisId === a.id ? { primaryAnalysisId: undefined } : {}),
+    });
+  };
 
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
   const applySkeletonFix = async (revisionNote: string): Promise<boolean> => {
@@ -526,6 +540,11 @@ ${p.content}`;
                   <p className="font-semibold text-sm">{a.videoTitle}</p>
                   <p className="text-xs text-gray-500">{a.channelName} · {formatNumber(a.views)}回再生 · スコア {a.score?.overall || "?"}/10</p>
                 </div>
+                <button onClick={() => handleDeleteAnalysis(a)}
+                  title="ミスった読み取り結果など、この分析を削除します（分析ライブラリからも削除）"
+                  className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors">
+                  🗑 削除
+                </button>
               </div>
 
               {!a.analysisResult && (
@@ -584,7 +603,10 @@ ${p.content}`;
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <p className="text-xs font-medium text-gray-500">台本テキスト（{a.transcript.length}文字）</p>
-                        <button onClick={() => navigator.clipboard.writeText(a.transcript)} className="text-xs text-accent hover:underline">コピー</button>
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => setZoomView(a)} className="text-xs text-accent hover:underline">🔍 拡大表示</button>
+                          <button onClick={() => navigator.clipboard.writeText(a.transcript)} className="text-xs text-accent hover:underline">コピー</button>
+                        </div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
                         <pre className="text-xs leading-5 whitespace-pre-wrap font-sans text-gray-600">{a.transcript}</pre>
@@ -595,6 +617,33 @@ ${p.content}`;
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 台本テキスト拡大表示モーダル */}
+      {zoomView && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setZoomView(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4 p-4 border-b border-gray-200 shrink-0">
+              <div className="min-w-0">
+                <p className="font-semibold text-sm truncate">{zoomView.videoTitle}</p>
+                <p className="text-xs text-gray-500">台本テキスト（{zoomView.transcript?.length || 0}文字）</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => navigator.clipboard.writeText(zoomView.transcript || "")}
+                  className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 text-gray-600 hover:bg-gray-50">
+                  コピー
+                </button>
+                <button onClick={() => setZoomView(null)}
+                  className="px-3 py-1.5 rounded-lg text-xs bg-gray-800 text-white hover:bg-gray-700">
+                  ✕ 閉じる
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              <pre className="text-base leading-8 whitespace-pre-wrap font-sans text-gray-800">{zoomView.transcript}</pre>
+            </div>
+          </div>
         </div>
       )}
 
