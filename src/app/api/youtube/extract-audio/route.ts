@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     // 音声のみ取得。低品質(quality 5≈64kbps)で容量を抑える(書き起こし用途では十分)
     // extract-frames と同様、Cookie戦略×プレイヤークライアントのフォールバックで
     // YouTube側のbotチェック・ダウンロード拒否に耐性を持たせる
-    const clients = ["tv", "ios", "web"];
+    const clients = ["tv", "ios", "web", "mweb"];
     const strategies = localCookieStrategies();
     const strategyErrors: { label: string; err: string }[] = [];
     let downloaded = false;
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
           console.log(`[extract-audio] trying: ${strategy.label} + ${client} (${videoId})`);
           execFileSync(ytdlpPath, [
             ...strategy.args,
+            "-f", "bestaudio/best",
             "-x", "--audio-format", "mp3", "--audio-quality", "5",
             "-o", outputTemplate,
             "--no-warnings", "--no-playlist",
