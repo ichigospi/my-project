@@ -10,6 +10,7 @@ import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor } from "@/lib/project-store";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
+import TarotCardGallery from "@/components/TarotCardGallery";
 import type { ScriptProject, RuleProposal, SuggestionDraft } from "@/lib/project-store";
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
@@ -650,6 +651,10 @@ ${p.content}`;
       {/* 骨組みタブ */}
       {viewTab === "skeleton" && (
         <>
+          {/* タロット: 今回引いたカードの実際の絵柄を確認できるギャラリー */}
+          {project.style === "tarot" && (
+            <TarotCardGallery text={`${abstractDraft ?? project.abstractLogic ?? ""}\n${skeleton}`} />
+          )}
           {applyingFix && (
             <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
               <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />

@@ -13,6 +13,7 @@ import { buildInjectedRules, formatRulesForPrompt, withChannelVocabRules } from 
 import { buildSelectedPatternsBlock } from "@/lib/pattern-store";
 import { formatTranscript } from "@/lib/text-diff";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
+import TarotCardGallery from "@/components/TarotCardGallery";
 import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow } from "@/lib/project-store";
 
 // 簡易ハッシュ（チェック時の台本と現在の台本が一致するか判定用）
@@ -692,6 +693,13 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       <h2 className="text-xl font-bold mb-6">⑥ 台本出力</h2>
 
       <ScriptProfileWarning channelId={project.channelId} />
+
+      {/* タロット: 今回引いたカードの実際の絵柄を確認できるギャラリー */}
+      {project.style === "tarot" && (
+        <div className="max-w-3xl">
+          <TarotCardGallery text={`${project.abstractLogic || ""}\n${project.structureProposal?.concept || ""}\n${project.generatedScript || ""}`} />
+        </div>
+      )}
 
       {/* 元ネタ台本（畳める。文末改行で整形表示） */}
       {refScripts.length > 0 && (
