@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
-import { buildTarotDrawBlock } from "@/lib/tarot-draw";
+import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES } from "@/lib/tarot-draw";
 import { referenceModeBlock } from "@/lib/structure-mode";
 
 // 6,500〜7,500文字級の台本生成は出力トークン・所要時間ともに大きいため実行上限を延長
@@ -207,6 +207,11 @@ ${referenceText}${style === "tarot" ? `
 - チャンネル共通ルールや骨組みに【中盤】ヒーリング音楽パート等のヒーリング構成・瞑想/呼吸誘導/アファメーション連打が書かれていても、タロットスタイルでは適用しない。それらに引っ張られてヒーリング台本にしてはいけない。
 - 元ネタ(参考動画)がカードを引きながらリーディングしているなら、その「カードを順に引いて読み解く」進行を必ずトレースする。
 - 山選択(A/B/C)は使わない。最初から最後まで1人の視聴者に向けた単一のリーディングとして進める。
+- 【カードの意味の正確性（必達・捏造防止）】骨組み・抽選ブロックに「正統な意味」「絵柄」の記載がある場合、カードの解釈はその記載の範囲内でだけ行うこと。
+  記載にない意味を語る・正位置と逆位置を取り違える・記載にない絵の要素を「描かれている」と言うのは禁止。
+  スロットの役割に合わせる時も、記載の正統な意味の中から役割に通じる側面を選ぶ（役割のために意味を曲げない）。
+
+${TAROT_IMAGERY_TECHNIQUES}
 ${tarotDraw ? `
 ${tarotDraw}
 - ただし【台本の骨組み】に具体的なカード名の指定がある場合は、骨組みのカードを最優先し、この抽選結果は使わないこと。
