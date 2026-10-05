@@ -127,6 +127,77 @@ export const TAROT_IMAGERY_TECHNIQUES = `【絵柄連想テクニック（リー
 - 語ってよい絵の要素は【絵柄】に記載されたものだけ。記載にない人物・色・持ち物・背景を「描かれている」と言うのは禁止（絵の捏造）
 - 絵柄連想はあくまで「カードの絵の中の話」として語ること。台本全体の比喩は中心メタファー1つのままとし、絵柄から新しい比喩体系を立ち上げない`;
 
+// --- 実際のカード画像（ウェイト版＝パブリックドメイン。Wikimedia Commonsの公式スキャン） ---
+// ブラウザから直接読み込む。表示に失敗した場合はUI側でプレースホルダーにフォールバックする
+const MAJOR_FILES = [
+  "RWS_Tarot_00_Fool.jpg", "RWS_Tarot_01_Magician.jpg", "RWS_Tarot_02_High_Priestess.jpg",
+  "RWS_Tarot_03_Empress.jpg", "RWS_Tarot_04_Emperor.jpg", "RWS_Tarot_05_Hierophant.jpg",
+  "RWS_Tarot_06_Lovers.jpg", "RWS_Tarot_07_Chariot.jpg", "RWS_Tarot_08_Strength.jpg",
+  "RWS_Tarot_09_Hermit.jpg", "RWS_Tarot_10_Wheel_of_Fortune.jpg", "RWS_Tarot_11_Justice.jpg",
+  "RWS_Tarot_12_Hanged_Man.jpg", "RWS_Tarot_13_Death.jpg", "RWS_Tarot_14_Temperance.jpg",
+  "RWS_Tarot_15_Devil.jpg", "RWS_Tarot_16_Tower.jpg", "RWS_Tarot_17_Star.jpg",
+  "RWS_Tarot_18_Moon.jpg", "RWS_Tarot_19_Sun.jpg", "RWS_Tarot_20_Judgement.jpg",
+  "RWS_Tarot_21_World.jpg",
+];
+const SUIT_FILE: Record<string, string> = { "ワンド": "Wands", "カップ": "Cups", "ソード": "Swords", "ペンタクル": "Pents" };
+const RANK_FILE: Record<string, string> = {
+  "エース": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
+  "8": "08", "9": "09", "10": "10", "ペイジ": "11", "ナイト": "12", "クイーン": "13", "キング": "14",
+};
+
+// カード名（日本語）→ 画像URL。未知の名前は null
+export function tarotCardImageUrl(name: string): string | null {
+  const majorIdx = MAJOR_ARCANA.indexOf(name);
+  let file: string | null = null;
+  if (majorIdx >= 0) {
+    file = MAJOR_FILES[majorIdx];
+  } else {
+    const m = name.match(/^(ワンド|カップ|ソード|ペンタクル)の(.+)$/);
+    if (m && SUIT_FILE[m[1]] && RANK_FILE[m[2]]) file = `${SUIT_FILE[m[1]]}${RANK_FILE[m[2]]}.jpg`;
+  }
+  if (!file) return null;
+  // Special:FilePath はファイル名から実体へリダイレクトしてくれる安定パターン（width指定で縮小版）
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${file}?width=400`;
+}
+
+export interface DrawnCard {
+  name: string;
+  orientation: "正位置" | "逆位置";
+  slot?: number;
+}
+
+const ALL_CARD_NAMES = [...MAJOR_ARCANA, ...MINOR_ARCANA];
+
+// 抽象ロジック・骨組み・台本テキストから「N枚目: カード名（正位置/逆位置）」等の記載を抽出する。
+// UI側で実際のカード絵柄を表示するために使う
+export function extractDrawnCards(text: string): DrawnCard[] {
+  if (!text) return [];
+  const found = new Map<number, DrawnCard>();
+
+  // 第1候補: 「N枚目: カード名（正位置/逆位置）」形式（抽選ブロック・抽象ロジック・骨組みの標準形）
+  const re = /(\d)枚目[:：]?\s*([^（\n|｜]+?)（(正位置|逆位置)）/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const slot = Number(m[1]);
+    const name = m[2].trim();
+    if (!ALL_CARD_NAMES.includes(name)) continue;
+    if (!found.has(slot)) found.set(slot, { name, orientation: m[3] as "正位置" | "逆位置", slot });
+  }
+  if (found.size > 0) {
+    return [...found.values()].sort((a, b) => (a.slot || 0) - (b.slot || 0));
+  }
+
+  // フォールバック: 本文中の「カード名（正位置/逆位置）」を登場順に拾う（重複カード名は初出のみ）
+  const hits: { idx: number; card: DrawnCard }[] = [];
+  for (const name of ALL_CARD_NAMES) {
+    // 直前が漢字だと別の単語の一部（例:「能力（正位置）」の「力」）なので除外
+    const r = new RegExp(`(?<![一-龠々])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}（(正位置|逆位置)）`);
+    const hit = r.exec(text);
+    if (hit) hits.push({ idx: hit.index, card: { name, orientation: hit[1] as "正位置" | "逆位置" } });
+  }
+  return hits.sort((a, b) => a.idx - b.idx).slice(0, 7).map((h) => h.card);
+}
+
 function rand<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
