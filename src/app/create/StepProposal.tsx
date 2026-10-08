@@ -67,6 +67,43 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
   useEffect(() => { setPatterns(getPatterns()); }, []);
   // 台本テキストの拡大表示モーダル
   const [zoomView, setZoomView] = useState<ScriptAnalysis | null>(null);
+  // 抽象ロジックのAI壁打ち
+  const [abChat, setAbChat] = useState<{ role: "user" | "ai"; text: string }[]>([]);
+  const [abMsg, setAbMsg] = useState("");
+  const [abSending, setAbSending] = useState(false);
+
+  const sendAbstractChat = async () => {
+    const current = abstractDraft ?? project.abstractLogic ?? "";
+    const msg = abMsg.trim();
+    if (!msg || !current.trim() || abSending) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    setAbSending(true);
+    setError("");
+    setAbChat((prev) => [...prev, { role: "user", text: msg }]);
+    setAbMsg("");
+    try {
+      const res = await fetch("/api/script/revise-abstract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ abstractLogic: current, instruction: msg, history: abChat, topic: project.title, aiApiKey, aiModel: getAiModel("generate") }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setAbChat((prev) => [...prev, { role: "ai", text: `⚠ ${data.error}` }]);
+      } else {
+        setAbChat((prev) => [...prev, { role: "ai", text: data.reply || "修正しました。" }]);
+        if (data.abstractLogic && data.abstractLogic !== current) {
+          setAbstractDraft(data.abstractLogic);
+          onUpdate({ ...project, abstractLogic: data.abstractLogic });
+        }
+      }
+    } catch {
+      setAbChat((prev) => [...prev, { role: "ai", text: "⚠ 通信に失敗しました。もう一度お試しください" }]);
+    } finally {
+      setAbSending(false);
+    }
+  };
 
   // ミスった読み取り結果を個別に削除（ライブラリ＋このプロジェクトの参照から外す）
   const handleDeleteAnalysis = (a: ScriptAnalysis) => {
@@ -821,6 +858,36 @@ ${p.content}`;
                 </button>
               </div>
               {skeleton && <p className="text-[11px] text-gray-500 mt-2">※展開済みの骨組みがあります。ここを編集して「具体ロジックに展開」すると骨組みが作り直されます</p>}
+
+              {/* AI壁打ち: 指示や相談を送ると抽象ロジックが修正される */}
+              <div className="mt-3 pt-3 border-t border-amber-200">
+                <p className="text-xs font-semibold text-amber-800 mb-2">💬 AIと壁打ちして修正（カードと正統な意味は固定のまま調整します）</p>
+                {abChat.length > 0 && (
+                  <div className="space-y-1.5 mb-2 max-h-48 overflow-y-auto">
+                    {abChat.map((m, i) => (
+                      <div key={i} className={`text-xs rounded-lg px-3 py-1.5 whitespace-pre-wrap ${m.role === "user" ? "bg-white border border-amber-200 ml-8" : "bg-amber-100/70 mr-8"}`}>
+                        <span className="font-semibold">{m.role === "user" ? "あなた: " : "AI: "}</span>{m.text}
+                      </div>
+                    ))}
+                    {abSending && <div className="text-xs text-amber-700 px-3 py-1.5 mr-8 flex items-center gap-2"><div className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />修正中...</div>}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={abMsg}
+                    onChange={(e) => setAbMsg(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendAbstractChat(); } }}
+                    placeholder="例: 3枚目の常識破壊をもっと刺さる言い回しにして / 5枚目の未来をもっと具体的に"
+                    disabled={abSending}
+                    className="flex-1 px-3 py-2 rounded-lg border border-amber-200 bg-white text-xs focus:outline-none focus:border-accent disabled:opacity-50"
+                  />
+                  <button onClick={sendAbstractChat} disabled={abSending || !abMsg.trim()}
+                    className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 shrink-0">
+                    {abSending ? "送信中..." : "送信"}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

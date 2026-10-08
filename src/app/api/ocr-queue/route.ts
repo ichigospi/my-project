@@ -54,10 +54,13 @@ export async function POST(request: NextRequest) {
     const queue = await getQueue();
 
     if (body.action === "add") {
-      // 重複チェック
+      // 重複チェック（処理待ち・処理中があれば追加しない）
       if (queue.some((q) => q.videoId === body.videoId && q.status !== "done" && q.status !== "error")) {
         return NextResponse.json({ ok: true, message: "既にキューにあります" });
       }
+      // 再読み取り対応: 同じ動画の古い完了/エラー項目は消してから新規追加（古い結果との混同を防ぐ）
+      const stale = queue.filter((q) => q.videoId === body.videoId && (q.status === "done" || q.status === "error"));
+      for (const s of stale) queue.splice(queue.indexOf(s), 1);
       queue.push({
         id: body.id || Date.now().toString(36),
         videoId: body.videoId,
