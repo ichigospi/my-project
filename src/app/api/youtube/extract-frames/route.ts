@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
             "-f", "bestvideo[height<=480]/best[height<=480]/bestvideo/best",
             "-o", videoPath,
             "--no-playlist",
+            "--no-progress", // 進捗出力でmaxBufferが溢れて途中終了するのを防ぐ（長尺動画対策）
             "--socket-timeout", "30",
             "--no-check-certificates",
             "--geo-bypass",
@@ -129,7 +130,8 @@ export async function POST(request: NextRequest) {
           ];
 
           console.log(`[extract-frames] trying: ${strategy.label} + ${client}`);
-          execFileSync(ytdlpPath, args, { timeout: 300000, env: execEnv, stdio: "pipe" });
+          // 40分級の長尺でも落ちないよう、タイムアウト15分・バッファ64MB
+          execFileSync(ytdlpPath, args, { timeout: 900000, env: execEnv, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 });
 
           if (existsSync(videoPath)) {
             console.log(`[extract-frames] download success: ${strategy.label} + ${client}`);
@@ -158,11 +160,12 @@ export async function POST(request: NextRequest) {
     mkdirSync(framesDir, { recursive: true });
 
     execFileSync(ffmpegPath, [
+      "-loglevel", "error", // 進捗出力でmaxBufferが溢れるのを防ぐ
       "-i", videoPath,
       "-vf", "fps=1/3,scale=640:-1",
       "-q:v", "4",
       join(framesDir, "frame_%04d.jpg"),
-    ], { timeout: 180000, env: execEnv });
+    ], { timeout: 900000, env: execEnv, maxBuffer: 64 * 1024 * 1024 });
 
     const frameFiles = readdirSync(framesDir)
       .filter((f) => f.endsWith(".jpg"))
