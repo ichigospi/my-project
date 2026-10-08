@@ -18,6 +18,60 @@ interface QueueItem {
   error?: string;
 }
 
+// 長文を約6,000字ごとに分割してテキスト整理する（読み取り・音声共通）。
+// 一括で整理するとAIの出力上限（約8,200トークン）で後半が切り詰められるため、長尺動画では分割が必須。
+// minRatio: 整理後がこの比率未満に減ったチャンクは「削りすぎ」として整理前を採用する
+async function cleanupInChunks(opts: {
+  text: string;
+  aiApiKey: string;
+  minRatio: number;
+  onProgress: (msg: string) => void;
+  signal?: AbortSignal;
+  throwIfCancelled?: () => void;
+}): Promise<string> {
+  const { text, aiApiKey, minRatio, onProgress, signal, throwIfCancelled } = opts;
+  const chunks: string[] = [];
+  if (text.length <= 7000) {
+    chunks.push(text);
+  } else {
+    let buf = "";
+    for (const para of text.split("\n\n")) {
+      if (buf && buf.length + para.length > 6000) { chunks.push(buf); buf = ""; }
+      buf = buf ? `${buf}\n\n${para}` : para;
+      // 改行のない長文（Whisper書き起こし等）は、なるべく文の切れ目（。）で分割する
+      while (buf.length > 6000) {
+        let cut = buf.lastIndexOf("。", 6000);
+        if (cut < 3000) cut = 6000; else cut += 1;
+        chunks.push(buf.slice(0, cut));
+        buf = buf.slice(cut);
+      }
+    }
+    if (buf) chunks.push(buf);
+  }
+  const parts: string[] = [];
+  for (let ci = 0; ci < chunks.length; ci++) {
+    throwIfCancelled?.();
+    onProgress(chunks.length > 1 ? `テキスト整理中 ${ci + 1}/${chunks.length}...` : "テキスト整理中...");
+    const part = chunks[ci];
+    try {
+      const res = await fetch("/api/script/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawText: part, sampleImages: [], aiApiKey }),
+        signal,
+      });
+      const data = await res.json();
+      const cleaned = data.text?.trim();
+      parts.push(cleaned && cleaned.length >= part.length * minRatio ? cleaned : part);
+    } catch (err) {
+      throwIfCancelled?.();
+      if (err instanceof Error && err.message === "__cancelled__") throw err;
+      parts.push(part); // 1チャンク失敗しても整理前テキストで続行
+    }
+  }
+  return parts.join("\n\n");
+}
+
 function compressImage(dataUrl: string, maxWidth = 1280, quality = 0.6): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -221,49 +275,13 @@ export default function OcrPage() {
         }
         throwIfCancelled();
 
-        // Step 3: テキスト整理
-        // 長尺対策: AIの出力上限（約1万字）を超えるテキストを一度に整理すると後半が切り詰められるため、
-        // 約6,000字ごとに分割して整理し、結合する
+        // Step 3: テキスト整理（長尺対策で分割整理。詳細は cleanupInChunks を参照）
         transcript = ocrTexts.join("\n\n");
         addLog(`OCR合計: ${transcript.length}文字`);
         if (transcript.length > 0) {
-          const chunks: string[] = [];
-          if (transcript.length <= 7000) {
-            chunks.push(transcript);
-          } else {
-            let buf = "";
-            for (const para of transcript.split("\n\n")) {
-              if (buf && buf.length + para.length > 6000) { chunks.push(buf); buf = ""; }
-              buf = buf ? `${buf}\n\n${para}` : para;
-              while (buf.length > 6000) { chunks.push(buf.slice(0, 6000)); buf = buf.slice(6000); }
-            }
-            if (buf) chunks.push(buf);
-          }
-          const cleanedParts: string[] = [];
-          for (let ci = 0; ci < chunks.length; ci++) {
-            throwIfCancelled();
-            setProgress(chunks.length > 1 ? `テキスト整理中 ${ci + 1}/${chunks.length}...` : "テキスト整理中...");
-            const part = chunks[ci];
-            try {
-              const cleanRes = await fetch("/api/script/cleanup", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ rawText: part, sampleImages: [], aiApiKey }),
-                signal,
-              });
-              const cleanData = await cleanRes.json();
-              const cleaned = cleanData.text?.trim();
-              // 整理後が元の20%未満に減った場合は、整理前のテキストを採用（削りすぎ防止）
-              cleanedParts.push(cleaned && cleaned.length >= part.length * 0.2 ? cleaned : part);
-            } catch (err) {
-              throwIfCancelled();
-              if (err instanceof Error && err.message === "__cancelled__") throw err;
-              cleanedParts.push(part); // 1チャンク失敗しても整理前テキストで続行
-            }
-          }
-          const cleanedAll = cleanedParts.join("\n\n");
-          addLog(`整理後: ${cleanedAll.length}文字（元: ${transcript.length}文字 / ${chunks.length}分割）`);
-          transcript = cleanedAll;
+          const before = transcript.length;
+          transcript = await cleanupInChunks({ text: transcript, aiApiKey, minRatio: 0.2, onProgress: setProgress, signal, throwIfCancelled });
+          addLog(`整理後: ${transcript.length}文字（元: ${before}文字）`);
         }
       }
 
@@ -368,24 +386,13 @@ export default function OcrPage() {
       addLog(`Whisper結果: ${transcript.length}文字`);
 
       // Step 3: 任意でテキスト整理 (aiApiKey があれば)
+      // 長尺対策: 一括整理だとAI出力上限（約8,200トークン≒8,800字）で後半が切り詰められるため、
+      // 読み取りフローと同じく約6,000字ごとに分割して整理する
       if (transcript.length > 0 && aiApiKey) {
-        setProgress("テキスト整理中...");
+        const before = transcript.length;
         try {
-          const cleanRes = await fetch("/api/script/cleanup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rawText: transcript, sampleImages: [], aiApiKey }),
-          });
-          const cleanData = await cleanRes.json();
-          if (cleanData.text?.trim()) {
-            const cleaned = cleanData.text.trim();
-            if (cleaned.length >= transcript.length * 0.5) {
-              transcript = cleaned;
-              addLog(`整理後: ${cleaned.length}文字`);
-            } else {
-              addLog(`整理で削りすぎ→整理前を採用`);
-            }
-          }
+          transcript = await cleanupInChunks({ text: transcript, aiApiKey, minRatio: 0.5, onProgress: setProgress });
+          addLog(`整理後: ${transcript.length}文字（元: ${before}文字）`);
         } catch { /* cleanup失敗は無視 */ }
       }
 
