@@ -29,6 +29,7 @@ export default function CreatePage() {
   const [activeProject, setActiveProject] = useState<ScriptProject | null>(null);
   // 表示中ステップの上書き（nullならステータス通りの部屋を表示）
   const [viewStep, setViewStep] = useState<string | null>(null);
+  const [listQuery, setListQuery] = useState("");
 
   useEffect(() => { pullSharedSettings().then(() => setProjects(getProjectsByChannel(activeChannel?.id || ""))); }, [activeChannel]);
 
@@ -128,15 +129,43 @@ export default function CreatePage() {
           </div>
         )}
 
+        {/* タイトル検索 */}
+        {projects.length > 0 && (
+          <div className="relative mb-4 max-w-md">
+            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" /></svg>
+            <input
+              type="text"
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder="タイトル・元ネタで検索"
+              className="w-full pl-9 pr-8 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-card-bg"
+            />
+            {listQuery && (
+              <button onClick={() => setListQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
+            )}
+          </div>
+        )}
+
         <div className="space-y-3">
           {[...projects]
+            .filter((p) => {
+              const q = listQuery.trim().toLowerCase();
+              if (!q) return true;
+              if ((p.title || "").toLowerCase().includes(q)) return true;
+              return (p.referenceVideos || []).some((v) => (v.title || "").toLowerCase().includes(q));
+            })
             .sort((x, y) => {
-              // 添削待ちを最上部に、次に再提出待ち
+              // 急ぎの案件（添削待ち→再提出待ち→企画チェック待ち→企画差し戻し）を最上部に。
+              // それ以外は更新日時の新しい順（上に行くほど新しい）
               const rank = (p: ScriptProject) =>
                 p.status === "review" && p.scriptReviewStatus === "pending" ? 0
                 : p.status === "review" && p.scriptReviewStatus === "rejected" ? 1
-                : 2;
-              return rank(x) - rank(y);
+                : p.reviewStatus === "pending" ? 2
+                : p.reviewStatus === "rejected" ? 3
+                : 4;
+              const r = rank(x) - rank(y);
+              if (r !== 0) return r;
+              return (y.updatedAt || "").localeCompare(x.updatedAt || "");
             })
             .map((p, pi) => {
             // 元ネタ（選択済み参考動画）のサムネイル。未選択なら候補全体から表示
