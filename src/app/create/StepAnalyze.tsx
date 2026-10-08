@@ -154,12 +154,18 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
             // 既存の分析を探す
             const existing = existingAnalyses.find((a) => a.videoId === item.videoId);
 
+            // 再読み取り判定: キューの完了が既存分析より新しく、書き起こし内容が変わっている場合は上書き反映する
+            const itemCompletedAt = (item as { completedAt?: string }).completedAt || "";
+            const isReRead = !!existing && !!existing.transcript &&
+              itemCompletedAt > (existing.updatedAt || existing.createdAt || "") &&
+              (item.transcript || "") !== existing.transcript;
+
             let analysisId: string;
-            if (existing && existing.transcript && existing.transcript.length >= 100) {
+            if (existing && existing.transcript && existing.transcript.length >= 100 && !isReRead) {
               // 十分な分析がある → 新規保存はスキップだがプロジェクトには紐づける
               analysisId = existing.id;
             } else {
-              // 新規保存 or 上書き
+              // 新規保存 or 上書き（再読み取りの場合は書き起こしを更新し、AI分析は作り直しが必要なのでリセット）
               analysisId = existing?.id || generateId();
               saveAnalysis({
                 id: analysisId,
@@ -170,12 +176,13 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
                 thumbnailUrl: item.thumbnailUrl || "",
                 views: item.views || 0,
                 transcript: item.transcript || "",
-                analysisResult: existing?.analysisResult || null,
+                analysisResult: isReRead ? null : (existing?.analysisResult || null),
                 category: "other",
                 tags: [],
                 createdAt: existing?.createdAt || new Date().toISOString(),
               });
               existingAnalyses = getAnalyses();
+              if (isReRead) updated = true; // 再読み取り反映 → 表示を「AI分析が必要」に更新
             }
 
             // プロジェクトに紐づけ
@@ -323,12 +330,13 @@ export default function StepAnalyze({ project, onUpdate }: { project: ScriptProj
                       {p.status === "error" ? "リトライ" : "再分析"}
                     </button>
                   )}
-                  {p.status !== "done" && (
-                    <button onClick={() => sendToLocalQueue(p.videoId)} disabled={sentToLocal.has(p.videoId)}
-                      className={`px-3 py-1.5 rounded-lg text-xs ${sentToLocal.has(p.videoId) ? "bg-blue-50 text-blue-400" : "border border-blue-300 text-blue-600 hover:bg-blue-50"}`}>
-                      {sentToLocal.has(p.videoId) ? "送信済み" : "ローカルで読み取り"}
-                    </button>
-                  )}
+                  <button onClick={() => {
+                      if (p.status === "done" && !confirm("この動画をローカルで再読み取りしますか？\n読み取り完了後、書き起こしが新しい内容に置き換わり、AI分析はやり直しになります。")) return;
+                      sendToLocalQueue(p.videoId);
+                    }} disabled={sentToLocal.has(p.videoId)}
+                    className={`px-3 py-1.5 rounded-lg text-xs ${sentToLocal.has(p.videoId) ? "bg-blue-50 text-blue-400" : "border border-blue-300 text-blue-600 hover:bg-blue-50"}`}>
+                    {sentToLocal.has(p.videoId) ? "送信済み" : p.status === "done" ? "ローカルで再読み取り" : "ローカルで読み取り"}
+                  </button>
                 </div>
               )}
             </div>
