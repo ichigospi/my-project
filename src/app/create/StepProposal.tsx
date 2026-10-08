@@ -83,10 +83,24 @@ export default function StepProposal({ project, onUpdate }: { project: ScriptPro
     setAbChat((prev) => [...prev, { role: "user", text: msg }]);
     setAbMsg("");
     try {
+      // 元台本（メイン/サブの役割付き）も渡して、訴求の出典参照や「元台本ではどう言ってる？」の相談に答えられるようにする
+      const refs = analyses.map((a) => ({
+        videoTitle: a.videoTitle,
+        views: a.views,
+        role: analyses.length > 1 ? (a.id === effectivePrimaryId ? "main" as const : "sub" as const) : undefined,
+        transcript: a.transcript ? a.transcript.slice(0, 5000) : "",
+        analysisResult: a.analysisResult ? {
+          summary: a.analysisResult.summary,
+          overallPattern: a.analysisResult.overallPattern,
+          hooks: a.analysisResult.hooks,
+          ctas: a.analysisResult.ctas,
+          appealPoints: a.analysisResult.appealPoints,
+        } : null,
+      }));
       const res = await fetch("/api/script/revise-abstract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ abstractLogic: current, instruction: msg, history: abChat, topic: project.title, aiApiKey, aiModel: getAiModel("generate") }),
+        body: JSON.stringify({ abstractLogic: current, instruction: msg, history: abChat, topic: project.title, analyses: refs, aiApiKey, aiModel: getAiModel("generate") }),
       });
       const data = await res.json();
       if (data.error) {
@@ -861,7 +875,7 @@ ${p.content}`;
 
               {/* AI壁打ち: 指示や相談を送ると抽象ロジックが修正される */}
               <div className="mt-3 pt-3 border-t border-amber-200">
-                <p className="text-xs font-semibold text-amber-800 mb-2">💬 AIと壁打ちして修正（カードと正統な意味は固定のまま調整します）</p>
+                <p className="text-xs font-semibold text-amber-800 mb-2">💬 AIと壁打ちして修正（元台本を参照して回答。カードと正統な意味は固定のまま調整します）</p>
                 {abChat.length > 0 && (
                   <div className="space-y-1.5 mb-2 max-h-48 overflow-y-auto">
                     {abChat.map((m, i) => (
