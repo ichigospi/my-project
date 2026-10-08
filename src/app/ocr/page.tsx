@@ -173,8 +173,15 @@ export default function OcrPage() {
           throw new Error(`フレームが0枚です（method=${frameData.method || "none"}, frameCount=${frameData.frameCount || 0}）`);
         }
         addLog(`OCR開始: ${rawFrames.length}枚`);
-        setProgress(`${rawFrames.length}枚のフレームをOCR処理中...`);
-        const frames = await Promise.all(rawFrames.map((f: string) => compressImage(f)));
+        // 長尺対策: 一度に全フレームを圧縮するとメモリを食い潰すため、50枚ずつ処理
+        const frames: string[] = [];
+        for (let ci = 0; ci < rawFrames.length; ci += 50) {
+          throwIfCancelled();
+          if (rawFrames.length > 100) setProgress(`フレーム圧縮中 ${Math.min(ci + 50, rawFrames.length)}/${rawFrames.length}...`);
+          const chunk = await Promise.all(rawFrames.slice(ci, ci + 50).map((f: string) => compressImage(f)));
+          frames.push(...chunk);
+        }
+        setProgress(`${frames.length}枚のフレームをOCR処理中...`);
         const batchSize = 10;
         const totalBatches = Math.ceil(frames.length / batchSize);
         const ocrTexts: string[] = [];
@@ -215,28 +222,48 @@ export default function OcrPage() {
         throwIfCancelled();
 
         // Step 3: テキスト整理
+        // 長尺対策: AIの出力上限（約1万字）を超えるテキストを一度に整理すると後半が切り詰められるため、
+        // 約6,000字ごとに分割して整理し、結合する
         transcript = ocrTexts.join("\n\n");
         addLog(`OCR合計: ${transcript.length}文字`);
         if (transcript.length > 0) {
-          setProgress("テキスト整理中...");
-          try {
-            const cleanRes = await fetch("/api/script/cleanup", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ rawText: transcript, sampleImages: [], aiApiKey }),
-            });
-            const cleanData = await cleanRes.json();
-            if (cleanData.text?.trim()) {
-              const cleaned = cleanData.text.trim();
-              addLog(`整理後: ${cleaned.length}文字（元: ${transcript.length}文字）`);
-              // 整理後が元の20%未満に減った場合は、整理前のテキストを採用
-              if (cleaned.length >= transcript.length * 0.2) {
-                transcript = cleaned;
-              } else {
-                addLog(`整理で削りすぎ（${Math.round(cleaned.length/transcript.length*100)}%）→ 整理前テキストを採用`);
-              }
+          const chunks: string[] = [];
+          if (transcript.length <= 7000) {
+            chunks.push(transcript);
+          } else {
+            let buf = "";
+            for (const para of transcript.split("\n\n")) {
+              if (buf && buf.length + para.length > 6000) { chunks.push(buf); buf = ""; }
+              buf = buf ? `${buf}\n\n${para}` : para;
+              while (buf.length > 6000) { chunks.push(buf.slice(0, 6000)); buf = buf.slice(6000); }
             }
-          } catch {}
+            if (buf) chunks.push(buf);
+          }
+          const cleanedParts: string[] = [];
+          for (let ci = 0; ci < chunks.length; ci++) {
+            throwIfCancelled();
+            setProgress(chunks.length > 1 ? `テキスト整理中 ${ci + 1}/${chunks.length}...` : "テキスト整理中...");
+            const part = chunks[ci];
+            try {
+              const cleanRes = await fetch("/api/script/cleanup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ rawText: part, sampleImages: [], aiApiKey }),
+                signal,
+              });
+              const cleanData = await cleanRes.json();
+              const cleaned = cleanData.text?.trim();
+              // 整理後が元の20%未満に減った場合は、整理前のテキストを採用（削りすぎ防止）
+              cleanedParts.push(cleaned && cleaned.length >= part.length * 0.2 ? cleaned : part);
+            } catch (err) {
+              throwIfCancelled();
+              if (err instanceof Error && err.message === "__cancelled__") throw err;
+              cleanedParts.push(part); // 1チャンク失敗しても整理前テキストで続行
+            }
+          }
+          const cleanedAll = cleanedParts.join("\n\n");
+          addLog(`整理後: ${cleanedAll.length}文字（元: ${transcript.length}文字 / ${chunks.length}分割）`);
+          transcript = cleanedAll;
         }
       }
 
