@@ -618,7 +618,7 @@ export function createProject(genre: Genre, style: Style, channelId?: string): S
 // DEFAULT_PRESETS の内容（ルール文面）を更新したらこの数値を上げる。
 // 既存端末の保存済みプリセット（組み込みIDのもの）が最新のデフォルト内容に
 // 置き換わる（置き換え前の内容はバックアップキーに退避される）。
-const PRESET_DEFAULTS_VERSION = 23;
+const PRESET_DEFAULTS_VERSION = 24;
 const PRESET_DEFAULTS_VERSION_KEY = "fortune_yt_presets_defaults_version";
 
 export function getPresets(): ScriptRulePreset[] {
