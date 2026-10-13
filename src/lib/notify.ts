@@ -50,7 +50,11 @@ export function reviewMessage(kind: "submitted" | "approved" | "rejected", chann
     approved: "添削後の台本が最終稿として反映されています。",
     rejected: "オーナーコメントを確認し、台本を修正して再提出してください。",
   } as const;
-  const mention = kind === "submitted" ? toTags(getApiKey("chatwork_owner_id")) : toTags(getApiKey("chatwork_writer_ids"));
+  // 役割別の宛先（提出→オーナー / 合格・再提出→ライター）＋ 追加メンションメンバー（全種別に常時To）
+  const primary = kind === "submitted" ? getApiKey("chatwork_owner_id") : getApiKey("chatwork_writer_ids");
+  const extra = getApiKey("chatwork_extra_ids");
+  const ids = [...new Set(`${primary || ""},${extra || ""}`.split(/[,、\s]+/).map((s) => s.trim()).filter((s) => /^\d+$/.test(s)))];
+  const mention = ids.map((id) => `[To:${id}]`).join("");
   const lines = [
     `チャンネル: ${channelName || "未設定"}`,
     `企画: ${title || "（タイトル未定）"}`,
