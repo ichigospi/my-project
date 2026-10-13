@@ -69,8 +69,16 @@ export default function CreatePage() {
 
   const updateProject = (updated: ScriptProject) => {
     const prev = activeProject;
-    // ステータスが進んだ場合は表示上書きを解除し、新しいステータスの部屋に追従する
-    if (prev && updated.status !== prev.status) setViewStep(null);
+    // ステータスが進んだ場合は表示上書きを解除し、新しいステータスの部屋に追従する。
+    // ただし台本生成の完了（completed化）では添削部屋へ飛ばさず、台本出力の部屋に留まる
+    // （分割生成の1/2を作るたびに部屋が移動してしまうのを防ぐ。添削部屋へは「提出」時に移動する）
+    if (prev && updated.status !== prev.status) {
+      if (updated.status === "completed") {
+        setViewStep("script");
+      } else {
+        setViewStep(null);
+      }
+    }
     saveProject(updated);
     setActiveProject(updated);
     setProjects(getProjectsByChannel(activeChannel?.id || ""));
