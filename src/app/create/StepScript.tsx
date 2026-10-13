@@ -741,15 +741,31 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           {/* 出力回数（分割）セレクタ */}
           <div className="mb-5">
             <p className="text-sm text-gray-500 mb-2">出力回数（分割数）</p>
-            <div className="inline-flex gap-2">
-              {[1, 2, 3].map((n) => (
-                <button key={n} onClick={() => setSplitCount(n)}
-                  className={`w-12 h-10 rounded-lg text-sm font-medium border ${splitCount === n ? "bg-accent text-white border-accent" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
-                  {n}回
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400 mt-2">
+            {(() => {
+              // 目標文字数からおすすめの分割数を算出（1回の生成で品質が安定するのは約3,000字までのため）
+              const presetForRec = getPresetFor(project.genre, project.style, project.channelId);
+              const targetChars = getRefCharCount() ?? clampTargetChars(presetForRec?.targetWordCount, project.style);
+              const recommended = Math.min(3, Math.max(1, Math.round(targetChars / 3000)));
+              return (
+                <>
+                  <div className="inline-flex gap-2">
+                    {[1, 2, 3].map((n) => (
+                      <button key={n} onClick={() => setSplitCount(n)}
+                        className={`relative w-14 h-10 rounded-lg text-sm font-medium border ${splitCount === n ? "bg-accent text-white border-accent" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
+                        {n}回
+                        {n === recommended && (
+                          <span className="absolute -top-2 -right-2 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-400 text-white font-bold shadow-sm">推奨</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-amber-600 mt-2 font-medium">
+                    💡 目標 約{targetChars.toLocaleString()}字 → おすすめは{recommended}分割（1回の生成で品質が安定するのは約3,000字までのため）
+                  </p>
+                </>
+              );
+            })()}
+            <p className="text-xs text-gray-400 mt-1">
               {splitCount === 1
                 ? "一括で全文を生成します"
                 : `骨組みを${splitCount}分割。まずパート1を生成し、品質チェック・修正してから「次のパート」を生成（前パートを引き継いで続きを書きます）`}
