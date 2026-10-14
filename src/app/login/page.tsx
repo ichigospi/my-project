@@ -1,15 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+// ログイン後の遷移先。オープンリダイレクト対策で自サイト内パスのみ許可。
+function safeFrom(raw: string | null): string {
+  if (!raw) return "/";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/";
+  return raw;
+}
+
+function LoginInner() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const from = safeFrom(searchParams.get("from"));
 
   useEffect(() => {
     fetch("/api/setup")
@@ -34,7 +43,8 @@ export default function LoginPage() {
       setError("メールアドレスまたはパスワードが正しくありません");
       setLoading(false);
     } else {
-      router.push("/");
+      // 来たページ（例: /threads）へ戻す。無ければトップ。
+      router.push(from);
     }
   };
 
@@ -82,5 +92,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-gray-400 text-sm">読み込み中...</div></div>}>
+      <LoginInner />
+    </Suspense>
   );
 }
