@@ -28,6 +28,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
     if (!session && !isPublic) {
+      // ログイン後に元のページ（例: /threads）へ戻せるよう、現在地を from に付ける
+      const from = encodeURIComponent(pathname || "/");
       // セットアップが必要か確認
       fetch("/api/setup")
         .then((r) => r.json())
@@ -35,10 +37,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           if (data.needsSetup) {
             router.replace("/setup");
           } else {
-            router.replace("/login");
+            router.replace(`/login?from=${from}`);
           }
         })
-        .catch(() => router.replace("/login"));
+        .catch(() => router.replace(`/login?from=${from}`));
       return;
     }
 
