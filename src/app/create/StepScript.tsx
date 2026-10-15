@@ -192,7 +192,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           structureMode: project.structureMode,
           aiApiKey,
           aiModel: getAiModel("generate"),
-          refCharCount: getRefCharCount(),
+          refCharCount: getEffectiveTargetChars(),
         }),
       });
       const data = await res.json();
@@ -203,6 +203,22 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   };
 
   // 主軸元ネタの書き起こし文字数。±500字ルールの基準（メイン指定があればそれ、無ければ最多再生）
+  // 骨組みに書かれた「目標文字数」を読む（ユーザーが骨組み上で下方修正した場合、元ネタ実測より優先する）
+  const getSkeletonTargetChars = (): number | undefined => {
+    const concept = project.structureProposal?.concept || "";
+    const line = concept.match(/目標文字数[:：][^\n]*/);
+    if (!line) return undefined;
+    const nums = (line[0].match(/[\d,，]{3,}/g) || [])
+      .map((s) => Number(s.replace(/[,，]/g, "")))
+      .filter((n) => Number.isFinite(n) && n >= 1000 && n <= 50000);
+    return nums.length ? Math.max(...nums) : undefined;
+  };
+
+  // 生成・推奨分割で使う実効目標文字数: 骨組みの目標 > 元ネタ実測 > プリセット
+  const getEffectiveTargetChars = (): number | undefined => {
+    return getSkeletonTargetChars() ?? getRefCharCount();
+  };
+
   const getRefCharCount = (): number | undefined => {
     const refs = getAnalyses().filter((a) => project.analyses?.includes(a.id) && a.transcript);
     if (refs.length === 0) return undefined;
@@ -240,7 +256,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const parts = splitSkeletonText(project.structureProposal?.concept || "", count);
     // 総目標文字数（プリセット）を、骨組みの各パートの分量比で重み付けして per-part に配分
     // 元ネタの文字数が分かる場合はそれを総目標に（±500字ルール）。無ければスタイル別レンジ
-    const refCharCount = getRefCharCount();
+    const refCharCount = getEffectiveTargetChars();
     const totalTargetChars = refCharCount ?? clampTargetChars(preset?.targetWordCount, project.style);
     const totalLen = parts.reduce((s, p) => s + p.length, 0) || 1;
     const partTargetChars = Math.round(totalTargetChars * ((parts[index]?.length || 0) / totalLen));
@@ -744,7 +760,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             {(() => {
               // 目標文字数からおすすめの分割数を算出（1回の生成で品質が安定するのは約3,000字までのため）
               const presetForRec = getPresetFor(project.genre, project.style, project.channelId);
-              const targetChars = getRefCharCount() ?? clampTargetChars(presetForRec?.targetWordCount, project.style);
+              const targetChars = getEffectiveTargetChars() ?? clampTargetChars(presetForRec?.targetWordCount, project.style);
               const recommended = Math.min(3, Math.max(1, Math.round(targetChars / 3000)));
               return (
                 <>
