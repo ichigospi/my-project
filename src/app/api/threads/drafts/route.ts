@@ -84,6 +84,7 @@ export async function POST(request: NextRequest) {
         generationMeta: typeof body.generationMeta === "string" ? body.generationMeta : JSON.stringify(body.generationMeta ?? {}),
         eduTags: Array.isArray(body.eduTags) ? JSON.stringify(body.eduTags) : typeof body.eduTags === "string" ? body.eduTags : "[]",
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
+        status: ["draft", "approved", "scheduled", "published", "rejected"].includes(body.status) ? body.status : "draft",
       },
     });
     return NextResponse.json(draft);

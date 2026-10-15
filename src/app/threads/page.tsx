@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useThreadsAccountId } from "@/lib/threads-account";
 import { fmtDate } from "@/lib/threads-client";
+import TodayFlow from "@/components/TodayFlow";
 
 interface StatsResponse {
   competitors: number;
@@ -67,6 +68,9 @@ export default function ThreadsDashboardPage() {
           まずは <Link href="/threads/accounts" className="font-bold underline">アカウント管理</Link> で運用アカウントを登録してください。
         </div>
       )}
+
+      {/* 今日のおすすめ投稿 → まとめて自動作成フロー（アプリの目玉） */}
+      {accountId && <TodayFlow />}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {cards.map((c) => (
