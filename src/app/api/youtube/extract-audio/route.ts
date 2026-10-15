@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execSync, execFileSync } from "child_process";
+import { execFileSync } from "child_process";
+import { localExecEnv, findBinary } from "@/lib/local-bins";
 import { mkdirSync, statSync, rmSync, readdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -17,28 +18,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "videoId が必要です" }, { status: 400 });
   }
 
-  const extendedPath = [
-    process.env.PATH || "",
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin",
-  ].join(":");
-  const execEnv = { ...process.env, PATH: extendedPath };
+  const execEnv = localExecEnv();
 
-  let ytdlpPath = "";
-  let ffmpegPath = "";
-
-  try {
-    ytdlpPath = execSync("which yt-dlp", { env: execEnv }).toString().trim().split("\n")[0];
-  } catch {
-    return NextResponse.json({ error: "yt-dlp がインストールされていません。\nbrew install yt-dlp" }, { status: 400 });
+  const ytdlpPath = findBinary("yt-dlp", execEnv);
+  if (!ytdlpPath) {
+    return NextResponse.json({ error: "yt-dlp がインストールされていません。\nMac: brew install yt-dlp ／ Windows: winget install yt-dlp.yt-dlp" }, { status: 400 });
   }
-
-  try {
-    ffmpegPath = execSync("which ffmpeg", { env: execEnv }).toString().trim().split("\n")[0];
-  } catch {
-    return NextResponse.json({ error: "ffmpeg がインストールされていません。\nbrew install ffmpeg" }, { status: 400 });
+  const ffmpegPath = findBinary("ffmpeg", execEnv);
+  if (!ffmpegPath) {
+    return NextResponse.json({ error: "ffmpeg がインストールされていません。\nMac: brew install ffmpeg ／ Windows: winget install Gyan.FFmpeg" }, { status: 400 });
   }
 
   const tempDir = join(tmpdir(), `yt-audio-${videoId}-${Date.now()}`);
@@ -111,8 +99,12 @@ export async function POST(request: NextRequest) {
     if (sizeMB > 24) {
       const chunkDir = join(tempDir, "chunks");
       mkdirSync(chunkDir, { recursive: true });
-      const splitCmd = `"${ffmpegPath}" -i "${audioPath}" -f segment -segment_time 600 -c copy -y "${join(chunkDir, "chunk_%03d.mp3")}" 2>/dev/null`;
-      execSync(splitCmd, { env: execEnv, stdio: "pipe" });
+      execFileSync(ffmpegPath, [
+        "-loglevel", "error",
+        "-i", audioPath,
+        "-f", "segment", "-segment_time", "600", "-c", "copy", "-y",
+        join(chunkDir, "chunk_%03d.mp3"),
+      ], { env: execEnv, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 });
       const chunkFiles = readdirSync(chunkDir).filter(f => f.startsWith("chunk_") && f.endsWith(".mp3")).sort();
       for (const f of chunkFiles) chunks.push(join(chunkDir, f));
       console.log(`[extract-audio] split into ${chunks.length} chunks`);
