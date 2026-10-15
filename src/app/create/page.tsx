@@ -361,7 +361,7 @@ export default function CreatePage() {
       {displayedStepId === "title" && <StepTitle project={activeProject} onUpdate={updateProject} />}
       {displayedStepId === "references" && <StepReferences project={activeProject} onUpdate={updateProject} />}
       {displayedStepId === "analyzing" && <StepAnalyze project={activeProject} onUpdate={updateProject} />}
-      {displayedStepId === "proposal" && <StepProposal project={activeProject} onUpdate={updateProject} />}
+      {displayedStepId === "proposal" && <StepProposal project={activeProject} onUpdate={updateProject} onNavigate={goToStep} />}
       {displayedStepId === "script" && <StepScript project={activeProject} onUpdate={updateProject} />}
       {displayedStepId === "review" && <StepReview project={activeProject} onUpdate={updateProject} />}
     </div>
