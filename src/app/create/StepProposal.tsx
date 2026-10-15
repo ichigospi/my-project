@@ -15,7 +15,7 @@ import type { ScriptProject, RuleProposal, SuggestionDraft } from "@/lib/project
 import type { ScriptAnalysis } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
-export default function StepProposal({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
+export default function StepProposal({ project, onUpdate, onNavigate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void; onNavigate?: (stepId: string) => void }) {
   const [analyses, setAnalyses] = useState<ScriptAnalysis[]>([]);
   const [generating, setGenerating] = useState(false);
   const [skeleton, setSkeleton] = useState(project.structureProposal?.concept || "");
@@ -1159,11 +1159,16 @@ ${p.content}`;
       )}
 
       {/* ナビゲーション */}
+      {/* 進捗ステータスは「初めて進む時」だけ更新し、部屋の移動は onNavigate（表示遷移）で行う。
+          既に台本出力まで進んだプロジェクトで戻ってきた場合もボタンが効くように */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <button onClick={() => onUpdate({ ...project, status: "analyzing" })}
+        <button onClick={() => { if (onNavigate) onNavigate("analyzing"); else onUpdate({ ...project, status: "analyzing" }); }}
           className="px-6 py-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">← 戻る</button>
         {skeleton ? (
-          <button onClick={() => onUpdate({ ...project, status: "script" })}
+          <button onClick={() => {
+            if (project.status === "proposal") onUpdate({ ...project, status: "script" });
+            onNavigate?.("script");
+          }}
             className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90">
             この骨組みで台本を作成 →
           </button>
@@ -1176,7 +1181,10 @@ ${p.content}`;
           </button>
         )}
         {!skeleton && (
-          <button onClick={() => onUpdate({ ...project, status: "script" })}
+          <button onClick={() => {
+            if (project.status === "proposal") onUpdate({ ...project, status: "script" });
+            onNavigate?.("script");
+          }}
             className="px-6 py-3 rounded-lg border border-accent text-accent font-medium hover:bg-accent/5">
             スキップして台本作成へ →
           </button>
