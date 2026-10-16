@@ -2,7 +2,7 @@
 // 今日の暦テーマ + 伸びてる競合投稿（オマージュ元）+ アカウント文脈 から、今日出すと良い企画を提案。
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { callThreadsAI, extractJson, resolveThreadsAiModel } from "@/lib/threads-ai";
+import { callThreadsAI, extractJson } from "@/lib/threads-ai";
 import { dayAlmanac } from "@/lib/threads-koyomi";
 
 export const maxDuration = 60;
@@ -61,11 +61,11 @@ export async function POST(request: NextRequest) {
 
     const account = await prisma.threadsAccount.findUnique({ where: { id: accountId } });
 
-    // 伸びてる競合投稿（オマージュ元候補）。いいね順 + Hot優先で最大16件。
+    // 伸びてる競合投稿（オマージュ元候補）。いいね順 + Hot優先。速度重視で10件に絞る。
     const posts = await prisma.threadsCompetitorPost.findMany({
       where: { competitor: { accountId } },
       orderBy: [{ isHot: "desc" }, { likes: "desc" }, { collectedAt: "desc" }],
-      take: 16,
+      take: 10,
       include: { competitor: { select: { handle: true } } },
     });
 
@@ -103,8 +103,9 @@ export async function POST(request: NextRequest) {
         const res = await callThreadsAI(aiApiKey, {
           systemPrompt: SUGGEST_SYSTEM,
           userInstruction: instruction,
-          model: resolveThreadsAiModel(body.model),
-          maxTokens: 2000,
+          // 速度優先: おすすめ選定は常に最速モデル（Haiku）で。生成本体はユーザー設定モデルのまま。
+          model: "claude-haiku-4-5",
+          maxTokens: 1200,
         });
         if (!res.error) {
           const parsed = extractJson<{ suggestions: Omit<SuggestionOut, "id" | "sourceExcerpt" | "sourceHandle" | "sourceLikes">[] }>(res.text);

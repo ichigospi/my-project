@@ -70,6 +70,15 @@ function matchEdu(eduType: string): string[] {
   return hit ? [hit] : [];
 }
 
+// おすすめカードの色テーマ（枠・背景・番号バッジを番号ごとに変える）
+const CARD_THEMES = [
+  { grad: "from-fuchsia-600/25 via-fuchsia-500/10 to-transparent", ring: "border-fuchsia-500/40", badge: "from-fuchsia-400 to-pink-500", chip: "bg-fuchsia-500/20 text-fuchsia-100", glow: "shadow-[0_0_30px_-12px_rgba(217,70,239,0.6)]" },
+  { grad: "from-indigo-600/25 via-indigo-500/10 to-transparent", ring: "border-indigo-500/40", badge: "from-indigo-400 to-violet-500", chip: "bg-indigo-500/20 text-indigo-100", glow: "shadow-[0_0_30px_-12px_rgba(99,102,241,0.6)]" },
+  { grad: "from-sky-600/25 via-sky-500/10 to-transparent", ring: "border-sky-500/40", badge: "from-sky-400 to-cyan-500", chip: "bg-sky-500/20 text-sky-100", glow: "shadow-[0_0_30px_-12px_rgba(56,189,248,0.6)]" },
+  { grad: "from-emerald-600/25 via-emerald-500/10 to-transparent", ring: "border-emerald-500/40", badge: "from-emerald-400 to-teal-500", chip: "bg-emerald-500/20 text-emerald-100", glow: "shadow-[0_0_30px_-12px_rgba(16,185,129,0.6)]" },
+  { grad: "from-amber-600/25 via-amber-500/10 to-transparent", ring: "border-amber-500/40", badge: "from-amber-400 to-orange-500", chip: "bg-amber-500/20 text-amber-100", glow: "shadow-[0_0_30px_-12px_rgba(245,158,11,0.6)]" },
+];
+
 const AGENT_STEPS = [
   { key: "research", label: "リサーチ", desc: "オマージュ元を検索中" },
   { key: "extract", label: "バズ型の抽出", desc: "伸びている型を特定" },
@@ -295,14 +304,14 @@ export default function TodayFlow() {
     return (
       <section className={`${card} p-5`}>
         <div className="flex items-center gap-2">
-          <span className="text-lg">✨</span>
-          <h3 className="text-base font-bold text-white">今日のおすすめ投稿</h3>
+          <span className="text-xl">✨</span>
+          <h3 className="text-lg font-black text-white">今日のおすすめ投稿</h3>
         </div>
         <p className="text-xs text-neutral-400 mt-1">今日の暦とトレンドから選定中…</p>
-        <div className="mt-4 space-y-2.5">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 rounded-2xl bg-white/5 overflow-hidden relative">
-              <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.3s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+        <div className="mt-4 space-y-3">
+          {CARD_THEMES.map((t, i) => (
+            <div key={i} className={`h-[104px] rounded-3xl border ${t.ring} bg-gradient-to-br ${t.grad} overflow-hidden relative`} style={{ animationDelay: `${i * 80}ms` }}>
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             </div>
           ))}
         </div>
@@ -333,47 +342,57 @@ export default function TodayFlow() {
       <section className={`${card} p-5`}>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-lg">✨</span>
-            <h3 className="text-base font-bold text-white">今日のおすすめ投稿</h3>
+            <span className="text-xl">✨</span>
+            <h3 className="text-lg font-black text-white">今日のおすすめ投稿</h3>
           </div>
-          {almanac && <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200 font-bold">📅 {almanac}</span>}
+          {almanac && <span className="text-[11px] px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-200 font-bold">📅 {almanac}</span>}
         </div>
-        <p className="text-xs text-neutral-400 mt-1">今日出すと伸びる企画を{suggestions.length}つ選びました。まとめてAIが作成します。</p>
+        <p className="text-xs text-neutral-400 mt-1.5">今日出すと伸びる企画を{suggestions.length}つ選びました。ワンタップでまとめてAIが作成します。</p>
 
-        <div className="mt-4 space-y-2.5">
-          {suggestions.map((s, i) => (
-            <div key={s.id} className="rounded-2xl border border-white/10 bg-black/30 p-3.5 animate-[fadeup_.4s_ease-out_both]" style={{ animationDelay: `${i * 70}ms` }}>
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-fuchsia-500 text-[11px] font-black text-white">{i + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-neutral-100 leading-snug">{s.title}</p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    {s.planType && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-200">{s.planType}</span>}
-                    {s.eduType && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-200">🎓 {s.eduType}</span>}
-                  </div>
-                  {s.reason && <p className="mt-1.5 text-[11px] text-neutral-400 leading-snug">💡 {s.reason}</p>}
-                  <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-neutral-500">
-                    <MaskAvatar seed={s.sourceHandle} />
-                    <span className="truncate">元: ❤️{s.sourceLikes} 「{s.sourceExcerpt}」</span>
+        <div className="mt-4 space-y-3.5">
+          {suggestions.map((s, i) => {
+            const t = CARD_THEMES[i % CARD_THEMES.length];
+            return (
+              <div
+                key={s.id}
+                className={`relative overflow-hidden rounded-3xl border ${t.ring} bg-gradient-to-br ${t.grad} ${t.glow} p-4 animate-[fadeup_.45s_ease-out_both]`}
+                style={{ animationDelay: `${i * 80}ms` }}
+              >
+                {/* 大きな番号の飾り */}
+                <span className="pointer-events-none absolute -right-2 -top-4 text-7xl font-black text-white/5 select-none">{i + 1}</span>
+
+                <div className="flex items-center gap-2.5">
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${t.badge} text-sm font-black text-white shadow`}>{i + 1}</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {s.planType && <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.chip}`}>{s.planType}</span>}
+                    {s.eduType && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white/80">🎓 {s.eduType}</span>}
                   </div>
                 </div>
+
+                <p className="mt-2.5 text-[16px] font-black leading-snug text-white">{s.title}</p>
+                {s.reason && <p className="mt-2 text-[12px] text-neutral-300/90 leading-relaxed">💡 {s.reason}</p>}
+
+                <div className="mt-3 flex items-center gap-2 rounded-2xl bg-black/30 px-2.5 py-2">
+                  <MaskAvatar seed={s.sourceHandle} />
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-400">参考元 ❤️{s.sourceLikes}「{s.sourceExcerpt}」</span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {error && <p className="text-xs text-rose-300 mt-3">{error}</p>}
 
-        <div className="mt-4 flex items-center gap-2">
+        <div className="mt-5 flex items-center gap-2">
           <button
             onClick={runBatch}
-            className="flex-1 py-3.5 rounded-2xl bg-white text-black font-black text-sm shadow-lg active:scale-[0.99] transition-transform"
+            className="flex-1 py-4 rounded-2xl bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-pink-500 text-white font-black text-[15px] shadow-lg shadow-fuchsia-500/20 active:scale-[0.99] transition-transform"
           >
             ⚡️ まとめてAIで作成（{suggestions.length}件）
           </button>
-          <button onClick={loadSuggestions} title="選び直す" className="h-[46px] w-[46px] shrink-0 rounded-2xl border border-white/15 text-neutral-300">↻</button>
+          <button onClick={loadSuggestions} title="選び直す" className="h-[52px] w-[52px] shrink-0 rounded-2xl border border-white/15 text-neutral-300 text-lg">↻</button>
         </div>
-        <style>{`@keyframes fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}`}</style>
+        <style>{`@keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}`}</style>
       </section>
     );
   }
@@ -481,7 +500,7 @@ export default function TodayFlow() {
                 />
                 <div className="mt-1 flex items-center justify-between text-[10px] text-neutral-500">
                   <span>{r.content.length}字{s.eduType ? ` ・ 🎓${s.eduType}` : ""}</span>
-                  <span>元: @{s.sourceHandle}</span>
+                  <span>参考元から生成</span>
                 </div>
               </div>
             );

@@ -99,13 +99,16 @@ export default function ThreadsHeader() {
         ) : (
           // アカウント切替: アバター付きピル型トグル（選択中=白）
           <div className="flex items-center gap-1.5 overflow-x-auto max-w-full md:max-w-[58vw] py-0.5">
-            {accounts.map((a) => {
+            {accounts.map((a, i) => {
               const active = a.id === accountId;
+              // 表示はマスク（アカウントA/B/C…）。実名はUIに出さない。
+              const letter = String.fromCharCode(65 + i);
+              const label = `アカウント${letter}`;
               return (
                 <button
                   key={a.id}
                   onClick={() => setAccountId(a.id)}
-                  title={`@${a.handle}`}
+                  title={label}
                   className={`group flex items-center gap-1.5 pl-1.5 pr-3.5 py-1.5 rounded-full whitespace-nowrap border transition-all ${
                     active
                       ? "bg-white text-black border-white shadow-md shadow-white/10"
@@ -114,12 +117,12 @@ export default function ThreadsHeader() {
                 >
                   <span
                     className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white uppercase bg-gradient-to-br ${avColor(
-                      a.handle || a.name,
+                      a.id,
                     )} ring-1 ${active ? "ring-black/10" : "ring-white/10"}`}
                   >
-                    {(a.name || a.handle).charAt(0)}
+                    {letter}
                   </span>
-                  <span className="text-sm font-bold">{a.name}</span>
+                  <span className="text-sm font-bold">{label}</span>
                 </button>
               );
             })}
