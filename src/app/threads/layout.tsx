@@ -13,7 +13,11 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Threads作成",
   },
-  icons: { apple: "/threads-icon.svg" },
+  // iOSのホーム画面アイコン（SVGは非対応のためPNGの「T」を指定。サイズ明示でYT用より優先させる）
+  icons: {
+    apple: [{ url: "/threads-app-icon-180.png", sizes: "180x180", type: "image/png" }],
+    icon: [{ url: "/threads-app-icon.png", sizes: "512x512", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {
