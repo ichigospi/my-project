@@ -319,4 +319,82 @@ for (const s of teachingSeeds) {
   }
 }
 
+// ===== デモ用アカウントD（撮影用） =====
+// ・口調は婆さん（〜なんじゃ）／固有の霊的存在名（守護天使・白蛇など）は出さない／参考元のアカウント名も出さない
+// ・「今日のおすすめ」の元ネタとして、指定の5投稿を参考競合として登録（オマージュ元）
+const DEMO_D_ACCT = "threads-demo-d-acct";
+const DEMO_D_COMP = "threads-demo-d-comp";
+try {
+  await client.execute({
+    sql: `INSERT OR IGNORE INTO "ThreadsAccount" ("id","name","handle","concept","logic","target","worldview","uniqueLogic","ngWords","tone","isActive","sortOrder","createdAt","updatedAt") VALUES (?,?,?,?,?,?,?,?,?,?,1,100,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+    args: [
+      DEMO_D_ACCT,
+      "アカウントD",
+      "demo_d",
+      "長く生きてきた婆が、恋愛・人間関係・暮らしの機微を、やさしく芯を食った言葉で語るアカウント。説教くさくせず、日常の小さな気づきから入り、読む人の心をほぐす。",
+      "必ず『婆さんの口調』で書く（語尾は〜なんじゃ／〜じゃよ／〜のう／〜なさい等、一人称は『婆』）。固有の霊的存在名（守護天使・白蛇など）は一切出さない。参考元のアカウント名・ハンドルは絶対に書かない。押し付けず、情景と気づきで語り、最後にそっと背中を押す。",
+      "恋愛・夫婦・人間関係・暮らしに悩む20〜50代",
+      "目に見えない『巡り』やご縁、季節の移ろい、お天道さまの恵みを大切にする世界観。神秘を押し付けず、生活の中の実感に寄せる。",
+      "繰り返し使う言葉:「巡り」「ご縁」「お天道さま」「器」。婆の体験談・昔語りの体で語る。",
+      "守護天使, 白蛇, 守護霊, 龍神, 固有の霊的存在の名前",
+      JSON.stringify({ first: "婆", ending: "〜なんじゃ／〜じゃよ／〜のう", emoji: "控えめ", newline: "こまめに改行" }),
+    ],
+  });
+  await client.execute({
+    sql: `INSERT OR IGNORE INTO "ThreadsCompetitor" ("id","accountId","handle","name","note","priority","createdAt","updatedAt") VALUES (?,?,?,?,?,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+    args: [DEMO_D_COMP, DEMO_D_ACCT, "sanko", "", "デモ用の参考投稿（名前は表示しない）"],
+  });
+
+  const demoPosts = [
+    {
+      id: "threads-demo-d-p1",
+      format: "tree",
+      planType: "問いかけ・議論喚起",
+      likes: 28000,
+      content:
+        "ハッキリ言うぞ。女性が結婚しなくなった理由は、シンプルなんだよ。共働きなのに、家事も女性。料理も女性。育児も女性。その上、生活費は折半。それで「最近の女性は結婚したがらない」って驚かれても。仕事もお金も半分負担するのに、家の責任だけ全部女性なら、独身の方が楽で平和に決まってる。結婚したくないんじゃない。結婚で苦労が増えるのが嫌なんだ。\n\n今の女性が結婚に求めているのは、贅沢な生活じゃない。共働きなら、家事も育児も二人で担う。生活費を折半するなら、生活を回す責任も分け合う。ただ、それだけのこと。なのに現実は、献立を考えるのも、食材を買うのも、洗濯物がたまっていることに気づくのも、子どもの予定を把握するのも女性。男はたまに皿を洗って「俺だって家事してるよ」と言う。でもね、言われた家事をすることと、家庭を一緒に運営することは違う。\n\nそして、ここが結婚相手を選ぶ時の分岐点。「俺も家事を手伝うよ」この言葉だけで安心しないこと。見るべきなのは、お前さんが疲れている時、言われなくても動けるか。結婚するなら、一人でいる時より負担が増える男じゃなく、二人だから人生が楽になる男を選びな。",
+    },
+    {
+      id: "threads-demo-d-p2",
+      format: "tree",
+      planType: "ストーリー・体験談",
+      likes: 2864,
+      content:
+        "少しスピリチュアルな話をします。\n・人と別れたあと、すぐにイヤホンをつける人。\n・帰り道に、わざと遠回りする人。\n・別れたあと、コンビニに寄らずに帰れない人。\nこれ、一人が好きなだけじゃない。\n\n人と会ったあとの体を、家に着く前に、一人に戻そうとしている。まっすぐ帰ると、会った人の空気が、そのまま玄関まで付いてくる。祖母は人と会った帰り、必ずお寺の前を通る道で帰ってきた。「回り道で、人を降ろす」。人と会った帰りは、一本だけ違う道を通って帰る。遠回りしたくなる人ほど、人と会ったあとの自分を、ちゃんと労われる人だ。",
+    },
+    {
+      id: "threads-demo-d-p3",
+      format: "short",
+      planType: "名言・マインド",
+      likes: 7208,
+      content: "これが見えたら必ずいいね。（富士山と駆ける馬の開運映像）今日という日が、あなたにとって良い巡りになりますように。",
+    },
+    {
+      id: "threads-demo-d-p4",
+      format: "tree",
+      planType: "問いかけ・議論喚起",
+      likes: 9859,
+      content:
+        "少し、お尋ねしたいのですが、「太陽の匂いがする」と口にすると、「何のこと？」と、返されることがございます。「太陽の匂い」が、お分かりになる方は、おられますか。\n\n晴れた日に干した布団や、取り込んだばかりの洗濯物。そこに、ふわりと残る、あの匂い。同じ匂いに触れても、何も感じずに、通り過ぎてしまう方もおられます。しかし、それを「太陽の匂い」と感じ取れる方は、目に見えない恵みを、受け取る資質を、お持ちなのでございます。日々の小さな恵みに気づける方のもとには、大きな恵みも、巡ってまいります。",
+    },
+    {
+      id: "threads-demo-d-p5",
+      format: "short",
+      planType: "名言・マインド",
+      likes: 906,
+      content:
+        "※ 嘘のような本当の話。叶えたい願いがある方でないと、この投稿を見つけること自体が起きにくいのです。偶然この投稿を見かけたあなたの元に『近い未来、良い知らせが訪れる可能性がある』と言っても過言ではありません。だからもう大丈夫。ここまで本当によくがんばりましたね。器を整え、受け取る準備を、決して怠らずに。次に良い知らせが訪れるのは、あなたの番かもしれません。",
+    },
+  ];
+  for (const p of demoPosts) {
+    await client.execute({
+      sql: `INSERT OR IGNORE INTO "ThreadsCompetitorPost" ("id","competitorId","postUrl","content","likes","views","postedAt","collectedAt","source","postFormat","planType","isHot","tags","purpose") VALUES (?,?,'',?,?,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,'manual',?,?,1,'[]','')`,
+      args: [p.id, DEMO_D_COMP, p.content, p.likes, p.format, p.planType],
+    });
+  }
+  console.log("SEED OK: demo account D + 5 reference posts");
+} catch (e) {
+  console.log("SEED skip: demo account D", e instanceof Error ? e.message : String(e));
+}
+
 console.log("Migration complete!");
