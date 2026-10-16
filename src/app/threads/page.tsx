@@ -72,7 +72,8 @@ export default function ThreadsDashboardPage() {
       {/* 今日のおすすめ投稿 → まとめて自動作成フロー（アプリの目玉） */}
       {accountId && <TodayFlow />}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* 集計カードはPCのみ（スマホのアプリ表示では非表示） */}
+      <div className="hidden lg:grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {cards.map((c) => (
           <div key={c.label} className="bg-neutral-900 rounded-xl border border-neutral-800 p-4">
             <div className="text-xs text-neutral-500">
@@ -101,7 +102,8 @@ export default function ThreadsDashboardPage() {
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+      {/* 機能ナビもPCのみ（スマホは下部タブバーで移動） */}
+      <div className="hidden lg:grid md:grid-cols-2 lg:grid-cols-3 gap-3">
         {featureNav.map((f) => (
           <Link
             key={f.href}
