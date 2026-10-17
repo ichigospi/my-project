@@ -28,6 +28,9 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
   const [fbTranscripts, setFbTranscripts] = useState<Record<string, string>>({}); // videoId -> 貼り付けテキスト
   const [fbExtracting, setFbExtracting] = useState<string | null>(null);
   const [fbError, setFbError] = useState("");
+  // サムネ指示（合格時にテロップ文言と参考デザイン元URLをディレクターへ送る）
+  const [thumbTelop, setThumbTelop] = useState(project.thumbTelop ?? "");
+  const [thumbDesignUrl, setThumbDesignUrl] = useState(project.thumbDesignUrl ?? "");
 
   const submitted = project.submittedScript || "";
   const reviewed = project.reviewedScript ?? submitted;
@@ -91,20 +94,27 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
   };
 
   const decide = (result: "approved" | "rejected") => {
+    const telop = thumbTelop.trim();
+    const designUrl = thumbDesignUrl.trim();
+    if (result === "approved" && !telop && !confirm("サムネテロップが未入力です。テロップなしのまま合格にしますか？")) return;
     if (result === "approved") {
       onUpdate({
         ...project,
+        thumbTelop: telop,
+        thumbDesignUrl: designUrl,
         scriptReviewStatus: "approved",
         generatedScript: reviewed, // 添削後の台本を最終稿として反映
         status: "completed",
       });
     } else {
-      onUpdate({ ...project, scriptReviewStatus: "rejected" });
+      onUpdate({ ...project, thumbTelop: telop, thumbDesignUrl: designUrl, scriptReviewStatus: "rejected" });
     }
     notifyChatwork(
       reviewMessage(result, getProfileByChannel(project.channelId || "").channelName || "", project.title, {
         reviewUrl: reviewRoomUrl(project.id),
         refUrls: refVideoUrls(project.referenceVideos),
+        // 合格時はサムネ指示（テロップ文言＋参考デザイン元URL）も通知に載せてディレクターへ届ける
+        ...(result === "approved" ? { thumbTelop: telop || undefined, thumbDesignUrl: designUrl || undefined } : {}),
       }),
       result === "rejected"
         ? { body: `【台本修正・再提出】「${project.title || "（タイトル未定）"}」のオーナーコメントを確認し、修正して再提出してください\n添削部屋: ${reviewRoomUrl(project.id)}`, assign: "writers" }
@@ -456,6 +466,24 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
             </div>
           ))}
         </div>
+      </div>
+
+      {/* サムネ指示（合格時にディレクターへ届く） */}
+      <div className="bg-card-bg rounded-xl p-4 border border-gray-100 mb-6">
+        <h3 className="font-semibold text-sm mb-1">🖼 サムネ指示</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          「合格」を押すと、ここに入力したテロップの文言と参考デザイン元のURLが、合格通知と一緒にChatworkでディレクターに届きます
+        </p>
+        <label className="block text-xs font-medium text-gray-600 mb-1">サムネテロップの文言</label>
+        <textarea value={thumbTelop} onChange={(e) => setThumbTelop(e.target.value)}
+          onBlur={() => { if (thumbTelop !== (project.thumbTelop ?? "") || thumbDesignUrl !== (project.thumbDesignUrl ?? "")) onUpdate({ ...project, thumbTelop, thumbDesignUrl }); }}
+          placeholder={"例:\n選ばれたあなたへ\n止まった運命の輪が回り出します"}
+          className="w-full h-20 p-2 rounded-lg border border-gray-200 text-sm leading-6 focus:outline-none focus:border-accent mb-3" />
+        <label className="block text-xs font-medium text-gray-600 mb-1">参考デザイン元のURL</label>
+        <input type="text" value={thumbDesignUrl} onChange={(e) => setThumbDesignUrl(e.target.value)}
+          onBlur={() => { if (thumbTelop !== (project.thumbTelop ?? "") || thumbDesignUrl !== (project.thumbDesignUrl ?? "")) onUpdate({ ...project, thumbTelop, thumbDesignUrl }); }}
+          placeholder="https://...（真似したいサムネのURL）"
+          className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-accent" />
       </div>
 
       {/* 判定ボタン */}

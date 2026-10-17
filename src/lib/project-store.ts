@@ -91,6 +91,9 @@ export interface ScriptProject {
   suggestionArchive?: { archivedAt: string; items: SuggestionDraft[] }[];
   // 添削部屋のFB動画（Loomリンク＋文字起こしスクショから抽出した指示）
   fbVideos?: FbVideo[];
+  // 添削部屋のサムネ指示（合格時にテロップ文言と参考デザイン元URLを合格通知と一緒にディレクターへ送る）
+  thumbTelop?: string;
+  thumbDesignUrl?: string;
   // タロットの2段階骨組み: カードリーディング部分の抽象ロジック（確認・編集後に具体展開）
   abstractLogic?: string;
   // 構成提案で選択したパターンライブラリのID
