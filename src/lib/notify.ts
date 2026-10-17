@@ -35,6 +35,8 @@ function toTags(raw: string): string {
 export interface ReviewMessageOpts {
   reviewUrl?: string;  // 添削部屋ページのURL
   refUrls?: string[];  // 元ネタ動画のURL
+  thumbTelop?: string;     // サムネテロップの文言（合格時）
+  thumbDesignUrl?: string; // サムネの参考デザイン元URL（合格時）
 }
 
 // 台本レビュー系の定型メッセージ（Chatwork記法）
@@ -60,6 +62,8 @@ export function reviewMessage(kind: "submitted" | "approved" | "rejected", chann
     `企画: ${title || "（タイトル未定）"}`,
     ...(opts?.reviewUrl ? [`添削部屋: ${opts.reviewUrl}`] : []),
     ...(opts?.refUrls && opts.refUrls.length > 0 ? [`元ネタ: ${opts.refUrls.join("\n")}`] : []),
+    ...(opts?.thumbTelop ? [`サムネテロップ:\n${opts.thumbTelop}`] : []),
+    ...(opts?.thumbDesignUrl ? [`参考デザイン元: ${opts.thumbDesignUrl}`] : []),
     bodies[kind],
   ];
   return `${mention ? mention + "\n" : ""}[info][title]${heads[kind]}[/title]${lines.join("\n")}[/info]`;
