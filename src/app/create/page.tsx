@@ -30,6 +30,8 @@ export default function CreatePage() {
   // 表示中ステップの上書き（nullならステータス通りの部屋を表示）
   const [viewStep, setViewStep] = useState<string | null>(null);
   const [listQuery, setListQuery] = useState("");
+  // プロジェクト一覧の並び順（date=日付順がベース / priority=タスク優先度順）
+  const [listSort, setListSort] = useState<"date" | "priority">("date");
 
   useEffect(() => { pullSharedSettings().then(() => setProjects(getProjectsByChannel(activeChannel?.id || ""))); }, [activeChannel]);
 
@@ -137,20 +139,33 @@ export default function CreatePage() {
           </div>
         )}
 
-        {/* タイトル検索 */}
+        {/* タイトル検索＋並び替え */}
         {projects.length > 0 && (
-          <div className="relative mb-4 max-w-md">
-            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" /></svg>
-            <input
-              type="text"
-              value={listQuery}
-              onChange={(e) => setListQuery(e.target.value)}
-              placeholder="タイトル・元ネタで検索"
-              className="w-full pl-9 pr-8 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-card-bg"
-            />
-            {listQuery && (
-              <button onClick={() => setListQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
-            )}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="relative flex-1 min-w-[220px] max-w-md">
+              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" /></svg>
+              <input
+                type="text"
+                value={listQuery}
+                onChange={(e) => setListQuery(e.target.value)}
+                placeholder="タイトル・元ネタで検索"
+                className="w-full pl-9 pr-8 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-card-bg"
+              />
+              {listQuery && (
+                <button onClick={() => setListQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-xs text-gray-400 mr-1">並び順:</span>
+              <button onClick={() => setListSort("date")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium ${listSort === "date" ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                📅 日付順
+              </button>
+              <button onClick={() => setListSort("priority")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium ${listSort === "priority" ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                🔥 優先度順
+              </button>
+            </div>
           </div>
         )}
 
@@ -163,16 +178,18 @@ export default function CreatePage() {
               return (p.referenceVideos || []).some((v) => (v.title || "").toLowerCase().includes(q));
             })
             .sort((x, y) => {
-              // 急ぎの案件（添削待ち→再提出待ち→企画チェック待ち→企画差し戻し）を最上部に。
-              // それ以外は更新日時の新しい順（上に行くほど新しい）
-              const rank = (p: ScriptProject) =>
-                p.status === "review" && p.scriptReviewStatus === "pending" ? 0
-                : p.status === "review" && p.scriptReviewStatus === "rejected" ? 1
-                : p.reviewStatus === "pending" ? 2
-                : p.reviewStatus === "rejected" ? 3
-                : 4;
-              const r = rank(x) - rank(y);
-              if (r !== 0) return r;
+              // 日付順（ベース）: 更新日時の新しい順
+              // 優先度順: 急ぎの案件（添削待ち→再提出待ち→企画チェック待ち→企画差し戻し）を最上部に、同順位内は更新日時の新しい順
+              if (listSort === "priority") {
+                const rank = (p: ScriptProject) =>
+                  p.status === "review" && p.scriptReviewStatus === "pending" ? 0
+                  : p.status === "review" && p.scriptReviewStatus === "rejected" ? 1
+                  : p.reviewStatus === "pending" ? 2
+                  : p.reviewStatus === "rejected" ? 3
+                  : 4;
+                const r = rank(x) - rank(y);
+                if (r !== 0) return r;
+              }
               return (y.updatedAt || "").localeCompare(x.updatedAt || "");
             })
             .map((p, pi) => {
