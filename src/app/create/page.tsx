@@ -24,7 +24,7 @@ const STEPS = [
 ];
 
 export default function CreatePage() {
-  const { activeChannel } = useChannel();
+  const { activeChannel, channels } = useChannel();
   const [projects, setProjects] = useState<ScriptProject[]>([]);
   const [activeProject, setActiveProject] = useState<ScriptProject | null>(null);
   // 表示中ステップの上書き（nullならステータス通りの部屋を表示）
@@ -64,8 +64,53 @@ export default function CreatePage() {
   const handleResume = (p: ScriptProject) => { setActiveProject(p); setViewStep(null); };
 
   const handleDelete = (id: string) => {
+    if (!confirm("このプロジェクトを削除しますか？")) return;
     deleteProject(id);
     setProjects(getProjectsByChannel(activeChannel?.id || ""));
+    pushSharedSettings();
+  };
+
+  // ===== 消えたプロジェクトの復元 =====
+  // サーバーには削除後もプロジェクト行が残るため、そこから拾い直せる。
+  // また、チャンネルID移行のズレで「どのチャンネル一覧にも出ない迷子」も検出する
+  const [recoverOpen, setRecoverOpen] = useState(false);
+  const [recoverItems, setRecoverItems] = useState<{ p: ScriptProject; kind: "server" | "orphan" }[] | null>(null);
+  const [recoverError, setRecoverError] = useState("");
+
+  const openRecover = async () => {
+    setRecoverOpen(true);
+    setRecoverItems(null);
+    setRecoverError("");
+    try {
+      const res = await fetch("/api/projects");
+      const data = await res.json();
+      const remote: ScriptProject[] = Array.isArray(data.projects) ? data.projects : [];
+      const localAll = getProjects();
+      const localIds = new Set(localAll.map((p) => p.id));
+      const channelIds = new Set(channels.map((c) => c.id));
+      const items: { p: ScriptProject; kind: "server" | "orphan" }[] = [];
+      // サーバーにだけ残っているもの（この端末で削除済み等）
+      for (const p of remote) {
+        if (p?.id && !localIds.has(p.id)) items.push({ p, kind: "server" });
+      }
+      // ローカルにはあるが、存在しないチャンネルIDに紐づいて一覧に出ないもの
+      for (const p of localAll) {
+        if (p.channelId && !channelIds.has(p.channelId)) items.push({ p, kind: "orphan" });
+      }
+      items.sort((a, b) => (b.p.updatedAt || "").localeCompare(a.p.updatedAt || ""));
+      setRecoverItems(items);
+    } catch {
+      setRecoverError("サーバーからの取得に失敗しました。通信環境を確認してもう一度試してください");
+      setRecoverItems([]);
+    }
+  };
+
+  const handleRecover = (item: { p: ScriptProject; kind: "server" | "orphan" }) => {
+    // 今見ているチャンネルの一覧に必ず出るように、チャンネルIDを現在のチャンネルへ付け替えて保存
+    const restored: ScriptProject = { ...item.p, channelId: activeChannel?.id || item.p.channelId || "" };
+    saveProject(restored);
+    setProjects(getProjectsByChannel(activeChannel?.id || ""));
+    setRecoverItems((prev) => (prev || []).filter((x) => x.p.id !== item.p.id));
     pushSharedSettings();
   };
 
@@ -138,6 +183,48 @@ export default function CreatePage() {
             <p className="text-sm mt-1">「+ 新規プロジェクト」で台本作成を始めましょう</p>
           </div>
         )}
+
+        {/* 消えたプロジェクトの復元 */}
+        <div className="mb-4">
+          {!recoverOpen ? (
+            <button onClick={openRecover} className="text-xs text-gray-400 hover:text-accent hover:underline">
+              🔎 消えたプロジェクトを探す（削除したものを復元できます）
+            </button>
+          ) : (
+            <div className="bg-card-bg rounded-xl p-4 border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-sm">🔎 消えたプロジェクト</h3>
+                <button onClick={() => setRecoverOpen(false)} className="text-gray-400 hover:text-gray-600 text-sm">閉じる</button>
+              </div>
+              {recoverError && <p className="text-xs text-red-500 mb-2">{recoverError}</p>}
+              {recoverItems === null && <p className="text-sm text-gray-400">サーバーを確認中...</p>}
+              {recoverItems !== null && recoverItems.length === 0 && !recoverError && (
+                <p className="text-sm text-gray-400">復元できるプロジェクトは見つかりませんでした</p>
+              )}
+              {recoverItems !== null && recoverItems.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-400">「復元」を押すと、今のチャンネルの一覧に戻ります</p>
+                  {recoverItems.map((item) => (
+                    <div key={item.p.id} className="flex items-center gap-3 rounded-lg border border-gray-100 p-2.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.p.title || "（タイトル未定）"}</p>
+                        <p className="text-[11px] text-gray-400">
+                          {item.kind === "server" ? "サーバーに保存が残っていました（この端末では削除済み）" : "チャンネルが見つからず一覧に出ていませんでした"}
+                          ・最終更新 {item.p.updatedAt ? new Date(item.p.updatedAt).toLocaleDateString("ja-JP") : "不明"}
+                          {(item.p.referenceVideos || []).length > 0 && ` ・元ネタ: ${(item.p.referenceVideos || [])[0]?.title?.slice(0, 30) || ""}`}
+                        </p>
+                      </div>
+                      <button onClick={() => handleRecover(item)}
+                        className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 shrink-0">
+                        復元
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* タイトル検索＋並び替え */}
         {projects.length > 0 && (
