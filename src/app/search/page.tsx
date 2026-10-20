@@ -543,23 +543,23 @@ export default function SearchPage() {
                   key={video.id}
                   className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-4 hover:border-accent/20 transition-colors"
                 >
-                  <div className="flex gap-4">
-                    {/* サムネイル */}
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                    {/* サムネイル（スマホでは全幅・PCでは左に固定幅） */}
                     {video.thumbnailUrl ? (
                       <a
                         href={`https://www.youtube.com/watch?v=${video.id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="shrink-0"
+                        className="shrink-0 block"
                       >
                         <img
                           src={video.thumbnailUrl}
                           alt=""
-                          className="w-48 h-28 rounded-lg object-cover hover:opacity-80 transition-opacity"
+                          className="w-full aspect-video sm:w-48 sm:h-28 sm:aspect-auto rounded-lg object-cover hover:opacity-80 transition-opacity"
                         />
                       </a>
                     ) : (
-                      <div className="w-48 h-28 rounded-lg bg-gray-100 shrink-0" />
+                      <div className="hidden sm:block w-48 h-28 rounded-lg bg-gray-100 shrink-0" />
                     )}
 
                     {/* 動画情報 */}
@@ -574,7 +574,7 @@ export default function SearchPage() {
                       </a>
                       <p className="text-xs text-gray-500 mb-2">{video.channelName}</p>
 
-                      <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                      <div className="flex flex-wrap gap-x-4 sm:gap-x-5 gap-y-1 text-sm">
                         <span className="text-foreground font-semibold">
                           {formatNumber(video.views)}回再生
                         </span>
