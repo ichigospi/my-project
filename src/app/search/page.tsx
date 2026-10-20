@@ -11,6 +11,7 @@ import {
   classifyTypeByRule, pullVideoTags, saveVideoTags, resolveType, resolveTheme,
   type VideoTag, type VideoType, type VideoTheme,
 } from "@/lib/video-tag-store";
+import { cacheGet, cacheSet } from "@/lib/search-cache";
 
 interface VideoResult {
   id: string;
@@ -34,7 +35,9 @@ interface ChannelStats {
   avgViews: number;
 }
 
-const SEARCH_CACHE_KEY = "fortune_yt_search_cache";
+const SEARCH_CACHE_KEY = "fortune_yt_search_cache";       // 旧localStorageキー（移行読み込みのみ）
+const SEARCH_IDB_KEY = "search_videos";                   // IndexedDB上の動画データ
+const SEARCH_FILTERS_KEY = "fortune_yt_search_filters";   // 絞り込み条件（小さいのでlocalStorage）
 
 export default function SearchPage() {
   const router = useRouter();
@@ -63,22 +66,55 @@ export default function SearchPage() {
   const [classifying, setClassifying] = useState(false);
   const [classifyProgress, setClassifyProgress] = useState("");
 
+  const [savedAt, setSavedAt] = useState("");
+
   useEffect(() => {
     pullSharedSettings().then(() => setChannels(getChannels()));
     pullVideoTags().then(setVideoTags);
-    // キャッシュから復元
+    // 絞り込み条件を復元（小さいのでlocalStorage）
     try {
-      const cached = localStorage.getItem(SEARCH_CACHE_KEY);
-      if (cached) {
-        const data = JSON.parse(cached);
-        if (data.videos?.length > 0) {
-          setAllVideos(data.videos);
-          setChannelStats(data.channelStats || {});
-          setFetched(true);
-        }
-      }
+      const f = JSON.parse(localStorage.getItem(SEARCH_FILTERS_KEY) || "{}");
+      if (f.titleQuery) setTitleQuery(f.titleQuery);
+      if (f.minViews) setMinViews(f.minViews);
+      if (f.multiplier) setMultiplier(f.multiplier);
+      if (f.dateFrom) setDateFrom(f.dateFrom);
+      if (f.dateTo) setDateTo(f.dateTo);
+      if (f.selectedChannel) setSelectedChannel(f.selectedChannel);
+      if (f.sortBy) setSortBy(f.sortBy);
+      if (f.typeFilter) setTypeFilter(f.typeFilter);
+      if (f.themeFilter) setThemeFilter(f.themeFilter);
+      if (f.lengthFilter) setLengthFilter(f.lengthFilter);
     } catch { /* ignore */ }
+    // 動画データを復元（IndexedDB優先。無ければ旧localStorageキャッシュから移行）
+    (async () => {
+      type CachedData = { videos?: VideoResult[]; channelStats?: Record<string, ChannelStats>; savedAt?: string };
+      let data = await cacheGet<CachedData>(SEARCH_IDB_KEY);
+      if (!data?.videos?.length) {
+        try {
+          const legacy = localStorage.getItem(SEARCH_CACHE_KEY);
+          if (legacy) {
+            data = JSON.parse(legacy);
+            if (data?.videos?.length) cacheSet(SEARCH_IDB_KEY, data); // IndexedDBへ移行
+          }
+        } catch { /* ignore */ }
+      }
+      if (data?.videos && data.videos.length > 0) {
+        setAllVideos(data.videos);
+        setChannelStats(data.channelStats || {});
+        setSavedAt(data.savedAt || "");
+        setFetched(true);
+      }
+    })();
   }, []);
+
+  // 絞り込み条件は変更のたびに保存（次回表示時に復元）
+  useEffect(() => {
+    try {
+      localStorage.setItem(SEARCH_FILTERS_KEY, JSON.stringify({
+        titleQuery, minViews, multiplier, dateFrom, dateTo, selectedChannel, sortBy, typeFilter, themeFilter, lengthFilter,
+      }));
+    } catch { /* ignore */ }
+  }, [titleQuery, minViews, multiplier, dateFrom, dateTo, selectedChannel, sortBy, typeFilter, themeFilter, lengthFilter]);
 
   const fetchAllVideos = async () => {
     const apiKey = getApiKey("yt_api_key");
@@ -122,10 +158,11 @@ export default function SearchPage() {
         setChannelStats(stats);
         setFetched(true);
         setProgress("");
-        // キャッシュに保存
-        try {
-          localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify({ videos, channelStats: stats, savedAt: new Date().toISOString() }));
-        } catch { /* ignore */ }
+        // IndexedDBに保存（localStorageは容量上限で保存に失敗することがあるため使わない）
+        const stamp = new Date().toISOString();
+        setSavedAt(stamp);
+        cacheSet(SEARCH_IDB_KEY, { videos, channelStats: stats, savedAt: stamp });
+        try { localStorage.removeItem(SEARCH_CACHE_KEY); } catch { /* ignore */ }
       }
     } catch {
       setError("動画データの取得に失敗しました");
@@ -346,13 +383,20 @@ export default function SearchPage() {
           <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold">検索条件</h2>
-              <button
-                onClick={fetchAllVideos}
-                disabled={loading}
-                className="text-sm text-accent hover:underline disabled:opacity-50"
-              >
-                {loading ? "更新中..." : "データを再取得"}
-              </button>
+              <div className="flex items-center gap-3">
+                {savedAt && (
+                  <span className="text-xs text-gray-400">
+                    最終取得: {new Date(savedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+                <button
+                  onClick={fetchAllVideos}
+                  disabled={loading}
+                  className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 disabled:opacity-50"
+                >
+                  {loading ? "更新中..." : "🔄 最新のデータに更新"}
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
