@@ -6,6 +6,11 @@ import { getChannels, getApiKey } from "@/lib/channel-store";
 import { pullSharedSettings } from "@/lib/shared-sync";
 import type { RegisteredChannel } from "@/lib/channel-store";
 import { formatNumber } from "@/lib/mock-data";
+import { getAiModel } from "@/lib/ai-model";
+import {
+  classifyTypeByRule, pullVideoTags, saveVideoTags, resolveType, resolveTheme,
+  type VideoTag, type VideoType, type VideoTheme,
+} from "@/lib/video-tag-store";
 
 interface VideoResult {
   id: string;
@@ -15,6 +20,7 @@ interface VideoResult {
   comments: number;
   publishedAt: string;
   duration: string;
+  durationSec?: number;
   thumbnailUrl: string;
   tags: string[];
   engagementRate: number;
@@ -48,9 +54,18 @@ export default function SearchPage() {
   const [dateTo, setDateTo] = useState("");
   const [selectedChannel, setSelectedChannel] = useState("all");
   const [sortBy, setSortBy] = useState<"views" | "date" | "multiplier" | "engagement">("views");
+  // ジャンル・長さフィルタ
+  const [typeFilter, setTypeFilter] = useState<"all" | VideoType>("all");
+  const [themeFilter, setThemeFilter] = useState<"all" | VideoTheme>("all");
+  const [lengthFilter, setLengthFilter] = useState<"all" | "short" | "long">("all");
+  // AI/手動判定タグ（videoId -> tag。全端末共有）
+  const [videoTags, setVideoTags] = useState<Record<string, VideoTag>>({});
+  const [classifying, setClassifying] = useState(false);
+  const [classifyProgress, setClassifyProgress] = useState("");
 
   useEffect(() => {
     pullSharedSettings().then(() => setChannels(getChannels()));
+    pullVideoTags().then(setVideoTags);
     // キャッシュから復元
     try {
       const cached = localStorage.getItem(SEARCH_CACHE_KEY);
@@ -119,6 +134,15 @@ export default function SearchPage() {
     }
   };
 
+  // 動画の秒数（新データはdurationSec、古いキャッシュは表示用文字列 "31:42" から逆算）
+  const getDurationSec = (v: VideoResult): number => {
+    if (typeof v.durationSec === "number") return v.durationSec;
+    const parts = (v.duration || "").split(":").map((s) => parseInt(s, 10) || 0);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return 0;
+  };
+
   // フィルタリング
   const filteredVideos = useMemo(() => {
     let results = [...allVideos];
@@ -126,6 +150,24 @@ export default function SearchPage() {
     // チャンネルフィルタ
     if (selectedChannel !== "all") {
       results = results.filter((v) => v.channelId === selectedChannel);
+    }
+
+    // 種別フィルタ（タロット/その他。手動 > AI > ルールの順で解決）
+    if (typeFilter !== "all") {
+      results = results.filter((v) => resolveType(videoTags[v.id], v.channelName, v.title) === typeFilter);
+    }
+
+    // テーマフィルタ（金運/総合/恋愛）
+    if (themeFilter !== "all") {
+      results = results.filter((v) => resolveTheme(videoTags[v.id], v.title) === themeFilter);
+    }
+
+    // 長さフィルタ（ショート=3分以下 / 長尺=3分超）
+    if (lengthFilter !== "all") {
+      results = results.filter((v) => {
+        const sec = getDurationSec(v);
+        return lengthFilter === "short" ? sec > 0 && sec <= 180 : sec > 180;
+      });
     }
 
     // タイトル検索
@@ -183,7 +225,75 @@ export default function SearchPage() {
     });
 
     return results;
-  }, [allVideos, channelStats, titleQuery, minViews, multiplier, dateFrom, dateTo, selectedChannel, sortBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allVideos, channelStats, titleQuery, minViews, multiplier, dateFrom, dateTo, selectedChannel, sortBy, typeFilter, themeFilter, lengthFilter, videoTags]);
+
+  // ===== ジャンルのAI自動判定 =====
+  // 対象: 保存済みタグが無く、ルール（チャンネル名・タイトル）でもタロットと断定できなかった動画
+  const unjudgedVideos = useMemo(
+    () => allVideos.filter((v) => !videoTags[v.id] && !classifyTypeByRule(v.channelName, v.title)),
+    [allVideos, videoTags]
+  );
+
+  const classifyWithAI = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("設定ページからAI APIキーを登録してください"); return; }
+    const targets = unjudgedVideos;
+    if (targets.length === 0) return;
+    setClassifying(true);
+    setError("");
+    try {
+      for (let i = 0; i < targets.length; i += 10) {
+        const batch = targets.slice(i, i + 10);
+        setClassifyProgress(`AI判定中... ${Math.min(i + 10, targets.length)}/${targets.length}本`);
+        const res = await fetch("/api/youtube/classify-videos", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videos: batch.map((v) => ({ videoId: v.id, title: v.title, thumbnailUrl: v.thumbnailUrl })),
+            aiApiKey, aiModel: getAiModel("check"),
+          }),
+        });
+        const data = await res.json();
+        if (data.error) { setError(`AI判定を中断しました: ${data.error}（判定済み分は保存されています）`); break; }
+        const judgedAt = new Date().toISOString();
+        const patch: Record<string, VideoTag> = {};
+        for (const it of (data.items || []) as { videoId: string; tarot: boolean; theme: VideoTheme }[]) {
+          patch[it.videoId] = { type: it.tarot ? "tarot" : "other", theme: it.theme, source: "ai", judgedAt };
+        }
+        if (Object.keys(patch).length > 0) {
+          await saveVideoTags(patch);
+          setVideoTags((prev) => ({ ...prev, ...patch }));
+        }
+      }
+      setClassifyProgress("");
+    } finally {
+      setClassifying(false);
+    }
+  };
+
+  // 手動修正: 種別はクリックでタロット⇄その他、テーマは金運→総合→恋愛の順で切り替え
+  const toggleType = (v: VideoResult) => {
+    const cur = resolveType(videoTags[v.id], v.channelName, v.title);
+    const next: VideoTag = {
+      type: cur === "tarot" ? "other" : "tarot",
+      theme: resolveTheme(videoTags[v.id], v.title),
+      source: "manual", judgedAt: new Date().toISOString(),
+    };
+    setVideoTags((prev) => ({ ...prev, [v.id]: next }));
+    saveVideoTags({ [v.id]: next });
+  };
+
+  const cycleTheme = (v: VideoResult) => {
+    const cur = resolveTheme(videoTags[v.id], v.title);
+    const order: VideoTheme[] = ["money", "general", "love"];
+    const next: VideoTag = {
+      type: resolveType(videoTags[v.id], v.channelName, v.title),
+      theme: order[(order.indexOf(cur) + 1) % order.length],
+      source: "manual", judgedAt: new Date().toISOString(),
+    };
+    setVideoTags((prev) => ({ ...prev, [v.id]: next }));
+    saveVideoTags({ [v.id]: next });
+  };
 
   const getMultiplier = (video: VideoResult): number => {
     const stats = channelStats[video.channelId];
@@ -321,6 +431,44 @@ export default function SearchPage() {
               </div>
             </div>
 
+            {/* ジャンル・長さフィルタ */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 pt-4 border-t border-gray-100">
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500 mr-1">種別:</span>
+                {([["all", "すべて"], ["tarot", "🃏 タロット"], ["other", "🧘 その他"]] as const).map(([val, label]) => (
+                  <button key={val} onClick={() => setTypeFilter(val)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${typeFilter === val ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500 mr-1">テーマ:</span>
+                {([["all", "すべて"], ["money", "💰 金運"], ["general", "🔮 総合"], ["love", "💕 恋愛"]] as const).map(([val, label]) => (
+                  <button key={val} onClick={() => setThemeFilter(val)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${themeFilter === val ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500 mr-1">長さ:</span>
+                {([["all", "すべて"], ["short", "ショート(3分以下)"], ["long", "長尺"]] as const).map(([val, label]) => (
+                  <button key={val} onClick={() => setLengthFilter(val)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${lengthFilter === val ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {unjudgedVideos.length > 0 && (
+                <button onClick={classifyWithAI} disabled={classifying}
+                  className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50"
+                  title="チャンネル名・タイトルで判定できなかった動画のサムネをAIが見て、タロットかどうかとテーマを判定します（結果は全端末で共有）">
+                  {classifying ? classifyProgress || "AI判定中..." : `🏷 未判定${unjudgedVideos.length}本をAIで自動判定`}
+                </button>
+              )}
+            </div>
+
             {/* ソートと結果数 */}
             <div className="flex flex-wrap items-center justify-between mt-4 pt-4 border-t border-gray-100">
               <div className="flex items-center gap-2">
@@ -416,18 +564,33 @@ export default function SearchPage() {
                       </div>
 
                       {/* タグ */}
-                      {video.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {video.tags.slice(0, 5).map((tag) => (
-                            <span
-                              key={tag}
-                              className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <div className="flex flex-wrap gap-1 mt-2 items-center">
+                        {(() => {
+                          const vType = resolveType(videoTags[video.id], video.channelName, video.title);
+                          const vTheme = resolveTheme(videoTags[video.id], video.title);
+                          const themeLabel = vTheme === "money" ? "💰金運" : vTheme === "love" ? "💕恋愛" : "🔮総合";
+                          return (
+                            <>
+                              <button onClick={() => toggleType(video)} title="クリックで タロット⇄その他 を手動修正"
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium border ${vType === "tarot" ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-teal-50 text-teal-700 border-teal-200"} hover:opacity-70`}>
+                                {vType === "tarot" ? "🃏タロット" : "🧘その他"}
+                              </button>
+                              <button onClick={() => cycleTheme(video)} title="クリックで 金運→総合→恋愛 を手動修正"
+                                className="text-xs px-2 py-0.5 rounded-full font-medium border bg-amber-50 text-amber-700 border-amber-200 hover:opacity-70">
+                                {themeLabel}
+                              </button>
+                            </>
+                          );
+                        })()}
+                        {video.tags.slice(0, 5).map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
                     </div>
 
                     {/* 右サイド：再生倍率を大きく */}

@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     comments: number;
     publishedAt: string;
     duration: string;
+    durationSec: number;
     thumbnailUrl: string;
     tags: string[];
     engagementRate: number;
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
             comments,
             publishedAt: v.snippet?.publishedAt?.split("T")[0] || "",
             duration: parseDuration(v.contentDetails?.duration || ""),
+            durationSec: parseDurationSec(v.contentDetails?.duration || ""),
             thumbnailUrl:
               v.snippet?.thumbnails?.medium?.url ||
               v.snippet?.thumbnails?.default?.url ||
@@ -125,6 +127,12 @@ export async function POST(request: NextRequest) {
     channelStats,
     totalVideos: allVideos.length,
   });
+}
+
+function parseDurationSec(iso8601: string): number {
+  const match = iso8601.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  return parseInt(match[1] || "0", 10) * 3600 + parseInt(match[2] || "0", 10) * 60 + parseInt(match[3] || "0", 10);
 }
 
 function parseDuration(iso8601: string): string {
