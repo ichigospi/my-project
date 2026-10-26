@@ -322,7 +322,14 @@ export default function CreatePage() {
                     <span className="text-xs text-gray-400">{new Date(p.updatedAt).toLocaleDateString("ja-JP")}</span>
                   </div>
                 </div>
-                <button onClick={() => handleResume(p)} className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors shrink-0">再開</button>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <button onClick={() => handleResume(p)} className="px-4 py-2 rounded-lg border border-accent text-accent text-sm hover:bg-accent hover:text-white transition-colors">再開</button>
+                  {/* いつものステップ（台本出力等）がデータ不整合で開けない場合の安全な入り口 */}
+                  <button onClick={() => { setActiveProject(p); setViewStep("proposal"); }}
+                    className="text-[11px] text-gray-400 hover:text-accent hover:underline" title="台本出力部屋を経由せず、構成提案のステップから開きます（開けない場合の避難用）">
+                    骨組みで開く
+                  </button>
+                </div>
                 <button onClick={() => handleDelete(p.id)} className="text-gray-300 hover:text-danger shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
