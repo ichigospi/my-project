@@ -197,7 +197,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
-      else if (data.script) { onUpdate({ ...project, generatedScript: data.script, status: "completed", scriptSegments: undefined, splitCount: 1 }); }
+      else if (data.script) { onUpdate({ ...project, generatedScript: data.script, status: "completed", scriptSegments: undefined, splitCount: 1 }); pushSharedSettings(); }
     } catch { setError("台本生成に失敗"); }
     finally { setGenerating(false); }
   };
@@ -288,6 +288,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const part = await generateSegmentText(0, "", aiApiKey, splitCount);
       if (part == null) return;
       onUpdate({ ...project, generatedScript: part, scriptSegments: [{ script: part }], splitCount, status: "completed" });
+      pushSharedSettings();
       setError("");
     } catch { setError("分割生成に失敗しました"); }
     finally { setGenerating(false); }
@@ -311,6 +312,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const newSegs = [...segs, { script: part }];
       const combined = newSegs.map((s) => s.script).join("\n\n");
       onUpdate({ ...project, scriptSegments: newSegs, generatedScript: combined, status: "completed" });
+      pushSharedSettings();
       setError("");
     } catch { setError("パート生成に失敗しました"); }
     finally { setGenerating(false); }
@@ -392,6 +394,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         const newSegs = segs.map((s, i) => (i === idx ? { script: revised } : s));
         const combined = newSegs.map((s) => s.script).join("\n\n");
         onUpdate({ ...project, scriptSegments: newSegs, generatedScript: combined });
+        pushSharedSettings();
         setSegmentReviseNote((p) => ({ ...p, [idx]: "" }));
       }
     } catch { setError(`パート${idx + 1}の修正に失敗しました`); }
@@ -410,6 +413,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     setRevisionSummary("");
     setError("");
     onUpdate({ ...project, generatedScript: "", scriptSegments: undefined, qualityCheckResult: undefined, telopScript: null, status: "script" });
+    pushSharedSettings();
   };
 
   // パートのチェック指摘を、そのパートの修正指示欄に転記する
@@ -462,6 +466,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         const revisedScript = parts[0].trim();
         const summary = parts[1]?.trim() || "";
         onUpdate({ ...project, generatedScript: revisedScript });
+        pushSharedSettings();
         setRevisionSummary(summary);
         setRevisionNote("");
       }
@@ -474,6 +479,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       setScriptHistory((prev) => [...prev, project.generatedScript]);
     }
     onUpdate({ ...project, generatedScript: scriptHistory[idx] });
+    pushSharedSettings();
   };
 
   // 品質チェック実行
@@ -899,6 +905,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                         </div>
                       )}
                       <textarea value={seg.script}
+                        onBlur={() => pushSharedSettings()}
                         onChange={(e) => {
                           const newSegs = project.scriptSegments!.map((s, i) => (i === idx ? { ...s, script: e.target.value } : s));
                           onUpdate({ ...project, scriptSegments: newSegs, generatedScript: newSegs.map((s) => s.script).join("\n\n") });
@@ -1025,6 +1032,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             <div className="p-6">
               <textarea value={project.generatedScript}
                 onChange={(e) => onUpdate({ ...project, generatedScript: e.target.value })}
+                onBlur={() => pushSharedSettings()}
                 rows={20} className="w-full text-sm leading-7 outline-none resize-y" />
             </div>
           </div>
