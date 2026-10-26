@@ -12,6 +12,7 @@ import StepAnalyze from "./StepAnalyze";
 import StepProposal from "./StepProposal";
 import StepScript from "./StepScript";
 import StepReview from "./StepReview";
+import StepErrorBoundary from "@/components/StepErrorBoundary";
 
 const STEPS = [
   { id: "genre", label: "ジャンル" },
@@ -460,14 +461,21 @@ export default function CreatePage() {
         ))}
       </div>
 
-      {/* ステップ本体（表示ステップに従う。進捗ステータスは変えずに行き来できる） */}
-      {displayedStepId === "genre" && <StepGenre project={activeProject} onUpdate={updateProject} />}
-      {displayedStepId === "title" && <StepTitle project={activeProject} onUpdate={updateProject} />}
-      {displayedStepId === "references" && <StepReferences project={activeProject} onUpdate={updateProject} />}
-      {displayedStepId === "analyzing" && <StepAnalyze project={activeProject} onUpdate={updateProject} />}
-      {displayedStepId === "proposal" && <StepProposal project={activeProject} onUpdate={updateProject} onNavigate={goToStep} />}
-      {displayedStepId === "script" && <StepScript project={activeProject} onUpdate={updateProject} />}
-      {displayedStepId === "review" && <StepReview project={activeProject} onUpdate={updateProject} />}
+      {/* ステップ本体（表示ステップに従う。進捗ステータスは変えずに行き来できる）
+          エラーバウンダリ: 特定プロジェクトのデータ不整合で画面全体が開けなくなるのを防ぐ */}
+      <StepErrorBoundary
+        projectTitle={activeProject.title}
+        onBackToList={() => { setActiveProject(null); setViewStep(null); }}
+        onResetToProposal={() => { setViewStep("proposal"); }}
+      >
+        {displayedStepId === "genre" && <StepGenre project={activeProject} onUpdate={updateProject} />}
+        {displayedStepId === "title" && <StepTitle project={activeProject} onUpdate={updateProject} />}
+        {displayedStepId === "references" && <StepReferences project={activeProject} onUpdate={updateProject} />}
+        {displayedStepId === "analyzing" && <StepAnalyze project={activeProject} onUpdate={updateProject} />}
+        {displayedStepId === "proposal" && <StepProposal project={activeProject} onUpdate={updateProject} onNavigate={goToStep} />}
+        {displayedStepId === "script" && <StepScript project={activeProject} onUpdate={updateProject} />}
+        {displayedStepId === "review" && <StepReview project={activeProject} onUpdate={updateProject} />}
+      </StepErrorBoundary>
     </div>
   );
 }
