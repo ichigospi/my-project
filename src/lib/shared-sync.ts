@@ -185,7 +185,34 @@ let lastPullAt = 0;
 let inFlightPull: Promise<void> | null = null;
 const PULL_CACHE_MS = 30_000; // 30秒以内の再pullはスキップ
 
+// localStorageの容量を圧迫する遺物の掃除（起動時に毎回実行・軽量）。
+// 容量上限(約5MB)を超えると各所のsetItemが例外を投げて画面クラッシュの原因になる
+function cleanupLegacyStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    // 旧・動画検索キャッシュ: IndexedDBへ移行して削除（動画検索ページを開かない端末でも回収する）
+    const legacySearch = localStorage.getItem("fortune_yt_search_cache");
+    if (legacySearch) {
+      import("./search-cache")
+        .then(({ cacheSet }) => { try { cacheSet("search_videos", JSON.parse(legacySearch)); } catch { /* ignore */ } })
+        .catch(() => { /* ignore */ });
+      localStorage.removeItem("fortune_yt_search_cache");
+    }
+    // プリセットのバージョンアップ退避: 溜まり続けて容量を食い潰すため、最新1世代だけ残して削除
+    const backups: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("fortune_yt_presets_backup_v")) backups.push(k);
+    }
+    backups
+      .sort((a, b) => parseInt(a.replace(/\D/g, "") || "0", 10) - parseInt(b.replace(/\D/g, "") || "0", 10))
+      .slice(0, -1)
+      .forEach((k) => localStorage.removeItem(k));
+  } catch { /* ignore */ }
+}
+
 export async function pullSharedSettings(opts?: { force?: boolean }): Promise<void> {
+  cleanupLegacyStorage();
   const now = Date.now();
   // 進行中の pull があればそれを待つ（重複fetchの完全抑止）
   if (inFlightPull) return inFlightPull;

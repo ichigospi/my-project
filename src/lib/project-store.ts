@@ -628,8 +628,10 @@ export function getPresets(): ScriptRulePreset[] {
   if (typeof window === "undefined") return DEFAULT_PRESETS;
   const stored = localStorage.getItem(PRESETS_KEY);
   if (!stored) {
-    localStorage.setItem(PRESETS_KEY, JSON.stringify(DEFAULT_PRESETS));
-    localStorage.setItem(PRESET_DEFAULTS_VERSION_KEY, String(PRESET_DEFAULTS_VERSION));
+    try {
+      localStorage.setItem(PRESETS_KEY, JSON.stringify(DEFAULT_PRESETS));
+      localStorage.setItem(PRESET_DEFAULTS_VERSION_KEY, String(PRESET_DEFAULTS_VERSION));
+    } catch { /* 容量不足でも既定値で続行 */ }
     return DEFAULT_PRESETS;
   }
   let saved: ScriptRulePreset[] = JSON.parse(stored);
@@ -639,10 +641,20 @@ export function getPresets(): ScriptRulePreset[] {
   // これが無いと、コード側でルール文面を直しても保存済みの古い文面が使われ続ける。
   const curVer = parseInt(localStorage.getItem(PRESET_DEFAULTS_VERSION_KEY) || "1", 10);
   if (curVer < PRESET_DEFAULTS_VERSION) {
-    localStorage.setItem(`fortune_yt_presets_backup_v${curVer}`, stored);
+    // 旧バックアップを先に全削除してから退避する。
+    // バージョンアップごとのバックアップが無期限に溜まり続け、localStorageの容量上限を超えて
+    // 書き込み例外→画面クラッシュまで起きていたため、残すのは直前の1世代だけにする。
+    // バックアップは任意（容量不足でも本処理は止めない）
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("fortune_yt_presets_backup_v")) localStorage.removeItem(k);
+      }
+      localStorage.setItem(`fortune_yt_presets_backup_v${curVer}`, stored);
+    } catch { /* ignore */ }
     const byId = new Map(DEFAULT_PRESETS.map((d) => [d.id, d]));
     saved = saved.map((p) => byId.get(p.id) || p);
-    localStorage.setItem(PRESET_DEFAULTS_VERSION_KEY, String(PRESET_DEFAULTS_VERSION));
+    try { localStorage.setItem(PRESET_DEFAULTS_VERSION_KEY, String(PRESET_DEFAULTS_VERSION)); } catch { /* ignore */ }
     changed = true;
   }
 
@@ -653,7 +665,8 @@ export function getPresets(): ScriptRulePreset[] {
     saved = [...saved, ...missingDefaults];
     changed = true;
   }
-  if (changed) localStorage.setItem(PRESETS_KEY, JSON.stringify(saved));
+  // 容量不足でも例外で画面を壊さない（保存できない場合はメモリ上の内容で続行）
+  if (changed) { try { localStorage.setItem(PRESETS_KEY, JSON.stringify(saved)); } catch { /* ignore */ } }
   return saved;
 }
 
