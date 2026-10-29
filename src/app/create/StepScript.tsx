@@ -1037,6 +1037,19 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
           </div>
 
+          {/* 文字数の乖離警告（目標の8割未満なら増筆・分割生成し直しを促す） */}
+          {(() => {
+            const target = getEffectiveTargetChars();
+            const len = (project.generatedScript || "").replace(/\s/g, "").length;
+            if (!target || !project.generatedScript || len >= target * 0.8) return null;
+            return (
+              <div className="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                ⚠️ 文字数が目標に届いていません: 現在 <b>{len.toLocaleString()}字</b> / 目標 約{target.toLocaleString()}字（{Math.round((len / target) * 100)}%）。
+                分割生成で作り直すか、薄いパート（深掘り共感・理想の未来）への増筆修正をかけてください
+              </div>
+            );
+          })()}
+
           {/* 全体の品質チェック（分割が未完了の間は混乱を避けるため隠す） */}
           {((project.splitCount || 1) <= 1 || (project.scriptSegments?.length || 0) >= plannedTotalParts()) ? (
             <QualityCheckPanel

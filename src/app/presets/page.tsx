@@ -10,6 +10,7 @@ import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import type { ScriptRulePreset, Genre, Style } from "@/lib/project-store";
 import type { ChannelProfile, ScriptAnalysis } from "@/lib/script-analysis-store";
 import { useChannel } from "@/lib/channel-context";
+import { GuideIntro, GuideEducation, GuideStructure, GuideTechniques, GuideRules } from "./GuideSections";
 
 export default function PresetsPage() {
   const { activeChannel } = useChannel();
@@ -18,6 +19,8 @@ export default function PresetsPage() {
   const [saved, setSaved] = useState(false);
   const [profile, setProfileState] = useState<ChannelProfile | null>(null);
   const [analyses, setAnalysesState] = useState<ScriptAnalysis[]>([]);
+  // ガイド（教育）セクションと詳細設定（旧タブ群）の2階層ナビ
+  const [section, setSection] = useState<"intro" | "education" | "structure" | "techniques" | "rules" | "settings">("intro");
   const [tab, setTab] = useState<"common" | "presets" | "knowledge">("common");
   // ジャンルナレッジ
   const [knowledgeMap, setKnowledgeMap] = useState(getGenreKnowledgeMap());
@@ -92,28 +95,56 @@ export default function PresetsPage() {
   return (
     <div className="p-4 md:p-8">
       <div className="mb-6">
-        <h1 className="text-xl md:text-2xl font-bold">台本ルール</h1>
-        <p className="text-gray-500 mt-1">AIが台本を生成する際に自動適用されるルール</p>
+        <h1 className="text-xl md:text-2xl font-bold">台本ルール・ガイド</h1>
+        <p className="text-gray-500 mt-1">うまい台本の作り方と、AIが自動適用するルールのすべて。初めての方は左のセクションを順に読んでください</p>
       </div>
 
-      {/* タブ切り替え */}
+      {/* セクション切り替え（教育ガイド → 詳細設定） */}
       <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto">
-        <button onClick={() => { setTab("common"); setEditing(null); }}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "common" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
-          チャンネル共通ルール
-        </button>
-        <button onClick={() => { setTab("presets"); setEditing(null); }}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "presets" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
-          カテゴリ別プリセット
-        </button>
-        <button onClick={() => { setTab("knowledge"); setEditing(null); }}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "knowledge" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
-          ジャンルナレッジ
-        </button>
+        {([
+          ["intro", "🧭 はじめに"],
+          ["education", "🎓 教育の型"],
+          ["structure", "📖 構成ガイド"],
+          ["techniques", "🎯 技カタログ"],
+          ["rules", "🚫 禁止とチェック"],
+          ["settings", "⚙️ 詳細設定"],
+        ] as const).map(([id, label]) => (
+          <button key={id} onClick={() => { setSection(id); setEditing(null); }}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${section === id ? "border-accent text-accent" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+            {label}
+          </button>
+        ))}
       </div>
+
+      {section === "intro" && <GuideIntro />}
+      {section === "education" && <GuideEducation />}
+      {section === "structure" && <GuideStructure />}
+      {section === "techniques" && <GuideTechniques />}
+      {section === "rules" && <GuideRules />}
+
+      {/* ⚙️ 詳細設定: AIに渡る原文の管理（旧・台本ルールページの機能） */}
+      {section === "settings" && (
+        <>
+          <p className="text-xs text-gray-400 mb-4">ここから下はAIに渡る設定の原文です。普段の執筆では触る必要はありません。</p>
+          <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto">
+            <button onClick={() => { setTab("common"); setEditing(null); }}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "common" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+              チャンネル共通ルール
+            </button>
+            <button onClick={() => { setTab("presets"); setEditing(null); }}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "presets" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+              カテゴリ別プリセット
+            </button>
+            <button onClick={() => { setTab("knowledge"); setEditing(null); }}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === "knowledge" ? "border-accent text-accent" : "border-transparent text-gray-500"}`}>
+              ジャンルナレッジ
+            </button>
+          </div>
+        </>
+      )}
 
       {/* ジャンルナレッジタブ: 分析済み元台本から抽出した勝ち筋（生成時に自動注入） */}
-      {tab === "knowledge" && (
+      {section === "settings" && tab === "knowledge" && (
         <div className="max-w-2xl space-y-4">
           <p className="text-sm text-gray-500">
             分析済みの元台本（ジャンル自動判定・再生数上位10本）からAIが勝ち筋を抽出します。
@@ -177,7 +208,7 @@ export default function PresetsPage() {
       )}
 
       {/* チャンネル共通ルールタブ */}
-      {tab === "common" && profile && (
+      {section === "settings" && tab === "common" && profile && (
         <div className="max-w-2xl space-y-6">
           <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100 space-y-4">
             <div>
@@ -225,7 +256,7 @@ export default function PresetsPage() {
       )}
 
       {/* カテゴリ別プリセットタブ */}
-      {tab === "presets" && !editing && (
+      {section === "settings" && tab === "presets" && !editing && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {presets.map((p) => (
             <div key={p.id} onClick={() => setEditing(p)}
@@ -252,7 +283,7 @@ export default function PresetsPage() {
       )}
 
       {/* カテゴリ別プリセット編集 */}
-      {tab === "presets" && editing && (
+      {section === "settings" && tab === "presets" && editing && (
         <div className="max-w-4xl">
           <button onClick={() => setEditing(null)} className="text-accent text-sm font-medium mb-4 flex items-center gap-1 hover:underline">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
