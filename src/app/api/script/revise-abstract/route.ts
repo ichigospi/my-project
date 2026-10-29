@@ -65,8 +65,12 @@ ${instruction}
 - 指示に関係ない箇所は変更しない
 - 修正が不要な相談・質問の場合は、abstractLogic を現在のものと同一のまま返し、reply で回答する
 
-【出力形式（このJSONのみ。前置き・後書き・コードブロック禁止）】
-{"reply": "何をどう変えたか、または相談への回答（簡潔に。元台本からの引用を含む場合も5文程度まで。ユーザーへの返事として書く）", "abstractLogic": "修正後の抽象ロジック全文"}`;
+【出力形式（この区切り形式のみ。前置き・後書き・コードブロック禁止。JSONにはしない）】
+---REPLY---
+何をどう変えたか、または相談への回答（簡潔に。元台本からの引用を含む場合も5文程度まで。ユーザーへの返事として書く）
+---LOGIC---
+修正後の抽象ロジック全文
+---END---`;
 
     const isAnthropic = aiApiKey.startsWith("sk-ant-");
     let raw = "";
@@ -76,7 +80,7 @@ ${instruction}
         res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: anthropicHeaders(aiApiKey, aiModel),
-          body: JSON.stringify({ model: aiModel, max_tokens: 8000, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
+          body: JSON.stringify({ model: aiModel, max_tokens: 16000, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
         });
         if (res.status === 429 || res.status === 529) {
           if (attempt === 2) return NextResponse.json({ error: "AIが混み合っています。少し待ってもう一度お試しください", retryable: true }, { status: res.status });
@@ -93,7 +97,7 @@ ${instruction}
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 8000 }),
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 16000 }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res.status }); }
       const odata = await res.json();
@@ -102,14 +106,31 @@ ${instruction}
     }
 
     const cleaned = raw.replace(/^```(?:json)?\s*|```\s*$/g, "").trim();
+
+    // 新形式: ---REPLY--- 回答 ---LOGIC--- 全文 ---END---
+    // JSONと違い途中で壊れず、---END--- の有無で「途切れ」を機械的に検出できる
+    const replyMatch = cleaned.match(/---REPLY---\s*([\s\S]*?)\s*---LOGIC---/);
+    const logicMatch = cleaned.match(/---LOGIC---\s*([\s\S]*?)\s*---END---/);
+    if (replyMatch && logicMatch && logicMatch[1].trim()) {
+      return NextResponse.json({ reply: replyMatch[1].trim() || "修正しました。", abstractLogic: logicMatch[1].trim() });
+    }
+    if (cleaned.includes("---LOGIC---") && !cleaned.includes("---END---")) {
+      // 上限で途切れた: 生テキストを見せず、ユーザーが取れる行動を案内する
+      return NextResponse.json({ error: "応答が長すぎて途中で切れてしまいました。指示を2つに分けて送るか、もう一度お試しください（抽象ロジックは変更されていません）" }, { status: 500 });
+    }
+
+    // 旧形式（JSON）の互換: モデルがJSONで返してきた場合も受ける
     try {
       const parsed = JSON.parse(cleaned) as { reply?: string; abstractLogic?: string };
       if (!parsed.abstractLogic?.trim()) throw new Error("empty");
       return NextResponse.json({ reply: parsed.reply || "修正しました。", abstractLogic: parsed.abstractLogic.trim() });
     } catch {
-      // JSON解析に失敗した場合: 全文が抽象ロジックらしければそれを採用、そうでなければエラー
+      // 全文が抽象ロジックらしければそれを採用、そうでなければエラー
       if (cleaned.includes("枚目") && cleaned.includes("伝えること")) {
         return NextResponse.json({ reply: "修正しました。", abstractLogic: cleaned });
+      }
+      if (cleaned.startsWith('{"reply"')) {
+        return NextResponse.json({ error: "応答が途中で切れてしまいました。指示を2つに分けて送るか、もう一度お試しください（抽象ロジックは変更されていません）" }, { status: 500 });
       }
       return NextResponse.json({ error: `AI応答の解析に失敗しました: ${cleaned.slice(0, 120)}` }, { status: 500 });
     }
