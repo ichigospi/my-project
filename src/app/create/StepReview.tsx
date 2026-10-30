@@ -6,7 +6,7 @@
 // - 追加ルール提案の確認・コピー・ライブラリ追加
 // - 最後に「再提出を依頼」「合格」ボタン → プロジェクト一覧に反映
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { diffTexts, segKey, formatTranscript, type DiffSeg } from "@/lib/text-diff";
 import { addPattern, removePattern, normalizeCategory } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
