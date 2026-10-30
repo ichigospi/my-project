@@ -1404,10 +1404,10 @@ function QualityCheckPanel({
         <input type="text" value={draft.name}
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
           placeholder="項目名（例: 冒頭フックの強さ）"
-          className="flex-1 min-w-32 px-2 py-1.5 rounded border border-gray-200 text-sm outline-none focus:border-accent" />
+          className="flex-1 min-w-32 px-2 py-1.5 rounded border border-gray-200 text-base outline-none focus:border-accent" />
         <select value={draft.status}
           onChange={(e) => setDraft({ ...draft, status: e.target.value as QualityCheckItem["status"] })}
-          className="px-2 py-1.5 rounded border border-gray-200 text-sm outline-none">
+          className="px-2 py-1.5 rounded border border-gray-200 text-base outline-none">
           <option value="pass">✓ pass</option>
           <option value="warn">⚠ warn</option>
           <option value="fail">✗ fail</option>
@@ -1416,17 +1416,17 @@ function QualityCheckPanel({
       <textarea value={draft.comment} rows={2}
         onChange={(e) => setDraft({ ...draft, comment: e.target.value })}
         placeholder="評価内容（該当箇所引用 等）"
-        className="w-full px-2 py-1.5 rounded border border-gray-200 text-sm outline-none focus:border-accent" />
+        className="w-full px-2 py-1.5 rounded border border-gray-200 text-base outline-none focus:border-accent" />
       <textarea value={draft.suggestion || ""} rows={2}
         onChange={(e) => setDraft({ ...draft, suggestion: e.target.value })}
         placeholder="改善案（warn/fail のとき記入）"
-        className="w-full px-2 py-1.5 rounded border border-gray-200 text-sm outline-none focus:border-accent" />
+        className="w-full px-2 py-1.5 rounded border border-gray-200 text-base outline-none focus:border-accent" />
       <div className="flex justify-end gap-2">
         <button onClick={cancelEdit}
-          className="px-3 py-1 rounded text-xs border border-gray-200 hover:bg-gray-50">キャンセル</button>
+          className="px-3 py-1 rounded text-sm border border-gray-200 hover:bg-gray-50">キャンセル</button>
         <button onClick={saveEdit}
           disabled={!draft.name.trim() || !draft.comment.trim()}
-          className="px-3 py-1 rounded text-xs bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">保存</button>
+          className="px-3 py-1 rounded text-sm bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">保存</button>
       </div>
     </div>
   );
@@ -1435,15 +1435,15 @@ function QualityCheckPanel({
     <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-purple-200">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">品質チェック</h3>
+          <h3 className="font-semibold text-base">品質チェック</h3>
           {r && (
-            <span className={`text-sm font-bold ${scoreColor(r.overallScore)}`}>
+            <span className={`text-base font-bold ${scoreColor(r.overallScore)}`}>
               {r.overallScore.toFixed(1)} / 10
             </span>
           )}
-          {r && stale && <span className="text-xs text-amber-600">※ 台本が変更されています。再チェックを推奨</span>}
+          {r && stale && <span className="text-sm text-amber-600">※ 台本が変更されています。再チェックを推奨</span>}
           {checking && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-purple-600 font-medium">
+            <span className="inline-flex items-center gap-1.5 text-sm text-purple-600 font-medium">
               <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
               分析中...
             </span>
@@ -1451,19 +1451,19 @@ function QualityCheckPanel({
         </div>
         <div className="flex items-center gap-2">
           {r && (
-            <button onClick={onToggleDetail} className="text-xs text-gray-500 hover:text-gray-700">
+            <button onClick={onToggleDetail} className="text-sm text-gray-500 hover:text-gray-700">
               {showDetail ? "詳細を閉じる" : "詳細を見る"}
             </button>
           )}
           <button onClick={onCheck} disabled={checking}
-            className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+            className="px-4 py-2 rounded-lg bg-purple-600 text-white text-base font-medium hover:bg-purple-700 disabled:opacity-50">
             {checking ? "チェック中..." : (r ? "再チェック" : "品質チェック実行")}
           </button>
         </div>
       </div>
 
       {!r && !checking && (
-        <p className="text-sm text-gray-500">
+        <p className="text-base text-gray-500">
           元ネタ要素の継承 / CTAロジック / LINE鑑定の強度 / 重複・矛盾 / マーケター総合 などの観点で台本を評価し、元ネタとの比較マトリクスを表示します。
         </p>
       )}
@@ -1473,26 +1473,26 @@ function QualityCheckPanel({
           {/* 最優先で直すべき */}
           <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-xs font-medium text-amber-700">最優先で直すべき</p>
+              <p className="text-sm font-medium text-amber-700">最優先で直すべき</p>
               {!editingPriority && (
                 <button onClick={startEditPriority}
-                  className="text-xs text-amber-600 hover:text-amber-800">編集</button>
+                  className="text-sm text-amber-600 hover:text-amber-800">編集</button>
               )}
             </div>
             {editingPriority ? (
               <>
                 <textarea value={topPriorityDraft} rows={2}
                   onChange={(e) => setTopPriorityDraft(e.target.value)}
-                  className="w-full px-2 py-1 rounded border border-amber-300 text-sm outline-none" />
+                  className="w-full px-2 py-1 rounded border border-amber-300 text-base outline-none" />
                 <div className="flex justify-end gap-2 mt-1">
                   <button onClick={() => setEditingPriority(false)}
-                    className="px-3 py-1 rounded text-xs border border-gray-200 hover:bg-gray-50">キャンセル</button>
+                    className="px-3 py-1 rounded text-sm border border-gray-200 hover:bg-gray-50">キャンセル</button>
                   <button onClick={savePriority}
-                    className="px-3 py-1 rounded text-xs bg-amber-600 text-white hover:bg-amber-700">保存</button>
+                    className="px-3 py-1 rounded text-sm bg-amber-600 text-white hover:bg-amber-700">保存</button>
                 </div>
               </>
             ) : (
-              <p className="text-sm text-amber-900">{r.topPriority || "（未設定）"}</p>
+              <p className="text-base text-amber-900">{r.topPriority || "（未設定）"}</p>
             )}
           </div>
 
@@ -1509,7 +1509,7 @@ function QualityCheckPanel({
                 <button key={ci}
                   onClick={() => { if (!showDetail) onToggleDetail(); }}
                   title={shortName}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border ${
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm border ${
                     worst === "fail" ? "bg-red-50 border-red-200 text-red-700"
                     : worst === "warn" ? "bg-amber-50 border-amber-200 text-amber-700"
                     : "bg-green-50 border-green-200 text-green-700"
@@ -1524,11 +1524,11 @@ function QualityCheckPanel({
           {/* 要改善の比較行だけ（⚠️/❌）を常時表示 */}
           {r.comparison && r.comparison.some((row) => row.verdict !== "good") && (
             <div className="mb-3">
-              <p className="text-xs font-medium text-gray-500 mb-1.5">
+              <p className="text-sm font-medium text-gray-500 mb-1.5">
                 改善が必要な要素（{r.comparison.filter((row) => row.verdict !== "good").length}件）
               </p>
               <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs border-collapse">
+                <table className="w-full text-sm border-collapse">
                   <tbody>
                     {r.comparison.filter((row) => row.verdict !== "good").map((row: QualityComparisonRow, ri: number) => (
                       <tr key={ri} className="border-b border-gray-100 last:border-0">
@@ -1551,9 +1551,9 @@ function QualityCheckPanel({
           {/* ===== 詳細（折りたたみ）: 比較マトリクス全行 + 8観点の各項目 ===== */}
           {showDetail && r.comparison && r.comparison.length > 0 && (
             <div className="mb-4">
-              <h4 className="text-sm font-semibold mb-2">📊 元ネタ比較マトリクス（全{r.comparison.length}要素）</h4>
+              <h4 className="text-base font-semibold mb-2">📊 元ネタ比較マトリクス（全{r.comparison.length}要素）</h4>
               <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs border-collapse">
+                <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-gray-50 text-gray-600">
                       <th className="text-left px-2 py-1.5 border-b border-gray-200 font-medium">ハマり要素</th>
@@ -1584,7 +1584,7 @@ function QualityCheckPanel({
 
           {showDetail && r.categories.map((cat: QualityCheckCategory, ci: number) => (
             <div key={ci} className="mb-3 last:mb-0">
-              <h4 className="text-sm font-semibold mb-1">
+              <h4 className="text-base font-semibold mb-1">
                 {cat.passed ? "✅" : "⚠️"} {cat.name}
               </h4>
               <div className="space-y-1.5 ml-1">
@@ -1595,7 +1595,7 @@ function QualityCheckPanel({
                   }
                   const checkable = item.status !== "pass" && !!item.suggestion;
                   return (
-                    <div key={ii} className="group flex items-start gap-2 text-sm">
+                    <div key={ii} className="group flex items-start gap-2 text-base">
                       {checkable ? (
                         <input type="checkbox" checked={!excludedFixes[key]}
                           onChange={() => onToggleExclude(key)}
@@ -1604,16 +1604,16 @@ function QualityCheckPanel({
                       {statusBadge(item.status)}
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-700">{item.name}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{item.comment}</p>
+                        <p className="text-sm text-gray-500 mt-0.5">{item.comment}</p>
                         {item.suggestion && item.status !== "pass" && (
-                          <p className="text-xs text-blue-700 mt-0.5">→ {item.suggestion}</p>
+                          <p className="text-sm text-blue-700 mt-0.5">→ {item.suggestion}</p>
                         )}
                       </div>
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
                         <button onClick={() => startEdit(ci, ii)}
-                          className="text-xs text-gray-500 hover:text-gray-800 px-1.5 py-0.5 rounded hover:bg-gray-100">編集</button>
+                          className="text-sm text-gray-500 hover:text-gray-800 px-1.5 py-0.5 rounded hover:bg-gray-100">編集</button>
                         <button onClick={() => deleteItem(ci, ii)}
-                          className="text-xs text-gray-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-gray-100">×</button>
+                          className="text-sm text-gray-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-gray-100">×</button>
                       </div>
                     </div>
                   );
@@ -1623,7 +1623,7 @@ function QualityCheckPanel({
                 {/* 追加ボタン */}
                 {editingKey !== `new-${ci}` && (
                   <button onClick={() => startAdd(ci)}
-                    className="text-xs text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-2 py-1 rounded">
+                    className="text-sm text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-2 py-1 rounded">
                     + 指摘を追加
                   </button>
                 )}
@@ -1633,10 +1633,10 @@ function QualityCheckPanel({
 
           <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-100">
             <button onClick={onApplyFix}
-              className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200">
+              className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 text-base font-medium hover:bg-blue-200">
               ✔ チェックした指摘を修正指示に転記
             </button>
-            <span className="text-xs text-gray-400">※ チェックを外した指摘は転記されません（デフォルトは全てON）</span>
+            <span className="text-sm text-gray-400">※ チェックを外した指摘は転記されません（デフォルトは全てON）</span>
           </div>
         </>
       )}
