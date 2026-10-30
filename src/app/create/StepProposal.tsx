@@ -1097,27 +1097,27 @@ ${p.content}`;
             <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-3">
                 <p className="font-bold">骨組み品質チェック <span className="text-accent">{skeletonCheck.overallScore} / 10</span></p>
-                <button onClick={() => setSkeletonCheck(null)} className="text-xs text-gray-400 hover:text-gray-600">閉じる</button>
+                <button onClick={() => setSkeletonCheck(null)} className="text-sm text-gray-400 hover:text-gray-600">閉じる</button>
               </div>
               {skeletonCheck.topPriority && (
                 <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                  <p className="text-xs font-medium text-amber-800 mb-1">最優先で直すべき</p>
-                  <p className="text-sm text-amber-900">{skeletonCheck.topPriority}</p>
+                  <p className="text-sm font-medium text-amber-800 mb-1">最優先で直すべき</p>
+                  <p className="text-base text-amber-900">{skeletonCheck.topPriority}</p>
                 </div>
               )}
               <div className="space-y-3">
                 {skeletonCheck.categories.map((cat, ci) => (
                   <div key={ci} className="border border-gray-100 rounded-lg p-3">
-                    <p className="text-sm font-semibold mb-2">{cat.name}</p>
+                    <p className="text-base font-semibold mb-2">{cat.name}</p>
                     <div className="space-y-1.5">
                       {cat.items.map((it, ii) => (
-                        <div key={ii} className="flex gap-2 text-sm">
+                        <div key={ii} className="flex gap-2 text-base">
                           <span>{it.status === "pass" ? "🟢" : it.status === "warn" ? "🟡" : "🔴"}</span>
                           <div className="flex-1">
                             <span className="text-gray-700">{it.name}</span>
-                            {it.comment && <p className="text-xs text-gray-500 mt-0.5">{it.comment}</p>}
+                            {it.comment && <p className="text-sm text-gray-500 mt-0.5">{it.comment}</p>}
                             {it.status !== "pass" && it.suggestion && (
-                              <p className="text-xs text-purple-700 mt-0.5">→ {it.suggestion}</p>
+                              <p className="text-sm text-purple-700 mt-0.5">→ {it.suggestion}</p>
                             )}
                           </div>
                         </div>
@@ -1128,10 +1128,10 @@ ${p.content}`;
               </div>
               <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-3">
                 <button onClick={handleApplySkeletonFindings} disabled={applyingFix}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-base font-medium hover:bg-emerald-700 disabled:opacity-50">
                   {applyingFix ? "反映中..." : "🔧 指摘を骨組みに反映（加筆・違反箇所の削除）"}
                 </button>
-                <span className="text-xs text-gray-400">全文出力し直しではなく、指摘箇所だけを差分修正します</span>
+                <span className="text-sm text-gray-400">全文出力し直しではなく、指摘箇所だけを差分修正します</span>
               </div>
             </div>
           )}
