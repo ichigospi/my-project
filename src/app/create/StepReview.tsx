@@ -34,6 +34,18 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
 
   const submitted = project.submittedScript || "";
   const reviewed = project.reviewedScript ?? submitted;
+
+  // 編集内容の自動保存（1.5秒デバウンス）。
+  // 以前は「保存してプレビュー」を押すまでメモリ上にしかなく、リロードや「元に戻す」誤爆で未保存分が消えていた
+  useEffect(() => {
+    if (tab !== "edit") return;
+    if (draft === (project.reviewedScript ?? project.submittedScript ?? "")) return;
+    const t = setTimeout(() => {
+      onUpdate({ ...project, reviewedScript: draft });
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, tab]);
   const comments = project.reviewComments || [];
   // 同一内容（カテゴリ＋タイトル）の提案は最初の1件だけ表示（過去の重複送信データ対策）
   const proposals = (() => {
@@ -252,11 +264,13 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
       {tab === "edit" && (
         <div className="mb-6">
           <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => { saveDraft(); pushSharedSettings(); }}
             className="w-full h-[480px] p-4 rounded-xl border border-gray-200 text-sm leading-6 focus:outline-none focus:border-accent font-sans" />
+          <p className="text-xs text-gray-400 mt-1">※ 編集内容は自動保存されます（1.5秒ごと）</p>
           <div className="flex gap-2 mt-2">
             <button onClick={() => { saveDraft(); setTab("preview"); }}
               className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">保存してプレビュー</button>
-            <button onClick={() => setDraft(reviewed)}
+            <button onClick={() => { if (confirm("編集中の内容を破棄して、最後に保存した状態に戻しますか？")) setDraft(reviewed); }}
               className="px-4 py-2 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">元に戻す</button>
           </div>
         </div>
