@@ -234,6 +234,16 @@ passed は items 全部が "pass" のときのみ true。
 - note には「ここが弱い」「○○の強み」「もう一段強められる」等、一目でわかる短評を入れる。
 - 元ネタ情報が与えられていない場合は generated 側のみ採点し、source は "—" とする。
 
+【warnの定義（乱発防止・必達）】
+- warn は「直せば確実に良くなる客観的な問題」だけに付ける（ルール違反・矛盾・欠落・事実誤り）。
+- 文体の好み・「もう一段強化できる」「圧縮するとより締まる」等の改善余地は warn にしない。
+  それらは comparison の note か、pass 項目のコメントに短く書くに留める。
+- 指摘ゼロを無理に避けない。問題が無いカテゴリは堂々と全 pass にしてよい。毎回何かを指摘する必要はない。
+
+【合格基準】
+- fail が1つも無い台本は「提出可能な品質」である。warn のみの場合、overallScore は 8.0 以上を付けること。
+- topPriority は fail がある場合のみ修正指示を書く。fail が無い場合は「提出基準クリア。warnは任意改善」の趣旨を書き、追加の修正を要求しない。
+
 【overallScore の算出方針】
 - 最重視: H(プロマーケター総合) と E(LINE鑑定CTA強度) と K(一本線)
 - 次に重視: A(元ネタ要素継承), D(CTAロジック), G(矛盾), I(タイトル・テーマ整合)
@@ -257,6 +267,7 @@ function buildUserPrompt(p: {
   preset?: ScriptRulePreset;
   winningPatterns?: WinningPatterns;
   referenceAnalyses: RefAnalysis[];
+  previousSummary?: string;
 }): string {
   const lines: string[] = [];
   lines.push("【チェック対象の生成台本】");
@@ -272,6 +283,15 @@ function buildUserPrompt(p: {
       const refLen = (primary.transcript || "").replace(/\s/g, "").length;
       lines.push(`元ネタ(主軸)文字数(実測): ${refLen} / 生成台本との差: ${Math.abs(scriptLen - refLen)}字`);
     }
+  }
+  if (p.previousSummary) {
+    lines.push("");
+    lines.push("【前回のチェック結果（これは修正後の再チェックです。差分再評価モードで採点すること）】");
+    lines.push(p.previousSummary);
+    lines.push("差分再評価の原則:");
+    lines.push("1. 前回 pass だった観点は、明確な悪化が無い限り pass を維持する（新しい粗探しをしない）");
+    lines.push("2. 前回の warn/fail が解消されているかの確認を最優先する。解消されていれば必ず pass に上げ、スコアを上げる");
+    lines.push("3. 新規の指摘は「fail級の明確な問題」のみ追加してよい。好み・圧縮・強化提案の新規 warn は出さない");
   }
   lines.push("");
   lines.push("--- 台本本文 ---");
@@ -417,7 +437,7 @@ async function callOpenAI(aiApiKey: string, userPrompt: string, systemPrompt: st
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey } = body as {
+    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary } = body as {
       script: string;
       title: string;
       profile?: ChannelProfile;
@@ -425,6 +445,7 @@ export async function POST(request: NextRequest) {
       winningPatterns?: WinningPatterns;
       referenceAnalyses?: RefAnalysis[];
       aiApiKey: string;
+      previousSummary?: string;
     };
 
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
@@ -437,6 +458,7 @@ export async function POST(request: NextRequest) {
       preset,
       winningPatterns,
       referenceAnalyses: referenceAnalyses || [],
+      previousSummary,
     });
     // 元ネタ準拠モード: テンプレ構成に従っていないこと自体は指摘対象から外す
     if ((body as { structureMode?: string }).structureMode === "reference") {

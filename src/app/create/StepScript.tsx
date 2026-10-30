@@ -517,6 +517,15 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         aiModel: getAiModel("check"),
         style: project.style,
         structureMode: project.structureMode,
+        // 再チェック時は前回結果を渡し、差分再評価（pass維持・解消確認優先）にする
+        previousSummary: project.qualityCheckResult ? [
+          `前回スコア: ${project.qualityCheckResult.overallScore}`,
+          `前回の最優先指摘: ${project.qualityCheckResult.topPriority || "(なし)"}`,
+          ...project.qualityCheckResult.categories.map((c) => {
+            const issues = c.items.filter((it) => it.status !== "pass").map((it) => `${it.status === "fail" ? "🔴" : "🟡"}${it.name}: ${it.comment || ""}`);
+            return `${c.name}: ${issues.length === 0 ? "全pass" : issues.join(" / ")}`;
+          }),
+        ].join("\n").slice(0, 3000) : undefined,
       });
 
       // Railway proxy が "upstream error"(プレーンテキスト) を返すと res.json() が
@@ -1441,6 +1450,17 @@ function QualityCheckPanel({
               {r.overallScore.toFixed(1)} / 10
             </span>
           )}
+          {r && !stale && (() => {
+            const hasFail = r.categories.some((c) => c.items.some((it) => it.status === "fail"));
+            const warnCount = r.categories.reduce((n, c) => n + c.items.filter((it) => it.status === "warn").length, 0);
+            if (hasFail) return <span className="text-sm px-2.5 py-1 rounded-full bg-red-100 text-red-700 font-medium">🔴 failあり：要修正</span>;
+            if (r.overallScore >= 7) return (
+              <span className="text-sm px-2.5 py-1 rounded-full bg-green-100 text-green-700 font-medium" title="warnは「直すとより良い」の任意改善。2回修正しても消えないwarnは好みの範囲なので、無理に消さず提出してOKです">
+                ✅ 提出基準クリア{warnCount > 0 ? `（warn${warnCount}件は任意改善）` : ""}
+              </span>
+            );
+            return null;
+          })()}
           {r && stale && <span className="text-sm text-amber-600">※ 台本が変更されています。再チェックを推奨</span>}
           {checking && (
             <span className="inline-flex items-center gap-1.5 text-sm text-purple-600 font-medium">
