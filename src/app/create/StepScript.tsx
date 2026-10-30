@@ -119,6 +119,9 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [revising, setRevising] = useState(false);
   const [error, setError] = useState("");
   const [revisionNote, setRevisionNote] = useState("");
+  // 文字数不足時の増筆提案（警告バナーの1ポチ機能）
+  const [expandSuggestion, setExpandSuggestion] = useState<string | null>(null);
+  const [expandSuggesting, setExpandSuggesting] = useState(false);
   const [revisionSummary, setRevisionSummary] = useState("");
   const [scriptHistory, setScriptHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -435,8 +438,9 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   };
 
   // 修正指示で台本を修正
-  const handleRevise = async () => {
-    if (!revisionNote.trim() || !project.generatedScript) return;
+  const handleRevise = async (noteOverride?: string) => {
+    const note = (noteOverride ?? revisionNote).trim();
+    if (!note || !project.generatedScript) return;
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
@@ -456,7 +460,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const res = await fetch("/api/script/revise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: project.generatedScript, revisionNote, referenceAnalyses, aiApiKey, aiModel: getAiModel("generate") }),
+        body: JSON.stringify({ script: project.generatedScript, revisionNote: note, referenceAnalyses, aiApiKey, aiModel: getAiModel("generate") }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
@@ -1037,15 +1041,65 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
           </div>
 
-          {/* 文字数の乖離警告（目標の8割未満なら増筆・分割生成し直しを促す） */}
+          {/* 文字数の乖離警告（目標の8割未満なら増筆提案→1ポチ加筆ができる） */}
           {(() => {
             const target = getEffectiveTargetChars();
             const len = (project.generatedScript || "").replace(/\s/g, "").length;
             if (!target || !project.generatedScript || len >= target * 0.8) return null;
+            const handleSuggestExpansion = async () => {
+              const aiApiKey = getApiKey("ai_api_key");
+              if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+              setExpandSuggesting(true);
+              setError("");
+              try {
+                const res = await fetch("/api/script/suggest-expansion", {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    script: project.generatedScript,
+                    skeleton: project.structureProposal?.concept || "",
+                    targetChars: target,
+                    aiApiKey, aiModel: getAiModel("check"),
+                  }),
+                });
+                const data = await res.json();
+                if (data.error) setError(data.error);
+                else setExpandSuggestion(data.suggestion || "");
+              } catch { setError("増筆提案に失敗しました"); }
+              finally { setExpandSuggesting(false); }
+            };
             return (
               <div className="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
-                ⚠️ 文字数が目標に届いていません: 現在 <b>{len.toLocaleString()}字</b> / 目標 約{target.toLocaleString()}字（{Math.round((len / target) * 100)}%）。
-                分割生成で作り直すか、薄いパート（深掘り共感・理想の未来）への増筆修正をかけてください
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="flex-1 min-w-[240px]">
+                    ⚠️ 文字数が目標に届いていません: 現在 <b>{len.toLocaleString()}字</b> / 目標 約{target.toLocaleString()}字（{Math.round((len / target) * 100)}%）
+                  </span>
+                  {expandSuggestion === null && (
+                    <button onClick={handleSuggestExpansion} disabled={expandSuggesting || revising}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 shrink-0">
+                      {expandSuggesting ? "分析中..." : "🪄 増筆ポイントを提案"}
+                    </button>
+                  )}
+                </div>
+                {expandSuggestion !== null && (
+                  <div className="mt-3">
+                    <p className="text-xs text-amber-700 mb-1.5">AIの増筆提案（編集してから実行してもOK）:</p>
+                    <textarea value={expandSuggestion} onChange={(e) => setExpandSuggestion(e.target.value)}
+                      rows={8} className="w-full p-3 rounded-lg border border-amber-200 bg-white text-xs leading-5 text-gray-700 focus:outline-none focus:border-amber-400 resize-y" />
+                    <div className="flex gap-2 mt-2">
+                      <button onClick={() => { const note = `【増筆指示】以下の指示に従って該当箇所を増筆してください。既存の文・流れ・CTAは変えないこと。\n\n${expandSuggestion}`; setExpandSuggestion(null); handleRevise(note); }}
+                        disabled={revising || !expandSuggestion.trim()}
+                        className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50">
+                        ✍️ この内容で加筆する
+                      </button>
+                      <button onClick={handleSuggestExpansion} disabled={expandSuggesting || revising}
+                        className="px-3 py-2 rounded-lg border border-amber-300 text-amber-700 text-xs hover:bg-amber-100 disabled:opacity-50">
+                        {expandSuggesting ? "分析中..." : "提案し直す"}
+                      </button>
+                      <button onClick={() => setExpandSuggestion(null)}
+                        className="px-3 py-2 rounded-lg text-amber-500 text-xs hover:bg-amber-100">閉じる</button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -1083,7 +1137,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               <textarea value={revisionNote} onChange={(e) => setRevisionNote(e.target.value)}
                 placeholder="例: 冒頭のフックをもっと強くして / CTAの部分を予祝形式に変えて / 文法を修正して"
                 rows={8} className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:border-accent outline-none resize-y leading-6" disabled={revising} />
-              <button onClick={handleRevise} disabled={revising || !revisionNote.trim()}
+              <button onClick={() => handleRevise()} disabled={revising || !revisionNote.trim()}
                 className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end min-w-24">
                 {revising ? (
                   <span className="flex items-center gap-2">
