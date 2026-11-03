@@ -127,6 +127,56 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [showHistory, setShowHistory] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [checkingQuality, setCheckingQuality] = useState(false);
+  // 日本語校閲（一文ずつの日本語チェック。品質チェックとは別パス）
+  type ProofItem = { original: string; issue: string; fix: string; level: "broken" | "unnatural"; found: boolean };
+  const [proofreading, setProofreading] = useState(false);
+  const [proofItems, setProofItems] = useState<ProofItem[] | null>(null);
+  const [proofCounts, setProofCounts] = useState<{ broken: number; unnatural: number } | null>(null);
+  const [proofError, setProofError] = useState("");
+
+  const handleProofread = async () => {
+    if (!project.generatedScript) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setProofError("AI APIキーを設定してください"); return; }
+    setProofreading(true);
+    setProofError("");
+    try {
+      const res = await fetch("/api/script/proofread", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: project.generatedScript, aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const d = await res.json();
+      if (d.error) { setProofError(d.error); return; }
+      setProofItems(d.items as ProofItem[]);
+      setProofCounts(d.counts as { broken: number; unnatural: number });
+    } catch (e) {
+      setProofError(e instanceof Error ? e.message : "日本語校閲に失敗しました");
+    } finally {
+      setProofreading(false);
+    }
+  };
+
+  // 校閲の修正を台本に適用（原文→修正案の完全一致置換。見つからなければスキップ）
+  const applyProofFixes = (targets: ProofItem[]) => {
+    let text = project.generatedScript || "";
+    let applied = 0;
+    const remaining: ProofItem[] = [];
+    for (const it of proofItems || []) {
+      if (targets.includes(it) && text.includes(it.original)) {
+        text = text.replace(it.original, it.fix);
+        applied++;
+      } else if (targets.includes(it)) {
+        remaining.push({ ...it, found: false });
+      } else {
+        remaining.push(it);
+      }
+    }
+    if (applied > 0) {
+      onUpdate({ ...project, generatedScript: text, qualityCheckResult: undefined });
+      pushSharedSettings();
+    }
+    setProofItems(remaining);
+  };
   const [showQualityDetail, setShowQualityDetail] = useState(true);
   const [syncDone, setSyncDone] = useState(false);
 
@@ -1038,6 +1088,58 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
           )}
 
+          {/* 日本語校閲の結果 */}
+          {(proofError || proofItems) && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-5 shadow-sm">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <h3 className="font-semibold text-base text-rose-900">✍️ 日本語校閲
+                  {proofCounts && (
+                    <span className="ml-3 text-sm font-normal text-rose-800">
+                      崩壊 {proofCounts.broken} 件 ／ 不自然 {proofCounts.unnatural} 件
+                    </span>
+                  )}
+                </h3>
+                <div className="flex items-center gap-2">
+                  {proofItems && proofItems.some((it) => it.found) && (
+                    <button onClick={() => applyProofFixes(proofItems.filter((it) => it.found))}
+                      className="text-sm px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700">
+                      見つかった修正をすべて適用
+                    </button>
+                  )}
+                  <button onClick={() => { setProofItems(null); setProofCounts(null); setProofError(""); }}
+                    className="text-sm px-3 py-1.5 rounded-lg border border-rose-300 text-rose-800 hover:bg-rose-100">閉じる</button>
+                </div>
+              </div>
+              {proofError && <p className="text-sm text-red-600">{proofError}</p>}
+              {proofItems && proofItems.length === 0 && <p className="text-base text-rose-900">✅ 日本語の崩れは見つかりませんでした。</p>}
+              {proofItems && proofItems.length > 0 && (
+                <ol className="space-y-3">
+                  {proofItems.map((it, i) => (
+                    <li key={i} className="bg-white rounded-lg p-3 border border-rose-100">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <p className="text-sm">
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-bold mr-2 ${it.level === "broken" ? "bg-red-600 text-white" : "bg-amber-400 text-white"}`}>
+                              {it.level === "broken" ? "崩壊" : "不自然"}
+                            </span>
+                            <span className="text-gray-500">原文：</span><span className="text-gray-800">{it.original}</span>
+                          </p>
+                          <p className="text-sm text-rose-800">問題：{it.issue}</p>
+                          <p className="text-sm"><span className="text-gray-500">修正案：</span><span className="text-gray-900 font-medium">{it.fix}</span></p>
+                          {!it.found && <p className="text-xs text-gray-400">※ 原文が台本内で一致しないため自動適用できません（手動で直してください）</p>}
+                        </div>
+                        {it.found && (
+                          <button onClick={() => applyProofFixes([it])}
+                            className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-rose-300 text-rose-800 hover:bg-rose-100">適用</button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
+
           {/* 台本本体 */}
           <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 relative">
             {/* 修正中オーバーレイ */}
@@ -1056,6 +1158,11 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                   className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700"
                   title="添削部屋に台本を提出し、進捗を「台本添削待ち」にします">
                   📤 台本を提出
+                </button>
+                <button onClick={handleProofread} disabled={proofreading}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-medium hover:bg-rose-700 disabled:opacity-50"
+                  title="一文ずつ日本語の崩れ（助詞・係り受け・不自然な言い回し）だけを厳密にチェックします">
+                  {proofreading ? "校閲中..." : "✍️ 日本語校閲"}
                 </button>
                 <button onClick={handleCopy} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">コピー</button>
                 <button onClick={handleExport} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">エクスポート</button>
