@@ -14,7 +14,8 @@ import { buildSelectedPatternsBlock } from "@/lib/pattern-store";
 import { formatTranscript } from "@/lib/text-diff";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
 import TarotCardGallery from "@/components/TarotCardGallery";
-import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow } from "@/lib/project-store";
+import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow, ProofreadItem, ProofreadResult } from "@/lib/project-store";
+import { isProofreadPassed, PROOFREAD_MAX_UNNATURAL } from "@/lib/project-store";
 
 // 簡易ハッシュ（チェック時の台本と現在の台本が一致するか判定用）
 function simpleHash(s: string): string {
@@ -127,28 +128,52 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [showHistory, setShowHistory] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [checkingQuality, setCheckingQuality] = useState(false);
-  // 日本語校閲（一文ずつの日本語チェック。品質チェックとは別パス）
-  type ProofItem = { original: string; issue: string; fix: string; level: "broken" | "unnatural"; found: boolean };
+  // 日本語校閲（一文ずつの日本語チェック。品質チェックとは別パス。結果は企画に保存し、台本ハッシュで鮮度を管理）
   const [proofreading, setProofreading] = useState(false);
-  const [proofItems, setProofItems] = useState<ProofItem[] | null>(null);
-  const [proofCounts, setProofCounts] = useState<{ broken: number; unnatural: number } | null>(null);
   const [proofError, setProofError] = useState("");
+  const [proofPanelOpen, setProofPanelOpen] = useState(true);
+  const currentHash = simpleHash(project.generatedScript || "");
+  const proof = project.proofreadResult;
+  const proofStale = !!proof && proof.scriptHash !== currentHash;
+  const proofPassed = !!proof && !proofStale && proof.passed;
+  const qcResult = project.qualityCheckResult;
+  const qcStale = !!qcResult?.scriptHash && qcResult.scriptHash !== currentHash;
+  const qcHasFail = !!qcResult && qcResult.categories.some((c) => c.items.some((it) => it.status === "fail"));
+  const qcPassed = !!qcResult && !qcStale && !qcHasFail;
 
-  const handleProofread = async () => {
-    if (!project.generatedScript) return;
+  // 校閲を実行（2回目以降は前回結果を渡して差分モード: 直した文は蒸し返さず、新規は崩壊級のみ）
+  const handleProofread = async (opts?: { scriptOverride?: string; base?: ScriptProject }) => {
+    const base = opts?.base ?? project;
+    const script = opts?.scriptOverride ?? base.generatedScript;
+    if (!script) return;
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setProofError("AI APIキーを設定してください"); return; }
     setProofreading(true);
     setProofError("");
+    setProofPanelOpen(true);
     try {
+      const prev = base.proofreadResult;
+      const previousSummary = prev
+        ? [`前回: 崩壊${prev.counts.broken}件・不自然${prev.counts.unnatural}件（${prev.rounds}回目）`,
+           ...prev.items.map((it) => `- [${it.level === "broken" ? "崩壊" : "不自然"}] ${it.original} → ${it.issue}`)].join("\n").slice(0, 6000)
+        : undefined;
       const res = await fetch("/api/script/proofread", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: project.generatedScript, aiApiKey, aiModel: getAiModel("check") }),
+        body: JSON.stringify({ script, aiApiKey, aiModel: getAiModel("check"), previousSummary }),
       });
       const d = await res.json();
       if (d.error) { setProofError(d.error); return; }
-      setProofItems(d.items as ProofItem[]);
-      setProofCounts(d.counts as { broken: number; unnatural: number });
+      const counts = d.counts as { broken: number; unnatural: number };
+      const result: ProofreadResult = {
+        scriptHash: simpleHash(script),
+        counts,
+        items: d.items as ProofreadItem[],
+        passed: isProofreadPassed(counts),
+        checkedAt: new Date().toISOString(),
+        rounds: (prev?.rounds || 0) + 1,
+      };
+      onUpdate({ ...base, generatedScript: script, proofreadResult: result });
+      pushSharedSettings();
     } catch (e) {
       setProofError(e instanceof Error ? e.message : "日本語校閲に失敗しました");
     } finally {
@@ -156,12 +181,14 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     }
   };
 
-  // 校閲の修正を台本に適用（原文→修正案の完全一致置換。見つからなければスキップ）
-  const applyProofFixes = (targets: ProofItem[]) => {
+  // 校閲の修正を台本に適用（原文→修正案の完全一致置換）。
+  // 置換は構成を変えないので、品質チェックの合格は引き継ぐ（ハッシュを更新して「要再チェック」にしない）。
+  const applyProofFixes = (targets: ProofreadItem[], opts?: { thenRecheck?: boolean }) => {
+    if (!proof) return;
     let text = project.generatedScript || "";
     let applied = 0;
-    const remaining: ProofItem[] = [];
-    for (const it of proofItems || []) {
+    const remaining: ProofreadItem[] = [];
+    for (const it of proof.items) {
       if (targets.includes(it) && text.includes(it.original)) {
         text = text.replace(it.original, it.fix);
         applied++;
@@ -171,11 +198,17 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         remaining.push(it);
       }
     }
-    if (applied > 0) {
-      onUpdate({ ...project, generatedScript: text, qualityCheckResult: undefined });
-      pushSharedSettings();
-    }
-    setProofItems(remaining);
+    if (applied === 0) return;
+    const newHash = simpleHash(text);
+    const next: ScriptProject = {
+      ...project,
+      generatedScript: text,
+      proofreadResult: { ...proof, items: remaining, scriptHash: newHash, passed: false },
+      qualityCheckResult: project.qualityCheckResult ? { ...project.qualityCheckResult, scriptHash: newHash } : undefined,
+    };
+    onUpdate(next);
+    pushSharedSettings();
+    if (opts?.thenRecheck) void handleProofread({ scriptOverride: text, base: next });
   };
   const [showQualityDetail, setShowQualityDetail] = useState(true);
   const [syncDone, setSyncDone] = useState(false);
@@ -726,9 +759,25 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const handleCopy = () => { navigator.clipboard.writeText(project.generatedScript); };
 
   // 台本を添削部屋に提出（進捗=台本添削待ち。再提出時は差分・コメントをリセットして新しい基準にする）
+  // 提出前チェックの未クリア理由（品質チェック→日本語校閲の順。空なら提出OK）
+  const submitBlockers = (): string[] => {
+    const r: string[] = [];
+    if (!qcResult) r.push("品質チェック未実施");
+    else if (qcStale) r.push("品質チェックが古い（台本変更後に再チェックしていない）");
+    else if (qcHasFail) r.push("品質チェックに fail が残っている");
+    if (!proof) r.push("日本語校閲未実施");
+    else if (proofStale) r.push("日本語校閲が古い（台本変更後に再校閲していない）");
+    else if (!proof.passed) r.push(`日本語校閲が未クリア（崩壊${proof.counts.broken}件・不自然${proof.counts.unnatural}件）`);
+    return r;
+  };
+
   const handleSubmitForReview = () => {
     if (!project.generatedScript?.trim()) { setError("台本がありません"); return; }
-    if (!confirm("台本を添削部屋に提出しますか？（進捗が「台本添削待ち」になります）")) return;
+    const blockers = submitBlockers();
+    const msg = blockers.length === 0
+      ? "提出前チェックは両方クリアしています。台本を添削部屋に提出しますか？（進捗が「台本添削待ち」になります）"
+      : `提出前チェックが未クリアです:\n${blockers.map((b) => "・" + b).join("\n")}\n\nこのまま提出しますか？（添削部屋に「未クリアのまま提出」と表示されます）`;
+    if (!confirm(msg)) return;
     onUpdate({
       ...project,
       submittedScript: project.generatedScript,
@@ -736,6 +785,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       reviewComments: [],
       scriptReviewStatus: "pending",
       status: "review",
+      submittedWithWarnings: blockers,
     });
     notifyChatwork(
       reviewMessage("submitted", getProfileByChannel(project.channelId || "").channelName || "", project.title, {
@@ -1088,33 +1138,90 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
           )}
 
-          {/* 日本語校閲の結果 */}
-          {(proofError || proofItems) && (
+          {/* 提出前チェック: 品質チェック（構成）→ 日本語校閲（表面）→ 提出 */}
+          <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <h3 className="font-semibold text-base">🚦 提出前チェック</h3>
+              <span className="text-xs text-gray-500">順番: ①品質チェック（構成・訴求）→ ②日本語校閲（一文ずつ）→ 提出</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* ① 品質チェック */}
+              <div className={`rounded-lg p-3 border ${qcPassed ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm">
+                    <p className="font-medium">① 品質チェック</p>
+                    <p className="text-gray-600 mt-0.5">
+                      {!qcResult ? "未実施" : qcStale ? "⚠ 台本変更後に未再チェック" : qcHasFail ? "🔴 failあり：要修正" : `✅ 提出基準クリア（${qcResult.overallScore.toFixed(1)}点）`}
+                    </p>
+                  </div>
+                  <button onClick={handleQualityCheck} disabled={checkingQuality}
+                    className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
+                    {checkingQuality ? "チェック中..." : qcResult ? "再チェック" : "実行"}
+                  </button>
+                </div>
+              </div>
+              {/* ② 日本語校閲 */}
+              <div className={`rounded-lg p-3 border ${proofPassed ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm">
+                    <p className="font-medium">② 日本語校閲</p>
+                    <p className="text-gray-600 mt-0.5">
+                      {!proof ? "未実施" : proofStale ? "⚠ 台本変更後に未再校閲" : proof.passed ? `✅ クリア（崩壊0・不自然${proof.counts.unnatural}）` : `🔴 崩壊${proof.counts.broken}・不自然${proof.counts.unnatural}（合格: 崩壊0・不自然${PROOFREAD_MAX_UNNATURAL}以下）`}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button onClick={() => handleProofread()} disabled={proofreading}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50">
+                      {proofreading ? "校閲中..." : proof ? "再校閲" : "実行"}
+                    </button>
+                    {proof && !proofStale && proof.items.some((it) => it.found) && (
+                      <button onClick={() => applyProofFixes(proof.items.filter((it) => it.found), { thenRecheck: true })} disabled={proofreading}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-rose-300 text-rose-800 hover:bg-rose-100 disabled:opacity-50">
+                        全部適用→再校閲
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
+              <p className="text-xs text-gray-500">
+                {submitBlockers().length === 0 ? "✅ 両方クリア。提出できます。" : `未クリア: ${submitBlockers().join(" ／ ")}（未クリアでも提出は可能。添削部屋に表示されます）`}
+              </p>
+              <button onClick={handleSubmitForReview}
+                className={`px-4 py-2 rounded-lg text-sm font-medium ${submitBlockers().length === 0 ? "bg-purple-600 text-white hover:bg-purple-700" : "bg-gray-200 text-gray-600 hover:bg-gray-300"}`}>
+                📤 台本を提出
+              </button>
+            </div>
+          </div>
+
+          {/* 日本語校閲の結果（指摘一覧） */}
+          {(proofError || (proof && proofPanelOpen)) && (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-5 shadow-sm">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                 <h3 className="font-semibold text-base text-rose-900">✍️ 日本語校閲
-                  {proofCounts && (
+                  {proof && (
                     <span className="ml-3 text-sm font-normal text-rose-800">
-                      崩壊 {proofCounts.broken} 件 ／ 不自然 {proofCounts.unnatural} 件
+                      崩壊 {proof.counts.broken} 件 ／ 不自然 {proof.counts.unnatural} 件（{proof.rounds}回目{proofStale ? "・台本変更後" : ""}）
                     </span>
                   )}
                 </h3>
                 <div className="flex items-center gap-2">
-                  {proofItems && proofItems.some((it) => it.found) && (
-                    <button onClick={() => applyProofFixes(proofItems.filter((it) => it.found))}
+                  {proof && !proofStale && proof.items.some((it) => it.found) && (
+                    <button onClick={() => applyProofFixes(proof.items.filter((it) => it.found))}
                       className="text-sm px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700">
                       見つかった修正をすべて適用
                     </button>
                   )}
-                  <button onClick={() => { setProofItems(null); setProofCounts(null); setProofError(""); }}
+                  <button onClick={() => { setProofPanelOpen(false); setProofError(""); }}
                     className="text-sm px-3 py-1.5 rounded-lg border border-rose-300 text-rose-800 hover:bg-rose-100">閉じる</button>
                 </div>
               </div>
               {proofError && <p className="text-sm text-red-600">{proofError}</p>}
-              {proofItems && proofItems.length === 0 && <p className="text-base text-rose-900">✅ 日本語の崩れは見つかりませんでした。</p>}
-              {proofItems && proofItems.length > 0 && (
+              {proof && proof.items.length === 0 && <p className="text-base text-rose-900">✅ 未適用の指摘はありません。</p>}
+              {proof && proof.items.length > 0 && (
                 <ol className="space-y-3">
-                  {proofItems.map((it, i) => (
+                  {proof.items.map((it, i) => (
                     <li key={i} className="bg-white rounded-lg p-3 border border-rose-100">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1 space-y-1.5">
@@ -1128,7 +1235,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                           <p className="text-sm"><span className="text-gray-500">修正案：</span><span className="text-gray-900 font-medium">{it.fix}</span></p>
                           {!it.found && <p className="text-xs text-gray-400">※ 原文が台本内で一致しないため自動適用できません（手動で直してください）</p>}
                         </div>
-                        {it.found && (
+                        {it.found && !proofStale && (
                           <button onClick={() => applyProofFixes([it])}
                             className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-rose-300 text-rose-800 hover:bg-rose-100">適用</button>
                         )}
@@ -1159,7 +1266,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                   title="添削部屋に台本を提出し、進捗を「台本添削待ち」にします">
                   📤 台本を提出
                 </button>
-                <button onClick={handleProofread} disabled={proofreading}
+                <button onClick={() => handleProofread()} disabled={proofreading}
                   className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-medium hover:bg-rose-700 disabled:opacity-50"
                   title="一文ずつ日本語の崩れ（助詞・係り受け・不自然な言い回し）だけを厳密にチェックします">
                   {proofreading ? "校閲中..." : "✍️ 日本語校閲"}

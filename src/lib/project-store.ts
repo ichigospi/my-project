@@ -45,6 +45,21 @@ export interface QualityComparisonRow {
   note?: string;               // 評価コメント（例:「ここが弱い」「強み」）
 }
 
+// 日本語校閲の結果（品質チェックとは別パス。文単位の日本語の崩れ）
+export interface ProofreadItem { original: string; issue: string; fix: string; level: "broken" | "unnatural"; found: boolean }
+export interface ProofreadResult {
+  scriptHash: string;                               // 校閲時の台本ハッシュ（変更検知用）
+  counts: { broken: number; unnatural: number };    // 直近の校閲で見つかった件数
+  items: ProofreadItem[];                           // まだ適用していない指摘
+  passed: boolean;                                  // 合格: 崩壊0 かつ 不自然 PROOFREAD_MAX_UNNATURAL 以下
+  checkedAt: string;
+  rounds: number;                                   // 校閲を回した回数
+}
+export const PROOFREAD_MAX_UNNATURAL = 3;
+export function isProofreadPassed(counts: { broken: number; unnatural: number }): boolean {
+  return counts.broken === 0 && counts.unnatural <= PROOFREAD_MAX_UNNATURAL;
+}
+
 export interface QualityCheckResult {
   categories: QualityCheckCategory[];
   comparison?: QualityComparisonRow[];  // 元ネタ比較マトリクス
@@ -106,6 +121,8 @@ export interface ScriptProject {
   scriptReviewNote?: string;
   // 台本品質チェック結果（step6 完了後）
   qualityCheckResult?: QualityCheckResult;
+  proofreadResult?: ProofreadResult;     // 日本語校閲の結果
+  submittedWithWarnings?: string[];      // 提出前チェック未クリアのまま提出した理由（添削部屋に表示）
   // 分割出力（1〜3回）。splitCount>1 のとき scriptSegments にパートを保持し、
   // generatedScript はその結合結果。各パートごとに品質チェック・修正ができる。
   splitCount?: number;

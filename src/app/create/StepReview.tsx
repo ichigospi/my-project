@@ -88,6 +88,40 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
   }
 
   const [historyOpen, setHistoryOpen] = useState(false);
+  // 編集タブの日本語校閲（オーナーの手直し後の誤字・崩れを確認する）
+  type RvProofItem = { original: string; issue: string; fix: string; level: "broken" | "unnatural"; found: boolean };
+  const [rvProofing, setRvProofing] = useState(false);
+  const [rvProofItems, setRvProofItems] = useState<RvProofItem[] | null>(null);
+  const [rvProofCounts, setRvProofCounts] = useState<{ broken: number; unnatural: number } | null>(null);
+  const [rvProofError, setRvProofError] = useState("");
+  const runReviewProofread = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setRvProofError("AI APIキーを設定してください"); return; }
+    if (!draft.trim()) return;
+    setRvProofing(true); setRvProofError("");
+    try {
+      const res = await fetch("/api/script/proofread", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: draft, aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const d = await res.json();
+      if (d.error) { setRvProofError(d.error); return; }
+      setRvProofItems(d.items as RvProofItem[]);
+      setRvProofCounts(d.counts as { broken: number; unnatural: number });
+    } catch (e) {
+      setRvProofError(e instanceof Error ? e.message : "日本語校閲に失敗しました");
+    } finally { setRvProofing(false); }
+  };
+  const applyReviewProofFixes = (targets: RvProofItem[]) => {
+    let text = draft;
+    const remaining: RvProofItem[] = [];
+    for (const it of rvProofItems || []) {
+      if (targets.includes(it) && text.includes(it.original)) text = text.replace(it.original, it.fix);
+      else remaining.push(targets.includes(it) ? { ...it, found: false } : it);
+    }
+    setDraft(text);
+    setRvProofItems(remaining);
+  };
 
   const saveDraft = () => {
     if (draft !== reviewed) onUpdate({ ...project, reviewedScript: draft });
@@ -238,9 +272,16 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
 
   return (
     <div className={`w-full ${refScripts.length > 0 ? "max-w-[1500px]" : "max-w-3xl"}`}>
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
         <h2 className="text-xl font-bold">⑦ 添削部屋</h2>
         <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusBadge.cls}`}>{statusBadge.label}</span>
+        {project.submittedWithWarnings && project.submittedWithWarnings.length > 0 ? (
+          <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-amber-100 text-amber-800" title={project.submittedWithWarnings.join(" / ")}>
+            ⚠ 提出前チェック未クリアのまま提出（{project.submittedWithWarnings.join("／")}）
+          </span>
+        ) : project.submittedWithWarnings ? (
+          <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-green-100 text-green-700">✅ 提出前チェック両方クリア</span>
+        ) : null}
       </div>
       <p className="text-sm text-gray-500 mb-4">
         紫色＝オーナーが変更した箇所（クリックで変更前とコメントを表示）。変更箇所: {changedCount}件 / コメント: {comments.length}件
@@ -307,6 +348,46 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
                 </div>
               );
             })()}
+          </div>
+          <div className="mt-3">
+            <button onClick={runReviewProofread} disabled={rvProofing}
+              className="text-xs px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50">
+              {rvProofing ? "校閲中..." : "✍️ 日本語校閲（この編集内容を一文ずつチェック）"}
+            </button>
+            {rvProofError && <p className="text-sm text-red-600 mt-2">{rvProofError}</p>}
+            {rvProofItems && (
+              <div className="mt-2 bg-rose-50 rounded-xl p-4 border border-rose-200">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <p className="text-sm font-semibold text-rose-900">崩壊 {rvProofCounts?.broken ?? 0} 件 ／ 不自然 {rvProofCounts?.unnatural ?? 0} 件</p>
+                  <div className="flex gap-2">
+                    {rvProofItems.some((it) => it.found) && (
+                      <button onClick={() => applyReviewProofFixes(rvProofItems.filter((it) => it.found))}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700">見つかった修正をすべて適用</button>
+                    )}
+                    <button onClick={() => { setRvProofItems(null); setRvProofCounts(null); }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-rose-300 text-rose-800 hover:bg-rose-100">閉じる</button>
+                  </div>
+                </div>
+                {rvProofItems.length === 0 ? <p className="text-sm text-rose-900">✅ 未適用の指摘はありません。</p> : (
+                  <ol className="space-y-2">
+                    {rvProofItems.map((it, i) => (
+                      <li key={i} className="bg-white rounded-lg p-3 border border-rose-100">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <p className="text-sm"><span className={`inline-block px-1.5 py-0.5 rounded text-xs font-bold mr-2 ${it.level === "broken" ? "bg-red-600 text-white" : "bg-amber-400 text-white"}`}>{it.level === "broken" ? "崩壊" : "不自然"}</span><span className="text-gray-500">原文：</span>{it.original}</p>
+                            <p className="text-sm text-rose-800">問題：{it.issue}</p>
+                            <p className="text-sm"><span className="text-gray-500">修正案：</span><span className="font-medium">{it.fix}</span></p>
+                            {!it.found && <p className="text-xs text-gray-400">※ 原文が一致しないため自動適用できません</p>}
+                          </div>
+                          {it.found && <button onClick={() => applyReviewProofFixes([it])} className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-rose-300 text-rose-800 hover:bg-rose-100">適用</button>}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                <p className="text-xs text-gray-500 mt-2">※ 適用後は「保存してプレビュー」で確定してください。</p>
+              </div>
+            )}
           </div>
         </div>
       )}
