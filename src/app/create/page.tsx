@@ -36,6 +36,17 @@ export default function CreatePage() {
 
   useEffect(() => { pullSharedSettings().then(() => setProjects(getProjectsByChannel(activeChannel?.id || ""))); }, [activeChannel]);
 
+  // 別タブで保存された変更を、この画面にも即反映する（古い状態を持ったまま上書きしてしまうのを防ぐ）
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== "fortune_yt_projects") return;
+      setProjects(getProjectsByChannel(activeChannel?.id || ""));
+      setActiveProject((cur) => (cur ? (getProjects().find((p) => p.id === cur.id) ?? cur) : cur));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [activeChannel]);
+
   // Chatwork通知等からの直リンク対応: /create?project=<id>&step=review
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -115,8 +126,25 @@ export default function CreatePage() {
     pushSharedSettings();
   };
 
-  const updateProject = (updated: ScriptProject) => {
+  const updateProject = (incoming: ScriptProject) => {
     const prev = activeProject;
+    // 【古い画面からの上書き防止】別タブ・別端末で先に進めた後、古い状態を持った画面が保存すると
+    // 進捗（status）や台本（generatedScript/submittedScript）が古い内容で消えてしまう。
+    // この画面が持っていた版(prev)より保存済みの版(stored)が新しければ、stored を土台にして
+    // この画面で実際に変更した項目だけを乗せる。
+    let updated = incoming;
+    const stored = getProjects().find((p) => p.id === incoming.id);
+    if (prev && stored && stored.updatedAt && prev.updatedAt &&
+        new Date(stored.updatedAt).getTime() > new Date(prev.updatedAt).getTime()) {
+      const merged = { ...stored } as ScriptProject;
+      const rec = merged as unknown as Record<string, unknown>;
+      const inc = incoming as unknown as Record<string, unknown>;
+      const pv = prev as unknown as Record<string, unknown>;
+      for (const k of Object.keys(inc)) {
+        if (inc[k] !== pv[k]) rec[k] = inc[k];
+      }
+      updated = merged;
+    }
     // ステータスが進んだ場合は表示上書きを解除し、新しいステータスの部屋に追従する。
     // ただし台本生成の完了（completed化）では添削部屋へ飛ばさず、台本出力の部屋に留まる
     // （分割生成の1/2を作るたびに部屋が移動してしまうのを防ぐ。添削部屋へは「提出」時に移動する）
