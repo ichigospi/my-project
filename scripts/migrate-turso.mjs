@@ -128,6 +128,7 @@ const alters = [
   `ALTER TABLE "ReplyPolicy" ADD COLUMN "stage" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "ReplyExample" ADD COLUMN "stage" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "ReplyDraft" ADD COLUMN "stage" TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE "ScriptAnalysis" ADD COLUMN "essence" TEXT`,
   `ALTER TABLE "ThreadsAccount" ADD COLUMN "worldview" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "ThreadsAccount" ADD COLUMN "uniqueLogic" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "ThreadsAccount" ADD COLUMN "ngWords" TEXT NOT NULL DEFAULT ''`,

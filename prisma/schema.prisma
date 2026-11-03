@@ -59,6 +59,7 @@ model ScriptAnalysis {
   category       String   @default("other")
   tags           String   @default("[]") // JSON array
   score          String?  // JSON string
+  essence        String?  // JSON string（元ネタの本質。骨組み・台本に必達で反映する要素）
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

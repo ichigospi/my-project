@@ -21,6 +21,7 @@ export async function GET() {
         analysisResult: a.analysisResult ? JSON.parse(a.analysisResult) : null,
         tags: JSON.parse(a.tags),
         score: a.score ? JSON.parse(a.score) : undefined,
+        essence: a.essence ? JSON.parse(a.essence) : undefined,
       }))
     );
   } catch (e) {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     const {
       id, videoId, videoUrl, videoTitle, channelName,
       thumbnailUrl, views, transcript, analysisResult,
-      category, tags, score,
+      category, tags, score, essence,
     } = body;
 
     if (!id) {
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
       category: category || "other",
       tags: JSON.stringify(tags || []),
       score: score ? JSON.stringify(score) : null,
+      essence: essence ? JSON.stringify(essence) : null,
     };
 
     // 既存チェックしてupsert
@@ -76,6 +78,7 @@ export async function POST(request: NextRequest) {
       analysisResult: analysis.analysisResult ? JSON.parse(analysis.analysisResult) : null,
       tags: JSON.parse(analysis.tags),
       score: analysis.score ? JSON.parse(analysis.score) : undefined,
+      essence: analysis.essence ? JSON.parse(analysis.essence) : undefined,
     });
   } catch (e) {
     console.error("POST /api/analyses error:", e);

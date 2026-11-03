@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES } from "@/lib/tarot-draw";
@@ -12,6 +13,7 @@ interface RefAnalysis {
   channelName?: string;
   views?: number;
   role?: "main" | "sub"; // main=構成の主軸（トレース元） / sub=要素どり
+  essence?: ScriptEssence | null; // 元ネタの本質（必達で反映）
   analysisResult?: {
     summary?: string;
     structure?: { name: string; timeRange: string; purpose: string }[];
@@ -35,7 +37,9 @@ function buildReferenceText(referenceAnalyses: RefAnalysis[]): string {
   const hasRoles = referenceAnalyses.length > 1 && referenceAnalyses.some((a) => a.role);
   const blocks = referenceAnalyses.map((a, i) => {
     const r = a.analysisResult;
-    if (!r) return "";
+    if (!r && !a.essence) return "";
+    const essenceText = a.essence ? "\n" + formatEssenceForPrompt(a.essence, `元ネタ${i + 1}`) : "";
+    if (!r) return essenceText.trim();
     const roleLabel = hasRoles ? (a.role === "main" ? "｜★主軸（メイン）: 構成・展開のトレース元" : "｜サブ（要素どり）: 骨組みで指定された要素の移植のみに使う。構成は混ぜない") : "";
     return `■ 元ネタ${i + 1}${roleLabel}「${a.videoTitle || "無題"}」（${a.channelName || "不明"} / 再生数: ${a.views?.toLocaleString() || "不明"}回）
 ・構成: ${r.structure?.map((s) => `${s.name}(${s.timeRange})`).join(" → ") || "不明"}
@@ -44,7 +48,7 @@ function buildReferenceText(referenceAnalyses: RefAnalysis[]): string {
 ・CTA: ${r.ctas?.join(" / ") || "不明"}
 ・視聴維持の仕掛け（離脱防止）: ${r.retentionTactics?.join(" / ") || r.hooks?.join(" / ") || "不明"}
 ・世界観の演出: ${r.worldview || "不明"}
-・伸びた要因: ${r.growthFactors?.join(" / ") || "不明"}`;
+・伸びた要因: ${r.growthFactors?.join(" / ") || "不明"}${essenceText}`;
   }).filter(Boolean);
 
   if (blocks.length === 0) return "";
