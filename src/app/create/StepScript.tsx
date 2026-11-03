@@ -132,6 +132,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 
   // 分割出力（出力回数 1〜3）
   const [splitCount, setSplitCount] = useState(project.splitCount || 1);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
   const [segmentChecking, setSegmentChecking] = useState<number | null>(null);
   const [segmentRevising, setSegmentRevising] = useState<number | null>(null);
   const [segmentReviseNote, setSegmentReviseNote] = useState<Record<number, string>>({});
@@ -816,6 +818,39 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               </span>
             ) : (splitCount > 1 ? `パート1を生成する（全${splitCount}分割）` : "台本を生成する")}
           </button>
+
+          {/* 既存の台本を貼り付けて使う（生成済みの台本が消えた時・外部で仕上げた台本を添削部屋へ回す時） */}
+          <div className="mt-8 max-w-3xl mx-auto text-left">
+            <button onClick={() => setPasteOpen((v) => !v)}
+              className="text-sm text-gray-500 underline underline-offset-2 hover:text-accent">
+              {pasteOpen ? "▲ 閉じる" : "▼ 既存の台本を貼り付けて使う（生成せずに添削部屋へ進む）"}
+            </button>
+            {pasteOpen && (
+              <div className="mt-3 bg-card-bg rounded-xl p-4 border border-gray-200 shadow-sm">
+                <p className="text-sm text-gray-600 mb-2">
+                  仕上がった台本をここに貼り付けると、この企画の「台本」として保存され、そのまま「添削部屋に提出」できます（サーバーにも同期されます）。
+                </p>
+                <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)}
+                  placeholder="ここに台本の全文を貼り付け"
+                  className="w-full h-64 p-3 rounded-lg border border-gray-200 text-sm leading-6 focus:outline-none focus:border-accent font-sans" />
+                <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+                  <span className="text-xs text-gray-400">{pasteText.replace(/\s/g, "").length.toLocaleString()}字</span>
+                  <button disabled={!pasteText.trim()}
+                    onClick={() => {
+                      const text = pasteText.trim();
+                      if (!text) return;
+                      onUpdate({ ...project, generatedScript: text, qualityCheckResult: undefined });
+                      pushSharedSettings();
+                      setPasteText("");
+                      setPasteOpen(false);
+                    }}
+                    className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
+                    この台本を使う
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
