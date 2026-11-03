@@ -50,12 +50,21 @@ function parseJSON(raw: string): Record<string, unknown> | null {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { script, aiApiKey } = body as { script?: string; aiApiKey: string };
+    const { script, aiApiKey, previousSummary } = body as { script?: string; aiApiKey: string; previousSummary?: string };
     const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
     if (!script || script.trim().length < 50) return NextResponse.json({ error: "台本がありません" }, { status: 400 });
 
-    const userPrompt = `${SYSTEM_PROMPT}
+    const diffBlock = previousSummary ? `
+
+【前回の校閲結果（これは修正後の再校閲です。差分モードで校閲すること）】
+${previousSummary}
+差分モードの原則:
+1. 前回挙げた指摘のうち、原文が台本に無くなっているものは「修正済み」とみなす（蒸し返さない）
+2. 前回挙げなかった文は、「崩壊（意味が取れない・文法が壊れている）」レベルの明確な問題のみ新規に挙げる。好み・言い回しの微調整レベルの新規指摘は出さない
+3. 前回の指摘で原文がまだ残っているものは、そのまま再掲してよい` : "";
+
+    const userPrompt = `${SYSTEM_PROMPT}${diffBlock}
 
 【校閲対象の台本】
 ${script}`;
