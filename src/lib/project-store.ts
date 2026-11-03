@@ -591,12 +591,56 @@ export function getProjects(): ScriptProject[] {
   return JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]");
 }
 
+// --- 台本の履歴（上書きで消えた台本を復元するための安全網。この端末の localStorage に企画ごと最大10件） ---
+const SCRIPT_HISTORY_KEY = "fortune_yt_script_history";
+export type ScriptHistoryField = "generatedScript" | "submittedScript" | "reviewedScript";
+export interface ScriptSnapshot { at: string; field: ScriptHistoryField; text: string; status?: string }
+type ScriptHistoryMap = Record<string, ScriptSnapshot[]>;
+function readScriptHistory(): ScriptHistoryMap {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(SCRIPT_HISTORY_KEY) || "{}"); } catch { return {}; }
+}
+export function getScriptHistory(projectId: string): ScriptSnapshot[] {
+  return (readScriptHistory()[projectId] || []).slice().sort((a, b) => b.at.localeCompare(a.at));
+}
+function pushScriptSnapshots(projectId: string, snaps: ScriptSnapshot[]) {
+  if (typeof window === "undefined" || snaps.length === 0) return;
+  try {
+    const map = readScriptHistory();
+    const list = map[projectId] || [];
+    for (const snap of snaps) {
+      if (list.some((x) => x.field === snap.field && x.text === snap.text)) continue; // 同一内容は重複保存しない
+      list.push(snap);
+    }
+    map[projectId] = list.slice(-10);
+    const ids = Object.keys(map);
+    if (ids.length > 30) for (const id of ids.slice(0, ids.length - 30)) delete map[id];
+    localStorage.setItem(SCRIPT_HISTORY_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.warn("[history] save failed:", e);
+  }
+}
+
 export function saveProject(project: ScriptProject): ScriptProject[] {
   const projects = getProjects();
   const idx = projects.findIndex((p) => p.id === project.id);
   project.updatedAt = new Date().toISOString();
-  if (idx >= 0) projects[idx] = project;
-  else projects.unshift(project);
+  if (idx >= 0) {
+    // 台本本文が変わる（または消える）場合は、変更前の本文を履歴に退避する
+    const old = projects[idx];
+    const snaps: ScriptSnapshot[] = [];
+    (["generatedScript", "submittedScript", "reviewedScript"] as ScriptHistoryField[]).forEach((f) => {
+      const ov = (old as unknown as Record<string, unknown>)[f];
+      const nv = (project as unknown as Record<string, unknown>)[f];
+      if (typeof ov === "string" && ov.trim() && ov !== nv) {
+        snaps.push({ at: old.updatedAt || new Date().toISOString(), field: f, text: ov, status: old.status });
+      }
+    });
+    pushScriptSnapshots(old.id, snaps);
+    projects[idx] = project;
+  } else {
+    projects.unshift(project);
+  }
   localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
   return projects;
 }

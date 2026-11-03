@@ -15,6 +15,7 @@ import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
 import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction } from "@/lib/project-store";
+import { getScriptHistory } from "@/lib/project-store";
 
 export default function StepReview({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const [tab, setTab] = useState<"preview" | "edit">("preview");
@@ -85,6 +86,8 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
       </div>
     );
   }
+
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const saveDraft = () => {
     if (draft !== reviewed) onUpdate({ ...project, reviewedScript: draft });
@@ -272,6 +275,38 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
               className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">保存してプレビュー</button>
             <button onClick={() => { if (confirm("編集中の内容を破棄して、最後に保存した状態に戻しますか？")) setDraft(reviewed); }}
               className="px-4 py-2 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">元に戻す</button>
+          </div>
+          <div className="mt-2">
+            <button onClick={() => setHistoryOpen((v) => !v)}
+              className="text-xs text-gray-500 underline underline-offset-2 hover:text-accent">
+              {historyOpen ? "▲ 履歴を閉じる" : "🕘 履歴から復元（上書きで消えた台本を戻す）"}
+            </button>
+            {historyOpen && (() => {
+              const hist = getScriptHistory(project.id);
+              const label = (f: string) => (f === "reviewedScript" ? "添削後" : f === "submittedScript" ? "提出時" : "台本出力");
+              return (
+                <div className="mt-2 bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <p className="text-sm text-gray-600 mb-2">この端末に残っている、上書き前の台本です。選ぶと編集欄に読み込みます。読み込んだら「保存してプレビュー」で確定してください。</p>
+                  {hist.length === 0 ? (
+                    <p className="text-sm text-gray-400">履歴はまだありません（この機能の導入後に保存された台本から残ります）。</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {hist.map((h, idx) => (
+                        <li key={idx} className="flex items-center justify-between gap-3 bg-white rounded-lg p-2.5 border border-gray-100">
+                          <div className="text-sm text-gray-700 min-w-0">
+                            <span className="font-medium">{new Date(h.at).toLocaleString("ja-JP")}</span>
+                            <span className="ml-2 text-xs text-gray-500">{label(h.field)} / {h.text.replace(/\s/g, "").length.toLocaleString()}字</span>
+                            <p className="text-xs text-gray-400 truncate">{h.text.slice(0, 60)}…</p>
+                          </div>
+                          <button onClick={() => { if (confirm("この版を編集欄に読み込みますか？（今の編集内容は置き換わります）")) { setDraft(h.text); setHistoryOpen(false); } }}
+                            className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90">読み込む</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

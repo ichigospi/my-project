@@ -178,6 +178,27 @@ export default function CreatePage() {
 
   const handleBack = () => { setActiveProject(null); setViewStep(null); setProjects(getProjectsByChannel(activeChannel?.id || "")); };
 
+  // サーバーに残っている版を確認し、必要ならこの端末の版を置き換える（古い画面の上書きで消えた台本の復旧用）
+  const handleRestoreFromServer = async () => {
+    if (!activeProject) return;
+    try {
+      const res = await fetch("/api/projects");
+      const d = await res.json();
+      const sv = (Array.isArray(d.projects) ? (d.projects as ScriptProject[]) : []).find((p) => p.id === activeProject.id);
+      if (!sv) { alert("サーバーにこの企画のデータがありません"); return; }
+      const len = (t?: string) => (t || "").replace(/\s/g, "").length;
+      const fmt = (p: ScriptProject) => `進捗: ${p.status}／台本出力 ${len(p.generatedScript).toLocaleString()}字／提出 ${len(p.submittedScript).toLocaleString()}字／添削後 ${len(p.reviewedScript).toLocaleString()}字`;
+      const msg = `【サーバー版】${sv.updatedAt ? new Date(sv.updatedAt).toLocaleString("ja-JP") : "更新日時不明"}\n${fmt(sv)}\n\n【この端末の版】${activeProject.updatedAt ? new Date(activeProject.updatedAt).toLocaleString("ja-JP") : ""}\n${fmt(activeProject)}\n\nサーバー版でこの端末の版を置き換えますか？（置き換え前の台本は履歴に残ります）`;
+      if (!confirm(msg)) return;
+      saveProject(sv);
+      setActiveProject(sv);
+      setViewStep(null);
+      setProjects(getProjectsByChannel(activeChannel?.id || ""));
+    } catch (e) {
+      alert("サーバーの確認に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
   const stepIndex = activeProject ? STEPS.findIndex((s) => s.id === activeProject.status) : -1;
   // completedの場合は最後のステップ扱い
   const effectiveStepIndex = stepIndex === -1 && activeProject?.status === "completed" ? STEPS.length - 1 : stepIndex;
@@ -470,10 +491,17 @@ export default function CreatePage() {
   // ウィザードビュー
   return (
     <div className="p-4 md:p-8">
-      <button onClick={handleBack} className="text-accent text-sm font-medium mb-4 flex items-center gap-1 hover:underline">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-        プロジェクト一覧
-      </button>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <button onClick={handleBack} className="text-accent text-sm font-medium flex items-center gap-1 hover:underline">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          プロジェクト一覧
+        </button>
+        <button onClick={handleRestoreFromServer}
+          className="text-xs text-gray-500 underline underline-offset-2 hover:text-accent"
+          title="サーバーに残っている版（進捗・台本の有無）を確認し、必要ならこの端末の版を置き換えます">
+          ☁ サーバー版を確認して復元
+        </button>
+      </div>
 
       {/* ステップインジケーター */}
       <div className="flex items-center gap-1 mb-8 overflow-x-auto pb-2">
