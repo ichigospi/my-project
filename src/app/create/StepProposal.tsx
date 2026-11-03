@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
-import { getAnalyses, deleteAnalysis, getProfileByChannel } from "@/lib/script-analysis-store";
+import { getAnalyses, deleteAnalysis, getProfileByChannel, saveAnalysis } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor } from "@/lib/project-store";
@@ -12,7 +12,7 @@ import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, 
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
 import type { ScriptProject, RuleProposal, SuggestionDraft } from "@/lib/project-store";
-import type { ScriptAnalysis } from "@/lib/script-analysis-store";
+import type { ScriptAnalysis, ScriptEssence } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
 export default function StepProposal({ project, onUpdate, onNavigate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void; onNavigate?: (stepId: string) => void }) {
@@ -244,6 +244,41 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     if (project.primaryAnalysisId && analyses.some((a) => a.id === project.primaryAnalysisId)) return project.primaryAnalysisId;
     return analyses.reduce((m, a) => ((a.views || 0) > (m.views || 0) ? a : m), analyses[0]).id;
   })();
+
+  // --- 元ネタの本質（骨組みに必ず反映する要素）の抽出 ---
+  const [extractingEssence, setExtractingEssence] = useState(false);
+  const [essenceError, setEssenceError] = useState("");
+  const mainAnalysis = analyses.find((a) => a.id === effectivePrimaryId) || null;
+
+  const extractEssence = async (target: ScriptAnalysis, force = false) => {
+    if (!target.transcript || (target.essence && !force)) return;
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) return;
+    setExtractingEssence(true);
+    setEssenceError("");
+    try {
+      const res = await fetch("/api/script/extract-essence", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: target.transcript, videoTitle: target.videoTitle, aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const d = await res.json();
+      if (d.error) { setEssenceError(d.error); return; }
+      const updated: ScriptAnalysis = { ...target, essence: d.essence as ScriptEssence };
+      saveAnalysis(updated);
+      setAnalyses((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch (e) {
+      setEssenceError(e instanceof Error ? e.message : "本質の抽出に失敗しました");
+    } finally {
+      setExtractingEssence(false);
+    }
+  };
+
+  // メイン元ネタに本質が未抽出なら自動で抽出（骨組みを作る前に必ず見える状態にする）
+  useEffect(() => {
+    if (!mainAnalysis || mainAnalysis.essence || !mainAnalysis.transcript || extractingEssence) return;
+    extractEssence(mainAnalysis);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainAnalysis?.id, mainAnalysis?.essence]);
 
   // 骨組み生成の実体（構成モード確定後に呼ぶ）
   // タロットは2段階: 抽象ロジック（カードリーディング設計）→ 確認・編集 → 具体展開
@@ -702,6 +737,67 @@ ${p.content}`;
       {/* 骨組みタブ */}
       {viewTab === "skeleton" && (
         <>
+          {/* 元ネタの本質: 構成を決める前に必ず目に入るよう大きく表示（骨組み・台本プロンプトにも必達で注入される） */}
+          {mainAnalysis && (
+            <div className="mb-5 rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <h3 className="text-lg font-bold text-amber-900">📌 元ネタの本質（骨組みに必ず反映）</h3>
+                <div className="flex items-center gap-2">
+                  {extractingEssence && (
+                    <span className="inline-flex items-center gap-1.5 text-sm text-amber-700">
+                      <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />抽出中...
+                    </span>
+                  )}
+                  {mainAnalysis.transcript && (
+                    <button onClick={() => extractEssence(mainAnalysis, true)} disabled={extractingEssence}
+                      className="text-sm px-3 py-1.5 rounded-lg border border-amber-400 text-amber-800 hover:bg-amber-100 disabled:opacity-50">
+                      {mainAnalysis.essence ? "再抽出" : "本質を抽出"}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-sm text-amber-800 mb-4">メイン元ネタ「{mainAnalysis.videoTitle}」が視聴者に刺さった“中身”です。表面の構成だけ真似て中身を落とさないよう、各項目を対応するパートに組み込みます（骨組み・台本の生成プロンプトにも自動で入ります）。</p>
+              {essenceError && <p className="text-sm text-red-600 mb-3">{essenceError}</p>}
+              {!mainAnalysis.transcript && <p className="text-sm text-amber-700">この元ネタは書き起こしが無いため抽出できません。</p>}
+              {mainAnalysis.essence && (() => {
+                const e = mainAnalysis.essence;
+                const Block = ({ title, children }: { title: string; children: React.ReactNode }) => (
+                  <div className="bg-white/80 rounded-xl p-4 border border-amber-200">
+                    <p className="text-sm font-bold text-amber-900 mb-1.5">{title}</p>
+                    <div className="text-base leading-7 text-gray-800">{children}</div>
+                  </div>
+                );
+                const List = ({ items }: { items: string[] }) => (
+                  <ul className="space-y-1">{items.map((x, i) => <li key={i}>・{x}</li>)}</ul>
+                );
+                return (
+                  <div className="space-y-3">
+                    {e.mustKeep?.length > 0 && (
+                      <div className="rounded-xl p-4 bg-amber-100 border border-amber-300">
+                        <p className="text-base font-bold text-amber-900 mb-2">★ 必ず反映する要素（優先順）</p>
+                        <ol className="space-y-1.5 text-lg leading-8 text-gray-900 font-medium list-decimal list-inside">
+                          {e.mustKeep.map((x, i) => <li key={i}>{x}</li>)}
+                        </ol>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {e.coreProblems?.length > 0 && <Block title="悩みの本質（2枚目の深掘り・冒頭の問題提起）"><List items={e.coreProblems} /></Block>}
+                      {e.causeAxis && <Block title="原因・常識破壊の軸（3枚目）">{e.causeAxis}</Block>}
+                      {e.targetCallout && <Block title="ターゲットの名指し（冒頭）">{e.targetCallout}</Block>}
+                      {e.agendaHook && <Block title="予告の切り口（冒頭アジェンダ）">{e.agendaHook}</Block>}
+                      {e.affirmReframe && <Block title="肯定のリフレーム（1〜2枚目）">{e.affirmReframe}</Block>}
+                      {e.advice?.length > 0 && <Block title="具体行動（4枚目／今週の行動）"><List items={e.advice} /></Block>}
+                      {e.idealFuture?.length > 0 && <Block title="理想の未来の具体（5枚目）"><List items={e.idealFuture} /></Block>}
+                      {e.selfAffirmClose && <Block title="自己肯定の締め（結末カードの後）">{e.selfAffirmClose}</Block>}
+                      {e.keyMessage && <Block title="最重要メッセージ（締めの結論）"><span className="font-semibold">{e.keyMessage}</span></Block>}
+                      {e.commentCta && <Block title="コメントCTAのロジック（参考）">{e.commentCta}</Block>}
+                      {e.heavyCtaUnknowns?.length > 0 && <Block title="重CTAの未知数（参考）"><List items={e.heavyCtaUnknowns} /></Block>}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
           {/* タロット: 今回引いたカードの実際の絵柄を確認できるギャラリー */}
           {project.style === "tarot" && (
             <TarotCardGallery text={`${abstractDraft ?? project.abstractLogic ?? ""}\n${skeleton}`} />

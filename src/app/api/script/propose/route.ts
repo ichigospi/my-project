@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatEssenceForPrompt } from "@/lib/script-analysis-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES } from "@/lib/tarot-draw";
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
   const analysisTexts = analyses.map((a: {
     id?: string;
     videoTitle: string; channelName: string; views: number;
+    essence?: import("@/lib/script-analysis-store").ScriptEssence | null;
     analysisResult: {
       summary: string;
       structure: { name: string; timeRange: string; purpose: string }[];
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
     };
   }, i: number) => `
 【参考動画${i + 1}${(analyses?.length || 0) > 1 ? (a.id === primaryId ? "｜★主軸（メイン）: 構成・尺配分・文字数のトレース元" : "｜サブ（要素どり）: 構成は混ぜず、要素の移植のみに使う") : ""}】「${a.videoTitle}」（${a.channelName}）再生数: ${a.views?.toLocaleString()}回
-概要: ${a.analysisResult?.summary}
+${a.essence ? formatEssenceForPrompt(a.essence, a.videoTitle ? `元ネタ「${a.videoTitle}」` : "元ネタ") + "\n" : ""}概要: ${a.analysisResult?.summary}
 構成（★この順番・役割・尺配分を完全トレースする）:
 ${a.analysisResult?.structure?.map((s, idx) => `  ${idx + 1}. ${s.name}（${s.timeRange}）— 役割: ${s.purpose || "不明"}`).join("\n") || "  不明"}
 フック: ${a.analysisResult?.hooks?.join(" / ")}

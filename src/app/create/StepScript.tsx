@@ -178,6 +178,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         channelName: a.channelName,
         views: a.views,
         analysisResult: a.analysisResult,
+        essence: a.essence ?? null, // 元ネタの本質（必達で反映）
       }));
 
     try {

@@ -30,6 +30,46 @@ export interface ScriptAnalysis {
   createdAt: string;
   updatedAt?: string; // 同期マージで「新しい方が勝つ」判定に使う（サーバー行にも存在）
   score?: AnalysisScore;
+  essence?: ScriptEssence; // 元ネタの本質（骨組み・台本に必ず反映する要素）
+}
+
+// 元ネタ台本の「本質」。構成を決める段階で大きく表示し、骨組み・台本生成のプロンプトに必達で注入する。
+export interface ScriptEssence {
+  coreProblems: string[];     // 視聴者の悩みの本質（元ネタが名指しした悩み。言い回しごと）
+  targetCallout: string;      // ターゲットの名指し（「特に〜と感じている方に」）
+  affirmReframe: string;      // 肯定のリフレーム（例: 運から外れていたのではなく噛み合う途中だった）
+  agendaHook: string;         // 予告の切り口（例: 入り口は仕事か・縁か・過去に諦めたことか）
+  causeAxis: string;          // 原因・常識破壊の軸（例: 与える側だった→受け取り下手／失敗恐怖）
+  advice: string[];           // 具体行動（アドバイス）
+  idealFuture: string[];      // 理想の未来の具体
+  selfAffirmClose: string;    // 自己肯定の締め
+  keyMessage: string;         // 最重要メッセージ（締めの結論）
+  commentCta: string;         // コメントCTAの語とロジック
+  heavyCtaUnknowns: string[]; // 重CTAで「個別でないと視えない」とした未知数
+  mustKeep: string[];         // 骨組みに必ず反映すべき要素（優先順・短文）
+  extractedAt: string;
+}
+
+// 元ネタの本質をプロンプト用テキストに整形（骨組み・台本生成の両方で使う）
+export function formatEssenceForPrompt(e: ScriptEssence | null | undefined, label = "元ネタ"): string {
+  if (!e) return "";
+  const li = (xs: string[]) => xs.filter(Boolean).map((x) => `  - ${x}`).join("\n");
+  const lines: string[] = [];
+  lines.push(`【${label}の本質（必達・骨組みと台本の両方に必ず反映する）】`);
+  lines.push("これは元ネタが視聴者に刺さった「中身」です。表面の構成だけ真似て中身を落とさないこと。各項目を対応するパートに必ず組み込む:");
+  if (e.coreProblems?.length) lines.push(`■ 悩みの本質（2枚目の深掘り・冒頭の問題提起に必ず使う。言い回しを活かす）\n${li(e.coreProblems)}`);
+  if (e.targetCallout) lines.push(`■ ターゲットの名指し（冒頭）: ${e.targetCallout}`);
+  if (e.affirmReframe) lines.push(`■ 肯定のリフレーム（1〜2枚目）: ${e.affirmReframe}`);
+  if (e.agendaHook) lines.push(`■ 予告の切り口（冒頭アジェンダ）: ${e.agendaHook}`);
+  if (e.causeAxis) lines.push(`■ 原因・常識破壊の軸（3枚目）: ${e.causeAxis}`);
+  if (e.advice?.length) lines.push(`■ 具体行動（4枚目／今週の行動）\n${li(e.advice)}`);
+  if (e.idealFuture?.length) lines.push(`■ 理想の未来の具体（5枚目）\n${li(e.idealFuture)}`);
+  if (e.selfAffirmClose) lines.push(`■ 自己肯定の締め（結末カードの後）: ${e.selfAffirmClose}`);
+  if (e.keyMessage) lines.push(`■ 最重要メッセージ（締めの結論に必ず入れる）: ${e.keyMessage}`);
+  if (e.commentCta) lines.push(`■ コメントCTAのロジック（参考）: ${e.commentCta}`);
+  if (e.heavyCtaUnknowns?.length) lines.push(`■ 重CTAの未知数（参考）\n${li(e.heavyCtaUnknowns)}`);
+  if (e.mustKeep?.length) lines.push(`■ 必ず反映する要素（優先順）\n${li(e.mustKeep)}`);
+  return lines.join("\n");
 }
 
 export interface AnalysisResult {
