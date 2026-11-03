@@ -199,9 +199,35 @@ export default function CreatePage() {
     }
   };
 
+  // 進捗の自己修復: 提出済み/生成済みの台本があるのに進捗が手前（構成提案など）に巻き戻っている企画は、
+  // 開いた時に台本の有無から進捗を復元する（古い画面の上書きで status だけ戻った場合の救済）
+  useEffect(() => {
+    if (!activeProject) return;
+    const idx = STEPS.findIndex((s) => s.id === activeProject.status);
+    const scriptIdx = STEPS.findIndex((s) => s.id === "script");
+    const reviewIdx = STEPS.findIndex((s) => s.id === "review");
+    let repaired: ScriptProject["status"] | null = null;
+    if (activeProject.submittedScript?.trim() && activeProject.status !== "completed" && idx < reviewIdx) repaired = "review";
+    else if (activeProject.generatedScript?.trim() && idx < scriptIdx) repaired = "script";
+    if (repaired) {
+      const fixed = { ...activeProject, status: repaired };
+      saveProject(fixed);
+      setActiveProject(fixed);
+      setProjects(getProjectsByChannel(activeChannel?.id || ""));
+      pushSharedSettings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject?.id, activeProject?.status, activeProject?.submittedScript, activeProject?.generatedScript]);
+
   const stepIndex = activeProject ? STEPS.findIndex((s) => s.id === activeProject.status) : -1;
   // completedの場合は最後のステップ扱い
-  const effectiveStepIndex = stepIndex === -1 && activeProject?.status === "completed" ? STEPS.length - 1 : stepIndex;
+  const statusStepIndex = stepIndex === -1 && activeProject?.status === "completed" ? STEPS.length - 1 : stepIndex;
+  const dataStepIndex = activeProject?.submittedScript?.trim()
+    ? STEPS.findIndex((s) => s.id === "review")
+    : activeProject?.generatedScript?.trim()
+      ? STEPS.findIndex((s) => s.id === "script")
+      : -1;
+  const effectiveStepIndex = Math.max(statusStepIndex, dataStepIndex);
 
   // 表示中のステップ（進捗ステータスとは独立。⑥⑦を行き来しても「台本添削待ち」等の進捗を壊さない）
   const displayedStepId = viewStep ?? (activeProject?.status === "completed" ? "review" : activeProject?.status);
