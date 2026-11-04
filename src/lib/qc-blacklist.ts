@@ -16,6 +16,7 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /明日もこの枠が残っている保証/, level: "track", reason: "枠切迫の定型文（禁止）", fix: "抽選で指定された希少性の型（先着順／人数限り／受付縮小 等）に従う" },
   { pattern: /毎日数十件のお申し込み/, level: "track", reason: "枠切迫の定型句", fix: "希少性の型を変える" },
   { pattern: /追(う|いかける|いかけ)の?をやめ.{0,20}途端/, level: "track", reason: "社会的証明の決まり文句「追うのをやめた途端」（言い換え含む）", fix: "きっかけ→行動→結果の筋が通る具体に書き換える" },
+  { pattern: /守護天使様に[、]?(はっきりと)?選ばれた一人/, level: "track", reason: "冒頭の選民宣言「選ばれた一人です」（型の1つ。2連続まで）", fix: "抽選で指定された冒頭の型（お待ちしてました型・既成事実型・直感型 等）に変える" },
   { pattern: /受け取る準備ができた/, level: "track", reason: "魂の正当化の定型（4回に1回のみ。抽選指定が「使わない」なら fail）", fix: "採用した選民フックの切り口で正当化する" },
   { pattern: /その証拠に、?守護天使様/, level: "warn", reason: "「その証拠に」が何の証拠か繋がらない接続（意味不明）", fix: "「守護天使様が今、このカードを運んでくださいました」だけにするか、別の演出に" },
   { pattern: /結婚の話まで進/, level: "track", reason: "実績表現の使い回し", fix: "別の具体（何が・どう変わった）に" },
@@ -196,6 +197,9 @@ export function scanDrawSpecCompliance(script: string, drawSpec?: string): Quali
   const items: QualityCheckItem[] = [];
   if (/【魂の正当化（今回の指定）】[\s\S]{0,40}今回は使わない/.test(drawSpec) && /受け取る準備ができた|魂が告げ/.test(script)) {
     items.push({ name: "抽選指定違反: 魂の正当化", status: "fail", comment: "今回は「魂の正当化を使わない」指定なのに使っています", suggestion: "採用した選民フックの切り口で正当化に書き換える" });
+  }
+  if (/【冒頭の選民宣言の型（今回の指定・必達）】/.test(drawSpec) && !/【選ばれた型】/.test(drawSpec.split("【冒頭の選民宣言の型")[1]?.split("【選民・的中の追加演出")[0] || "") && /守護天使様に[、]?(はっきりと)?選ばれた一人/.test(script)) {
+    items.push({ name: "抽選指定違反: 冒頭の選民宣言", status: "fail", comment: "今回は「選ばれた型」以外の冒頭が指定されているのに、「守護天使様に選ばれた一人です」で始めています", suggestion: "指定された冒頭の型に書き換える" });
   }
   if (/霊聴（未来の相手のセリフ）/.test(drawSpec) && !/守護天使様を通して/.test(script)) {
     items.push({ name: "霊聴の導入が指定どおりでない", status: "warn", comment: "相手のセリフを「その人からのメッセージが、守護天使様を通して伝わってきました」の導入なしで語っています", suggestion: "指定の導入文を付けてからセリフを置く" });
