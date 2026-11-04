@@ -45,6 +45,28 @@ export interface QualityComparisonRow {
   note?: string;               // 評価コメント（例:「ここが弱い」「強み」）
 }
 
+// カード設計表（構成段階で確定。コア5役割＋元ネタ固有の追加カード。枚数・順番・役割の基準になる）
+export interface CardSlot {
+  role: string;            // 問題提起|深掘り|常識破壊|解決|未来|追加
+  kind: "core" | "extra";  // コア（削除不可）／追加（削除可）
+  title: string;           // 見出し（10字程度）
+  content: string;         // 何を言うか（1〜2文）
+  source: string;          // 出典（元ネタのどこ／ルール）
+  reason: string;          // 位置の理由（1行）
+}
+export interface CardPlan { slots: CardSlot[]; updatedAt: string }
+export function formatCardPlanForPrompt(plan: CardPlan | null | undefined): string {
+  if (!plan?.slots?.length) return "";
+  const n = plan.slots.length;
+  const neg = plan.slots.findIndex((sl) => sl.role === "常識破壊") + 1;
+  return [
+    `【カード設計表（確定。必ずこの${n}枚を、この順番・この役割で構成する）】`,
+    ...plan.slots.map((sl, i) => `${i + 1}枚目 [${sl.kind === "core" ? "コア" : "追加"}／${sl.role}] ${sl.title}: ${sl.content}`),
+    `- 枚数は${n}枚。カードの追加・削除・順番変更は禁止（${neg > 0 ? `${neg}枚目が常識破壊` : ""}）`,
+    "- 「追加」カードは元ネタ固有の必須要素。省略せず、記載の中身を必ず入れる",
+  ].join("\n");
+}
+
 // 日本語校閲の結果（品質チェックとは別パス。文単位の日本語の崩れ）
 export interface ProofreadItem { original: string; issue: string; fix: string; level: "broken" | "unnatural"; found: boolean }
 export interface ProofreadResult {
@@ -122,6 +144,7 @@ export interface ScriptProject {
   // 台本品質チェック結果（step6 完了後）
   qualityCheckResult?: QualityCheckResult;
   proofreadResult?: ProofreadResult;     // 日本語校閲の結果
+  cardPlan?: CardPlan;                   // カード設計表（枚数・順番・役割の基準）
   drawSpec?: string;                     // サーバー抽選の結果（骨組み・台本・品質チェックで共有し、1回の抽選に統一する）
   submittedWithWarnings?: string[];      // 提出前チェック未クリアのまま提出した理由（添削部屋に表示）
   // 分割出力（1〜3回）。splitCount>1 のとき scriptSegments にパートを保持し、

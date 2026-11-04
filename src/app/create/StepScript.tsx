@@ -277,6 +277,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           topic: project.title,
           genre: project.genre,
           drawSpec: project.drawSpec,
+          cardPlan: project.cardPlan,
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)) + buildSelectedPatternsBlock(project.selectedPatternIds),
           referenceAnalyses,
@@ -607,6 +608,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         structureMode: project.structureMode,
         genre: project.genre,
         drawSpec: project.drawSpec,
+        cardPlan: project.cardPlan,
         // 元ネタの本質（必ず反映する要素）: メイン元ネタの抽出結果を渡し、反映チェックに使う
         essence: (() => {
           const main = referenceAnalyses.find((a) => a.id === project.primaryAnalysisId)

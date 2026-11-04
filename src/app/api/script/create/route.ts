@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
+import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES } from "@/lib/tarot-draw";
@@ -76,8 +77,13 @@ export async function POST(request: NextRequest) {
   const refCharCount: number | undefined = typeof body.refCharCount === "number" && body.refCharCount > 0 ? body.refCharCount : undefined;
   // タロット単発生成時はサーバーでカードを抽選（分割時は骨組み由来のカードを使うため注入しない）
   // 骨組み段階の抽選結果（drawSpec）があればそれを使い、引き直さない（骨組みと台本の指定を一致させる）
+  const cardPlan: CardPlan | null = body.cardPlan && Array.isArray(body.cardPlan.slots) && body.cardPlan.slots.length >= 5 ? (body.cardPlan as CardPlan) : null;
+  const cardPlanText = cardPlan ? formatCardPlanForPrompt(cardPlan) : "";
   const tarotDraw = style === "tarot" && !segment
-    ? ((typeof body.drawSpec === "string" && body.drawSpec.trim()) ? body.drawSpec : buildTarotDrawBlock({ genre, topic }))
+    ? (((typeof body.drawSpec === "string" && body.drawSpec.trim())
+        ? body.drawSpec
+        : buildTarotDrawBlock({ genre, topic, cardCount: cardPlan?.slots.length, negativeIndex: cardPlan ? Math.max(1, cardPlan.slots.findIndex((sl) => sl.role === "常識破壊") + 1) : undefined }))
+      + (cardPlanText ? "\n\n" + cardPlanText : ""))
     : "";
 
   if (!aiApiKey) {
@@ -208,7 +214,7 @@ export async function POST(request: NextRequest) {
 ${profileText}
 ${referenceText}${style === "tarot" ? `
 【タロットスタイル時の最優先指示（必達）】
-- これは「タロットリーディング」の動画。カードを実際に4〜5枚、順番に引きながら結果を伝える構成にすること。
+- これは「タロットリーディング」の動画。カードを実際に順番に引きながら結果を伝える構成にすること（枚数は【カード設計表】があればその枚数、無ければ4〜5枚）。
 - 各カードごとに「カード名 → そのカードの意味 → 視聴者の状況への紐付け」を必ず行う。
 - カード名は必ず日本語で言う（例:「星」「太陽」「運命の輪」「カップの2」）。英語・カタカナ読み（ザ・スター／ツー・オブ・カップス等）は禁止。
 - チャンネル共通ルールや骨組みに【中盤】ヒーリング音楽パート等のヒーリング構成・瞑想/呼吸誘導/アファメーション連打が書かれていても、タロットスタイルでは適用しない。それらに引っ張られてヒーリング台本にしてはいけない。

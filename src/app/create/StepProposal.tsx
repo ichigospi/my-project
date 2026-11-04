@@ -11,7 +11,7 @@ import { getPresetFor } from "@/lib/project-store";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
-import type { ScriptProject, RuleProposal, SuggestionDraft } from "@/lib/project-store";
+import type { ScriptProject, RuleProposal, SuggestionDraft, CardPlan, CardSlot } from "@/lib/project-store";
 import type { ScriptAnalysis, ScriptEssence } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
@@ -273,6 +273,59 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     }
   };
 
+  // --- カード設計表（コア5枚＋元ネタ固有の追加カード。枚数・順番・役割の基準） ---
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planError, setPlanError] = useState("");
+  const [planInstruction, setPlanInstruction] = useState("");
+  const [planInstructOpen, setPlanInstructOpen] = useState(false);
+  const [newCardText, setNewCardText] = useState("");
+  const [newCardOpen, setNewCardOpen] = useState(false);
+  const savePlan = (slots: CardSlot[]) => {
+    onUpdate({ ...project, cardPlan: { slots, updatedAt: new Date().toISOString() } });
+    pushSharedSettings();
+  };
+  const generateCardPlan = async (instruction?: string) => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setPlanError("AI APIキーを設定してください"); return; }
+    setPlanBusy(true); setPlanError("");
+    try {
+      const res = await fetch("/api/script/card-plan", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ essence: mainAnalysis?.essence ?? null, topic: project.title, genre: project.genre, instruction: instruction || undefined, currentPlan: instruction ? project.cardPlan ?? null : null, aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const d = await res.json();
+      if (d.error) { setPlanError(d.error); return; }
+      const plan = d.plan as CardPlan;
+      onUpdate({ ...project, cardPlan: plan });
+      pushSharedSettings();
+      setPlanInstruction(""); setPlanInstructOpen(false);
+    } catch (e) { setPlanError(e instanceof Error ? e.message : "設計表の作成に失敗しました"); }
+    finally { setPlanBusy(false); }
+  };
+  const movePlanSlot = (i: number, dir: -1 | 1) => {
+    const slots = [...(project.cardPlan?.slots || [])];
+    const j = i + dir;
+    if (j < 0 || j >= slots.length) return;
+    [slots[i], slots[j]] = [slots[j], slots[i]];
+    savePlan(slots);
+  };
+  const deletePlanSlot = (i: number) => {
+    const slots = [...(project.cardPlan?.slots || [])];
+    if (slots[i]?.kind === "core") return;
+    if (!confirm(`「${slots[i]?.title}」のカードを設計表から外しますか？`)) return;
+    slots.splice(i, 1);
+    savePlan(slots);
+  };
+  const addPlanSlot = () => {
+    const text = newCardText.trim();
+    if (!text) return;
+    const slots = [...(project.cardPlan?.slots || [])];
+    if (slots.length >= 7) { setPlanError("カードは最大7枚までです"); return; }
+    slots.push({ role: "追加", kind: "extra", title: text.slice(0, 12), content: text, source: "オーナー指定", reason: "手動追加（矢印で位置を調整）" });
+    savePlan(slots);
+    setNewCardText(""); setNewCardOpen(false);
+  };
+
   // メイン元ネタに本質が未抽出なら自動で抽出（骨組みを作る前に必ず見える状態にする）
   useEffect(() => {
     if (!mainAnalysis || mainAnalysis.essence || !mainAnalysis.transcript || extractingEssence) return;
@@ -302,6 +355,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
           analyses, style: project.style, topic: project.title, genre: project.genre,
           // 具体化・修正では抽象段階の抽選結果を使い回す（抽象の再生成は引き直し）
           drawSpec: phase === "abstract" ? undefined : project.drawSpec,
+          cardPlan: project.cardPlan,
           primaryAnalysisId: effectivePrimaryId || undefined,
           structureMode: mode,
           phase,
@@ -800,6 +854,81 @@ ${p.content}`;
                   </div>
                 );
               })()}
+            </div>
+          )}
+          {/* カード設計表: 枚数・順番・役割を構成段階で確定する（外注が読みやすいよう、大きく・短く） */}
+          {project.style === "tarot" && (
+            <div className="mb-5 rounded-2xl border-2 border-sky-300 bg-sky-50 p-5 shadow-sm">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                <h3 className="text-lg font-bold text-sky-900">🃏 カード設計表（枚数・順番・役割）</h3>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => generateCardPlan()} disabled={planBusy}
+                    className="text-sm px-3 py-1.5 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">
+                    {planBusy ? "作成中..." : project.cardPlan ? "AIで作り直す" : "AIで設計表を作る"}
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm text-sky-800 mb-3">コア5枚は固定。元ネタに合わせてAIがカードを足し、置き場所を決めます。矢印で順番を変更、追加カードは削除できます。</p>
+              {planError && <p className="text-sm text-red-600 mb-2">{planError}</p>}
+              {!project.cardPlan && !planBusy && (
+                <p className="text-base text-sky-900">まだ設計表がありません。「AIで設計表を作る」を押してください{!mainAnalysis?.essence ? "（元ネタの本質を抽出してからの方が精度が上がります）" : ""}。</p>
+              )}
+              {project.cardPlan && (
+                <ol className="space-y-2">
+                  {project.cardPlan.slots.map((sl, i) => (
+                    <li key={i} className={`rounded-xl p-3 border bg-white flex items-start gap-3 ${sl.kind === "extra" ? "border-amber-300" : "border-sky-200"}`}>
+                      <div className="shrink-0 w-10 h-10 rounded-full bg-sky-600 text-white flex items-center justify-center text-lg font-bold">{i + 1}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${sl.kind === "extra" ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>{sl.kind === "extra" ? "追加" : "コア"}・{sl.role}</span>
+                          <span className="text-lg font-bold text-gray-900">{sl.title}</span>
+                        </div>
+                        <p className="text-base leading-7 text-gray-800 mt-1">{sl.content}</p>
+                        <p className="text-sm text-gray-500 mt-1">出どころ：{sl.source || "—"}　／　理由：{sl.reason || "—"}</p>
+                      </div>
+                      <div className="shrink-0 flex flex-col gap-1">
+                        <button onClick={() => movePlanSlot(i, -1)} disabled={i === 0} className="w-9 h-9 rounded-lg border border-gray-200 text-base hover:bg-gray-50 disabled:opacity-30" title="上へ">↑</button>
+                        <button onClick={() => movePlanSlot(i, 1)} disabled={i === project.cardPlan!.slots.length - 1} className="w-9 h-9 rounded-lg border border-gray-200 text-base hover:bg-gray-50 disabled:opacity-30" title="下へ">↓</button>
+                        {sl.kind === "extra" ? (
+                          <button onClick={() => deletePlanSlot(i)} className="w-9 h-9 rounded-lg border border-red-200 text-red-500 text-base hover:bg-red-50" title="このカードを外す">🗑</button>
+                        ) : (
+                          <span className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-300 text-base" title="コアは外せません">🔒</span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {project.cardPlan && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => { setNewCardOpen((v) => !v); setPlanInstructOpen(false); }}
+                    className="text-sm px-3 py-2 rounded-lg border border-sky-300 text-sky-800 bg-white hover:bg-sky-100">➕ カードを追加</button>
+                  <button onClick={() => { setPlanInstructOpen((v) => !v); setNewCardOpen(false); }}
+                    className="text-sm px-3 py-2 rounded-lg border border-sky-300 text-sky-800 bg-white hover:bg-sky-100">✏️ AIに指示して作り直す</button>
+                </div>
+              )}
+              {newCardOpen && (
+                <div className="mt-3 bg-white rounded-xl p-3 border border-sky-200">
+                  <p className="text-sm text-gray-600 mb-1">追加するカードで言うこと（1〜2文）</p>
+                  <input value={newCardText} onChange={(e) => setNewCardText(e.target.value)} placeholder="例: 運命の人がよく行く場所と、二人が近づくきっかけ"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-base focus:outline-none focus:border-accent" />
+                  <div className="flex justify-end mt-2">
+                    <button onClick={addPlanSlot} disabled={!newCardText.trim()} className="text-sm px-4 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">末尾に追加（矢印で移動）</button>
+                  </div>
+                </div>
+              )}
+              {planInstructOpen && (
+                <div className="mt-3 bg-white rounded-xl p-3 border border-sky-200">
+                  <p className="text-sm text-gray-600 mb-1">AIへの指示（例:「相手の特徴は1枚目に統合して」「場所ときっかけを解決の後に1枚追加」）</p>
+                  <textarea value={planInstruction} onChange={(e) => setPlanInstruction(e.target.value)} rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-base focus:outline-none focus:border-accent" />
+                  <div className="flex justify-end mt-2">
+                    <button onClick={() => generateCardPlan(planInstruction)} disabled={planBusy || !planInstruction.trim()} className="text-sm px-4 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">
+                      {planBusy ? "作成中..." : "この指示で作り直す"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {/* タロット: 今回引いたカードの実際の絵柄を確認できるギャラリー */}

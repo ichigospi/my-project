@@ -23,6 +23,7 @@ const SYSTEM_PROMPT = `あなたは占い・スピリチュアル系YouTube台�
 10. commentCta: コメントCTAの語とロジック（例:「"残します"と書く＝自分のための目印」）
 11. heavyCtaUnknowns: 重CTAで「個別でないと視えない」とした未知数（例:「どの経験が金運に繋がるか」「誰との縁から開くか」「受け取りを止めている一番の原因」）。最大4個
 12. mustKeep: 上記を踏まえ「骨組みに必ず反映すべき要素」を優先順に短文で。最大7個
+13. timeline: mustKeep の各要素が元ネタのどの段階で語られているか（position は 冒頭/序盤/中盤/終盤 のいずれか。カードを引く台本なら何枚目相当かを card に数字で）。最大7個
 
 必ず次のJSONのみで回答（説明文・コードブロック記法は禁止）:
 {
@@ -37,7 +38,8 @@ const SYSTEM_PROMPT = `あなたは占い・スピリチュアル系YouTube台�
   "keyMessage": "...",
   "commentCta": "...",
   "heavyCtaUnknowns": ["..."],
-  "mustKeep": ["..."]
+  "mustKeep": ["..."],
+  "timeline": [{ "element": "...", "position": "序盤", "card": 2 }]
 }`;
 
 function parseJSON(raw: string): Record<string, unknown> | null {
@@ -119,6 +121,11 @@ ${transcript.slice(0, 24000)}`;
         commentCta: str(parsed.commentCta),
         heavyCtaUnknowns: arr(parsed.heavyCtaUnknowns, 4),
         mustKeep: arr(parsed.mustKeep, 7),
+        timeline: Array.isArray(parsed.timeline)
+          ? (parsed.timeline as Record<string, unknown>[]).filter((t) => t && typeof t === "object").slice(0, 7).map((t) => ({
+              element: String(t.element || ""), position: String(t.position || ""), card: typeof t.card === "number" ? t.card : undefined,
+            })).filter((t) => t.element)
+          : [],
         extractedAt: new Date().toISOString(),
       },
     });
