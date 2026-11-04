@@ -75,7 +75,10 @@ export async function POST(request: NextRequest) {
   // 主軸元ネタの文字数（±500字ルールの基準。クライアントで実測して送られる）
   const refCharCount: number | undefined = typeof body.refCharCount === "number" && body.refCharCount > 0 ? body.refCharCount : undefined;
   // タロット単発生成時はサーバーでカードを抽選（分割時は骨組み由来のカードを使うため注入しない）
-  const tarotDraw = style === "tarot" && !segment ? buildTarotDrawBlock({ genre, topic }) : "";
+  // 骨組み段階の抽選結果（drawSpec）があればそれを使い、引き直さない（骨組みと台本の指定を一致させる）
+  const tarotDraw = style === "tarot" && !segment
+    ? ((typeof body.drawSpec === "string" && body.drawSpec.trim()) ? body.drawSpec : buildTarotDrawBlock({ genre, topic }))
+    : "";
 
   if (!aiApiKey) {
     return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
@@ -492,7 +495,7 @@ ${!isFirst && previousScript ? `\n【直前の締め（前パートの最後の�
       text = data.choices?.[0]?.message?.content || "";
     }
 
-    return NextResponse.json({ script: text });
+    return NextResponse.json({ script: text, drawSpec: tarotDraw || undefined });
   } catch {
     return NextResponse.json({ error: "台本生成に失敗しました" }, { status: 500 });
   }

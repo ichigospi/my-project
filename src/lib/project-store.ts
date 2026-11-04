@@ -122,6 +122,7 @@ export interface ScriptProject {
   // 台本品質チェック結果（step6 完了後）
   qualityCheckResult?: QualityCheckResult;
   proofreadResult?: ProofreadResult;     // 日本語校閲の結果
+  drawSpec?: string;                     // サーバー抽選の結果（骨組み・台本・品質チェックで共有し、1回の抽選に統一する）
   submittedWithWarnings?: string[];      // 提出前チェック未クリアのまま提出した理由（添削部屋に表示）
   // 分割出力（1〜3回）。splitCount>1 のとき scriptSegments にパートを保持し、
   // generatedScript はその結合結果。各パートごとに品質チェック・修正ができる。

@@ -300,6 +300,8 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           analyses, style: project.style, topic: project.title, genre: project.genre,
+          // 具体化・修正では抽象段階の抽選結果を使い回す（抽象の再生成は引き直し）
+          drawSpec: phase === "abstract" ? undefined : project.drawSpec,
           primaryAnalysisId: effectivePrimaryId || undefined,
           structureMode: mode,
           phase,
@@ -322,6 +324,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
             ...(diff ? { structureDiff: diff } : {}),
             ...(opts?.patternIds ? { selectedPatternIds: opts.patternIds } : {}),
             abstractLogic: data.skeleton,
+            ...(typeof data.drawSpec === "string" ? { drawSpec: data.drawSpec } : {}),
           });
           setPromptText("");
           setGenerating(false);
@@ -332,6 +335,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         // 骨組みテキスト＋構成モードをプロジェクトに保存（台本生成・品質チェックにも引き継ぐ）
         onUpdate({
           ...project,
+          ...(typeof data.drawSpec === "string" ? { drawSpec: data.drawSpec } : {}),
           structureMode: mode,
           ...(diff ? { structureDiff: diff } : {}),
           ...(opts?.patternIds ? { selectedPatternIds: opts.patternIds } : {}),
