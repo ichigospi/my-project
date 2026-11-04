@@ -299,7 +299,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          analyses, style: project.style, topic: project.title,
+          analyses, style: project.style, topic: project.title, genre: project.genre,
           primaryAnalysisId: effectivePrimaryId || undefined,
           structureMode: mode,
           phase,
