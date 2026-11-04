@@ -67,7 +67,7 @@ function jstToday(): string {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey, rulesText, referenceAnalyses } = body;
+  const { proposal, channelProfile, style, topic, additionalNotes, aiApiKey, rulesText, referenceAnalyses, genre } = body;
   // 構成モード: reference=テンプレ構成を適用せず元ネタ（＝それをトレースした骨組み）の構成に従う
   const structureMode: string = body.structureMode === "reference" ? "reference" : "template";
   const segment: { index: number; total: number; skeletonPart?: string; previousScript?: string; partTargetChars?: number; totalTargetChars?: number } | undefined = body.segment;
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
   // 主軸元ネタの文字数（±500字ルールの基準。クライアントで実測して送られる）
   const refCharCount: number | undefined = typeof body.refCharCount === "number" && body.refCharCount > 0 ? body.refCharCount : undefined;
   // タロット単発生成時はサーバーでカードを抽選（分割時は骨組み由来のカードを使うため注入しない）
-  const tarotDraw = style === "tarot" && !segment ? buildTarotDrawBlock() : "";
+  const tarotDraw = style === "tarot" && !segment ? buildTarotDrawBlock({ genre, topic }) : "";
 
   if (!aiApiKey) {
     return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });

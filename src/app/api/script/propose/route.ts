@@ -16,7 +16,7 @@ function jstToday(): string {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText, primaryAnalysisId } = body;
+  const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText, primaryAnalysisId, genre } = body;
   // 構成モード: reference=テンプレ構成を適用せず元ネタの構成を完全トレース（不変ルールは据え置き）
   const structureMode: string = body.structureMode === "reference" ? "reference" : "template";
   const aiModel = resolveAiModel(body.aiModel);
@@ -113,7 +113,7 @@ CTA: ${a.analysisResult?.ctas?.join(" / ")}
 - 一本線（冒頭1行）は5枚を貫く物語を、視聴者に語りかける言葉で書く
 - 元ネタ準拠モードの指定がある場合は、カードの枚数・役割を元ネタの構成に合わせてよい
 
-${buildTarotDrawBlock()}
+${buildTarotDrawBlock({ genre, topic })}
 
 ${analysisTexts}
 ${profileText}
@@ -259,7 +259,7 @@ ${tarotAbstract}
   カードの解釈はその「正統な意味」の範囲内でだけ設計する。記載にない意味・記載にない絵の要素を語る設計は禁止（捏造防止）
 - 【憲法】抽象ロジック冒頭の「メインテーマと主張」「中心メタファー」「一本線」は骨組み全体（オープニング・終盤CTA含む）の憲法として適用する。
   中心メタファーは1つだけで通し、同じ内容を別の比喩で言い換えるセクションを作らない。骨組みの冒頭にもこの3行をそのまま転記すること
-- オープニングと終盤CTAはルール通りに設計して前後に付けること` : `${buildTarotDrawBlock()}
+- オープニングと終盤CTAはルール通りに設計して前後に付けること` : `${buildTarotDrawBlock({ genre, topic })}
 - 骨組みの各カードセクションには、上記の抽選カード名（正位置/逆位置込み）と「正統な意味」を必ず転記すること。カードの解釈は記載の意味の範囲内でだけ設計する。`}
 
 ${TAROT_IMAGERY_TECHNIQUES}

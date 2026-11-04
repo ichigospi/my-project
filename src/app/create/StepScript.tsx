@@ -275,6 +275,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           channelProfile: getProfileByChannel(project.channelId || ""),
           style: project.style,
           topic: project.title,
+          genre: project.genre,
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)) + buildSelectedPatternsBlock(project.selectedPatternIds),
           referenceAnalyses,
