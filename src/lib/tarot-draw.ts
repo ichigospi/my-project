@@ -551,6 +551,7 @@ function cardLine(no: number, name: string, orientation: "正位置" | "逆位�
 
 // 品質チェック（機械判定）用: 本文で実際に開示されたカード枚数を数える
 export const CARD_NAMES: string[] = Object.keys(CARD_INFO);
+export function getCardImagery(name: string): string | undefined { return CARD_INFO[name]?.img; }
 export function countCardReveals(script: string): { count: number; cards: string[] } {
   const t = script.replace(/\s+/g, "");
   const found: string[] = [];
@@ -679,8 +680,9 @@ ${slots.join("\n")}
 - 今回の演出案（サーバーがランダム割り当て。この雰囲気をベースに、チャンネルの口調ルールに合わせて言い換えてよい）:
 ${reveals.map((r, i) => `  ${i + 1}枚目:「${r}」`).join("\n")}
 
-【枚数の宣言（必達）】
-- 冒頭・本編・終盤で枚数に触れるときは必ず「${count}枚」と言う（「5枚」固定の言い方をしない）。「◯枚目」の番号は1〜${count}で連番にし、「もう一枚」「追加で一枚」のような番号外の引き方はしない
+【枚数は言わない（必達）】
+- 「今日は◯枚引きます」「◯枚のカードは」のように枚数を言わない。予告は「この動画で何が明らかになるか」「最後まで見るとどうなるか」を大まかに伝える
+- 本編の「◯枚目」の番号は1〜${count}の連番で使ってよい。「もう一枚」「追加で一枚」のような番号外の引き方はしない
 - 「◯枚目にいきます」と宣言したら、脱線せずにそのカードを開示する。同じ番号を2回宣言しない
 
 【魂の正当化（今回の指定）】

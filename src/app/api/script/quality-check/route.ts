@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { runMechanicalChecks } from "@/lib/qc-blacklist";
-import { countCardReveals } from "@/lib/tarot-draw";
+import { countCardReveals, getCardImagery } from "@/lib/tarot-draw";
 import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
@@ -184,6 +184,9 @@ M. 予告の回収・元ネタ本質の反映・テーマ整合・抽選照合
      欠落があれば fail（欠けた項目名を列挙）。表面の構成だけ似せて中身が落ちている場合は必ず指摘する
    - 【テーマ整合】言い当てシーン・訴求・例えが台本のジャンルと合っているか。別ジャンルの定番シーン（金運の「値札を棚に戻す」等）を流用して
      文脈が崩れていれば fail（該当文を引用）。恋愛で企画が「運命の人／出会い」なのに本編が「あの人（既に想っている相手）」前提に狭まっていれば fail（間口違反）
+   - 【絵柄照合（必達・厳格）】【開示カードの公式絵柄】が与えられた場合、各カードのパートで語られている視覚的な主張（人物・物・色・背景・向き・視線・表情・動作）を
+     1つ残らず列挙し、公式絵柄の記載にあるかを1つずつ照合する。記載に無い主張が1つでもあれば fail（カード名と該当文を引用）。
+     「伏し目がち」「微笑んでいる」「背を向けている」等の視線・表情・向きは、記載が無ければ必ず捏造として扱う（メタファーに合わせた作文を見逃さない）
    - 【抽選照合（【抽選指定】が与えられた場合・必達）】指定された型（仮想敵／3枚目の常識破壊の型／4枚目アドバイスの型／軽CTAの型／コメントCTAの型／
      終盤の理由づけ／対比の比喩／常連化の一言／希少性の型／社会的証明の型 等）が本文で守られているかを1つずつ照合する。
      指定と違う型・デフォルトの定型に戻っているものがあれば fail（どの指定が無視されたかを列挙）。「今回は使わない」とされた型を使っていても fail
@@ -326,6 +329,14 @@ function buildUserPrompt(p: {
     lines.push("");
     lines.push("【抽選指定（この台本の生成時にサーバーが割り当てた型。M. の抽選照合に使う）】");
     lines.push(p.drawSpec.slice(0, 7000));
+  }
+  {
+    const rv = countCardReveals(p.script);
+    if (rv.cards.length) {
+      lines.push("");
+      lines.push("【開示カードの公式絵柄（絵柄照合用・この記載以外の視覚要素は捏造）】");
+      for (const name of rv.cards) lines.push(`- ${name}: ${getCardImagery(name) || "（記載なし）"}`);
+    }
   }
   if (p.previousSummary) {
     lines.push("");
@@ -535,7 +546,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "AI応答の解析に失敗しました", raw }, { status: 500 });
     }
     // 機械判定（定型文・前回台本との同一文・漢数字）をカテゴリとして合成。fail があればスコア上限を 6.5 にして「提出基準クリア」にさせない
-    const mech = runMechanicalChecks(script, recentScripts, { revealed: countCardReveals(script), drawSpec });
+    const revealed = countCardReveals(script);
+    const mech = runMechanicalChecks(script, recentScripts, { revealed, drawSpec, imagery: revealed.cards.map((name) => ({ name, img: getCardImagery(name) })) });
     // 文字数（機械判定）: 最低文字数未満、または目標の80%未満は fail
     {
       const len = script.replace(/\s/g, "").length;

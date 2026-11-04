@@ -666,12 +666,12 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             || referenceAnalyses.slice().sort((a, b) => (b.views || 0) - (a.views || 0))[0];
           return main?.essence ?? null;
         })(),
-        // 同チャンネルの直近2本（前回台本との同一文の機械検出用）
+        // 同チャンネルで「合格した」直近2本（繰り返し表現の連続判定・同一文検出用。取り下げ・不合格は数えない）
         recentScripts: getProjects()
-          .filter((p) => p.id !== project.id && p.channelId === project.channelId && (p.submittedScript || p.generatedScript))
-          .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
+          .filter((p) => p.id !== project.id && p.channelId === project.channelId && p.scriptReviewStatus === "approved" && (p.reviewedScript || p.submittedScript || p.generatedScript))
+          .sort((a, b) => (b.approvedAt || b.updatedAt || "").localeCompare(a.approvedAt || a.updatedAt || ""))
           .slice(0, 2)
-          .map((p) => (p.submittedScript || p.generatedScript || "").slice(0, 9000)),
+          .map((p) => (p.reviewedScript || p.submittedScript || p.generatedScript || "").slice(0, 9000)),
         // 再チェック時は前回結果を渡し、差分再評価（pass維持・解消確認優先）にする
         previousSummary: project.qualityCheckResult ? [
           `前回スコア: ${project.qualityCheckResult.overallScore}`,
