@@ -92,12 +92,14 @@ function splitSkeletonText(skeleton: string, n: number): string[] {
 
 // 目標文字数のクランプ。タロットは5,000〜6,000字、それ以外は4,500〜5,000字。
 // 保存済みプリセットが範囲外の値でも矯正する
+// タロット台本は最低 6,000 字（それ未満は品質チェックで fail）
+const MIN_SCRIPT_CHARS_TAROT = 6000;
 function clampTargetChars(n?: number, style?: string): number {
-  if (style === "tarot") return Math.max(5000, Math.min(n || 5500, 6000));
+  if (style === "tarot") return Math.max(MIN_SCRIPT_CHARS_TAROT, Math.min(n || 6500, 7500));
   return Math.max(4500, Math.min(n || 4750, 5000));
 }
 function targetRangeLabel(style?: string): string {
-  return style === "tarot" ? "5,000〜6,000" : "4,500〜5,000";
+  return style === "tarot" ? "6,000〜7,500" : "4,500〜5,000";
 }
 
 // 推定動画尺（千代婆ベース: 後で調整、デフォルト250文字/分）
@@ -308,7 +310,10 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 
   // 生成・推奨分割で使う実効目標文字数: 骨組みの目標 > 元ネタ実測 > プリセット
   const getEffectiveTargetChars = (): number | undefined => {
-    return getSkeletonTargetChars() ?? getRefCharCount();
+    const raw = getSkeletonTargetChars() ?? getRefCharCount();
+    // タロットは最低 6,000 字を下回る目標にしない（元ネタが短くても底上げする）
+    if (project.style === "tarot") return Math.max(MIN_SCRIPT_CHARS_TAROT, raw ?? MIN_SCRIPT_CHARS_TAROT);
+    return raw;
   };
 
   const getRefCharCount = (): number | undefined => {
@@ -567,6 +572,50 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     finally { setRevising(false); }
   };
 
+  // 文字数が足りないとき: AIが「どこをどう増やすか」を判断して加筆し、再計測して足りなければもう1周（最大2周）
+  const [autoExpanding, setAutoExpanding] = useState<string | null>(null);
+  const handleAutoExpand = async () => {
+    const target = getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style);
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey || !project.generatedScript) { setError("AI APIキーを設定してください"); return; }
+    const refs = getAnalyses().filter((a) => project.analyses?.includes(a.id)).map((a) => ({ videoTitle: a.videoTitle, analysisResult: a.analysisResult }));
+    let current = project.generatedScript;
+    let base: ScriptProject = project;
+    setScriptHistory((prev) => [...prev, current]);
+    setError("");
+    try {
+      for (let round = 1; round <= 2; round++) {
+        const len = current.replace(/\s/g, "").length;
+        if (len >= target) break;
+        setAutoExpanding(`${round}周目: 増筆ポイントを分析中...（現在${len.toLocaleString()}字 / 目標${target.toLocaleString()}字）`);
+        const sres = await fetch("/api/script/suggest-expansion", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script: current, skeleton: project.structureProposal?.concept || "", targetChars: target, aiApiKey, aiModel: getAiModel("check") }),
+        });
+        const sdata = await sres.json();
+        if (sdata.error || !sdata.suggestion) { setError(sdata.error || "増筆提案が空でした"); break; }
+        setAutoExpanding(`${round}周目: 加筆中...（目標${target.toLocaleString()}字）`);
+        const note = `【増筆指示】目標は約${target.toLocaleString()}字（現在${len.toLocaleString()}字）。以下の提案に従って該当箇所を増筆し、目標に届かせてください。既存の文・流れ・CTA・カードの順番は変えないこと。水増しの繰り返し・同じ内容の言い換えは禁止（具体シーン・感情のディテール・理由づけで厚くする）。\n\n${sdata.suggestion}`;
+        const rres = await fetch("/api/script/revise", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script: current, revisionNote: note, referenceAnalyses: refs, aiApiKey, aiModel: getAiModel("generate") }),
+        });
+        const rdata = await rres.json();
+        if (rdata.error || !rdata.script) { setError(rdata.error || "加筆に失敗しました"); break; }
+        const revised = String(rdata.script).split("---修正箇所---")[0].trim();
+        if (revised.replace(/\s/g, "").length <= len) { setError("加筆しても文字数が増えませんでした。増筆ポイントを提案から手動で指定してください"); break; }
+        current = revised;
+        base = { ...base, generatedScript: current, qualityCheckResult: undefined, proofreadResult: undefined };
+        onUpdate(base);
+        pushSharedSettings();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "自動加筆に失敗しました");
+    } finally {
+      setAutoExpanding(null);
+    }
+  };
+
   const handleRestoreHistory = (idx: number) => {
     if (project.generatedScript) {
       setScriptHistory((prev) => [...prev, project.generatedScript]);
@@ -609,6 +658,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         genre: project.genre,
         drawSpec: project.drawSpec,
         cardPlan: project.cardPlan,
+        targetChars: getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style),
+        minChars: project.style === "tarot" ? MIN_SCRIPT_CHARS_TAROT : undefined,
         // 元ネタの本質（必ず反映する要素）: メイン元ネタの抽出結果を渡し、反映チェックに使う
         essence: (() => {
           const main = referenceAnalyses.find((a) => a.id === project.primaryAnalysisId)
@@ -1320,9 +1371,11 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 
           {/* 文字数の乖離警告（目標の8割未満なら増筆提案→1ポチ加筆ができる） */}
           {(() => {
-            const target = getEffectiveTargetChars();
+            const target = getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style);
             const len = (project.generatedScript || "").replace(/\s/g, "").length;
-            if (!target || !project.generatedScript || len >= target * 0.8) return null;
+            const minChars = project.style === "tarot" ? MIN_SCRIPT_CHARS_TAROT : 0;
+            const need = Math.max(minChars, Math.ceil(target * 0.8));
+            if (!project.generatedScript || len >= need) return null;
             const handleSuggestExpansion = async () => {
               const aiApiKey = getApiKey("ai_api_key");
               if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
@@ -1348,13 +1401,20 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               <div className="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="flex-1 min-w-[240px]">
-                    ⚠️ 文字数が目標に届いていません: 現在 <b>{len.toLocaleString()}字</b> / 目標 約{target.toLocaleString()}字（{Math.round((len / target) * 100)}%）
+                    ⚠️ 文字数が足りません: 現在 <b>{len.toLocaleString()}字</b> / 目標 約{target.toLocaleString()}字（{Math.round((len / target) * 100)}%）
+                    {minChars > 0 && len < minChars ? `・最低${minChars.toLocaleString()}字未満` : ""}。このままでは品質チェックで fail になります
                   </span>
                   {expandSuggestion === null && (
-                    <button onClick={handleSuggestExpansion} disabled={expandSuggesting || revising}
-                      className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 shrink-0">
-                      {expandSuggesting ? "分析中..." : "🪄 増筆ポイントを提案"}
-                    </button>
+                    <>
+                      <button onClick={handleAutoExpand} disabled={!!autoExpanding || expandSuggesting || revising}
+                        className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 shrink-0">
+                        {autoExpanding ? autoExpanding : "🪄 AIが判断して加筆（自動）"}
+                      </button>
+                      <button onClick={handleSuggestExpansion} disabled={!!autoExpanding || expandSuggesting || revising}
+                        className="px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 text-xs hover:bg-amber-100 disabled:opacity-50 shrink-0">
+                        {expandSuggesting ? "分析中..." : "提案だけ見る"}
+                      </button>
+                    </>
                   )}
                 </div>
                 {expandSuggestion !== null && (
