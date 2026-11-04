@@ -14,7 +14,13 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /あなたのことが[、]?(私は)?とても大切/, level: "warn", reason: "常連化の定型文", fix: "省くか別の言い回しに" },
   { pattern: /明日もこの枠が残っている保証/, level: "fail", reason: "枠切迫の定型文（禁止）", fix: "抽選で指定された希少性の型（先着順／人数限り／受付縮小 等）に従う" },
   { pattern: /毎日数十件のお申し込み/, level: "warn", reason: "枠切迫の定型句", fix: "希少性の型を変える" },
-  { pattern: /追うのをやめた途端/, level: "fail", reason: "社会的証明の決まり文句（毎回同じ）", fix: "きっかけ→行動→結果の筋が通る具体に書き換える" },
+  { pattern: /追(う|いかける|いかけ)の?をやめ.{0,20}途端/, level: "fail", reason: "社会的証明の決まり文句「追うのをやめた途端」（言い換え含む）", fix: "きっかけ→行動→結果の筋が通る具体に書き換える" },
+  { pattern: /受け取る準備ができた/, level: "warn", reason: "魂の正当化の定型（4回に1回のみ。抽選指定が「使わない」なら fail）", fix: "採用した選民フックの切り口で正当化する" },
+  { pattern: /その証拠に、?守護天使様/, level: "warn", reason: "「その証拠に」が何の証拠か繋がらない接続（意味不明）", fix: "「守護天使様が今、このカードを運んでくださいました」だけにするか、別の演出に" },
+  { pattern: /結婚の話まで進/, level: "warn", reason: "実績表現の使い回し", fix: "別の具体（何が・どう変わった）に" },
+  { pattern: /[0-9０-９三]週間ほどで/, level: "warn", reason: "時期の言い回しの使い回し", fix: "期間・言い回しを変える" },
+  { pattern: /無駄になってしまう|無駄にしてほしくない/, level: "warn", reason: "終盤の汎用句（脈絡なく挟まない）", fix: "心配の内容を本編のカード・訴求から導く" },
+  { pattern: /置かれている状況も、まるで違|条件も、あなた自身も/, level: "warn", reason: "前回台本の文の流用", fix: "別の言い回しに" },
   { pattern: /そっと棚に戻し/, level: "fail", reason: "金運の定番シーン「値札を見て棚に戻す」の使い回し（テーマ不整合の温床）", fix: "テーマに合う言い当てシーンに差し替える" },
   { pattern: /朝日と夕暮れ/, level: "fail", reason: "対比比喩のデフォルト（禁止）", fix: "抽選で指定された対比の比喩に従う" },
   { pattern: /諦めていた臨時収入|止まっていた入金/, level: "fail", reason: "曖昧で意味の取れない実績表現（禁止）", fix: "何が・どう変わったかの具体（例: 問い合わせが月1件→5件）に" },
@@ -84,6 +90,66 @@ export function findRepeatedSentences(script: string, others: string[]): Quality
   }];
 }
 
-export function runMechanicalChecks(script: string, recentScripts?: string[]): QualityCheckItem[] {
-  return [...scanBlacklist(script), ...scanKanjiNumerals(script), ...findRepeatedSentences(script, recentScripts || [])];
+// カード枚数の整合: 本文で開示した枚数 vs 冒頭等で言った「◯枚」
+export function scanCardCount(script: string, revealed: { count: number; cards: string[] }): QualityCheckItem[] {
+  if (revealed.count === 0) return [];
+  const t = script.replace(/\s+/g, "");
+  const stated: number[] = [];
+  for (const m of t.matchAll(/([0-9０-９]+)枚(?:のカード|を引|引き|を順番|で構成)/g)) stated.push(parseInt(m[1].replace(/[０-９]/g, (d) => String("０１２３４５６７８９".indexOf(d))), 10));
+  let maxOrdinal = 0;
+  for (const m of t.matchAll(/([0-9０-９]+)枚目/g)) { const n = parseInt(m[1].replace(/[０-９]/g, (d) => String("０１２３４５６７８９".indexOf(d))), 10); if (n > maxOrdinal) maxOrdinal = n; }
+  const items: QualityCheckItem[] = [];
+  const statedMax = stated.length ? Math.max(...stated) : 0;
+  if (statedMax && statedMax !== revealed.count) {
+    items.push({ name: `枚数の矛盾（本文は${revealed.count}枚、宣言は${statedMax}枚）`, status: "fail",
+      comment: `実際に開示したカード: ${revealed.cards.join("・")}（${revealed.count}枚）。台本内で「${statedMax}枚」と言っています`,
+      suggestion: `枚数の言及をすべて「${revealed.count}枚」に直す（「もう一枚」等の番号外の引き方もやめ、1〜${revealed.count}枚目の連番にする）` });
+  }
+  if (maxOrdinal && maxOrdinal !== revealed.count) {
+    items.push({ name: `番号の不整合（最大「${maxOrdinal}枚目」、開示は${revealed.count}枚）`, status: "fail",
+      comment: `「◯枚目」の最大が${maxOrdinal}なのに、実際に開示したカードは${revealed.count}枚です（番号外の「もう一枚」がある可能性）`,
+      suggestion: `全カードに1〜${revealed.count}枚目の連番を振る` });
+  }
+  return items;
+}
+
+// 「◯枚目」を同じ番号で2回宣言（宣言→脱線→再宣言）
+export function scanDuplicateAnnouncements(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const seen = new Map<number, number>();
+  const dup: number[] = [];
+  for (const m of t.matchAll(/(?:最後の)?([0-9０-９]+)枚目(?:です|にいき|、いき|を引|をめく|。)/g)) {
+    const n = parseInt(m[1].replace(/[０-９]/g, (d) => String("０１２３４５６７８９".indexOf(d))), 10);
+    const pos = m.index ?? 0;
+    if (seen.has(n) && pos - (seen.get(n) || 0) >= 150 && !dup.includes(n)) dup.push(n);
+    if (!seen.has(n)) seen.set(n, pos);
+  }
+  if (dup.length === 0) return [];
+  return [{ name: `カード宣言の重複（${dup.map((n) => `${n}枚目`).join("・")}）`, status: "fail",
+    comment: "同じ番号のカードを2回宣言しています（宣言→脱線→もう一度宣言）。宣言したら脱線せずにそのカードを開示する",
+    suggestion: "2回目の宣言を削除し、挟んでいた話はカード開示と意味説明の後に移す" }];
+}
+
+// 抽選指定との機械照合（文字列で判定できるものだけ）
+export function scanDrawSpecCompliance(script: string, drawSpec?: string): QualityCheckItem[] {
+  if (!drawSpec) return [];
+  const items: QualityCheckItem[] = [];
+  if (/【魂の正当化（今回の指定）】[\s\S]{0,40}今回は使わない/.test(drawSpec) && /受け取る準備ができた|魂が告げ/.test(script)) {
+    items.push({ name: "抽選指定違反: 魂の正当化", status: "fail", comment: "今回は「魂の正当化を使わない」指定なのに使っています", suggestion: "採用した選民フックの切り口で正当化に書き換える" });
+  }
+  if (/霊聴（未来の相手のセリフ）/.test(drawSpec) && !/守護天使様を通して/.test(script)) {
+    items.push({ name: "霊聴の導入が指定どおりでない", status: "warn", comment: "相手のセリフを「その人からのメッセージが、守護天使様を通して伝わってきました」の導入なしで語っています", suggestion: "指定の導入文を付けてからセリフを置く" });
+  }
+  return items;
+}
+
+export function runMechanicalChecks(script: string, recentScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string }): QualityCheckItem[] {
+  return [
+    ...scanBlacklist(script),
+    ...scanKanjiNumerals(script),
+    ...findRepeatedSentences(script, recentScripts || []),
+    ...(opts?.revealed ? scanCardCount(script, opts.revealed) : []),
+    ...scanDuplicateAnnouncements(script),
+    ...scanDrawSpecCompliance(script, opts?.drawSpec),
+  ];
 }

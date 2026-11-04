@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { runMechanicalChecks } from "@/lib/qc-blacklist";
+import { countCardReveals } from "@/lib/tarot-draw";
 import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
@@ -534,7 +535,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "AI応答の解析に失敗しました", raw }, { status: 500 });
     }
     // 機械判定（定型文・前回台本との同一文・漢数字）をカテゴリとして合成。fail があればスコア上限を 6.5 にして「提出基準クリア」にさせない
-    const mech = runMechanicalChecks(script, recentScripts);
+    const mech = runMechanicalChecks(script, recentScripts, { revealed: countCardReveals(script), drawSpec });
     // 文字数（機械判定）: 最低文字数未満、または目標の80%未満は fail
     {
       const len = script.replace(/\s/g, "").length;
