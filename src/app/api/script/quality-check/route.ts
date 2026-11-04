@@ -68,9 +68,9 @@ B. 台本ルール外のオリジナル構成パートの混入
    ※サーバー抽選・骨組みで指定されたパート（動画の格上げ演出／前兆リフレームの教育／権威づけ教育／習慣化の促し／
      感謝と循環の教育／過去ストーリーと信念／ネガティブ風ポジティブ訴求 等）は定義済みの構成として扱い、未定義パート扱いにしない
 
-C. 文字数（報告のみ・スコア判定対象外）
-   文字数はこのチェックの減点対象にしない。目標文字数は骨組み・ツール側（目標表示と増筆機能）で管理しているため、
-   ここでは items に「実測◯字」の pass 1件を出して報告するだけにする。5000字や6000字などの上限で warn/fail を出さない。
+C. 文字数（報告のみ。合否はツール側の機械判定で決める）
+   ここでは items に「実測◯字」の pass 1件を出して報告するだけにする（文字数の fail はツールが機械的に付ける: 最低6,000字未満、または目標の80%未満）。
+   文字数の上限で warn/fail を出さない。
 
 D. CTAロジックの自然な連結
    高評価/コメント/チャンネル登録/守護画像/LINE鑑定 等のCTAが、ロジックとして自然に繋がっているか。
@@ -479,7 +479,7 @@ async function callOpenAI(aiApiKey: string, userPrompt: string, systemPrompt: st
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary, essence, genre, drawSpec, recentScripts, cardPlan } = body as {
+    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary, essence, genre, drawSpec, recentScripts, cardPlan, targetChars, minChars } = body as {
       script: string;
       title: string;
       profile?: ChannelProfile;
@@ -493,6 +493,8 @@ export async function POST(request: NextRequest) {
       drawSpec?: string;
       recentScripts?: string[];
       cardPlan?: CardPlan | null;
+      targetChars?: number;
+      minChars?: number;
     };
 
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
@@ -533,6 +535,17 @@ export async function POST(request: NextRequest) {
     }
     // 機械判定（定型文・前回台本との同一文・漢数字）をカテゴリとして合成。fail があればスコア上限を 6.5 にして「提出基準クリア」にさせない
     const mech = runMechanicalChecks(script, recentScripts);
+    // 文字数（機械判定）: 最低文字数未満、または目標の80%未満は fail
+    {
+      const len = script.replace(/\s/g, "").length;
+      const minC = typeof minChars === "number" && minChars > 0 ? minChars : 0;
+      const tgt = typeof targetChars === "number" && targetChars > 0 ? targetChars : 0;
+      if (minC && len < minC) {
+        mech.push({ name: `文字数不足（最低${minC.toLocaleString()}字）`, status: "fail", comment: `実測${len.toLocaleString()}字。最低${minC.toLocaleString()}字に届いていません`, suggestion: "台本出力の「🪄 AIが判断して加筆（自動）」で目標まで増筆する（水増しではなく具体シーン・感情のディテール・理由づけで厚くする）" });
+      } else if (tgt && len < Math.ceil(tgt * 0.8)) {
+        mech.push({ name: `文字数が目標の80%未満（目標${tgt.toLocaleString()}字）`, status: "fail", comment: `実測${len.toLocaleString()}字（目標の${Math.round((len / tgt) * 100)}%）。大幅に不足しています`, suggestion: "台本出力の「🪄 AIが判断して加筆（自動）」で目標まで増筆する" });
+      }
+    }
     if (mech.length > 0) {
       const cats = Array.isArray(parsed.categories) ? (parsed.categories as Record<string, unknown>[]) : [];
       const hasFail = mech.some((it) => it.status === "fail");
