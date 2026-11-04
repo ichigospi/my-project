@@ -5,7 +5,7 @@ import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { pullSharedSettings } from "@/lib/shared-sync";
-import { getPresetFor, getPerformanceRecordsByChannel } from "@/lib/project-store";
+import { getPresetFor, getPerformanceRecordsByChannel, getProjects } from "@/lib/project-store";
 import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
@@ -276,6 +276,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           style: project.style,
           topic: project.title,
           genre: project.genre,
+          drawSpec: project.drawSpec,
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)) + buildSelectedPatternsBlock(project.selectedPatternIds),
           referenceAnalyses,
@@ -604,6 +605,20 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         aiModel: getAiModel("check"),
         style: project.style,
         structureMode: project.structureMode,
+        genre: project.genre,
+        drawSpec: project.drawSpec,
+        // 元ネタの本質（必ず反映する要素）: メイン元ネタの抽出結果を渡し、反映チェックに使う
+        essence: (() => {
+          const main = referenceAnalyses.find((a) => a.id === project.primaryAnalysisId)
+            || referenceAnalyses.slice().sort((a, b) => (b.views || 0) - (a.views || 0))[0];
+          return main?.essence ?? null;
+        })(),
+        // 同チャンネルの直近2本（前回台本との同一文の機械検出用）
+        recentScripts: getProjects()
+          .filter((p) => p.id !== project.id && p.channelId === project.channelId && (p.submittedScript || p.generatedScript))
+          .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
+          .slice(0, 2)
+          .map((p) => (p.submittedScript || p.generatedScript || "").slice(0, 9000)),
         // 再チェック時は前回結果を渡し、差分再評価（pass維持・解消確認優先）にする
         previousSummary: project.qualityCheckResult ? [
           `前回スコア: ${project.qualityCheckResult.overallScore}`,

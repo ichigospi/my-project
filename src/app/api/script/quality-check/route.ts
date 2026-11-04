@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
+import { runMechanicalChecks } from "@/lib/qc-blacklist";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { referenceModeQcNote } from "@/lib/structure-mode";
@@ -173,6 +175,17 @@ K. 一本線（文脈の一貫性）
      元ネタのどこにも無い発明された訴求が中心に据えられていたら該当箇所を引用して warn（複数あれば fail）。
      ※ルールで必須の要素（LINE誘導・儀式コメント等）と、言い回しの世界観変換は対象外
 
+M. 予告の回収・元ネタ本質の反映・テーマ整合・抽選照合
+   - 【予告の回収（必達）】冒頭で約束した項目（「今日は①…②…」「見た目・場所・きっかけをカルテのように渡す」「最後に◯つの行動」等）をすべて列挙し、
+     本編で各項目が実際に回収されているかを1つずつ判定する。1つでも未回収なら fail（どの約束が未回収かを引用）。回収がそれらしい一言だけなら warn
+   - 【元ネタの本質の反映（【元ネタの本質】が与えられた場合・必達）】「必ず反映する要素」の各項目が本文に反映されているかを1つずつ判定。
+     欠落があれば fail（欠けた項目名を列挙）。表面の構成だけ似せて中身が落ちている場合は必ず指摘する
+   - 【テーマ整合】言い当てシーン・訴求・例えが台本のジャンルと合っているか。別ジャンルの定番シーン（金運の「値札を棚に戻す」等）を流用して
+     文脈が崩れていれば fail（該当文を引用）。恋愛で企画が「運命の人／出会い」なのに本編が「あの人（既に想っている相手）」前提に狭まっていれば fail（間口違反）
+   - 【抽選照合（【抽選指定】が与えられた場合・必達）】指定された型（仮想敵／3枚目の常識破壊の型／4枚目アドバイスの型／軽CTAの型／コメントCTAの型／
+     終盤の理由づけ／対比の比喩／常連化の一言／希少性の型／社会的証明の型 等）が本文で守られているかを1つずつ照合する。
+     指定と違う型・デフォルトの定型に戻っているものがあれば fail（どの指定が無視されたかを列挙）。「今回は使わない」とされた型を使っていても fail
+
 H. プロのマーケター視点での総合評価(離脱防止 × リストイン)
    現役のプロマーケターとして、この台本を読み上げたら視聴者は最後まで離脱せずにリストイン(LINE登録)するか。
    - 冒頭15秒のフックの強度(初期離脱の主因)
@@ -274,6 +287,9 @@ function buildUserPrompt(p: {
   winningPatterns?: WinningPatterns;
   referenceAnalyses: RefAnalysis[];
   previousSummary?: string;
+  essence?: ScriptEssence | null;
+  genre?: string;
+  drawSpec?: string;
 }): string {
   const lines: string[] = [];
   lines.push("【チェック対象の生成台本】");
@@ -289,6 +305,19 @@ function buildUserPrompt(p: {
       const refLen = (primary.transcript || "").replace(/\s/g, "").length;
       lines.push(`元ネタ(主軸)文字数(実測): ${refLen} / 生成台本との差: ${Math.abs(scriptLen - refLen)}字`);
     }
+  }
+  if (p.genre) {
+    lines.push(`ジャンル: ${p.genre === "love" ? "恋愛" : p.genre === "money" ? "金運" : p.genre === "relationship" ? "人間関係" : p.genre === "general" ? "総合運" : p.genre}`);
+  }
+  if (p.essence) {
+    lines.push("");
+    lines.push(formatEssenceForPrompt(p.essence, "元ネタ"));
+    lines.push("※上の「必ず反映する要素」の各項目が本文に反映されているかを M. で1つずつ判定すること");
+  }
+  if (p.drawSpec) {
+    lines.push("");
+    lines.push("【抽選指定（この台本の生成時にサーバーが割り当てた型。M. の抽選照合に使う）】");
+    lines.push(p.drawSpec.slice(0, 7000));
   }
   if (p.previousSummary) {
     lines.push("");
@@ -443,7 +472,7 @@ async function callOpenAI(aiApiKey: string, userPrompt: string, systemPrompt: st
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary } = body as {
+    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary, essence, genre, drawSpec, recentScripts } = body as {
       script: string;
       title: string;
       profile?: ChannelProfile;
@@ -452,6 +481,10 @@ export async function POST(request: NextRequest) {
       referenceAnalyses?: RefAnalysis[];
       aiApiKey: string;
       previousSummary?: string;
+      essence?: ScriptEssence | null;
+      genre?: string;
+      drawSpec?: string;
+      recentScripts?: string[];
     };
 
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
@@ -465,6 +498,9 @@ export async function POST(request: NextRequest) {
       winningPatterns,
       referenceAnalyses: referenceAnalyses || [],
       previousSummary,
+      essence: essence || null,
+      genre,
+      drawSpec,
     });
     // 元ネタ準拠モード: テンプレ構成に従っていないこと自体は指摘対象から外す
     if ((body as { structureMode?: string }).structureMode === "reference") {
@@ -485,6 +521,20 @@ export async function POST(request: NextRequest) {
     const parsed = parseJSON(raw);
     if (!parsed) {
       return NextResponse.json({ error: "AI応答の解析に失敗しました", raw }, { status: 500 });
+    }
+    // 機械判定（定型文・前回台本との同一文・漢数字）をカテゴリとして合成。fail があればスコア上限を 6.5 にして「提出基準クリア」にさせない
+    const mech = runMechanicalChecks(script, recentScripts);
+    if (mech.length > 0) {
+      const cats = Array.isArray(parsed.categories) ? (parsed.categories as Record<string, unknown>[]) : [];
+      const hasFail = mech.some((it) => it.status === "fail");
+      cats.push({ name: "L. 機械判定（定型文・前回台本との重複・表記）", passed: !hasFail, items: mech });
+      parsed.categories = cats;
+      if (hasFail) {
+        const score = Number(parsed.overallScore) || 0;
+        parsed.overallScore = Math.min(score, 6.5);
+        const names = mech.filter((it) => it.status === "fail").map((it) => it.name).join("／");
+        parsed.topPriority = `【機械判定でfail】${names}。` + String(parsed.topPriority || "");
+      }
     }
     return NextResponse.json(parsed);
   } catch (e) {
