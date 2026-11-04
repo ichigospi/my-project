@@ -551,7 +551,10 @@ function cardLine(no: number, name: string, orientation: "正位置" | "逆位�
 
 // 5枚を抽選し、プロンプトへ注入するテキストブロックを返す。
 // 呼ばれるたびに引き直される（＝骨組みを再生成すればカードが変わる）。
-export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string }): string {
+export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string; cardCount?: number; negativeIndex?: number }): string {
+  // カード設計表がある場合は枚数（5〜7）と常識破壊スロットの位置に合わせて引く
+  const count = Math.min(7, Math.max(5, Math.floor(opts?.cardCount || 5)));
+  const negIdx = Math.min(count, Math.max(1, Math.floor(opts?.negativeIndex || 3)));
   const topic = opts?.topic || "";
   const genre = opts?.genre || "";
   const isLove = genre === "love" || /恋|愛|運命の人|復縁|あの人|出会|結婚|ツインレイ|告白|片思い/.test(topic);
@@ -562,9 +565,9 @@ export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string }): 
   const majors = MAJOR_ARCANA.filter((c) => c !== negCard);
   const minors = MINOR_ARCANA.filter((c) => c !== negCard);
 
-  // 残り4枚: スロットごとに大/小アルカナを50%ずつで選び、偏りなく混ざるようにする（重複なし）
+  // 残り: スロットごとに大/小アルカナを50%ずつで選び、偏りなく混ざるようにする（重複なし）
   const others: string[] = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < count - 1; i++) {
     const pool = Math.random() < 0.5 && majors.length > 0 ? majors : minors;
     const idx = Math.floor(Math.random() * pool.length);
     others.push(pool.splice(idx, 1)[0]);
@@ -572,15 +575,13 @@ export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string }): 
 
   // 正位置/逆位置は50/50（3枚目含む全スロット対象）
   const orient = (): "正位置" | "逆位置" => (Math.random() < 0.5 ? "逆位置" : "正位置");
-  const slots = [
-    cardLine(1, others[0], orient()),
-    cardLine(2, others[1], orient()),
-    cardLine(3, negCard, orient()),
-    cardLine(4, others[2], orient()),
-    cardLine(5, others[3], orient()),
-  ];
+  const slots: string[] = [];
+  let oi = 0;
+  for (let n = 1; n <= count; n++) {
+    slots.push(n === negIdx ? cardLine(n, negCard, orient()) : cardLine(n, others[oi++], orient()));
+  }
   const proofPos = 1 + Math.floor(Math.random() * 3);
-  const reveals = shuffle(REVEAL_EXPRESSIONS).slice(0, 5);
+  const reveals = shuffle(REVEAL_EXPRESSIONS).slice(0, count);
   const proofExpr = rand(PROOF_EXPRESSIONS);
   const openingHook = rand(OPENING_RETENTION_HOOKS);
   const midHook = rand(MID_RETENTION_HOOKS);
@@ -634,11 +635,11 @@ ${axes}
     ? "ポジティブ型——「この動画のエネルギー・流れを最後まで受け取りきった今、あなたの状態が一番高まっています。高まっているときほど、鑑定で視える世界は深くはっきりする。だから今のうちに」と、高まった状態を活かす前向きな理由づけにする（受けた側の未来だけを描く）"
     : "損失回避型（アクシデント型）——「せっかく視えたこの流れが、思わぬ出来事やふとした迷いをきっかけに変わってしまう前に」と、流れの繊細さで促す（「注がれたエネルギーが漏れる」等のヒーリング型表現は禁止）";
 
-  return `【今回の抽選カード（サーバーの乱数で実際に引いた結果。必ずこの5枚を、この順番で使うこと）】
+  return `【今回の抽選カード（サーバーの乱数で実際に引いた結果。必ずこの${count}枚を、この順番で使うこと）】
 ${slots.join("\n")}
 
 【カードの読み方（必達・捏造防止）】
-- カードの差し替え・入れ替え・追加は禁止。この5枚で構成する
+- カードの差し替え・入れ替え・追加は禁止。この${count}枚で構成する（カード設計表がある場合、各枚の役割は設計表に従う。${negIdx}枚目が常識破壊）
 - 各カードの解釈は、上記の「正統な意味」の範囲内でだけ行うこと。記載にない意味を語る・正位置と逆位置を取り違える・役割に合わせて意味を捏造するのは禁止。
   スロットの役割（①流れの変化＋問題提起→②悩みの深掘り＋共感→③仮想敵批判＋常識破壊→④解決策の提示→⑤理想の未来 等、ルールの役割構成）への紐付けは、記載の正統な意味の中から役割に通じる側面を選んで行う
 - カードの絵について語ってよいのは、上記「絵柄」に記載された要素だけ。記載にないものを「描かれている」と言うのは禁止

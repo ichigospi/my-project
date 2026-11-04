@@ -3,6 +3,7 @@ import { formatEssenceForPrompt } from "@/lib/script-analysis-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES } from "@/lib/tarot-draw";
+import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { referenceModeBlock } from "@/lib/structure-mode";
 
 // 骨組み出力は最大16Kトークンと長く生成に時間がかかるため、関数の実行上限を延長する
@@ -87,18 +88,22 @@ CTA: ${a.analysisResult?.ctas?.join(" / ")}
     typeof body.abstractLogic === "string" && body.abstractLogic.trim() ? body.abstractLogic.trim() : undefined;
 
   // 抽選は1リクエスト1回。抽象→具体、骨組み→台本で同じ抽選結果（drawSpec）を使い回す（毎回引き直すと指定が食い違う）
-  const drawBlock: string = typeof body.drawSpec === "string" && body.drawSpec.trim() ? body.drawSpec : buildTarotDrawBlock({ genre, topic });
+  const cardPlan: CardPlan | null = body.cardPlan && Array.isArray(body.cardPlan.slots) && body.cardPlan.slots.length >= 5 ? (body.cardPlan as CardPlan) : null;
+  const cardCount = cardPlan ? cardPlan.slots.length : undefined;
+  const negativeIndex = cardPlan ? Math.max(1, cardPlan.slots.findIndex((sl) => sl.role === "常識破壊") + 1) : undefined;
+  const cardPlanText = cardPlan ? formatCardPlanForPrompt(cardPlan) : "";
+  const drawBlock: string = typeof body.drawSpec === "string" && body.drawSpec.trim() ? body.drawSpec : buildTarotDrawBlock({ genre, topic, cardCount, negativeIndex });
 
   let prompt: string;
   if (!isRevision && style === "tarot" && phase === "abstract") {
     prompt = `あなたはプロのスピーチマーケター兼YouTube台本構成プロデューサーです。
 
-タロット台本の「カードリーディング部分（5枚）」の設計を、まず【抽象ロジック】として簡潔に出してください。
+タロット台本の「カードリーディング部分（カード設計表がある場合はその枚数、無ければ5枚）」の設計を、まず【抽象ロジック】として簡潔に出してください。
 これはライターが詳細な骨組みを作る前に「この動画で何を伝えるか」を確認・修正するためのものです。
 詳細な肉付け・セリフ例・尺配分は書かないこと。オープニングと終盤CTAの設計も書かない（ルールで固定のため、具体化の段階で付く）。
 
 【鉄則】
-- 元ネタの訴求・構成の流れを土台に、ルールの5枚構成（①流れの変化＋問題提起→②悩みの深掘り＋共感→③仮想敵批判＋常識破壊→④解決策の提示→⑤理想の未来）へ落とし込む
+- 元ネタの訴求・構成の流れを土台に、ルールの5枚構成（①流れの変化＋問題提起→②悩みの深掘り＋共感→③仮想敵批判＋常識破壊→④解決策の提示→⑤理想の未来）へ落とし込む。【カード設計表】がある場合はその枚数・順番・役割（追加カード含む）を最優先で守る
 - 【一本線の背骨をここで固定する】冒頭に「メインテーマと主張」「中心メタファー」を必ず書く。
   ・中心メタファーはこの台本で使うスピ的比喩を1つだけ選ぶ（例:「豊かさの扉」）。テーマと元ネタに合うものを選ぶこと
   ・【推奨】可能なら、中心メタファーは1枚目（または物語の軸になるカード）の「絵柄」に実際に描かれている要素（天秤・杯・太陽・道 等）から選ぶ。
@@ -117,6 +122,8 @@ CTA: ${a.analysisResult?.ctas?.join(" / ")}
 - 元ネタ準拠モードの指定がある場合は、カードの枚数・役割を元ネタの構成に合わせてよい
 
 ${drawBlock}
+
+${cardPlanText}
 
 ${analysisTexts}
 ${profileText}
@@ -263,6 +270,8 @@ ${tarotAbstract}
 - 【憲法】抽象ロジック冒頭の「メインテーマと主張」「中心メタファー」「一本線」は骨組み全体（オープニング・終盤CTA含む）の憲法として適用する。
   中心メタファーは1つだけで通し、同じ内容を別の比喩で言い換えるセクションを作らない。骨組みの冒頭にもこの3行をそのまま転記すること
 - オープニングと終盤CTAはルール通りに設計して前後に付けること` : `${drawBlock}
+
+${cardPlanText}
 - 骨組みの各カードセクションには、上記の抽選カード名（正位置/逆位置込み）と「正統な意味」を必ず転記すること。カードの解釈は記載の意味の範囲内でだけ設計する。`}
 
 ${TAROT_IMAGERY_TECHNIQUES}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { runMechanicalChecks } from "@/lib/qc-blacklist";
+import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { referenceModeQcNote } from "@/lib/structure-mode";
@@ -290,6 +291,7 @@ function buildUserPrompt(p: {
   essence?: ScriptEssence | null;
   genre?: string;
   drawSpec?: string;
+  cardPlan?: CardPlan | null;
 }): string {
   const lines: string[] = [];
   lines.push("【チェック対象の生成台本】");
@@ -313,6 +315,11 @@ function buildUserPrompt(p: {
     lines.push("");
     lines.push(formatEssenceForPrompt(p.essence, "元ネタ"));
     lines.push("※上の「必ず反映する要素」の各項目が本文に反映されているかを M. で1つずつ判定すること");
+  }
+  if (p.cardPlan?.slots?.length) {
+    lines.push("");
+    lines.push(formatCardPlanForPrompt(p.cardPlan));
+    lines.push("※枚数・順番・役割（追加カードの中身を含む）がこの設計表どおりかを G.（枚数）と M.（予告・本質）で判定する");
   }
   if (p.drawSpec) {
     lines.push("");
@@ -472,7 +479,7 @@ async function callOpenAI(aiApiKey: string, userPrompt: string, systemPrompt: st
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary, essence, genre, drawSpec, recentScripts } = body as {
+    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary, essence, genre, drawSpec, recentScripts, cardPlan } = body as {
       script: string;
       title: string;
       profile?: ChannelProfile;
@@ -485,6 +492,7 @@ export async function POST(request: NextRequest) {
       genre?: string;
       drawSpec?: string;
       recentScripts?: string[];
+      cardPlan?: CardPlan | null;
     };
 
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
@@ -501,6 +509,7 @@ export async function POST(request: NextRequest) {
       essence: essence || null,
       genre,
       drawSpec,
+      cardPlan: cardPlan || null,
     });
     // 元ネタ準拠モード: テンプレ構成に従っていないこと自体は指摘対象から外す
     if ((body as { structureMode?: string }).structureMode === "reference") {

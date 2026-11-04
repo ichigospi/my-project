@@ -47,6 +47,7 @@ export interface ScriptEssence {
   commentCta: string;         // コメントCTAの語とロジック
   heavyCtaUnknowns: string[]; // 重CTAで「個別でないと視えない」とした未知数
   mustKeep: string[];         // 骨組みに必ず反映すべき要素（優先順・短文）
+  timeline?: { element: string; position: string; card?: number }[]; // 各要素が元ネタのどの段階に出るか（冒頭/序盤/中盤/終盤・何枚目相当）
   extractedAt: string;
 }
 
@@ -69,6 +70,7 @@ export function formatEssenceForPrompt(e: ScriptEssence | null | undefined, labe
   if (e.commentCta) lines.push(`■ コメントCTAのロジック（参考）: ${e.commentCta}`);
   if (e.heavyCtaUnknowns?.length) lines.push(`■ 重CTAの未知数（参考）\n${li(e.heavyCtaUnknowns)}`);
   if (e.mustKeep?.length) lines.push(`■ 必ず反映する要素（優先順）\n${li(e.mustKeep)}`);
+  if (e.timeline?.length) lines.push(`■ 元ネタでの出現位置\n${li(e.timeline.map((t) => `${t.element}: ${t.position}${t.card ? `（${t.card}枚目相当）` : ""}`))}`);
   return lines.join("\n");
 }
 
