@@ -629,12 +629,75 @@ function pushScriptSnapshots(projectId: string, snaps: ScriptSnapshot[]) {
       if (list.some((x) => x.field === snap.field && x.text === snap.text)) continue; // 同一内容は重複保存しない
       list.push(snap);
     }
-    map[projectId] = list.slice(-10);
+    map[projectId] = list.slice(-5);
     const ids = Object.keys(map);
-    if (ids.length > 30) for (const id of ids.slice(0, ids.length - 30)) delete map[id];
+    if (ids.length > 10) for (const id of ids.slice(0, ids.length - 10)) delete map[id];
     localStorage.setItem(SCRIPT_HISTORY_KEY, JSON.stringify(map));
   } catch (e) {
     console.warn("[history] save failed:", e);
+  }
+}
+
+// --- ブラウザ保存領域（localStorage）の容量対策 ---
+// iPad/Safari は上限が約5MBで、台本・分析・履歴が溜まると setItem が QuotaExceeded で失敗し、
+// 品質チェック結果の保存や提出（status更新）が丸ごと止まってしまう。失敗したら自動で領域を空けて再試行する。
+export let lastLocalSaveFailed = false;
+function isQuotaError(e: unknown): boolean {
+  const name = (e as { name?: string })?.name || "";
+  const msg = String((e as { message?: string })?.message || e || "");
+  return name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED" || /quota/i.test(msg);
+}
+export function getLocalStorageUsageKB(): number {
+  if (typeof window === "undefined") return 0;
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i) || "";
+    total += (k.length + (localStorage.getItem(k) || "").length) * 2;
+  }
+  return Math.round(total / 1024);
+}
+// 消しても困らないもの（サーバーにある／再生成できる）から順に空ける。戻り値は空けた概算KB
+export function freeLocalStorageSpace(): number {
+  if (typeof window === "undefined") return 0;
+  const before = getLocalStorageUsageKB();
+  const removable: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i) || "";
+    if (k === "fortune_yt_script_history" || k === "fortune_yt_search_cache" || /_backup(_v\d+)?$/.test(k)) removable.push(k);
+  }
+  removable.forEach((k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
+  // 提出済み/完了の企画は結合済みの台本（generatedScript）があるので、分割パートの複製を落とす
+  try {
+    const projects: ScriptProject[] = JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]");
+    let changed = false;
+    for (const p of projects) {
+      if ((p.status === "review" || p.status === "completed") && p.scriptSegments && p.scriptSegments.length > 0 && p.generatedScript) {
+        delete (p as { scriptSegments?: unknown }).scriptSegments;
+        changed = true;
+      }
+    }
+    if (changed) localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  } catch { /* ignore */ }
+  return Math.max(0, before - getLocalStorageUsageKB());
+}
+function safeSetItem(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    lastLocalSaveFailed = false;
+    return true;
+  } catch (e) {
+    if (!isQuotaError(e)) { console.error("[store] setItem failed:", e); lastLocalSaveFailed = true; return false; }
+    console.warn("[store] quota exceeded → cleaning up and retrying");
+    freeLocalStorageSpace();
+    try {
+      localStorage.setItem(key, value);
+      lastLocalSaveFailed = false;
+      return true;
+    } catch (e2) {
+      console.error("[store] setItem still failing after cleanup:", e2);
+      lastLocalSaveFailed = true;
+      return false;
+    }
   }
 }
 
@@ -658,7 +721,8 @@ export function saveProject(project: ScriptProject): ScriptProject[] {
   } else {
     projects.unshift(project);
   }
-  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  // 保存に失敗しても例外で呼び出し側（画面更新・サーバー同期）を止めない。lastLocalSaveFailed で検知できる
+  safeSetItem(PROJECTS_KEY, JSON.stringify(projects));
   return projects;
 }
 

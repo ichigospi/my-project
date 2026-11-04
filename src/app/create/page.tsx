@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { getProjectsByChannel, getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus } from "@/lib/project-store";
+import { useState, useEffect, useRef } from "react";
+import { getProjectsByChannel, getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus, lastLocalSaveFailed, freeLocalStorageSpace, getLocalStorageUsageKB } from "@/lib/project-store";
 import type { ScriptProject, Genre, Style, ReviewStatus } from "@/lib/project-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
@@ -30,6 +30,15 @@ export default function CreatePage() {
   const [activeProject, setActiveProject] = useState<ScriptProject | null>(null);
   // 表示中ステップの上書き（nullならステータス通りの部屋を表示）
   const [viewStep, setViewStep] = useState<string | null>(null);
+  const storageWarnedRef = useRef(false);
+  const [storageKB, setStorageKB] = useState<number | null>(null);
+  useEffect(() => { try { setStorageKB(getLocalStorageUsageKB()); } catch { /* ignore */ } }, [activeProject?.updatedAt]);
+  const handleCleanStorage = () => {
+    const freed = freeLocalStorageSpace();
+    setStorageKB(getLocalStorageUsageKB());
+    storageWarnedRef.current = false;
+    alert(`保存領域を掃除しました（約${freed}KB 解放／現在 約${getLocalStorageUsageKB()}KB 使用）。履歴・検索キャッシュ・古いバックアップを削除しました。台本や分析はサーバーに残っています。`);
+  };
   const [listQuery, setListQuery] = useState("");
   // プロジェクト一覧の並び順（date=日付順がベース / priority=タスク優先度順）
   const [listSort, setListSort] = useState<"date" | "priority">("date");
@@ -159,6 +168,10 @@ export default function CreatePage() {
     setActiveProject(updated);
     setProjects(getProjectsByChannel(activeChannel?.id || ""));
     pushSharedSettings();
+    if (lastLocalSaveFailed && !storageWarnedRef.current) {
+      storageWarnedRef.current = true;
+      alert("この端末のブラウザ保存領域が一杯で、ローカル保存に失敗しました（サーバーには保存しています）。\n画面右上の「🧹 保存領域を掃除」を押してください。改善しない場合は、ブラウザの閲覧データ（このサイトのデータ）を削除してから「同期」で復元できます。");
+    }
 
     // 工程表との自動連動
     if (updated.title && updated.status === "references" && prev?.status === "title") {
@@ -522,11 +535,18 @@ export default function CreatePage() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           プロジェクト一覧
         </button>
-        <button onClick={handleRestoreFromServer}
-          className="text-xs text-gray-500 underline underline-offset-2 hover:text-accent"
-          title="サーバーに残っている版（進捗・台本の有無）を確認し、必要ならこの端末の版を置き換えます">
-          ☁ サーバー版を確認して復元
-        </button>
+        <div className="flex items-center gap-4">
+          <button onClick={handleCleanStorage}
+            className={`text-xs underline underline-offset-2 hover:text-accent ${storageKB !== null && storageKB > 3500 ? "text-red-600 font-medium" : "text-gray-500"}`}
+            title="履歴・検索キャッシュ・古いバックアップを削除して、この端末のブラウザ保存領域を空けます（台本や分析はサーバーに残ります）">
+            🧹 保存領域を掃除{storageKB !== null ? `（約${storageKB}KB使用）` : ""}
+          </button>
+          <button onClick={handleRestoreFromServer}
+            className="text-xs text-gray-500 underline underline-offset-2 hover:text-accent"
+            title="サーバーに残っている版（進捗・台本の有無）を確認し、必要ならこの端末の版を置き換えます">
+            ☁ サーバー版を確認して復元
+          </button>
+        </div>
       </div>
 
       {/* ステップインジケーター */}
