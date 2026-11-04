@@ -152,6 +152,7 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
         thumbTelop: telop,
         thumbDesignUrl: designUrl,
         scriptReviewStatus: "approved",
+        approvedAt: new Date().toISOString(),
         generatedScript: reviewed, // 添削後の台本を最終稿として反映
         status: "completed",
       });
