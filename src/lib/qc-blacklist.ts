@@ -96,13 +96,19 @@ export function scanImageryClaims(script: string, cards: { name: string; img?: s
   positions.forEach((c, i) => {
     const end = i + 1 < positions.length ? positions[i + 1].pos : Math.min(t.length, c.pos + 1500);
     const passage = t.slice(c.pos, end);
-    // 「カード／絵／女性／人物／描かれ」の近くにある視線・表情語だけを対象（視聴者の描写は除外）
+    // 「カード／絵／女性／人物／描かれ」が同じ文か直前の文にある視線・表情語だけを対象（視聴者の描写は除外）
     const cardish = /(カード|絵|この(女性|男性|人物|王|農夫|子ども)|描かれ|見てください)/;
+    const sentences = passage.split(/(?<=[。！？!?])/);
     for (const w of VISUAL_CLAIM_WORDS) {
-      const idx = passage.indexOf(w);
-      if (idx < 0) continue;
-      const around = passage.slice(Math.max(0, idx - 60), idx + 30);
-      if (!cardish.test(around)) continue;
+      let around = "";
+      for (let si = 0; si < sentences.length && !around; si++) {
+        if (!sentences[si].includes(w)) continue;
+        const scope = (si > 0 ? sentences[si - 1] : "") + sentences[si];
+        // 視聴者に向けた文（「あなた」が主語）は対象外
+        if (!cardish.test(scope) || (/あなた/.test(sentences[si]) && !cardish.test(sentences[si]))) continue;
+        around = scope.slice(-90);
+      }
+      if (!around) continue;
       const img = c.img || "";
       if (IMG_COVER_WORDS.some((cw) => img.includes(cw))) continue;
       items.push({
