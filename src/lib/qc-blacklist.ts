@@ -36,6 +36,11 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /本来のあなたに戻る/, level: "track", reason: "波長合わせ型が抽選された回のみ可", fix: "他の型なら言い換える" },
   { pattern: /頭では(もう)?答えが出ているのに/, level: "track", reason: "前回台本の文の流用", fix: "別の言い回しに" },
   { pattern: /執着を手放しなさい/, level: "track", reason: "仮想敵「占い師テンプレ型」の定型", fix: "抽選で指定された仮想敵に従う" },
+  { pattern: /ここからが.{0,3}今日.{0,3}(一番|いちばん)大(事|切)/, level: "track", reason: "3枚目前の離脱防止句の使い回し", fix: "「次のカードから話が大きく変わります」等、別の言い回しに" },
+  { pattern: /カードが決めるんじゃ/, level: "track", reason: "「早めるのも遅らせるのもカードが決めるんじゃない」型の使い回し", fix: "別の締め方に（例: 速さを決めるのは、あなたが顔を上げている時間の長さ）" },
+  { pattern: /手のひらに.{0,4}吸い/, level: "track", reason: "引き演出「手のひらに吸い付く／吸い寄せられる」の使い回し", fix: "別の登場演出に" },
+  { pattern: /ひとつだけ.{0,3}(心配|気がかり)なこと/, level: "track", reason: "終盤の橋渡し「ひとつだけ心配なことが」の使い回し", fix: "別の切り出しに（例: ひとつだけ、引っかかっていることがあって）" },
+  { pattern: /個別に視ないと.{0,6}分からない領域/, level: "track", reason: "LINE導線「個別に視ないと分からない領域」の使い回し", fix: "別の言い回しに（例: あなたの流れを直接視ないと言えません）" },
 ];
 
 function excerpt(script: string, m: RegExpMatchArray): string {
