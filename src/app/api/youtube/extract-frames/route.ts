@@ -4,7 +4,6 @@ import { localExecEnv, findBinary } from "@/lib/local-bins";
 import { existsSync, readdirSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { prisma } from "@/lib/prisma";
 import { localCookieStrategies, summarizeStrategyErrors } from "@/lib/ytdlp-cookies";
 
 export async function POST(request: NextRequest) {
@@ -42,6 +41,8 @@ export async function POST(request: NextRequest) {
     let cookiePath = "";
     if (!isLocal) {
       try {
+        // ローカルでは prisma を読み込まない（generated client が無い環境でルート全体が落ちるのを防ぐ）
+        const { prisma } = await import("@/lib/prisma");
         const cookieSetting = await prisma.appSetting.findUnique({ where: { key: "yt_cookies" } });
         if (cookieSetting?.value) {
           cookiePath = join(tempDir, "cookies.txt");

@@ -88,6 +88,17 @@ function compressImage(dataUrl: string, maxWidth = 1280, quality = 0.6): Promise
   });
 }
 
+// サーバーがJSON以外（Next.jsのHTMLエラーページ等）を返したとき、"Unexpected token '<'" ではなく原因が分かるメッセージにする
+async function readJson(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const head = text.replace(/\s+/g, " ").slice(0, 120);
+    throw new Error(`ローカルサーバーがJSON以外を返しました（HTTP ${res.status}）。サーバーのターミナルにエラーが出ていないか確認し、git pull → npm install → npm run dev で再起動してください。先頭: ${head}`);
+  }
+}
+
 export default function OcrPage() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -189,7 +200,7 @@ export default function OcrPage() {
         body: JSON.stringify({ videoId: item.videoId, skipSubtitle }),
         signal,
       });
-      let frameData = await frameRes.json();
+      let frameData = await readJson(frameRes) as any;
       throwIfCancelled();
       addLog(`応答: method=${frameData.method || "none"}, transcript=${frameData.transcript?.length || 0}文字, frames=${frameData.frames?.length || 0}枚, error=${frameData.error || "none"}`);
 
@@ -215,7 +226,7 @@ export default function OcrPage() {
             body: JSON.stringify({ videoId: item.videoId, skipSubtitle: true }),
             signal,
           });
-          frameData = await retryRes.json();
+          frameData = await readJson(retryRes) as any;
           throwIfCancelled();
           addLog(`リトライ応答: frames=${frameData.frames?.length || 0}枚, error=${frameData.error || "none"}`);
           if (frameData.error) throw new Error(frameData.error);
@@ -254,7 +265,7 @@ export default function OcrPage() {
                 body: JSON.stringify({ images: batch, aiApiKey }),
                 signal,
               });
-              const ocrData = await ocrRes.json();
+              const ocrData = await readJson(ocrRes) as any;
               if (ocrData.retryable) {
                 setProgress(`OCR ${batchNum}/${totalBatches} リトライ${retry + 1}/5`);
                 await new Promise((r) => setTimeout(r, 15000 * (retry + 1)));
@@ -364,7 +375,7 @@ export default function OcrPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoId: item.videoId }),
       });
-      const audioData = await audioRes.json();
+      const audioData = await readJson(audioRes) as any;
       if (audioData.error) throw new Error(audioData.error);
       addLog(`音声DL完了: ${audioData.sizeMB}MB / ${audioData.chunkCount}チャンク`);
       setProgress(`音声をWhisper APIで書き起こし中 (${audioData.chunkCount}チャンク)...`);
@@ -379,7 +390,7 @@ export default function OcrPage() {
           cleanupDir: audioData.cleanupDir,
         }),
       });
-      const transcribeData = await transcribeRes.json();
+      const transcribeData = await readJson(transcribeRes) as any;
       if (transcribeData.error) throw new Error(transcribeData.error);
 
       let transcript = (transcribeData.text || "").trim();

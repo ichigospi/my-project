@@ -35,5 +35,9 @@ export function localCookieStrategies(): CookieStrategy[] {
 // 全戦略失敗時に「どの戦略が何で落ちたか」を1行ずつまとめる（原因診断用）
 export function summarizeStrategyErrors(errors: { label: string; err: string }[]): string {
   if (errors.length === 0) return "不明なエラー";
-  return errors.map((e) => `[${e.label}] ${e.err.replace(/\s+/g, " ").trim().slice(0, 180)}`).join("\n");
+  const lines = errors.map((e) => `[${e.label}] ${e.err.replace(/\s+/g, " ").trim().slice(0, 180)}`);
+  if (errors.some((e) => /CERTIFICATE_VERIFY_FAILED/.test(e.err))) {
+    lines.push("※ SSL証明書エラー: Macの python.org 版 Python は証明書が未設定です。Finderで「アプリケーション → Python 3.x → Install Certificates.command」をダブルクリックしてから再試行してください（brew install yt-dlp でも解消します）");
+  }
+  return lines.join("\n");
 }

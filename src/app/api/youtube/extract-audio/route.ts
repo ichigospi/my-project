@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
             "-o", outputTemplate,
             "--no-warnings", "--no-playlist",
             "--socket-timeout", "30",
+            "--no-check-certificates", // python.org版Pythonの証明書未設定（CERTIFICATE_VERIFY_FAILED）対策
             ...(client === "default" ? [] : ["--extractor-args", `youtube:player_client=${client}`]),
             videoUrl,
           ], { env: execEnv, stdio: "pipe", timeout: 600000, maxBuffer: 200 * 1024 * 1024 });
