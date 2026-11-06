@@ -2,6 +2,7 @@
 // macは Finderから起動した場合 PATH に homebrew が入らないため明示的に足す。
 // Windowsは PATH の区切りが ";" で、whichではなくwhereを使う。
 import { execSync } from "child_process";
+import { existsSync, readdirSync } from "fs";
 
 export function localExecEnv(): NodeJS.ProcessEnv {
   const isWin = process.platform === "win32";
@@ -18,7 +19,18 @@ export function localExecEnv(): NodeJS.ProcessEnv {
     ].filter(Boolean);
     return { ...process.env, PATH: winPaths.join(";") };
   }
-  const PATH = [process.env.PATH || "", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":");
+  // mac: homebrew に加えて、python.org 版 Python（pip install yt-dlp の置き場）・pipx・MacPorts も探す
+  const home = process.env.HOME || "";
+  const extra: string[] = ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/usr/bin", "/bin"];
+  if (home) extra.push(`${home}/.local/bin`);
+  const globDirs = (base: string, suffix: string) => {
+    try {
+      return readdirSync(base).map((v) => `${base}/${v}${suffix}`).filter((d) => existsSync(d));
+    } catch { return []; }
+  };
+  extra.push(...globDirs("/Library/Frameworks/Python.framework/Versions", "/bin"));
+  if (home) extra.push(...globDirs(`${home}/Library/Python`, "/bin"));
+  const PATH = [process.env.PATH || "", ...extra].join(":");
   return { ...process.env, PATH };
 }
 

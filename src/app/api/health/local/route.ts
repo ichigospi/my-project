@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { execSync } from "child_process";
-import { prisma } from "@/lib/prisma";
+import { localExecEnv, findBinary } from "@/lib/local-bins";
 
 export async function GET() {
   const result: { db: boolean; ytdlp: boolean; ffmpeg: boolean; dbError?: string } = { db: false, ytdlp: false, ffmpeg: false };
 
   // DB接続チェック
   try {
+    const { prisma } = await import("@/lib/prisma");
     await prisma.appSetting.findFirst();
     result.db = true;
   } catch (e) {
@@ -14,29 +14,9 @@ export async function GET() {
     result.dbError = String(e).slice(0, 300);
   }
 
-  const isWindows = process.platform === "win32";
-  const whichCmd = isWindows ? "where" : "which";
-
-  const extendedPath = isWindows
-    ? process.env.PATH || ""
-    : [process.env.PATH || "", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":");
-  const execEnv = { ...process.env, PATH: extendedPath };
-
-  // yt-dlpチェック
-  try {
-    execSync(`${whichCmd} yt-dlp`, { env: execEnv, stdio: "pipe" });
-    result.ytdlp = true;
-  } catch {
-    /* yt-dlp未インストール */
-  }
-
-  // ffmpegチェック
-  try {
-    execSync(`${whichCmd} ffmpeg`, { env: execEnv, stdio: "pipe" });
-    result.ffmpeg = true;
-  } catch {
-    /* ffmpeg未インストール */
-  }
+  const execEnv = localExecEnv();
+  result.ytdlp = !!findBinary("yt-dlp", execEnv);
+  result.ffmpeg = !!findBinary("ffmpeg", execEnv);
 
   return NextResponse.json(result);
 }
