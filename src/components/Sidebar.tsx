@@ -82,7 +82,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     <aside className={`w-64 min-h-screen ${isLocal ? "bg-[#1a2332]" : "bg-sidebar-bg"} text-sidebar-text flex flex-col shrink-0`}>
       <div className="p-6 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold text-white">YouTube×スピ　自動化ツール</h1>
+          <h1 className="text-lg md:text-xl font-bold text-white leading-snug">YouTube×スピ<br className="md:hidden" />自動化ツール</h1>
           {isLocal && (
             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500 text-white">LOCAL</span>
           )}
