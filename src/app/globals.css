@@ -45,3 +45,31 @@ body {
   background: #c0c0c0;
   border-radius: 3px;
 }
+
+/* ===== モバイル（md未満）: 文字を小さくしない・タップしやすく =====
+   Tailwind のユーティリティは @layer utilities 内なので、ここ（レイヤー外）の指定が優先される。
+   text-xs / text-sm / 10〜11px 指定をスマホでは一段大きくし、入力欄は iOS の自動ズームを避けるため 16px 以上にする。 */
+@media (max-width: 767px) {
+  .text-xs, .text-\[10px\], .text-\[11px\], .text-\[9px\] {
+    font-size: 0.9375rem !important;   /* 15px */
+    line-height: 1.4rem !important;
+  }
+  .text-sm {
+    font-size: 1.0625rem !important;   /* 17px */
+    line-height: 1.6rem !important;
+  }
+  .text-base {
+    font-size: 1.125rem !important;    /* 18px */
+    line-height: 1.7rem !important;
+  }
+  input, select, textarea {
+    font-size: 16px !important;        /* 16px未満だとiOSがフォーカス時に拡大する */
+  }
+  /* タップ領域: 文字ボタン・リンクボタンは最低44px */
+  button, [role="button"], select {
+    min-height: 44px;
+  }
+  /* カードの角と余白をアプリ寄りに */
+  .rounded-xl { border-radius: 1rem; }
+  .rounded-lg { border-radius: 0.875rem; }
+}

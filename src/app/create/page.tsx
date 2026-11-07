@@ -256,12 +256,12 @@ export default function CreatePage() {
   if (!activeProject) {
     return (
       <div className="p-4 md:p-8">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-xl md:text-2xl font-bold">台本作成</h1>
+            <h1 className="text-2xl font-bold">台本作成</h1>
             <p className="text-gray-500 mt-1">ウィザード形式で台本を作成</p>
           </div>
-          <button onClick={handleNew} className="px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
+          <button onClick={handleNew} className="w-full sm:w-auto px-5 py-3 rounded-xl bg-accent text-white text-base font-bold hover:bg-accent/90 shadow-sm">
             + 新規プロジェクト
           </button>
         </div>
@@ -535,27 +535,27 @@ export default function CreatePage() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           プロジェクト一覧
         </button>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={handleCleanStorage}
-            className={`text-xs underline underline-offset-2 hover:text-accent ${storageKB !== null && storageKB > 3500 ? "text-red-600 font-medium" : "text-gray-500"}`}
+            className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap border ${storageKB !== null && storageKB > 3500 ? "border-red-300 text-red-600 bg-red-50 font-medium" : "border-gray-200 text-gray-600 bg-white hover:bg-gray-50"}`}
             title="履歴・検索キャッシュ・古いバックアップを削除して、この端末のブラウザ保存領域を空けます（台本や分析はサーバーに残ります）">
-            🧹 保存領域を掃除{storageKB !== null ? `（約${storageKB}KB使用）` : ""}
+            🧹 掃除{storageKB !== null ? `（${storageKB}KB）` : ""}
           </button>
           <button onClick={handleRestoreFromServer}
-            className="text-xs text-gray-500 underline underline-offset-2 hover:text-accent"
+            className="px-3 py-1.5 rounded-full text-xs whitespace-nowrap border border-gray-200 text-gray-600 bg-white hover:bg-gray-50"
             title="サーバーに残っている版（進捗・台本の有無）を確認し、必要ならこの端末の版を置き換えます">
-            ☁ サーバー版を確認して復元
+            ☁ サーバー版を復元
           </button>
         </div>
       </div>
 
       {/* ステップインジケーター */}
-      <div className="flex items-center gap-1 mb-8 overflow-x-auto pb-2">
+      <div className="flex items-center gap-1 mb-6 md:mb-8 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0">
         {STEPS.map((s, i) => (
           <div key={s.id} className="flex items-center">
             <button
               onClick={() => goToStep(s.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
                 i === displayedIndex ? "bg-accent text-white" : i <= effectiveStepIndex ? "bg-accent/10 text-accent cursor-pointer hover:bg-accent/20" : "bg-gray-100 text-gray-400"
               }`}
               disabled={i > effectiveStepIndex}
