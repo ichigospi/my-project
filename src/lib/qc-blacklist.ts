@@ -261,7 +261,7 @@ export function scanDrawSpecCompliance(script: string, drawSpec?: string): Quali
 export function scanFixedPhrases(script: string): QualityCheckItem[] {
   const t = script.replace(/\s+/g, "");
   const items: QualityCheckItem[] = [];
-  if (!/守護天使様が.{0,12}運んで/.test(t)) {
+  if (!/守護天使様が.{0,24}運んで/.test(t)) {
     items.push({ name: "固定句: 最後のカードの導入", status: "warn", comment: "「守護天使様が今、このカードをあなたのために運んでくださいました」が見当たりません", suggestion: "最後のカードの直前に固定句を入れる" });
   }
   if (!/最幸の未来/.test(t)) {
