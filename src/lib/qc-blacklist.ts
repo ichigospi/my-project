@@ -11,13 +11,13 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /加護を[、]?(確かに)?受け取ります/, level: "fail", reason: "軽CTAの意味づけが「守護天使様の加護を受け取る合図」のデフォルト（禁止）", fix: "その動画のコンセプト語（扉・周波数・天秤 等）から意味づけを作る。高評価＝チューニング、コメント＝宣言、のように役割を分ける" },
   { pattern: /あなただけのための無料の霊視鑑定を行っています/, level: "fail", reason: "LINE誘導の定型文（禁止）", fix: "動画の内容に接続した言い回しに（例:「あなたの場合はどうなのか、概要欄のLINEから友だち追加してくれたら、一人ずつ無料で視ています」）" },
   { pattern: /概要欄のLINEから受け取ってください/, level: "warn", reason: "LINE誘導の定型句", fix: "「概要欄のLINEから友だち追加してくださいね」等、言い回しを変える" },
-  { pattern: /コメントは[、]?全部読んでいます/, level: "track", reason: "常連化の定型文（3回に1回・抽選に従う）", fix: "今回は省くか、抽選で指定された常連化の一言に差し替える" },
+  { pattern: /コメントは.{0,4}全部読んで/, level: "track", reason: "常連化の定型文（3回に1回・抽選に従う）", fix: "今回は省くか、抽選で指定された常連化の一言に差し替える" },
   { pattern: /あなたのことが[、]?(私は)?とても大切/, level: "track", reason: "常連化の定型文", fix: "省くか別の言い回しに" },
   { pattern: /明日もこの枠が残っている保証/, level: "track", reason: "枠切迫の定型文（禁止）", fix: "抽選で指定された希少性の型（先着順／人数限り／受付縮小 等）に従う" },
   { pattern: /毎日数十件のお申し込み/, level: "track", reason: "枠切迫の定型句", fix: "希少性の型を変える" },
   { pattern: /追(う|いかける|いかけ)の?をやめ.{0,20}途端/, level: "track", reason: "社会的証明の決まり文句「追うのをやめた途端」（言い換え含む）", fix: "きっかけ→行動→結果の筋が通る具体に書き換える" },
   { pattern: /守護天使様に[、]?(はっきりと)?選ばれた一人/, level: "track", reason: "冒頭の選民宣言「選ばれた一人です」（型の1つ。2連続まで）", fix: "抽選で指定された冒頭の型（お待ちしてました型・既成事実型・直感型 等）に変える" },
-  { pattern: /受け取る準備ができた/, level: "track", reason: "魂の正当化の定型（4回に1回のみ。抽選指定が「使わない」なら fail）", fix: "採用した選民フックの切り口で正当化する" },
+  { pattern: /受け取る準備ができ/, level: "track", reason: "魂の正当化の定型（4回に1回のみ。抽選指定が「使わない」なら fail）", fix: "採用した選民フックの切り口で正当化する" },
   { pattern: /その証拠に、?守護天使様/, level: "warn", reason: "「その証拠に」が何の証拠か繋がらない接続（意味不明）", fix: "「守護天使様が今、このカードを運んでくださいました」だけにするか、別の演出に" },
   { pattern: /結婚の話まで進/, level: "track", reason: "実績表現の使い回し", fix: "別の具体（何が・どう変わった）に" },
   { pattern: /[0-9０-９三]週間ほどで/, level: "track", reason: "時期の言い回しの使い回し", fix: "期間・言い回しを変える" },
@@ -26,7 +26,7 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /そっと棚に戻し/, level: "fail", reason: "金運の定番シーン「値札を見て棚に戻す」の使い回し（テーマ不整合の温床）", fix: "テーマに合う言い当てシーンに差し替える" },
   { pattern: /朝日と夕暮れ/, level: "fail", reason: "対比比喩のデフォルト（禁止）", fix: "抽選で指定された対比の比喩に従う" },
   { pattern: /諦めていた臨時収入|止まっていた入金/, level: "fail", reason: "曖昧で意味の取れない実績表現（禁止）", fix: "何が・どう変わったかの具体（例: 問い合わせが月1件→5件）に" },
-  { pattern: /シャッフルの手が|シャッフルの途中/, level: "fail", reason: "録画解説調の演出（禁止）", fix: "「お、この1枚出ましたね」等、その場で引いている言い方に" },
+  { pattern: /シャッフルの手が|シャッフルの途中|シャッフル(を)?していたら/, level: "fail", reason: "録画解説調の演出（禁止）", fix: "「お、この1枚出ましたね」等、その場で引いている言い方に" },
   { pattern: /箱から飛び出/, level: "fail", reason: "シャッフルと矛盾する演出（禁止）", fix: "束から現れる言い方に" },
   { pattern: /心に入れた/, level: "fail", reason: "造語的で意味の取れない表現（禁止）", fix: "「大切に思った」等の普通の言葉に" },
   { pattern: /問いかけさせてください/, level: "warn", reason: "書き言葉（話し言葉に）", fix: "「ひとつ聞いてもいいですか」" },
@@ -36,8 +36,13 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /本来のあなたに戻る/, level: "track", reason: "波長合わせ型が抽選された回のみ可", fix: "他の型なら言い換える" },
   { pattern: /頭では(もう)?答えが出ているのに/, level: "track", reason: "前回台本の文の流用", fix: "別の言い回しに" },
   { pattern: /執着を手放しなさい/, level: "track", reason: "仮想敵「占い師テンプレ型」の定型", fix: "抽選で指定された仮想敵に従う" },
+  { pattern: /カードを([一二三四五六七八九十]|[0-9０-９]+)枚|([一二三四五六七八九十]|[0-9０-９]+)枚(のカード|引き|を引)/, level: "fail", reason: "枚数の明言（「カードを5枚引きます」等）は禁止", fix: "「カードを順番に引いていきます」のように枚数を言わない" },
+  { pattern: /最高の未来へ/, level: "fail", reason: "決め台詞の表記違い（正しくは「最幸の未来」）", fix: "「一緒に最幸の未来へと、一歩を踏み出していきましょう」" },
+  { pattern: /あなたには.{0,25}(クセ|癖)があ/, level: "fail", reason: "欠点の断定（視聴者を責める言い方）", fix: "「〜してしまうこと、ありませんでしたか」の問いかけ形に" },
+  { pattern: /見てください[。、]この(カード|絵)/, level: "fail", reason: "倒置（動詞を先に言って目的語を後から足す）", fix: "「このカードの〜を見てください」の語順に" },
+  { pattern: /、と。/, level: "fail", reason: "引用の後置（「〜と言っています。〜、と。」の倒置）", fix: "引用を動詞の前に置く（「〜、と伝えているんです」）" },
   { pattern: /ここからが.{0,3}今日.{0,3}(一番|いちばん)大(事|切)/, level: "track", reason: "3枚目前の離脱防止句の使い回し", fix: "「次のカードから話が大きく変わります」等、別の言い回しに" },
-  { pattern: /カードが決めるんじゃ/, level: "track", reason: "「早めるのも遅らせるのもカードが決めるんじゃない」型の使い回し", fix: "別の締め方に（例: 速さを決めるのは、あなたが顔を上げている時間の長さ）" },
+  { pattern: /カードが.{0,4}決めるんじゃ/, level: "track", reason: "「早めるのも遅らせるのもカードが決めるんじゃない」型の使い回し", fix: "別の締め方に（例: 速さを決めるのは、あなたが顔を上げている時間の長さ）" },
   { pattern: /手のひらに.{0,4}吸い/, level: "track", reason: "引き演出「手のひらに吸い付く／吸い寄せられる」の使い回し", fix: "別の登場演出に" },
   { pattern: /ひとつだけ.{0,3}(心配|気がかり)なこと/, level: "track", reason: "終盤の橋渡し「ひとつだけ心配なことが」の使い回し", fix: "別の切り出しに（例: ひとつだけ、引っかかっていることがあって）" },
   { pattern: /自分を責めないで/, level: "track", reason: "深掘りの締め「当たっていたなら、自分を責めないでくださいね」の使い回し", fix: "別の肯定の締めに（例: 俯いていたのは、あなたが弱いからじゃないので）" },
@@ -46,9 +51,9 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /カードじゃな(く|い)/, level: "track", reason: "「決めるのはカードじゃなくてあなた」型の使い回し", fix: "型を外して具体例で言う" },
   { pattern: /すっと(前に)?.{0,4}(出てき|滑り出)/, level: "track", reason: "登場演出「この1枚だけすっと出てきた」の使い回し", fix: "別の登場演出に" },
   { pattern: /(ひとり|一人|お一人).{0,12}視て.{0,20}(限り|順番|順に)/, level: "track", reason: "枠切迫「一人ずつ視ているので限りがある／順番に」型の使い回し", fix: "待機人数型・毎日数十件型など別の型に、具体数を入れて" },
-  { pattern: /弱いからじゃない|弱いからでは(ない|あり)/, level: "track", reason: "労い「それはあなたが弱いからじゃない」の使い回し", fix: "労いの型を変える（例: 真剣に想ってきた証拠）" },
+  { pattern: /弱いからじゃない|弱いからで(も|は)/, level: "track", reason: "労い「それはあなたが弱いからじゃない」の使い回し", fix: "労いの型を変える（例: 真剣に想ってきた証拠）" },
   { pattern: /当たっていた(なら|人|方)/, level: "track", reason: "言い当て直後の「当たっていたなら…」型の使い回し", fix: "別の受け方に（例: ここまで聞いて胸がちくっとした人）" },
-  { pattern: /個別に視ないと.{0,6}分からない領域/, level: "track", reason: "LINE導線「個別に視ないと分からない領域」の使い回し", fix: "別の言い回しに（例: あなたの流れを直接視ないと言えません）" },
+  { pattern: /個別に.{0,12}視ないと.{0,6}分からない/, level: "track", reason: "LINE導線「個別に視ないと分からない領域」の使い回し", fix: "別の言い回しに（例: あなたの流れを直接視ないと言えません）" },
 ];
 
 function excerpt(script: string, m: RegExpMatchArray): string {
@@ -164,7 +169,7 @@ export function scanColorClaims(script: string, cards: { name: string; img?: str
 
 // 漢数字（算用数字ルール）。慣用（一人・一方・一瞬・一度・一本 等）は対象外にし、数えの単位だけを見る
 export function scanKanjiNumerals(script: string): QualityCheckItem[] {
-  const re = /[一二三四五六七八九十百千]+(枚目|週間|ヶ月|か月|カ月|日後|日以内|分後|時間後|パーセント|件|回目|万円|億円)|[三四五六七八九十]つ/g;
+  const re = /[一二三四五六七八九十百千]+(枚目|枚|週間|ヶ月|か月|カ月|日後|日以内|分後|時間後|パーセント|件|回目|万円|億円)|[三四五六七八九十]つ/g;
   const found = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = re.exec(script)) !== null) { found.add(m[0]); if (found.size >= 10) break; }
@@ -252,11 +257,25 @@ export function scanDrawSpecCompliance(script: string, drawSpec?: string): Quali
   return items;
 }
 
+// 固定句の欠落: 最後のカードの「守護天使様が今、このカードを運んでくださいました」／決め台詞
+export function scanFixedPhrases(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const items: QualityCheckItem[] = [];
+  if (!/守護天使様が.{0,12}運んで/.test(t)) {
+    items.push({ name: "固定句: 最後のカードの導入", status: "warn", comment: "「守護天使様が今、このカードをあなたのために運んでくださいました」が見当たりません", suggestion: "最後のカードの直前に固定句を入れる" });
+  }
+  if (!/最幸の未来/.test(t)) {
+    items.push({ name: "固定句: 決め台詞", status: "warn", comment: "「一緒に最幸の未来へと、一歩を踏み出していきましょう」が見当たりません", suggestion: "締めの直前に決め台詞を入れる" });
+  }
+  return items;
+}
+
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[] }): QualityCheckItem[] {
   return [
     ...scanBlacklist(script),
     ...scanConsecutive(script, approvedScripts || []),
     ...scanKanjiNumerals(script),
+    ...scanFixedPhrases(script),
     ...findRepeatedSentences(script, approvedScripts || []),
     ...(opts?.revealed ? scanCardCount(script, opts.revealed) : []),
     ...scanDuplicateAnnouncements(script),
