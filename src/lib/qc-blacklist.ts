@@ -136,6 +136,32 @@ export function scanImageryClaims(script: string, cards: { name: string; img?: s
   return items;
 }
 
+// 色の捏造検出: カードのパートで「黄色い／金色の／明るい色のカード」と言っているのに、公式絵柄にその色の記載が無い場合
+export function scanColorClaims(script: string, cards: { name: string; img?: string }[]): QualityCheckItem[] {
+  if (!cards.length) return [];
+  const t = script.replace(/\s+/g, "");
+  const positions = cards.map((c) => {
+    const re = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ".{0,14}?(正位置|逆位置)");
+    const m = t.match(re);
+    return { ...c, pos: m && m.index !== undefined ? m.index : -1 };
+  }).filter((c) => c.pos >= 0).sort((a, b) => a.pos - b.pos);
+  const items: QualityCheckItem[] = [];
+  positions.forEach((c, i) => {
+    const end = i + 1 < positions.length ? positions[i + 1].pos : Math.min(t.length, c.pos + 1500);
+    const passage = t.slice(c.pos, end);
+    const m = passage.match(/(黄色|金色|黄金色)(い|の)?(カード|絵)/);
+    if (!m) return;
+    if (/黄|金色|金の/.test(c.img || "")) return;
+    items.push({
+      name: `色の捏造の疑い: ${c.name}「${m[0]}」`,
+      status: "warn",
+      comment: `${c.name}のパートで色を運気の根拠にしていますが、公式の絵柄記載にその色がありません`,
+      suggestion: "色の演出は、公式絵柄に黄色・金色の記載があるカードだけで使う（抽選ブロックの「色の演出」欄を参照）",
+    });
+  });
+  return items;
+}
+
 // 漢数字（算用数字ルール）。慣用（一人・一方・一瞬・一度・一本 等）は対象外にし、数えの単位だけを見る
 export function scanKanjiNumerals(script: string): QualityCheckItem[] {
   const re = /[一二三四五六七八九十百千]+(枚目|週間|ヶ月|か月|カ月|日後|日以内|分後|時間後|パーセント|件|回目|万円|億円)|[三四五六七八九十]つ/g;
@@ -236,5 +262,6 @@ export function runMechanicalChecks(script: string, approvedScripts?: string[], 
     ...scanDuplicateAnnouncements(script),
     ...scanDrawSpecCompliance(script, opts?.drawSpec),
     ...(opts?.imagery ? scanImageryClaims(script, opts.imagery) : []),
+    ...(opts?.imagery ? scanColorClaims(script, opts.imagery) : []),
   ];
 }
