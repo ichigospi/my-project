@@ -37,6 +37,8 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /頭では(もう)?答えが出ているのに/, level: "track", reason: "前回台本の文の流用", fix: "別の言い回しに" },
   { pattern: /執着を手放しなさい/, level: "track", reason: "仮想敵「占い師テンプレ型」の定型", fix: "抽選で指定された仮想敵に従う" },
   { pattern: /カードを([一二三四五六七八九十]|[0-9０-９]+)枚|([一二三四五六七八九十]|[0-9０-９]+)枚(のカード|引き|を引)/, level: "fail", reason: "枚数の明言（「カードを5枚引きます」等）は禁止", fix: "「カードを順番に引いていきます」のように枚数を言わない" },
+  { pattern: /受け取る側|受け取る番/, level: "fail", reason: "目的語のない「受け取る」（受け取る側／受け取る番）は一瞬で意味が取れない", fix: "何を受け取るのかを言う（奇跡を／臨時収入を／連絡を）" },
+  { pattern: /そわそわ/, level: "track", reason: "導入の熱量表現「そわそわ」の使い回し", fix: "熱量の一文は毎回別の言い方にする" },
   { pattern: /答えの半分|残りの半分を.{0,6}カードで/, level: "fail", reason: "抽象フック（答えの半分）: 何が得られるか伝わらない冒頭は禁止", fix: "冒頭は視聴者が得るものを具体的に言う（実る時期に入った・奇跡が舞い込む等）" },
   { pattern: /最高の未来へ/, level: "fail", reason: "決め台詞の表記違い（正しくは「最幸の未来」）", fix: "「一緒に最幸の未来へと、一歩を踏み出していきましょう」" },
   { pattern: /あなたには.{0,25}(クセ|癖)があ/, level: "fail", reason: "欠点の断定（視聴者を責める言い方）", fix: "「〜してしまうこと、ありませんでしたか」の問いかけ形に" },
@@ -142,6 +144,22 @@ export function scanImageryClaims(script: string, cards: { name: string; img?: s
     }
   });
   return items;
+}
+
+// 無料鑑定の案内文で「守護天使様からのメッセージ」を約束していないか（有料領域）
+export function scanFreeReadingScope(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const m = t.search(/無料の霊視鑑定|無料鑑定|概要欄のLINE|LINEから/);
+  if (m < 0) return [];
+  const tail = t.slice(Math.max(0, m - 150));
+  const hit = tail.match(/守護天使様(から|の)(の)?メッセージ[^。]{0,30}(お伝え|届け|お届け|伝え)/);
+  if (!hit) return [];
+  return [{
+    name: "無料鑑定の領域違反: 守護天使様からのメッセージ",
+    status: "fail",
+    comment: `無料鑑定の案内で「守護天使様からのメッセージ」を伝えると言っています（有料鑑定の領域）。該当: …${hit[0]}…`,
+    suggestion: "無料鑑定で伝えるのは「時期（いつ動くか）」と「手段（具体的にどうするか）」。守護天使様からのメッセージは案内文から外す",
+  }];
 }
 
 // 色の捏造検出: カードのパートで「黄色い／金色の／明るい色のカード」と言っているのに、公式絵柄にその色の記載が無い場合
@@ -279,6 +297,7 @@ export function runMechanicalChecks(script: string, approvedScripts?: string[], 
     ...scanConsecutive(script, approvedScripts || []),
     ...scanKanjiNumerals(script),
     ...scanFixedPhrases(script),
+    ...scanFreeReadingScope(script),
     ...findRepeatedSentences(script, approvedScripts || []),
     ...(opts?.revealed ? scanCardCount(script, opts.revealed) : []),
     ...scanDuplicateAnnouncements(script),
