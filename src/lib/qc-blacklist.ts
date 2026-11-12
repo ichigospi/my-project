@@ -120,7 +120,9 @@ export function scanImageryClaims(script: string, cards: { name: string; img?: s
     for (const w of VISUAL_CLAIM_WORDS) {
       let around = "";
       for (let si = 0; si < sentences.length && !around; si++) {
-        if (!sentences[si].includes(w)) continue;
+        // 「◯枚目は／◯枚目が」の「目は」「目が」は視線語ではないので除外
+        const stripped = sentences[si].replace(/枚目/g, "枚");
+        if (!stripped.includes(w)) continue;
         const scope = (si > 0 ? sentences[si - 1] : "") + sentences[si];
         // 視聴者に向けた文（「あなた」が主語）は対象外
         if (!cardish.test(scope) || (/あなた/.test(sentences[si]) && !cardish.test(sentences[si]))) continue;
