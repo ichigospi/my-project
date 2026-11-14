@@ -1,6 +1,7 @@
 // 台本プロジェクト管理 & 関連データストア
 
 import { nowIso } from "./server-clock";
+import { idbAvailable, idbLoadAll, idbPutMany, idbDeleteMany } from "./project-db";
 
 // ===== ジャンル・スタイル =====
 export type Genre = "love" | "money" | "general" | "relationship";
@@ -629,28 +630,131 @@ export function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 }
 
-// ===== プロジェクト CRUD =====
-// localStorage への書き込みが容量不足で失敗した企画をメモリ上に保持する安全網。
-// 以前は保存に失敗すると「サーバーには保存しています」と案内しながら、実際の push は
-// localStorage の古い内容を送っていたため、提出した台本が端末にもサーバーにも残らず消えていた。
-// getProjects() がこのオーバーレイを重ねて返すことで、画面表示も push も最新版を使う。
-const memoryOverlay = new Map<string, ScriptProject>();
-export function getUnsavedLocalProjectIds(): string[] {
-  return Array.from(memoryOverlay.keys());
+// ===== プロジェクト CRUD（IndexedDB + メモリキャッシュ） =====
+// 保存先は IndexedDB（project-db.ts）。各画面は同期的に getProjects() を呼ぶため、
+// 起動時に全件をメモリへロードし、以後は「メモリを更新 → 変更分だけ IndexedDB へ非同期書き込み」で動く。
+// 旧保存先（localStorage の fortune_yt_projects）は初回ロード時に取り込んで削除し、容量を解放する。
+let projectsCache: ScriptProject[] | null = null;   // null = 未ロード
+let loadPromise: Promise<void> | null = null;
+let idbOk = false;                                  // IndexedDB が使えているか（false なら localStorage にフォールバック）
+let bc: BroadcastChannel | null = null;             // 別タブへの変更通知
+
+function readLegacyProjects(): ScriptProject[] {
+  try { return JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]"); } catch { return []; }
 }
+function sortByUpdatedDesc(list: ScriptProject[]): ScriptProject[] {
+  return list.slice().sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+}
+function mergeNewer(...sources: ScriptProject[][]): ScriptProject[] {
+  const map = new Map<string, ScriptProject>();
+  for (const src of sources) {
+    for (const p of src) {
+      if (!p || !p.id) continue;
+      const e = map.get(p.id);
+      if (!e || (p.updatedAt || "") > (e.updatedAt || "")) map.set(p.id, p);
+    }
+  }
+  return sortByUpdatedDesc(Array.from(map.values()));
+}
+function setupBroadcast() {
+  if (bc || typeof window === "undefined" || typeof BroadcastChannel === "undefined") return;
+  try {
+    bc = new BroadcastChannel("fortune_yt_projects");
+    bc.onmessage = async () => {
+      // 別タブが書いた分を取り込み直す（updatedAt が新しい方を採用）
+      if (!idbOk) return;
+      try {
+        const fromIdb = await idbLoadAll<ScriptProject>();
+        projectsCache = mergeNewer(projectsCache || [], fromIdb);
+        window.dispatchEvent(new Event("fortune_yt_projects_updated"));
+      } catch { /* ignore */ }
+    };
+  } catch { bc = null; }
+}
+
+// 起動時の全件ロード（複数回呼んでも1回だけ実行）。pull/push と各画面の初期表示はこれを待つ
+export function ensureProjectsLoaded(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    setupBroadcast();
+    if (!idbAvailable()) {
+      projectsCache = mergeNewer(projectsCache || [], readLegacyProjects());
+      return;
+    }
+    try {
+      const fromIdb = await idbLoadAll<ScriptProject>();
+      idbOk = true;
+      // ロード中に保存された分（projectsCache）と旧保存先（localStorage）も合流させる
+      const legacy = readLegacyProjects();
+      const merged = mergeNewer(fromIdb, legacy, projectsCache || []);
+      projectsCache = merged;
+      if (legacy.length > 0 || (projectsCache && fromIdb.length === 0 && merged.length > 0)) {
+        // 旧保存先からの移行: 全件を IndexedDB に書いてから localStorage のキーを消す（約10MBの解放）
+        await idbPutMany(merged);
+        try { localStorage.removeItem(PROJECTS_KEY); } catch { /* ignore */ }
+        console.log(`[project-db] migrated ${legacy.length} projects from localStorage to IndexedDB`);
+      }
+    } catch (e) {
+      console.error("[project-db] IndexedDB unavailable; falling back to localStorage", e);
+      idbOk = false;
+      projectsCache = mergeNewer(projectsCache || [], readLegacyProjects());
+    }
+  })();
+  return loadPromise;
+}
+export function getProjectStorageInfo(): { backend: "indexeddb" | "localstorage"; loaded: boolean; count: number } {
+  return { backend: idbOk ? "indexeddb" : "localstorage", loaded: projectsCache !== null, count: projectsCache?.length || 0 };
+}
+
 export function getProjects(): ScriptProject[] {
   if (typeof window === "undefined") return [];
-  let list: ScriptProject[] = [];
-  try { list = JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]"); } catch { list = []; }
-  if (memoryOverlay.size === 0) return list;
-  const idx = new Map<string, number>();
-  list.forEach((p, i) => idx.set(p.id, i));
-  for (const [id, p] of memoryOverlay) {
-    const i = idx.get(id);
-    if (i === undefined) list.unshift(p);
-    else if ((p.updatedAt || "") >= (list[i].updatedAt || "")) list[i] = p;
+  if (projectsCache === null) {
+    // 未ロードのときは旧保存先の内容で起動し、裏でロードを始める（ロード完了時に合流する）
+    projectsCache = sortByUpdatedDesc(readLegacyProjects());
+    void ensureProjectsLoaded();
   }
-  return list;
+  return projectsCache;
+}
+
+// 変更分の永続化（IndexedDB へ差分書き込み。失敗しても画面と push はメモリの最新版を使う）
+function persistProjects(changed: ScriptProject[], deleted: string[] = []) {
+  if (typeof window === "undefined") return;
+  if (!idbOk) {
+    // フォールバック: 旧来どおり localStorage に全件
+    safeSetItem(PROJECTS_KEY, JSON.stringify(projectsCache || []));
+    return;
+  }
+  Promise.all([idbPutMany(changed), idbDeleteMany(deleted)])
+    .then(() => { lastLocalSaveFailed = false; try { bc?.postMessage({ type: "changed" }); } catch { /* ignore */ } })
+    .catch((e) => { console.error("[project-db] write failed:", e); lastLocalSaveFailed = true; });
+}
+
+// サーバーからの取り込み等で一覧ごと置き換える（中身が変わった企画だけ書き込む）
+export function replaceProjects(next: ScriptProject[]) {
+  const prev = new Map((projectsCache || []).map((p) => [p.id, p]));
+  const changed: ScriptProject[] = [];
+  for (const p of next) {
+    const before = prev.get(p.id);
+    if (before === p) continue; // 同じオブジェクト参照＝マージで据え置かれた企画（30秒ごとの pull で全件を文字列化しない）
+    if (!before || JSON.stringify(before) !== JSON.stringify(p)) changed.push(p);
+  }
+  const nextIds = new Set(next.map((p) => p.id));
+  const deleted = Array.from(prev.keys()).filter((id) => !nextIds.has(id));
+  projectsCache = sortByUpdatedDesc(next);
+  if (changed.length > 0 || deleted.length > 0) persistProjects(changed, deleted);
+}
+
+// チャンネルID統一（同名チャンネルのIDを揃える）を企画に適用
+export function migrateProjectChannelIds(migrations: Record<string, string>): void {
+  if (Object.keys(migrations).length === 0) return;
+  const list = getProjects();
+  const changed: ScriptProject[] = [];
+  const next = list.map((p) => {
+    if (p.channelId && migrations[p.channelId]) { const m = { ...p, channelId: migrations[p.channelId] }; changed.push(m); return m; }
+    return p;
+  });
+  if (changed.length > 0) { projectsCache = next; persistProjects(changed); }
 }
 
 // --- 台本の履歴（上書きで消えた台本を復元するための安全網。この端末の localStorage に企画ごと最大10件） ---
@@ -711,18 +815,8 @@ export function freeLocalStorageSpace(): number {
     if (k === "fortune_yt_script_history" || k === "fortune_yt_search_cache" || /_backup(_v\d+)?$/.test(k)) removable.push(k);
   }
   removable.forEach((k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
-  // 提出済み/完了の企画は結合済みの台本（generatedScript）があるので、分割パートの複製を落とす
-  try {
-    const projects: ScriptProject[] = JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]");
-    let changed = false;
-    for (const p of projects) {
-      if ((p.status === "review" || p.status === "completed") && p.scriptSegments && p.scriptSegments.length > 0 && p.generatedScript) {
-        delete (p as { scriptSegments?: unknown }).scriptSegments;
-        changed = true;
-      }
-    }
-    if (changed) localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
-  } catch { /* ignore */ }
+  // 企画本体は IndexedDB に移行済み（容量上限の心配がない）。移行前の旧データが残っていれば移行を進める
+  void ensureProjectsLoaded();
   return Math.max(0, before - getLocalStorageUsageKB());
 }
 function safeSetItem(key: string, value: string): boolean {
@@ -768,22 +862,16 @@ export function saveProject(project: ScriptProject): ScriptProject[] {
   } else {
     projects.unshift(project);
   }
-  // 保存に失敗しても例外で呼び出し側（画面更新・サーバー同期）を止めない。lastLocalSaveFailed で検知できる
-  const ok = safeSetItem(PROJECTS_KEY, JSON.stringify(projects));
-  if (ok) {
-    // 全件書けたので、メモリ退避分も永続化された
-    memoryOverlay.clear();
-  } else {
-    // 端末に書けなかった版をメモリに退避。getProjects() 経由で push に乗り、サーバーには届く
-    memoryOverlay.set(project.id, project);
-  }
+  // メモリが正。永続化は差分で非同期に行う（失敗しても画面と push はこの最新版を使う）
+  projectsCache = projects;
+  persistProjects([project]);
   return projects;
 }
 
 export function deleteProject(id: string): ScriptProject[] {
-  memoryOverlay.delete(id);
   const projects = getProjects().filter((p) => p.id !== id);
-  safeSetItem(PROJECTS_KEY, JSON.stringify(projects));
+  projectsCache = projects;
+  persistProjects([], [id]);
   return projects;
 }
 

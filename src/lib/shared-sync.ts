@@ -15,6 +15,7 @@ import {
   getHooks, getCTAs, getThumbnailWords, getTitles,
   getPresets, savePreset,
   getProjects, getTasks, getMembers,
+  ensureProjectsLoaded, replaceProjects, migrateProjectChannelIds, getProjectStorageInfo,
   getMyChannelDataList, saveMyChannelData,
   getAnalysisLogs, getWeeklySnapshots, getPerformanceRecords,
   type HookEntry, type CTAEntry, type ThumbnailWordEntry, type TitleEntry,
@@ -218,6 +219,8 @@ function cleanupLegacyStorage() {
 
 export async function pullSharedSettings(opts?: { force?: boolean }): Promise<void> {
   cleanupLegacyStorage();
+  // 企画は IndexedDB からの初回ロードを待ってからマージする（未ロードのまま空配列とマージすると差分 push で消える）
+  await ensureProjectsLoaded();
   const now = Date.now();
   // 進行中の pull があればそれを待つ（重複fetchの完全抑止）
   if (inFlightPull) return inFlightPull;
@@ -311,8 +314,9 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
       // 既存ローカルのchannelIdを書き換え
       if (Object.keys(channelMigrations).length > 0) {
         // channelIdフィールドを持つストア
+        migrateProjectChannelIds(channelMigrations);
         for (const k of [
-          "fortune_yt_projects", "fortune_yt_tasks",
+          "fortune_yt_tasks",
           "fortune_yt_hooks", "fortune_yt_ctas",
           "fortune_yt_thumbnail_words", "fortune_yt_titles",
           "fortune_yt_ideas",
@@ -425,9 +429,9 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
         const remote = Array.isArray(pjData.projects) ? (pjData.projects as ScriptProject[]) : [];
         lastPullProjectCount = remote.length;
         if (remote.length > 0) {
-          const local: ScriptProject[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
+          const local: ScriptProject[] = getProjects();
           const merged = mergeByUpdatedAt(local, migrate(remote));
-          localStorage.setItem("fortune_yt_projects", JSON.stringify(merged));
+          replaceProjects(merged);
         }
       }
     } catch (e) {
@@ -588,9 +592,11 @@ export async function getSyncDiagnostics(): Promise<string> {
     lines.push(`サーバー情報の取得に失敗: ${String(e).slice(0, 120)}`);
   }
   try {
-    const local: { updatedAt?: string }[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
+    await ensureProjectsLoaded();
+    const local = getProjects();
     const latest = local.reduce((m, p) => ((p.updatedAt || "") > m ? p.updatedAt || "" : m), "");
-    lines.push(`【この端末の台本数】${local.length}件（最新の更新: ${fmt(latest)}）`);
+    const info = getProjectStorageInfo();
+    lines.push(`【この端末の台本数】${local.length}件（最新の更新: ${fmt(latest)}）　保存先: ${info.backend === "indexeddb" ? "IndexedDB（容量上限の心配なし）" : "⚠ localStorage（旧方式・容量上限あり）"}`);
   } catch {
     lines.push("【この端末の台本数】読み取り不可");
   }
@@ -668,6 +674,7 @@ async function postWithRetry(
 export async function pushSharedSettings(): Promise<{ ok: boolean; error?: string }> {
   try {
     notifySync("syncing");
+    await ensureProjectsLoaded();
 
     // 全データを「キー単位の独立リクエスト」で送る。
     // 1回にまとめると aiInsights / analysisLogs 等が肥大して

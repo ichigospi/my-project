@@ -5,7 +5,7 @@
 // テロップ・BGM付きでレンダリングする。
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getProjects, ScriptProject } from "@/lib/project-store";
+import { getProjects, ensureProjectsLoaded, ScriptProject } from "@/lib/project-store";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
 import {
@@ -78,6 +78,10 @@ function VideoPageInner() {
     setVideos(vids);
     const scripts = getProjects().filter((p) => p.generatedScript || (p.scriptSegments || []).length > 0);
     setScriptProjects(scripts);
+    // 企画は IndexedDB から非同期にロードされるため、ロード完了後にもう一度反映する
+    ensureProjectsLoaded().then(() => {
+      setScriptProjects(getProjects().filter((p) => p.generatedScript || (p.scriptSegments || []).length > 0));
+    });
 
     const scriptProjectId = searchParams.get("projectId");
     if (scriptProjectId) {
