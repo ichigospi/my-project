@@ -606,8 +606,8 @@ export async function getSyncDiagnostics(): Promise<string> {
   if (lastStaleInfo) lines.push(`【送信が弾かれた記録】${lastStaleInfo}`);
   if (lastSyncError) lines.push(`【直近のエラー】${lastSyncError}`);
   try {
-    const { lastLocalSaveFailed, getLocalStorageUsageKB } = await import("./project-store");
-    lines.push(`【この端末の保存領域】約${getLocalStorageUsageKB()}KB 使用${lastLocalSaveFailed ? "　⚠ 直近の保存に失敗しています（容量不足）" : ""}`);
+    const { lastLocalSaveFailed, lastLocalSaveError, getLocalStorageUsageKB } = await import("./project-store");
+    lines.push(`【この端末の保存領域（localStorage）】約${getLocalStorageUsageKB()}KB 使用${lastLocalSaveFailed ? `　⚠ 直近の端末保存に失敗: ${lastLocalSaveError || "理由不明"}` : ""}`);
   } catch { /* ignore */ }
   lines.push("");
   lines.push("見方: オーナーと管理者で【DB】のホスト名が違えば別のDBに保存されています。同じなのに【サーバー上の台本数】の最新更新が古ければ、送信が届いていません（直近のエラー・弾かれた記録を確認）。");
