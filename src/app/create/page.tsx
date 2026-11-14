@@ -148,6 +148,88 @@ export default function CreatePage() {
     }
   };
 
+  // ===== サーバー上の台本を本文ごと探す（提出したのに消えた台本の復元） =====
+  type ServerInspectItem = {
+    id: string; title: string; refTitle: string; channelId: string; status: string; scriptReviewStatus: string; updatedAt: string;
+    generatedLen: number; submittedLen: number; reviewedLen: number; segments: number; historyCount: number;
+  };
+  type ServerSnap = { at: string; savedAt: string; status?: string; scriptReviewStatus?: string; generatedScript?: string; submittedScript?: string; reviewedScript?: string };
+  const [serverQuery, setServerQuery] = useState("");
+  const [serverItems, setServerItems] = useState<ServerInspectItem[] | null>(null);
+  const [serverBusy, setServerBusy] = useState(false);
+  const [serverHist, setServerHist] = useState<Record<string, ServerSnap[] | null>>({});
+  const searchServer = async () => {
+    setServerBusy(true);
+    try {
+      const res = await fetch(`/api/projects/inspect?q=${encodeURIComponent(serverQuery.trim())}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setServerItems(Array.isArray(data.items) ? data.items : []);
+    } catch (e) {
+      alert(`サーバーの検索に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      setServerItems([]);
+    } finally { setServerBusy(false); }
+  };
+  const fetchFull = async (id: string): Promise<{ project: ScriptProject | null; history: ServerSnap[] }> => {
+    const res = await fetch(`/api/projects/inspect?id=${encodeURIComponent(id)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    return { project: data.project || null, history: Array.isArray(data.history) ? data.history : [] };
+  };
+  // サーバーの現在版をこの端末に取り込む（この端末の版より古くても強制的に上書き）
+  const importServerVersion = async (id: string) => {
+    try {
+      const { project } = await fetchFull(id);
+      if (!project) { alert("サーバーにこの企画が見つかりませんでした"); return; }
+      const local = getProjects().find((p) => p.id === id);
+      if (local && !confirm(`この端末の「${local.title || "（タイトル未定）"}」をサーバー版で上書きします。よろしいですか？`)) return;
+      saveProject({ ...project, channelId: activeChannel?.id || project.channelId || "" });
+      setProjects(getProjectsByChannel(activeChannel?.id || ""));
+      if (activeProject?.id === id) setActiveProject(getProjects().find((p) => p.id === id) || null);
+      pushSharedSettings();
+      alert("サーバー版を取り込みました");
+    } catch (e) {
+      alert(`取り込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  const loadHistory = async (id: string) => {
+    setServerHist((m) => ({ ...m, [id]: null }));
+    try {
+      const { history } = await fetchFull(id);
+      setServerHist((m) => ({ ...m, [id]: history }));
+    } catch (e) {
+      alert(`履歴の取得に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      setServerHist((m) => ({ ...m, [id]: [] }));
+    }
+  };
+  // サーバー履歴の本文を、提出済み台本として復元する（添削部屋に戻る）
+  const restoreFromSnap = async (id: string, snap: ServerSnap) => {
+    const text = snap.submittedScript || snap.reviewedScript || snap.generatedScript || "";
+    if (!text.trim()) { alert("この履歴には本文がありません"); return; }
+    if (!confirm(`この履歴の本文（${text.length}文字）を提出台本として復元し、添削部屋に戻します。よろしいですか？`)) return;
+    try {
+      let base = getProjects().find((p) => p.id === id) || null;
+      if (!base) base = (await fetchFull(id)).project;
+      if (!base) { alert("企画本体が見つかりませんでした"); return; }
+      const restored: ScriptProject = {
+        ...base,
+        channelId: activeChannel?.id || base.channelId || "",
+        generatedScript: snap.generatedScript || base.generatedScript || text,
+        submittedScript: text,
+        reviewedScript: snap.reviewedScript || text,
+        status: "review",
+        scriptReviewStatus: "pending",
+      };
+      saveProject(restored);
+      setProjects(getProjectsByChannel(activeChannel?.id || ""));
+      if (activeProject?.id === id) setActiveProject(restored);
+      const r = await pushSharedSettings();
+      alert(r.ok ? "復元してサーバーにも保存しました" : `この端末には復元しましたが、サーバーへの送信に失敗しました: ${r.error || ""}`);
+    } catch (e) {
+      alert(`復元に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const handleRecover = (item: { p: ScriptProject; kind: "server" | "orphan" }) => {
     // 今見ているチャンネルの一覧に必ず出るように、チャンネルIDを現在のチャンネルへ付け替えて保存
     const restored: ScriptProject = { ...item.p, channelId: activeChannel?.id || item.p.channelId || "" };
@@ -192,7 +274,7 @@ export default function CreatePage() {
     pushSharedSettings();
     if (lastLocalSaveFailed && !storageWarnedRef.current) {
       storageWarnedRef.current = true;
-      alert("この端末のブラウザ保存領域が一杯で、ローカル保存に失敗しました（サーバーには保存しています）。\n画面右上の「🧹 保存領域を掃除」を押してください。改善しない場合は、ブラウザの閲覧データ（このサイトのデータ）を削除してから「同期」で復元できます。");
+      alert("この端末のブラウザ保存領域が一杯で、ローカル保存に失敗しました。今の変更はメモリ上に保持してサーバーへ直接送っています。\nこのタブを閉じる前に、左下の同期表示が「同期済み」になっていることを確認してください。\nその後、画面右上の「🧹 保存領域を掃除」を押すか、ブラウザの閲覧データ（このサイトのデータ）を削除してから「同期」で復元してください。");
     }
 
     // 工程表との自動連動
@@ -333,6 +415,67 @@ export default function CreatePage() {
                   ))}
                 </div>
               )}
+
+              {/* サーバー上の台本を本文ごと探す */}
+              <div className="mt-4 pt-3 border-t border-gray-100">
+                <h4 className="font-semibold text-xs mb-1">📄 サーバー上の台本を本文ごと探す</h4>
+                <p className="text-[11px] text-gray-400 mb-2">提出したのに消えた台本はここで探せます。タイトルの一部（空欄なら全件）で検索すると、サーバーに本文が何文字残っているか、上書き前の履歴が何件あるかが分かります。</p>
+                <div className="flex gap-2 mb-2">
+                  <input value={serverQuery} onChange={(e) => setServerQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") searchServer(); }}
+                    placeholder="タイトルの一部（例: 運命の人）" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5" />
+                  <button onClick={searchServer} disabled={serverBusy} className="px-3 py-1.5 rounded-lg bg-gray-800 text-white text-xs font-medium disabled:opacity-50">{serverBusy ? "検索中..." : "サーバーを検索"}</button>
+                </div>
+                {serverItems !== null && serverItems.length === 0 && <p className="text-xs text-gray-400">見つかりませんでした</p>}
+                {serverItems !== null && serverItems.length > 0 && (
+                  <div className="space-y-2 max-h-[420px] overflow-auto pr-1">
+                    {serverItems.map((it) => {
+                      const local = getProjects().find((p) => p.id === it.id);
+                      const localSub = (local?.submittedScript || "").length;
+                      const hist = serverHist[it.id];
+                      return (
+                        <div key={it.id} className="rounded-lg border border-gray-100 p-2.5">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{it.title || "（タイトル未定）"}</p>
+                              <p className="text-[11px] text-gray-400">
+                                サーバー更新 {it.updatedAt ? new Date(it.updatedAt).toLocaleString("ja-JP") : "不明"}・進捗 {it.status}{it.scriptReviewStatus ? `／台本チェック ${it.scriptReviewStatus}` : ""}
+                              </p>
+                              <p className="text-[11px] text-gray-500">
+                                生成台本 {it.generatedLen}字／提出台本 {it.submittedLen}字／添削後 {it.reviewedLen}字{it.segments > 0 ? `／分割 ${it.segments}` : ""}／上書き前の履歴 {it.historyCount}件
+                                {local ? `　｜ この端末: 提出台本 ${localSub}字` : "　｜ この端末には無し"}
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-1 shrink-0">
+                              <button onClick={() => importServerVersion(it.id)} className="px-2.5 py-1 rounded-lg bg-accent text-white text-[11px] font-medium hover:bg-accent/90">サーバー版を取り込む</button>
+                              {it.historyCount > 0 && (
+                                <button onClick={() => loadHistory(it.id)} className="px-2.5 py-1 rounded-lg border border-gray-200 text-[11px] text-gray-600 hover:bg-gray-50">履歴を見る</button>
+                              )}
+                            </div>
+                          </div>
+                          {hist === null && <p className="text-[11px] text-gray-400 mt-1">履歴を取得中...</p>}
+                          {Array.isArray(hist) && hist.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {hist.map((s, i) => {
+                                const t = s.submittedScript || s.reviewedScript || s.generatedScript || "";
+                                return (
+                                  <div key={i} className="flex items-center gap-2 text-[11px] bg-gray-50 rounded px-2 py-1">
+                                    <span className="flex-1 min-w-0 truncate">
+                                      {s.at ? new Date(s.at).toLocaleString("ja-JP") : "日時不明"} の版・{s.status || ""}{s.scriptReviewStatus ? `／${s.scriptReviewStatus}` : ""}・
+                                      {s.submittedScript ? `提出 ${s.submittedScript.length}字` : s.generatedScript ? `生成 ${s.generatedScript.length}字` : `添削後 ${(s.reviewedScript || "").length}字`}
+                                      <span className="text-gray-400">　{t.slice(0, 40).replace(/\s+/g, " ")}…</span>
+                                    </span>
+                                    <button onClick={() => restoreFromSnap(it.id, s)} className="px-2 py-0.5 rounded bg-green-600 text-white font-medium shrink-0">この本文を復元</button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
