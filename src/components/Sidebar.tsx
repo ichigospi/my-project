@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { getApiKey } from "@/lib/channel-store";
 import { getTaskManager } from "@/lib/analysis-task-manager";
-import { onSyncStatus, getLastSyncError, pushSharedSettings } from "@/lib/shared-sync";
+import { onSyncStatus, getLastSyncError, pushSharedSettings, getSyncDiagnostics } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
 
 const navItems = [
@@ -234,15 +234,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           )}
           <div
             className="flex items-center gap-2 pt-1 border-t border-white/10 cursor-help"
-            title={syncStatus === "error" ? `エラー詳細: ${getLastSyncError() || "(詳細不明)"}\nクリックでクリップボードにコピー` : ""}
-            onClick={() => {
-              if (syncStatus === "error") {
-                const err = getLastSyncError();
-                if (err) {
-                  navigator.clipboard?.writeText(err).catch(() => {});
-                  alert(`同期エラー詳細:\n\n${err}`);
-                }
-              }
+            title={syncStatus === "error" ? `エラー詳細: ${getLastSyncError() || "(詳細不明)"}\nクリックで診断を表示（クリップボードにもコピー）` : "クリックで同期の診断を表示（接続先DB・サーバー上の台本数・時計のズレ）"}
+            onClick={async () => {
+              // エラー時も正常時も、切り分け用の診断を出す（オーナーと管理者で見比べる）
+              const err = syncStatus === "error" ? getLastSyncError() : "";
+              const diag = await getSyncDiagnostics();
+              const text = `${err ? `同期エラー詳細:\n${err}\n\n` : ""}同期の診断:\n${diag}`;
+              navigator.clipboard?.writeText(text).catch(() => {});
+              alert(text);
             }}
           >
             <span className={`w-2 h-2 rounded-full ${

@@ -32,6 +32,7 @@ import {
 } from "./idea-store";
 import type { RegisteredChannel } from "./channel-store";
 import type { MyChannel } from "./channel-context";
+import { learnServerTime, describeClockSkew, getClockSkew } from "./server-clock";
 
 const MY_CHANNELS_KEY = "fortune_yt_my_channels";
 const ACTIVE_CHANNEL_KEY = "fortune_yt_active_channel";
@@ -183,6 +184,10 @@ function mergeProfile(local: ChannelProfile, server: ChannelProfile | null): Cha
 // 短時間内の重複呼び出しを抑止する（複数ページがマウント時に pull するため）
 let lastPullAt = 0;
 let inFlightPull: Promise<void> | null = null;
+// 診断表示用: 直近の pull でサーバーから受け取った台本件数 / 直近の push 時刻 / 直近に stale 扱いされた件数
+let lastPullProjectCount = -1;
+let lastPushAt = 0;
+let lastStaleInfo = "";
 const PULL_CACHE_MS = 30_000; // 30秒以内の再pullはスキップ
 
 // localStorageの容量を圧迫する遺物の掃除（起動時に毎回実行・軽量）。
@@ -416,7 +421,9 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
       const pjRes = await fetch("/api/projects");
       if (pjRes.ok) {
         const pjData = await pjRes.json();
+        learnServerTime(pjData.serverTime);
         const remote = Array.isArray(pjData.projects) ? (pjData.projects as ScriptProject[]) : [];
+        lastPullProjectCount = remote.length;
         if (remote.length > 0) {
           const local: ScriptProject[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
           const merged = mergeByUpdatedAt(local, migrate(remote));
@@ -553,6 +560,52 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
     }
   })();
   return inFlightPull;
+}
+
+// ===== 同期の切り分け診断 =====
+// サイドバーの同期表示をクリックしたときに出す。オーナー画面と管理者画面で見比べる想定。
+// 「DBが別」「サーバーに届いていない」「時計がズレている」「ローカル保存が失敗している」を一目で判別する。
+export async function getSyncDiagnostics(): Promise<string> {
+  const lines: string[] = [];
+  const fmt = (iso: string) => (iso ? new Date(iso).toLocaleString() : "(なし)");
+  try {
+    const res = await fetch("/api/sync-info", { cache: "no-store" });
+    const d = (await res.json().catch(() => ({}))) as {
+      error?: string; serverTime?: string; dbKind?: string; dbHost?: string;
+      user?: { id: string; name: string; role: string }; projectCount?: number; latestProjectUpdatedAt?: string; deploy?: string;
+    };
+    if (d.serverTime) learnServerTime(d.serverTime);
+    lines.push(`【接続先】${window.location.host}`);
+    if (!res.ok || d.error) {
+      lines.push(`サーバー情報の取得に失敗: HTTP ${res.status} ${d.error || ""}`);
+    } else {
+      lines.push(`【DB】${d.dbKind === "turso" ? "Turso（共有DB）" : "⚠ ローカルファイル（この端末だけのDB。他の人には届きません）"} ${d.dbHost || ""}`);
+      lines.push(`【ログイン】${d.user?.name || "(不明)"} / ${d.user?.role || ""} ${d.user?.id === "local" ? "（認証なしのローカル扱い）" : ""}`);
+      lines.push(`【サーバー上の台本数】${d.projectCount ?? "?"}件（最新の更新: ${fmt(d.latestProjectUpdatedAt || "")}）`);
+      if (d.deploy) lines.push(`【デプロイ】${d.deploy}`);
+    }
+  } catch (e) {
+    lines.push(`サーバー情報の取得に失敗: ${String(e).slice(0, 120)}`);
+  }
+  try {
+    const local: { updatedAt?: string }[] = JSON.parse(localStorage.getItem("fortune_yt_projects") || "[]");
+    const latest = local.reduce((m, p) => ((p.updatedAt || "") > m ? p.updatedAt || "" : m), "");
+    lines.push(`【この端末の台本数】${local.length}件（最新の更新: ${fmt(latest)}）`);
+  } catch {
+    lines.push("【この端末の台本数】読み取り不可");
+  }
+  lines.push(`【直近の受信】${lastPullAt ? new Date(lastPullAt).toLocaleTimeString() : "未実行"}${lastPullProjectCount >= 0 ? `（サーバーから${lastPullProjectCount}件）` : ""}`);
+  lines.push(`【直近の送信成功】${lastPushAt ? new Date(lastPushAt).toLocaleTimeString() : "未実行"}`);
+  lines.push(`【時計のズレ】${describeClockSkew()}`);
+  if (lastStaleInfo) lines.push(`【送信が弾かれた記録】${lastStaleInfo}`);
+  if (lastSyncError) lines.push(`【直近のエラー】${lastSyncError}`);
+  try {
+    const { lastLocalSaveFailed, getLocalStorageUsageKB } = await import("./project-store");
+    lines.push(`【この端末の保存領域】約${getLocalStorageUsageKB()}KB 使用${lastLocalSaveFailed ? "　⚠ 直近の保存に失敗しています（容量不足）" : ""}`);
+  } catch { /* ignore */ }
+  lines.push("");
+  lines.push("見方: オーナーと管理者で【DB】のホスト名が違えば別のDBに保存されています。同じなのに【サーバー上の台本数】の最新更新が古ければ、送信が届いていません（直近のエラー・弾かれた記録を確認）。");
+  return lines.join("\n");
 }
 
 // 同期ステータス通知
@@ -721,6 +774,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         const chunkIdx = Math.floor(i / CHUNK_SIZE) + 1;
         const totalChunks = Math.ceil(changedProjects.length / CHUNK_SIZE);
         const r = await postWithRetry("/api/projects", JSON.stringify({ projects: chunk }));
+        learnServerTime(r.data.serverTime);
         if (r.status === 401) {
           const msg = "セッションが切れています。ページを再読み込みしてログインし直してください（同期は中断しました）";
           notifySync("error", msg);
@@ -753,9 +807,18 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
         }
       }
       if (staleIds.size > 0) {
-        console.warn(`[shared-sync] ${staleIds.size}件はサーバー版のほうが新しいため上書きせず、最新を取り込みます`);
+        // 黙って巻き戻すと「保存したのに反映されない」の原因が見えないので、ステータスに残す
+        const titles = allProjects
+          .filter((p) => staleIds.has(p.id))
+          .map((p) => (p.title || "(無題)").slice(0, 20));
+        lastStaleInfo = `${new Date().toLocaleTimeString()} に ${staleIds.size}件がサーバー版のほうが新しいため送信されませんでした: ${titles.slice(0, 3).join("、")}${titles.length > 3 ? " 他" : ""}`;
+        console.warn(`[shared-sync] ${lastStaleInfo}`);
         lastPullAt = 0;
         await pullSharedSettings({ force: true });
+        const skew = getClockSkew();
+        const skewNote = skew.learned && Math.abs(skew.offsetMs) >= 60_000 ? `\nこの端末の時計がサーバーと${Math.round(Math.abs(skew.offsetMs) / 60000)}分ズレています。端末の時計を自動設定にしてください。` : "";
+        notifySync("error", `${lastStaleInfo}。サーバー版を取り込みました（他の端末で後から保存された場合は正常です）。${skewNote}`);
+        return { ok: false, error: lastStaleInfo };
       }
 
       if (failedProjects.length > 0) {
@@ -775,6 +838,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
     }
 
     notifySync("synced");
+    lastPushAt = Date.now();
     console.log("[shared-sync] pushed settings to server");
     return { ok: true };
   } catch (e) {
