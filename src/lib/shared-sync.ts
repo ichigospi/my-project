@@ -544,6 +544,7 @@ export async function pullSharedSettings(opts?: { force?: boolean }): Promise<vo
       notifySync("synced");
       console.log("[shared-sync] pulled & merged settings from server");
       lastPullAt = Date.now();
+      try { window.dispatchEvent(new Event("fortune_yt_projects_updated")); } catch { /* ignore */ }
     } catch (e) {
       notifySync("error", `pull例外: ${String(e).slice(0, 200)}`);
       console.error("[shared-sync] pull failed:", e);
@@ -713,6 +714,7 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
       });
       const CHUNK_SIZE = 3; // 1リクエストあたりのプロジェクト数（生成台本込みで安全な数）
       const failedProjects: { id: string; size: number; error: string }[] = [];
+      const staleIds = new Set<string>();
 
       for (let i = 0; i < changedProjects.length; i += CHUNK_SIZE) {
         const chunk = changedProjects.slice(i, i + CHUNK_SIZE);
@@ -741,11 +743,19 @@ export async function pushSharedSettings(): Promise<{ ok: boolean; error?: strin
           failedProjects.push(...(r.data.failed as { id: string; size: number; error: string }[]));
         }
         // 成功したプロジェクトだけハッシュを記録（失敗分は次回pushで再送される）
+        // サーバーの版のほうが新しくて上書きされなかったもの（stale）は、あとで force pull してサーバー版に追従する
+        const staleList = Array.isArray(r.data.stale) ? (r.data.stale as { id: string }[]) : [];
+        for (const s of staleList) staleIds.add(s.id);
         for (const p of chunk) {
           if (!failedIds.has(p.id)) {
             localStorage.setItem(PUSH_HASH_PREFIX + "project_" + p.id, projectHashes.get(p.id) || "");
           }
         }
+      }
+      if (staleIds.size > 0) {
+        console.warn(`[shared-sync] ${staleIds.size}件はサーバー版のほうが新しいため上書きせず、最新を取り込みます`);
+        lastPullAt = 0;
+        await pullSharedSettings({ force: true });
       }
 
       if (failedProjects.length > 0) {

@@ -856,6 +856,17 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       status: "review",
       submittedWithWarnings: blockers,
     });
+    // 提出はサーバーに届いて初めて「反映」される。送信結果を確認して、失敗なら本人に分かるようにする
+    setTimeout(async () => {
+      try {
+        const r = await pushSharedSettings();
+        if (!r.ok) {
+          alert(`提出はこの端末に保存されましたが、サーバーへの送信に失敗しました。\n画面の「同期」ボタンを押して再送してください。\n\n理由: ${r.error || "不明"}`);
+        }
+      } catch (e) {
+        alert(`提出はこの端末に保存されましたが、サーバーへの送信に失敗しました。\n画面の「同期」ボタンを押して再送してください。\n\n理由: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }, 0);
     notifyChatwork(
       reviewMessage("submitted", getProfileByChannel(project.channelId || "").channelName || "", project.title, {
         reviewUrl: reviewRoomUrl(project.id),

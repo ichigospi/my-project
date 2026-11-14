@@ -59,13 +59,33 @@ export async function POST(request: NextRequest) {
     }
 
     const failed: { id: string; size: number; error: string }[] = [];
+    // 古い端末からの上書き防止: サーバーに保存されている版の updatedAt が、送られてきた版より新しい場合は
+    // 上書きせずに stale として返す（例: 管理者が提出した直後に、オーナーの古い画面が push した場合）。
+    // クライアントは stale を受け取ったら force pull して最新に追従する。
+    const stale: { id: string; serverUpdatedAt: string }[] = [];
     let updated = 0;
+    const getTime = (v: unknown) => {
+      const ts = (v as { updatedAt?: string })?.updatedAt;
+      const n = ts ? new Date(ts).getTime() : 0;
+      return Number.isFinite(n) ? n : 0;
+    };
     for (const p of projects) {
       const id = (p as { id?: string })?.id;
       if (!id) continue;
       const key = PROJECT_KEY_PREFIX + id;
       const value = JSON.stringify(p);
       try {
+        const existing = await prisma.appSetting.findUnique({ where: { key } });
+        if (existing?.value) {
+          let serverObj: unknown = null;
+          try { serverObj = JSON.parse(existing.value); } catch { serverObj = null; }
+          const serverTime = getTime(serverObj);
+          const incomingTime = getTime(p);
+          if (serverTime > 0 && incomingTime > 0 && serverTime > incomingTime) {
+            stale.push({ id, serverUpdatedAt: (serverObj as { updatedAt: string }).updatedAt });
+            continue;
+          }
+        }
         await prisma.appSetting.upsert({
           where: { key },
           update: { value },
@@ -82,6 +102,7 @@ export async function POST(request: NextRequest) {
       ok: failed.length === 0,
       updated,
       failed,
+      stale,
     });
   } catch (e) {
     console.error("POST /api/projects error:", e);
