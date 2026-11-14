@@ -1,5 +1,7 @@
 // 台本プロジェクト管理 & 関連データストア
 
+import { nowIso } from "./server-clock";
+
 // ===== ジャンル・スタイル =====
 export type Genre = "love" | "money" | "general" | "relationship";
 export type Style = "healing" | "education" | "tarot";
@@ -729,7 +731,9 @@ function safeSetItem(key: string, value: string): boolean {
 export function saveProject(project: ScriptProject): ScriptProject[] {
   const projects = getProjects();
   const idx = projects.findIndex((p) => p.id === project.id);
-  project.updatedAt = new Date().toISOString();
+  // サーバー時刻に補正した時刻を使う（端末の時計が遅れていると、サーバー側の
+  // 「古い版では上書きしない」ガードに全部弾かれて何も反映されなくなるため）
+  project.updatedAt = nowIso();
   if (idx >= 0) {
     // 台本本文が変わる（または消える）場合は、変更前の本文を履歴に退避する
     const old = projects[idx];
@@ -763,7 +767,7 @@ export function createProject(genre: Genre, style: Style, channelId?: string): S
     referenceVideos: [], analyses: [], structureProposal: null,
     generatedScript: "", telopScript: null, thumbnailTexts: [],
     status: "title", channelId: channelId || "",
-    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    createdAt: nowIso(), updatedAt: nowIso(),
   };
 }
 

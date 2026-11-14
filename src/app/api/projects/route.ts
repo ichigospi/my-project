@@ -40,7 +40,8 @@ export async function GET() {
       console.error("GET /api/projects: legacy blob read failed", e);
     }
 
-    return NextResponse.json({ projects });
+    // serverTime: 端末の時計ズレ補正用（shared-sync が学習する）
+    return NextResponse.json({ projects, serverTime: new Date().toISOString() });
   } catch (e) {
     console.error("GET /api/projects error:", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
@@ -103,6 +104,7 @@ export async function POST(request: NextRequest) {
       updated,
       failed,
       stale,
+      serverTime: new Date().toISOString(),
     });
   } catch (e) {
     console.error("POST /api/projects error:", e);
