@@ -57,7 +57,12 @@ export interface CardSlot {
   source: string;          // 出典（元ネタのどこ／ルール）
   reason: string;          // 位置の理由（1行）
 }
-export interface CardPlan { slots: CardSlot[]; updatedAt: string }
+export interface CardPlan {
+  slots: CardSlot[];
+  // カードにしない要素（今日占うこと・LINE誘導・高評価CTA等）。どこで扱うかのメモ。設計表の枚数には含めない
+  outside?: { title: string; where: string; note?: string }[];
+  updatedAt: string;
+}
 export function formatCardPlanForPrompt(plan: CardPlan | null | undefined): string {
   if (!plan?.slots?.length) return "";
   const n = plan.slots.length;
@@ -67,6 +72,8 @@ export function formatCardPlanForPrompt(plan: CardPlan | null | undefined): stri
     ...plan.slots.map((sl, i) => `${i + 1}枚目 [${sl.kind === "core" ? "コア" : "追加"}／${sl.role}] ${sl.title}: ${sl.content}`),
     `- 枚数は${n}枚。カードの追加・削除・順番変更は禁止（${neg > 0 ? `${neg}枚目が常識破壊` : ""}）`,
     "- 「追加」カードは元ネタ固有の必須要素。省略せず、記載の中身を必ず入れる",
+    "- 各カードで語るのは「そのカードで視る内容」だけ。今日占うことの宣言・高評価や登録のお願い・コメント誘導・LINE誘導はカードの読みに混ぜない（オープニング／合間／クロージングで扱う）",
+    ...(plan.outside?.length ? [`- カードにしない要素（カードの外で扱う）: ${plan.outside.map((o) => `${o.title}→${o.where}`).join("／")}`] : []),
   ].join("\n");
 }
 

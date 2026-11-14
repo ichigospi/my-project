@@ -281,7 +281,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   const [newCardText, setNewCardText] = useState("");
   const [newCardOpen, setNewCardOpen] = useState(false);
   const savePlan = (slots: CardSlot[]) => {
-    onUpdate({ ...project, cardPlan: { slots, updatedAt: new Date().toISOString() } });
+    onUpdate({ ...project, cardPlan: { ...(project.cardPlan || {}), slots, updatedAt: new Date().toISOString() } });
     pushSharedSettings();
   };
   const generateCardPlan = async (instruction?: string) => {
@@ -898,6 +898,16 @@ ${p.content}`;
                     </li>
                   ))}
                 </ol>
+              )}
+              {project.cardPlan && (project.cardPlan.outside?.length || 0) > 0 && (
+                <div className="mt-3 rounded-xl p-3 border border-gray-200 bg-white">
+                  <p className="text-sm font-medium text-gray-700 mb-1">カードにしない要素（カードで視る内容ではないので、設計表の枚数には入れません）</p>
+                  <ul className="text-sm text-gray-600 space-y-0.5">
+                    {project.cardPlan.outside!.map((o, i) => (
+                      <li key={i}>・{o.title} → {o.where}{o.note ? `（${o.note}）` : ""}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
               {project.cardPlan && (
                 <div className="mt-3 flex flex-wrap gap-2">

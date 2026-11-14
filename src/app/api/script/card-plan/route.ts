@@ -19,6 +19,15 @@ const SYSTEM_PROMPT = `あなたは占い系YouTube台本の構成プロデュ�
 5. 未来（理想の未来＋主体化）
 この順番は崩さない。CTA（無料鑑定）は未来の後に来る（設計表には入れない）。
 
+【カードに載せてよいのは「カードで視る内容」だけ（必達）】
+- 設計表の各行は「1枚のカードをめくって読み解く中身」。カードは視聴者の状況・心・流れ・未来を映すものなので、
+  載せてよいのは例えば: 今の状態／止まっている原因／変化のきっかけ／乗り越える壁／どう動くか／何が引っかからせるか／結末・理想の未来／最後の合図／時期の性質
+- 次のものはカードで視る内容ではないので、コアにも追加にも絶対に入れない:
+  「今日占うこと」「テーマの宣言」「導入・選民・あいさつ」「高評価・チャンネル登録のお願い」「コメント誘導」「LINE誘導・無料鑑定の案内」
+  「口コミ・実績紹介」「開運アクションのまとめ」「締め・次回予告」。これらはオープニングか本編の合間かクロージングで扱う、カードの外側の要素
+- 元ネタの「必ず反映する要素」にそうした外側の要素が含まれていたら、カードにはせず outside に「要素名: どこで扱うか（オープニング／合間／クロージング）」として書く
+- 追加カードを作るときも、title は「◯◯（カードで何を視るか）」になっていること。「LINE誘導」「今日のテーマ」のような title は不可
+
 【元ネタ固有の必須要素の置き方】
 - 「元ネタの本質」の「必ず反映する要素」を1つずつ見て、背骨のどこかに「統合」するか、「追加カード」として差し込むかを決める
 - 追加カードは最大2枚（合計7枚まで）。元ネタがその要素を1枚分の長さで語っていれば「追加」、ひと言なら「統合」
@@ -33,7 +42,14 @@ const SYSTEM_PROMPT = `あなたは占い系YouTube台本の構成プロデュ�
 - reason: 位置の理由を1行、30字以内（例:「期待を上げる情報は深掘りの前」）
 
 必ず次のJSONのみで回答（説明文・コードブロック記法は禁止）:
-{ "slots": [ { "role": "問題提起|深掘り|常識破壊|解決|未来|追加", "kind": "core|extra", "title": "…", "content": "…", "source": "…", "reason": "…" } ] }`;
+{ "slots": [ { "role": "問題提起|深掘り|常識破壊|解決|未来|追加", "kind": "core|extra", "title": "…", "content": "…", "source": "…", "reason": "…" } ],
+  "outside": [ { "title": "カードにしない要素名", "where": "オープニング|合間|クロージング", "note": "一言" } ] }`;
+
+// カードで視る内容ではないもの（AIが誤って入れた場合のサーバー側ガード）
+const NON_READING = /LINE|ライン|無料鑑定|概要欄|高評価|チャンネル登録|登録|コメント|今日占う|占うこと|今日のテーマ|テーマ宣言|導入|オープニング|あいさつ|挨拶|選民|口コミ|実績|締め|クロージング|次回|開運アクション|行動まとめ|CTA|誘導/;
+function isNonReadingSlot(sl: { title: string; content: string }): boolean {
+  return NON_READING.test(sl.title) || /LINE|無料鑑定|概要欄|高評価|チャンネル登録|コメント(して|欄|を)|誘導/.test(sl.content);
+}
 
 function parseJSON(raw: string): Record<string, unknown> | null {
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -98,6 +114,9 @@ ${instruction ? `\n【オーナーからの指示（最優先で反映）】\n${
 
     const parsed = parseJSON(raw);
     if (!parsed || !Array.isArray(parsed.slots)) return NextResponse.json({ error: "AI応答の解析に失敗しました" }, { status: 500 });
+    const outside: { title: string; where: string; note: string }[] = Array.isArray(parsed.outside)
+      ? (parsed.outside as Record<string, unknown>[]).map((o) => ({ title: String(o.title || "").slice(0, 30), where: String(o.where || "").slice(0, 20), note: String(o.note || "").slice(0, 60) })).filter((o) => o.title)
+      : [];
     const slots: CardSlot[] = (parsed.slots as Record<string, unknown>[])
       .map((sl) => ({
         role: String(sl.role || "追加"),
@@ -108,13 +127,21 @@ ${instruction ? `\n【オーナーからの指示（最優先で反映）】\n${
         reason: String(sl.reason || "").slice(0, 60),
       }))
       .slice(0, 7) as CardSlot[];
+    // 追加カードのうち「カードで視る内容」でないもの（LINE誘導・今日占うこと等）は設計表から外し、outside に回す
+    for (let i = slots.length - 1; i >= 0; i--) {
+      const sl = slots[i];
+      if (sl.kind === "extra" && isNonReadingSlot(sl)) {
+        outside.push({ title: sl.title || "（無題）", where: /LINE|無料鑑定|概要欄|締め|次回/.test(sl.title + sl.content) ? "クロージング" : /高評価|登録|コメント/.test(sl.title + sl.content) ? "合間（軽CTA）" : "オープニング", note: "カードで視る内容ではないため設計表から除外" });
+        slots.splice(i, 1);
+      }
+    }
     // コア5役割が揃っていなければ補完（順序も保証）
     const roles = slots.filter((s) => s.kind === "core").map((s) => s.role);
     for (const r of CORE_ROLES) {
       if (!roles.includes(r)) slots.push({ role: r, kind: "core", title: r, content: "（ルールどおり）", source: "ルールのコア", reason: "背骨" });
     }
     const ordered = reorderByBackbone(slots);
-    return NextResponse.json({ plan: { slots: ordered, updatedAt: new Date().toISOString() } as CardPlan });
+    return NextResponse.json({ plan: { slots: ordered, outside, updatedAt: new Date().toISOString() } as CardPlan });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "カード設計表の作成に失敗しました" }, { status: 500 });
   }
