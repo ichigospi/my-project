@@ -47,6 +47,8 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /(この|今日(は|の|引いた)?|引いた|全部で)[2-9２-９二三四五六七]枚(?!目)/, level: "fail", reason: "枚数の明言（「今日この5枚が」「今日引いた5枚」等）は禁止", fix: "「今日のカードが」「引いたカード全部が」のように枚数を言わない" },
   { pattern: /そわそわ/, level: "track", reason: "導入の熱量表現「そわそわ」の使い回し", fix: "熱量の一文は毎回別の言い方にする" },
   { pattern: /答えの半分|残りの半分を.{0,6}カードで/, level: "fail", reason: "抽象フック（答えの半分）: 何が得られるか伝わらない冒頭は禁止", fix: "冒頭は視聴者が得るものを具体的に言う（実る時期に入った・奇跡が舞い込む等）" },
+  { pattern: /ふっと/, level: "fail", reason: "「ふっと」は普段の会話で使わない（連絡・通知は擬音と物で映像にする）", fix: "連絡なら「ピコンとスマホに連絡が届く」、息なら「深く息をつく」のように、連想しやすい言い方に" },
+  { pattern: /(向き合う|向き合い直す|手放す|変わる)覚悟(が|を|は)/, level: "fail", reason: "覚悟の対象が難易度の高いもの（本当の覚悟に聞こえて視聴者が離れる）", fix: "「結ばれる覚悟」「溺愛される覚悟」「奇跡を迎える覚悟」のように、覚悟と言いつつ中身がメリットになる言い方に" },
   { pattern: /最高の未来へ/, level: "fail", reason: "決め台詞の表記違い（正しくは「最幸の未来」）", fix: "「一緒に最幸の未来へと、一歩を踏み出していきましょう」" },
   { pattern: /あなたには.{0,25}(クセ|癖)があ/, level: "fail", reason: "欠点の断定（視聴者を責める言い方）", fix: "「〜してしまうこと、ありませんでしたか」の問いかけ形に" },
   { pattern: /見てください[。、]この(カード|絵)/, level: "fail", reason: "倒置（動詞を先に言って目的語を後から足す）", fix: "「このカードの〜を見てください」の語順に" },
@@ -333,6 +335,58 @@ export function scanCommentWordConsistency(script: string): QualityCheckItem[] {
   }];
 }
 
+// CTA（高評価・コメント）の意味づけが「内面の変化」になっていないか。意味づけはテーマ・理想の未来に結ぶ（例外なし）
+export function scanCtaMeaning(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const items: QualityCheckItem[] = [];
+  const re = /高評価|コメント欄|チャンネル登録/g;
+  let m: RegExpExecArray | null;
+  const seen = new Set<string>();
+  while ((m = re.exec(t)) !== null) {
+    const win = t.slice(m.index, Math.min(t.length, m.index + 220));
+    const hit = win.match(/気持ち(の向き)?が(変わ|切り替わ|前を向|軽く|整)|前向きに(な|切り替)|心が(整|軽く|落ち着)|自分(の中|自身)が変わ/);
+    if (hit && !seen.has(hit[0])) {
+      seen.add(hit[0]);
+      items.push({
+        name: `CTAの意味づけが内面の変化（「${hit[0]}」）`,
+        status: "fail",
+        comment: `${m[0]}の意味づけが「${hit[0]}」と視聴者の内面の話になっています。本質ではなく、動画のテーマから外れます`,
+        suggestion: "意味づけは理想の未来に結ぶ（例: 「叶った未来と今の現実との周波数が重なっていきます」「高次元の守護天使様への合図になります」）",
+      });
+    }
+  }
+  return items;
+}
+
+// 離脱防止の損失が「視聴者の内面の後退」になっていないか（損失はテーマのベネフィットが止まる側で言う）
+export function scanRetentionLoss(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const head = t.slice(0, Math.min(t.length, 1800));
+  const m = head.match(/(途中で(閉じ|離れ|止め)[^。]{0,40})(気持ち|心)が[^。]{0,20}(戻|冷め|沈|萎)/);
+  if (!m) return [];
+  return [{
+    name: "離脱防止の損失が内面の後退",
+    status: "fail",
+    comment: `「${m[0].slice(0, 60)}」のように、閉じたときの損失を視聴者の気持ちの後退にしています（この動画のテーマではない）`,
+    suggestion: "損失はセンターピン側で言う（例: 「恋の大逆転の流れがパタっと止まってしまうかもしれません」）。擬音で軽く、断定しない",
+  }];
+}
+
+// 平熱の検出: 温度の目印（擬音・感嘆符・口語の縮約・「ですからね」等）が少なすぎる
+export function scanTemperature(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  if (t.length < 1500) return [];
+  const markers = t.match(/ピコン|パタっ|ガラッ|ドキッ|きゅっ|ぐっすり|ずーっと|めちゃくちゃ|ちゃう|ちゃい|ちゃっ|！|ですからね|ますからね|ですよね|でしょう？|じゃないですか|これ、本当なんです|実は、/g) || [];
+  const per1000 = (markers.length / t.length) * 1000;
+  if (per1000 >= 1.5) return [];
+  return [{
+    name: `平熱の疑い（温度の目印が${markers.length}個／${t.length}字）`,
+    status: per1000 < 0.8 ? "fail" : "warn",
+    comment: "擬音・感嘆符つきのセリフ・口語の縮約・「ですからね」等がほとんど無く、正しいが冷めた文になっています",
+    suggestion: "導入・CTA・理想の未来の各段落に1つずつ、擬音（ピコン・パタっと）、セリフの「！」、縮約（なっちゃうかも）、「ますからね」を入れる。「実は」「これ、本当なんですよ」の打ち明け口調で切り出す",
+  }];
+}
+
 // 文章の癖の機械判定（語尾の偏り・接続語の連打・絵柄説明の定型・同語反復）
 export function scanStyleHabits(script: string): QualityCheckItem[] {
   const items: QualityCheckItem[] = [];
@@ -376,6 +430,9 @@ export function runMechanicalChecks(script: string, approvedScripts?: string[], 
   return [
     ...scanUnknownsVsTiming(script),
     ...scanCommentWordConsistency(script),
+    ...scanCtaMeaning(script),
+    ...scanRetentionLoss(script),
+    ...scanTemperature(script),
     ...scanStyleHabits(script),
     ...scanBlacklist(script),
     ...scanConsecutive(script, approvedScripts || []),
