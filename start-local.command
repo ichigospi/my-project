@@ -125,14 +125,29 @@ fi
 
 echo "🚀 台本読み取りツールを起動中..."
 echo ""
-echo "ブラウザで以下を開いてください："
-echo "  → http://localhost:3000/ocr"
+echo "準備ができたら、ブラウザが自動で開きます（初回は1〜2分かかります）"
+echo "開かない場合は、この画面に表示される「Local: http://localhost:XXXX」のURLに /ocr を付けて開いてください"
 echo ""
 echo "停止するには Ctrl+C を押してください"
 echo "================================"
 echo ""
 
-# 3秒後にブラウザを自動で開く
-(sleep 3 && open "http://localhost:3000/ocr") &
+# サーバーが応答できるようになってからブラウザを開く（初回はビルドに1〜2分かかることがあります）
+# next dev が 3000 が使用中のとき 3001/3002 にずれる場合もあるので、応答したポートを開く
+(
+  for i in $(seq 1 180); do
+    for port in 3000 3001 3002; do
+      if curl -s -o /dev/null -m 2 "http://localhost:${port}/ocr"; then
+        echo ""
+        echo "✅ サーバー起動を確認しました → http://localhost:${port}/ocr を開きます"
+        open "http://localhost:${port}/ocr"
+        exit 0
+      fi
+    done
+    sleep 1
+  done
+  echo ""
+  echo "⚠️  3分待ってもサーバーが応答しませんでした。この黒い画面の最後の行を確認してください"
+) &
 
 npm run dev
