@@ -27,7 +27,8 @@ export async function GET() {
     let projectCount = 0;
     let latestProjectUpdatedAt = "";
     try {
-      const rows = await prisma.appSetting.findMany({ where: { key: { startsWith: "shared_project_" } } });
+      const rows = (await prisma.appSetting.findMany({ where: { key: { startsWith: "shared_project_" } } }))
+        .filter((r) => !r.key.startsWith("shared_project_history_"));
       projectCount = rows.length;
       for (const r of rows) {
         try {

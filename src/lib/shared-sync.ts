@@ -136,8 +136,9 @@ function mergeById<T extends { id: string }>(local: T[], server: T[]): T[] {
 // 更新日時ベースでマージ（新しい方を採用）
 function mergeByUpdatedAt<T extends { id: string; updatedAt?: string; createdAt?: string }>(local: T[], server: T[]): T[] {
   const map = new Map<string, T>();
-  for (const item of local) map.set(item.id, item);
+  for (const item of local) { if (item && typeof item.id === "string") map.set(item.id, item); }
   for (const item of server) {
+    if (!item || typeof item.id !== "string") continue; // idの無い壊れた行は取り込まない
     const existing = map.get(item.id);
     if (!existing) {
       map.set(item.id, item);

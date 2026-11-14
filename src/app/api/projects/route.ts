@@ -65,7 +65,12 @@ export async function GET() {
     });
     const projects: unknown[] = [];
     for (const row of rows) {
-      try { projects.push(JSON.parse(row.value)); } catch { /* skip corrupt row */ }
+      // 履歴行（shared_project_history_<id>）は企画ではないので除外する
+      if (row.key.startsWith(PROJECT_HISTORY_PREFIX)) continue;
+      try {
+        const parsed = JSON.parse(row.value);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof (parsed as { id?: unknown }).id === "string") projects.push(parsed);
+      } catch { /* skip corrupt row */ }
     }
 
     // 旧形式（巨大ブロブ）の互換: まだ移行されていない環境のため読み込んで合流

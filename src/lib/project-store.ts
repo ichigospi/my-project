@@ -761,8 +761,8 @@ export function replaceProjects(next: ScriptProject[]) {
   }
   const nextIds = new Set(next.map((p) => p.id));
   const deleted = Array.from(prev.keys()).filter((id) => !nextIds.has(id));
-  projectsCache = sortByUpdatedDesc(next);
-  if (changed.length > 0 || deleted.length > 0) persistProjects(changed, deleted);
+  projectsCache = sortByUpdatedDesc(next.filter((p) => p && typeof p.id === "string"));
+  if (changed.length > 0 || deleted.length > 0) persistProjects(changed.filter((p) => p && typeof p.id === "string"), deleted);
 }
 
 // チャンネルID統一（同名チャンネルのIDを揃える）を企画に適用
