@@ -426,9 +426,16 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     try {
       const rulesText = formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId));
       const previousScript = segs.slice(0, idx).map((s) => s.script).join("\n\n");
+      // 同チャンネルで合格した直近2本（パートでも繰り返し表現の3本連続を機械判定する）
+      const recentScripts = getProjects()
+        .filter((p) => p.id !== project.id && p.channelId === project.channelId && p.scriptReviewStatus === "approved" && (p.reviewedScript || p.submittedScript || p.generatedScript))
+        .sort((a, b) => (b.approvedAt || b.updatedAt || "").localeCompare(a.approvedAt || a.updatedAt || ""))
+        .slice(0, 2)
+        .map((p) => (p.reviewedScript || p.submittedScript || p.generatedScript || "").slice(0, 9000));
       const body = JSON.stringify({
         segmentScript: segs[idx].script, partIndex: idx, partTotal: plannedTotalParts(),
         previousScript, referenceAnalyses: buildRefs(), rulesText, style: project.style, structureMode: project.structureMode, aiApiKey, aiModel: getAiModel("check"),
+        recentScripts,
       });
       let data: Record<string, unknown> | null = null;
       let lastErr = "";

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { runMechanicalChecks } from "@/lib/qc-blacklist";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { referenceModeQcNote } from "@/lib/structure-mode";
@@ -139,6 +140,28 @@ ${segmentScript}`;
 
     const parsed = parseJSON(raw);
     if (!parsed) return NextResponse.json({ error: "AI応答の解析に失敗しました" }, { status: 500 });
+    // 機械判定（定型文・3本連続・語尾の偏り・守護天使様への帰属 等）をパートにも適用する。
+    // 全文チェックだけに頼ると、パート単位で直して提出する運用のときに素通りする
+    const recentScripts = Array.isArray((body as { recentScripts?: unknown }).recentScripts)
+      ? ((body as { recentScripts: unknown[] }).recentScripts.filter((x) => typeof x === "string") as string[])
+      : [];
+    const mech = runMechanicalChecks(segmentScript, recentScripts).filter((it) => {
+      // 固定句（最後のカードの導入・決め台詞）と未知数の判定は最終パートだけ。文字数系は全文チェック側で見る
+      if (/^固定句/.test(it.name) || /^未知数/.test(it.name)) return isLast;
+      return true;
+    });
+    if (mech.length > 0) {
+      const cats = Array.isArray(parsed.categories) ? (parsed.categories as Record<string, unknown>[]) : [];
+      const hasFail = mech.some((it) => it.status === "fail");
+      cats.push({ name: "L. 機械判定（定型文・繰り返し・語尾・帰属）", passed: !hasFail, items: mech });
+      parsed.categories = cats;
+      if (hasFail) {
+        const score = Number(parsed.overallScore) || 0;
+        parsed.overallScore = Math.min(score, 6.5);
+        const names = mech.filter((it) => it.status === "fail").map((it) => it.name).join("／");
+        parsed.topPriority = `【機械判定でfail】${names}。` + String(parsed.topPriority || "");
+      }
+    }
     return NextResponse.json(parsed);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "パートの品質チェックに失敗しました";

@@ -42,7 +42,9 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /頑張りを数え|頑張りを(一緒に)?数/, level: "fail", reason: "造語「頑張りを数える」は普段の会話で言わない", fix: "「どれだけ頑張ってきたか、ちゃんと分かってくれる人」のように普段の言葉で" },
   { pattern: /おめでとう.{0,4}が届(き|く)/, level: "fail", reason: "遠回しな訴求（おめでとうが届く）。理想の未来を直接の言葉で言い切る", fix: "「頑張りが報われて、奇跡がどんどん流れ込んでくる」のように直接言う" },
   { pattern: /受け取る側/, level: "fail", reason: "目的語のない「受け取る側」は一瞬で意味が取れない", fix: "何を受け取るのかを言う（奇跡を／臨時収入を／連絡を）" },
-  { pattern: /守護天使様(は|が)[^。]{0,30}(やってほしい|言っています|言ってます|伝えています|おすすめ)/, level: "fail", reason: "本編のアドバイスを守護天使様に帰属させている（無料で守護天使様のメッセージを渡したことになる）", fix: "アドバイスはアリサの言葉で言う。守護天使様を主語にするのは固定句と導入の正当化だけ" },
+  { pattern: /守護天使様(は|が|から)[^。]{0,40}(やってほしい|言っています|言ってます|伝えています|おすすめ|(と|って)(伝え|言っ|教え|おっしゃ|告げ|示し)(て|っ)?(くださ|います|てます|ている|てくれ|ていま))/, level: "fail", reason: "本編のアドバイスを守護天使様に帰属させている（無料で守護天使様のメッセージを渡したことになる）", fix: "アドバイスはアリサの言葉か「カードが示している」で言う。守護天使様を主語にするのは固定句と導入の正当化だけ" },
+  { pattern: /指に残って|指先が選|指が選|手に吸い付|切り直そうとしたら|手が(ふっと)?止ま(った|り)(んです|ました)?。?[^。]{0,12}(出たのは|この1枚|このカード)/, level: "fail", reason: "鑑定士の手・指の動作を根拠にした引き演出（神秘性が弱い。カード側を主語にする）", fix: "「この1枚、自分から出てきました」「一番上で待っていました」のようにカード・流れを主語に" },
+  { pattern: /(この|今日(は|の|引いた)?|引いた|全部で)[2-9２-９二三四五六七]枚(?!目)/, level: "fail", reason: "枚数の明言（「今日この5枚が」「今日引いた5枚」等）は禁止", fix: "「今日のカードが」「引いたカード全部が」のように枚数を言わない" },
   { pattern: /そわそわ/, level: "track", reason: "導入の熱量表現「そわそわ」の使い回し", fix: "熱量の一文は毎回別の言い方にする" },
   { pattern: /答えの半分|残りの半分を.{0,6}カードで/, level: "fail", reason: "抽象フック（答えの半分）: 何が得られるか伝わらない冒頭は禁止", fix: "冒頭は視聴者が得るものを具体的に言う（実る時期に入った・奇跡が舞い込む等）" },
   { pattern: /最高の未来へ/, level: "fail", reason: "決め台詞の表記違い（正しくは「最幸の未来」）", fix: "「一緒に最幸の未来へと、一歩を踏み出していきましょう」" },
@@ -296,8 +298,85 @@ export function scanFixedPhrases(script: string): QualityCheckItem[] {
   return items;
 }
 
+// 終盤の未知数が本編の予言と被っていないか: 本編で時期（◯日後／◯のつく日）を出した回は、無料鑑定の未知数に「いつ・時期」を使わない
+export function scanUnknownsVsTiming(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const lineAt = t.search(/概要欄のLINE|LINEから|無料の霊視鑑定|無料鑑定/);
+  if (lineAt < 0) return [];
+  const body = t.slice(0, lineAt);
+  const tail = t.slice(Math.max(0, lineAt - 400));
+  const timing = body.match(/[0-9０-９]+日後|[0-9０-９]+のつく日|[0-9０-９]+週間(後|以内)/);
+  if (!timing) return [];
+  const unknown = tail.match(/(いつ(その|連絡|動|来|訪|頃)|という「?時期|「時期」|時期(と|、|」)|タイミング(と|」|、))/);
+  if (!unknown) return [];
+  return [{
+    name: "未知数が本編の予言と重複（時期）",
+    status: "fail",
+    comment: `本編で「${timing[0]}」と時期を出しているのに、無料鑑定の未知数に「${unknown[0]}」を使っています。本編の予言を自分で否定する形になります`,
+    suggestion: "時期を出した回の未知数は「あなたの場合、どんな形で来るのか」と「最短で引き寄せるために何をすべきか」の2つにする",
+  }];
+}
+
+// コメントCTAで書かせる言葉が、台本の中で食い違っていないか（例: 冒頭「叶いました」→終盤「残します」）
+export function scanCommentWordConsistency(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const words = new Set<string>();
+  for (const m of t.matchAll(/コメント欄?に「([^」]{1,20})」/g)) words.add(m[1]);
+  for (const m of t.matchAll(/「([^」]{1,20})」と(先に|一言|だけ|そっと)?(コメント|書い)/g)) words.add(m[1]);
+  const list = Array.from(words);
+  if (list.length <= 1) return [];
+  return [{
+    name: `コメントCTAの文言が食い違い（${list.map((w) => `「${w}」`).join("・")}）`,
+    status: "fail",
+    comment: "書かせる言葉が台本の中で複数あります。視聴者は冒頭の言葉しか書いていないので、終盤の回収や常連化で別の言葉を出すと幻の文言になります",
+    suggestion: "コメントCTAの文言は台本全体で1つに揃える（回収・常連化の一言も同じ言葉で）",
+  }];
+}
+
+// 文章の癖の機械判定（語尾の偏り・接続語の連打・絵柄説明の定型・同語反復）
+export function scanStyleHabits(script: string): QualityCheckItem[] {
+  const items: QualityCheckItem[] = [];
+  const t = script.replace(/\s+/g, "");
+  const sentences = t.split(/(?<=[。！？!?])/).filter((x) => x.length > 3);
+  const total = sentences.length || 1;
+  const ndesu = sentences.filter((x) => /んです(よ|ね|よね)?[。！]$/.test(x)).length;
+  const ratio = ndesu / total;
+  if (ratio >= 0.3) {
+    items.push({ name: `語尾の偏り: 「〜んです」止めが${Math.round(ratio * 100)}%`, status: ratio >= 0.4 ? "fail" : "warn",
+      comment: `全${total}文のうち${ndesu}文が「んです／んですよ／んですね」で終わっています（目安: 25%以下）`,
+      suggestion: "言い切り（〜ます／〜でした）、名詞止め、問いかけ（〜ませんか）、呼びかけ（〜してくださいね）を混ぜ、同じ語尾を3文続けない" });
+  }
+  const count = (re: RegExp) => (t.match(re) || []).length;
+  const demone = count(/でもね/g);
+  if (demone >= 4) items.push({ name: `接続語の連打: 「でもね」${demone}回`, status: demone >= 6 ? "fail" : "warn", comment: "逆接の切り出しが毎段落「でもね」になっています", suggestion: "「でもね」は台本全体で3回まで。「実は」「ところが」「本当は」や、接続語なしで文を始める" });
+  const dash = count(/——/g);
+  if (dash >= 12) items.push({ name: `ダッシュ（——）${dash}回`, status: "warn", comment: "ダッシュで文をつなぐ癖が強く、読み上げでは間が不自然になります", suggestion: "ダッシュは台本全体で5回以内。句点で切るか「、」でつなぐ" });
+  const mite = count(/見てください/g);
+  const honrai = count(/本来この絵|本来の絵は|本来この(カード|絵柄)は/g);
+  if (mite >= 3 || honrai >= 2) items.push({ name: `絵柄説明の定型反復（見てください${mite}回／本来この絵${honrai}回）`, status: "fail", comment: "各カードの絵柄説明が同じ型で始まっています。絵柄は一言で止め、入り方を毎回変える", suggestion: "絵柄の説明は「絵柄の一言→意味→当てはめ」で1カード2文まで。「見てください」「本来この絵は」は1回ずつまで" });
+  const gyaku = count(/逆さま[—、。]*逆位置で現れ|逆位置で現れ/g);
+  if (gyaku >= 3) items.push({ name: `「逆位置で現れ」${gyaku}回`, status: "warn", comment: "逆位置の告げ方が毎回同じです", suggestion: "「逆さまでした」「上下が反対で出ました」「逆位置です」など言い方を変える" });
+  const daiji = count(/(一番|いちばん)大事/g);
+  if (daiji >= 2) items.push({ name: `「一番大事」${daiji}回`, status: "warn", comment: "最上級が複数あると価値が薄れます（「一番大切なカード」の予告は数えていません）", suggestion: "「一番大事」は台本全体で1回。他は「ここは大事」「ここから」に" });
+  // 段落内の同語反復（2〜3字の語が同じ段落に4回以上）
+  const paras = script.split(/\n\s*\n/).map((x) => x.replace(/\s+/g, ""));
+  const repeated: string[] = [];
+  for (const para of paras) {
+    const freq = new Map<string, number>();
+    for (const m of para.matchAll(/[一-龥]{2,3}/g)) freq.set(m[0], (freq.get(m[0]) || 0) + 1);
+    for (const [w, n] of freq) {
+      if (n >= 4 && !/^(あなた|自分|守護天使|天使様|カード|連絡|今日|相手|二人|関係|時間|本当|無料|鑑定|未来|気持)$/.test(w) && !repeated.includes(w)) repeated.push(`${w}×${n}`);
+    }
+  }
+  if (repeated.length > 0) items.push({ name: `同じ語の反復（段落内4回以上）: ${repeated.slice(0, 5).join("、")}`, status: "warn", comment: "比喩の語が段落に居座り、現実の言葉に戻っていない可能性があります", suggestion: "比喩は1〜2回で現実の言葉（連絡・あの人・縁 等）に言い換える" });
+  return items;
+}
+
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[] }): QualityCheckItem[] {
   return [
+    ...scanUnknownsVsTiming(script),
+    ...scanCommentWordConsistency(script),
+    ...scanStyleHabits(script),
     ...scanBlacklist(script),
     ...scanConsecutive(script, approvedScripts || []),
     ...scanKanjiNumerals(script),
