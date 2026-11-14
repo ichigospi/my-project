@@ -152,6 +152,7 @@ export default function CreatePage() {
   type ServerInspectItem = {
     id: string; title: string; refTitle: string; channelId: string; status: string; scriptReviewStatus: string; updatedAt: string;
     generatedLen: number; submittedLen: number; reviewedLen: number; segments: number; historyCount: number;
+    analysisIds?: number; analysesOnServer?: number; hasProposal?: boolean; abstractLen?: number; cardPlanSlots?: number; hasDrawSpec?: boolean;
   };
   type ServerSnap = { at: string; savedAt: string; status?: string; scriptReviewStatus?: string; generatedScript?: string; submittedScript?: string; reviewedScript?: string };
   const [serverQuery, setServerQuery] = useState("");
@@ -443,6 +444,9 @@ export default function CreatePage() {
                               <p className="text-[11px] text-gray-500">
                                 生成台本 {it.generatedLen}字／提出台本 {it.submittedLen}字／添削後 {it.reviewedLen}字{it.segments > 0 ? `／分割 ${it.segments}` : ""}／上書き前の履歴 {it.historyCount}件
                                 {local ? `　｜ この端末: 提出台本 ${localSub}字` : "　｜ この端末には無し"}
+                              </p>
+                              <p className="text-[11px] text-gray-500">
+                                台本の手前: 参考動画の分析 {it.analysisIds ?? 0}本{(it.analysisIds ?? 0) > 0 ? `（サーバーに${it.analysesOnServer === -1 ? "?" : it.analysesOnServer}本）` : ""}／構成提案 {it.hasProposal ? "あり" : "なし"}／骨組み {it.abstractLen ? `${it.abstractLen}字` : "なし"}／カード設計 {it.cardPlanSlots ? `${it.cardPlanSlots}枚` : "なし"}／抽選結果 {it.hasDrawSpec ? "あり" : "なし"}
                               </p>
                             </div>
                             <div className="flex flex-col gap-1 shrink-0">

@@ -44,10 +44,26 @@ export async function GET(request: NextRequest) {
       const title = String(p.title || "");
       const refTitle = Array.isArray(p.referenceVideos) && p.referenceVideos[0] ? String((p.referenceVideos[0] as { title?: string }).title || "") : "";
       if (q && !title.toLowerCase().includes(q) && !refTitle.toLowerCase().includes(q) && String(p.id || "") !== q) continue;
+      // 台本の手前の成果物（分析・構成提案・骨組み・抽選結果）が残っているか。
+      // 台本本文が無くても、これらが残っていれば同じ抽選・同じ骨組みで再生成できる
+      const analysisIds = Array.isArray(p.analyses) ? (p.analyses as unknown[]).filter((x) => typeof x === "string") as string[] : [];
+      let analysesOnServer = 0;
+      if (analysisIds.length > 0) {
+        try {
+          analysesOnServer = await prisma.scriptAnalysis.count({ where: { id: { in: analysisIds } } });
+        } catch { analysesOnServer = -1; }
+      }
+      const sp = p.structureProposal as Record<string, unknown> | null | undefined;
       items.push({
         id: p.id,
         title,
         refTitle,
+        analysisIds: analysisIds.length,
+        analysesOnServer,
+        hasProposal: !!(sp && typeof sp === "object" && Object.keys(sp).length > 0),
+        abstractLen: len(p.abstractLogic),
+        cardPlanSlots: p.cardPlan && Array.isArray((p.cardPlan as { slots?: unknown[] }).slots) ? ((p.cardPlan as { slots: unknown[] }).slots.length) : 0,
+        hasDrawSpec: len(p.drawSpec) > 0,
         channelId: p.channelId || "",
         status: p.status,
         scriptReviewStatus: p.scriptReviewStatus || "",
