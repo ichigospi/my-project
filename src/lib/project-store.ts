@@ -630,9 +630,27 @@ export function genId(): string {
 }
 
 // ===== プロジェクト CRUD =====
+// localStorage への書き込みが容量不足で失敗した企画をメモリ上に保持する安全網。
+// 以前は保存に失敗すると「サーバーには保存しています」と案内しながら、実際の push は
+// localStorage の古い内容を送っていたため、提出した台本が端末にもサーバーにも残らず消えていた。
+// getProjects() がこのオーバーレイを重ねて返すことで、画面表示も push も最新版を使う。
+const memoryOverlay = new Map<string, ScriptProject>();
+export function getUnsavedLocalProjectIds(): string[] {
+  return Array.from(memoryOverlay.keys());
+}
 export function getProjects(): ScriptProject[] {
   if (typeof window === "undefined") return [];
-  return JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]");
+  let list: ScriptProject[] = [];
+  try { list = JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]"); } catch { list = []; }
+  if (memoryOverlay.size === 0) return list;
+  const idx = new Map<string, number>();
+  list.forEach((p, i) => idx.set(p.id, i));
+  for (const [id, p] of memoryOverlay) {
+    const i = idx.get(id);
+    if (i === undefined) list.unshift(p);
+    else if ((p.updatedAt || "") >= (list[i].updatedAt || "")) list[i] = p;
+  }
+  return list;
 }
 
 // --- 台本の履歴（上書きで消えた台本を復元するための安全網。この端末の localStorage に企画ごと最大10件） ---
@@ -751,13 +769,21 @@ export function saveProject(project: ScriptProject): ScriptProject[] {
     projects.unshift(project);
   }
   // 保存に失敗しても例外で呼び出し側（画面更新・サーバー同期）を止めない。lastLocalSaveFailed で検知できる
-  safeSetItem(PROJECTS_KEY, JSON.stringify(projects));
+  const ok = safeSetItem(PROJECTS_KEY, JSON.stringify(projects));
+  if (ok) {
+    // 全件書けたので、メモリ退避分も永続化された
+    memoryOverlay.clear();
+  } else {
+    // 端末に書けなかった版をメモリに退避。getProjects() 経由で push に乗り、サーバーには届く
+    memoryOverlay.set(project.id, project);
+  }
   return projects;
 }
 
 export function deleteProject(id: string): ScriptProject[] {
+  memoryOverlay.delete(id);
   const projects = getProjects().filter((p) => p.id !== id);
-  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  safeSetItem(PROJECTS_KEY, JSON.stringify(projects));
   return projects;
 }
 

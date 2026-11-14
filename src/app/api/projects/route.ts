@@ -8,6 +8,52 @@ import { requireAuth } from "@/lib/auth-helpers";
 
 const PROJECT_KEY_PREFIX = "shared_project_";
 const LEGACY_BLOB_KEY = "shared_projects";
+const PROJECT_HISTORY_PREFIX = "shared_project_history_";
+const HISTORY_MAX = 8;
+
+type ScriptTextField = "generatedScript" | "submittedScript" | "reviewedScript";
+const TEXT_FIELDS: ScriptTextField[] = ["generatedScript", "submittedScript", "reviewedScript"];
+interface ServerScriptSnapshot {
+  at: string;                 // 退避した版の updatedAt
+  savedAt: string;            // 退避した時刻（サーバー時刻）
+  status?: string;
+  scriptReviewStatus?: string;
+  title?: string;
+  generatedScript?: string;
+  submittedScript?: string;
+  reviewedScript?: string;
+}
+
+// 上書きで台本本文が消える・変わる前に、サーバー側にも旧版の本文を退避する（端末の履歴は容量不足で残らないことがある）
+async function archivePreviousVersion(id: string, prev: Record<string, unknown>, next: Record<string, unknown>) {
+  const snap: ServerScriptSnapshot = {
+    at: String(prev.updatedAt || ""),
+    savedAt: new Date().toISOString(),
+    status: typeof prev.status === "string" ? prev.status : undefined,
+    scriptReviewStatus: typeof prev.scriptReviewStatus === "string" ? prev.scriptReviewStatus : undefined,
+    title: typeof prev.title === "string" ? prev.title : undefined,
+  };
+  let changed = false;
+  for (const f of TEXT_FIELDS) {
+    const pv = typeof prev[f] === "string" ? (prev[f] as string) : "";
+    const nv = typeof next[f] === "string" ? (next[f] as string) : "";
+    if (pv.trim() && pv !== nv) { snap[f] = pv; changed = true; }
+  }
+  if (!changed) return;
+  const key = PROJECT_HISTORY_PREFIX + id;
+  let list: ServerScriptSnapshot[] = [];
+  try {
+    const row = await prisma.appSetting.findUnique({ where: { key } });
+    if (row?.value) { const parsed = JSON.parse(row.value); if (Array.isArray(parsed)) list = parsed; }
+  } catch { list = []; }
+  // 同じ本文の重複は保存しない
+  const same = list.some((s) => TEXT_FIELDS.every((f) => (s[f] || "") === (snap[f] || "")));
+  if (same) return;
+  list.push(snap);
+  list = list.slice(-HISTORY_MAX);
+  const value = JSON.stringify(list);
+  await prisma.appSetting.upsert({ where: { key }, update: { value }, create: { key, value } });
+}
 
 export async function GET() {
   try {
@@ -85,6 +131,14 @@ export async function POST(request: NextRequest) {
           if (serverTime > 0 && incomingTime > 0 && serverTime > incomingTime) {
             stale.push({ id, serverUpdatedAt: (serverObj as { updatedAt: string }).updatedAt });
             continue;
+          }
+          // 旧版の台本本文をサーバー側の履歴に退避（失敗しても保存自体は止めない）
+          if (serverObj && typeof serverObj === "object") {
+            try {
+              await archivePreviousVersion(id, serverObj as Record<string, unknown>, p as Record<string, unknown>);
+            } catch (e) {
+              console.error(`POST /api/projects: history archive failed for "${id}"`, e);
+            }
           }
         }
         await prisma.appSetting.upsert({
