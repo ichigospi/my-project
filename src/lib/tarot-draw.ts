@@ -663,7 +663,10 @@ export function countCardReveals(script: string): { count: number; cards: string
   const t = script.replace(/\s+/g, "");
   const found: string[] = [];
   for (const name of CARD_NAMES) {
-    const re = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ".{0,14}?(正位置|逆位置)");
+    // 1〜2字のカード名（力・塔・星・月 等）は「努力の塔」「魅力」のような熟語の一部に誤反応するため、
+    // 直前が漢字・カタカナでないこと（＝語頭）を要求する
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp("(?<![一-龥ァ-ヶー])" + esc + ".{0,14}?(正位置|逆位置)");
     if (re.test(t) && !found.includes(name)) found.push(name);
   }
   return { count: found.length, cards: found };
