@@ -45,6 +45,28 @@ export default function CreatePage() {
 
   useEffect(() => { pullSharedSettings().then(() => setProjects(getProjectsByChannel(activeChannel?.id || ""))); }, [activeChannel]);
 
+  // 裏で動く同期（30秒ごと・ページ切替・stale検知の force pull）の結果を一覧に反映する。
+  // これが無いと、管理者が提出しても、開きっぱなしのオーナー画面は再読み込みまで古いカードのまま。
+  useEffect(() => {
+    const onUpdated = () => {
+      setProjects(getProjectsByChannel(activeChannel?.id || ""));
+      setActiveProject((cur) => {
+        if (!cur) return cur;
+        const stored = getProjects().find((p) => p.id === cur.id);
+        if (!stored) return cur;
+        const a = new Date(stored.updatedAt || 0).getTime();
+        const b = new Date(cur.updatedAt || 0).getTime();
+        // サーバー由来で進捗や提出台本が進んでいる場合だけ差し替える（編集中の画面を巻き戻さない）
+        if (a > b && (stored.status !== cur.status || (stored.submittedScript || "") !== (cur.submittedScript || ""))) {
+          return stored;
+        }
+        return cur;
+      });
+    };
+    window.addEventListener("fortune_yt_projects_updated", onUpdated);
+    return () => window.removeEventListener("fortune_yt_projects_updated", onUpdated);
+  }, [activeChannel]);
+
   // 別タブで保存された変更を、この画面にも即反映する（古い状態を持ったまま上書きしてしまうのを防ぐ）
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
