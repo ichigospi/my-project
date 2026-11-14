@@ -49,6 +49,10 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /答えの半分|残りの半分を.{0,6}カードで/, level: "fail", reason: "抽象フック（答えの半分）: 何が得られるか伝わらない冒頭は禁止", fix: "冒頭は視聴者が得るものを具体的に言う（実る時期に入った・奇跡が舞い込む等）" },
   { pattern: /ふっと/, level: "fail", reason: "「ふっと」は普段の会話で使わない（連絡・通知は擬音と物で映像にする）", fix: "連絡なら「ピコンとスマホに連絡が届く」、息なら「深く息をつく」のように、連想しやすい言い方に" },
   { pattern: /(向き合う|向き合い直す|手放す|変わる)覚悟(が|を|は)/, level: "fail", reason: "覚悟の対象が難易度の高いもの（本当の覚悟に聞こえて視聴者が離れる）", fix: "「結ばれる覚悟」「溺愛される覚悟」「奇跡を迎える覚悟」のように、覚悟と言いつつ中身がメリットになる言い方に" },
+  { pattern: /最幸の未来へと、?一歩を踏み出し/, level: "track", reason: "決め台詞は2〜3本に1本のローテーション（毎回入れると飽きられる）", fix: "今回は別の結びに（例: 「あなたの恋は、まもなく大逆転の時を迎えます。私には、もう視えていますからね」）" },
+  { pattern: /「?あの日」?(というの)?が、?(まさに)?今日/, level: "track", reason: "既成事実の締め「あの日が今日」の使い回し", fix: "「その分岐点が、まさに今日です」等、言い方を変えるか今回は省く" },
+  { pattern: /最初にお伝えしたこと、覚えていますか/, level: "track", reason: "冒頭の予言を全文引用で回収する型の使い回し", fix: "今回は回収を省くか、短い一言で（「3日後、楽しみにしていてくださいね」）" },
+  { pattern: /それでは、ここから。/, level: "track", reason: "決め台詞前の切り出しの使い回し", fix: "省く" },
   { pattern: /最高の未来へ/, level: "fail", reason: "決め台詞の表記違い（正しくは「最幸の未来」）", fix: "「一緒に最幸の未来へと、一歩を踏み出していきましょう」" },
   { pattern: /あなたには.{0,25}(クセ|癖)があ/, level: "fail", reason: "欠点の断定（視聴者を責める言い方）", fix: "「〜してしまうこと、ありませんでしたか」の問いかけ形に" },
   { pattern: /見てください[。、]この(カード|絵)/, level: "fail", reason: "倒置（動詞を先に言って目的語を後から足す）", fix: "「このカードの〜を見てください」の語順に" },
@@ -294,9 +298,7 @@ export function scanFixedPhrases(script: string): QualityCheckItem[] {
   if (!/守護天使様が.{0,24}運んで/.test(t)) {
     items.push({ name: "固定句: 最後のカードの導入", status: "warn", comment: "「守護天使様が今、このカードをあなたのために運んでくださいました」が見当たりません", suggestion: "最後のカードの直前に固定句を入れる" });
   }
-  if (!/最幸の未来/.test(t)) {
-    items.push({ name: "固定句: 決め台詞", status: "warn", comment: "「一緒に最幸の未来へと、一歩を踏み出していきましょう」が見当たりません", suggestion: "締めの直前に決め台詞を入れる" });
-  }
+  // 決め台詞「一緒に最幸の未来へと」は毎回入れないローテーション運用に変更（欠けていても指摘しない。3本連続は scanConsecutive で止める）
   return items;
 }
 
@@ -316,6 +318,25 @@ export function scanUnknownsVsTiming(script: string): QualityCheckItem[] {
     status: "fail",
     comment: `本編で「${timing[0]}」と時期を出しているのに、無料鑑定の未知数に「${unknown[0]}」を使っています。本編の予言を自分で否定する形になります`,
     suggestion: "時期を出した回の未知数は「あなたの場合、どんな形で来るのか」と「最短で引き寄せるために何をすべきか」の2つにする",
+  }];
+}
+
+// 終盤の未知数が本編で出した「どんな形で来るか」と被っていないか（形を3例出した回は未知数に「形」を使わない）
+export function scanUnknownsVsForms(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const lineAt = t.search(/概要欄のLINE|LINEから|無料の霊視鑑定|無料鑑定/);
+  if (lineAt < 0) return [];
+  const body = t.slice(0, lineAt);
+  const tail = t.slice(Math.max(0, lineAt - 500));
+  const gaveForms = /どんな形で(来る|届く|訪れる)か[^。]{0,40}(視え|3つ|三つ|ひとつは)/.test(body) || /ひとつは[^。]{0,60}。ひとつは[^。]{0,60}。もうひとつは/.test(body);
+  if (!gaveForms) return [];
+  const m = tail.match(/どんな形で(来る|届く|訪れる)のか|どんな形で(来る|届く|訪れる)か/);
+  if (!m) return [];
+  return [{
+    name: "未知数が本編の予言と重複（形）",
+    status: "fail",
+    comment: `本編で「どんな形で来るか」を具体例つきで語っているのに、無料鑑定の未知数に「${m[0]}」を使っています`,
+    suggestion: "未知数は「あなたの場合に何をすべきか（手段）」と「放置すると元の流れに戻るリスク」で組む",
   }];
 }
 
@@ -429,6 +450,7 @@ export function scanStyleHabits(script: string): QualityCheckItem[] {
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[] }): QualityCheckItem[] {
   return [
     ...scanUnknownsVsTiming(script),
+    ...scanUnknownsVsForms(script),
     ...scanCommentWordConsistency(script),
     ...scanCtaMeaning(script),
     ...scanRetentionLoss(script),
