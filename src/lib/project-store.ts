@@ -1,7 +1,7 @@
 // 台本プロジェクト管理 & 関連データストア
 
 import { nowIso } from "./server-clock";
-import { idbAvailable, idbLoadAll, idbPutMany, idbDeleteMany } from "./project-db";
+import { idbAvailable, idbLoadAll, idbPutMany, idbDeleteMany, resetProjectDb } from "./project-db";
 
 // ===== ジャンル・スタイル =====
 export type Genre = "love" | "money" | "general" | "relationship";
@@ -636,7 +636,9 @@ export function genId(): string {
 // 旧保存先（localStorage の fortune_yt_projects）は初回ロード時に取り込んで削除し、容量を解放する。
 let projectsCache: ScriptProject[] | null = null;   // null = 未ロード
 let loadPromise: Promise<void> | null = null;
+let loadDone = false;                               // 初回ロードが終わったか（終わる前の保存は IndexedDB への書き込みを待機させる）
 let idbOk = false;                                  // IndexedDB が使えているか（false なら localStorage にフォールバック）
+export let lastLocalSaveError = "";                 // 直近の端末保存の失敗理由（診断・警告表示用）
 let bc: BroadcastChannel | null = null;             // 別タブへの変更通知
 
 function readLegacyProjects(): ScriptProject[] {
@@ -697,10 +699,11 @@ export function ensureProjectsLoaded(): Promise<void> {
       }
     } catch (e) {
       console.error("[project-db] IndexedDB unavailable; falling back to localStorage", e);
+      lastLocalSaveError = `IndexedDBを開けません: ${String((e as { message?: string })?.message || e).slice(0, 120)}`;
       idbOk = false;
       projectsCache = mergeNewer(projectsCache || [], readLegacyProjects());
     }
-  })();
+  })().finally(() => { loadDone = true; });
   return loadPromise;
 }
 export function getProjectStorageInfo(): { backend: "indexeddb" | "localstorage"; loaded: boolean; count: number } {
@@ -718,16 +721,33 @@ export function getProjects(): ScriptProject[] {
 }
 
 // 変更分の永続化（IndexedDB へ差分書き込み。失敗しても画面と push はメモリの最新版を使う）
-function persistProjects(changed: ScriptProject[], deleted: string[] = []) {
+function persistProjects(changed: ScriptProject[], deleted: string[] = [], retry = true) {
   if (typeof window === "undefined") return;
+  if (!loadDone) {
+    // 初回ロードが終わる前の保存: 満杯かもしれない localStorage に書かず、ロード完了後に IndexedDB へ書く
+    // （メモリには入っているので画面と push はこの版を使う。ロード時のマージでも updatedAt が新しいこの版が残る）
+    void ensureProjectsLoaded().then(() => persistProjects(changed, deleted, retry));
+    return;
+  }
   if (!idbOk) {
     // フォールバック: 旧来どおり localStorage に全件
-    safeSetItem(PROJECTS_KEY, JSON.stringify(projectsCache || []));
+    const ok = safeSetItem(PROJECTS_KEY, JSON.stringify(projectsCache || []));
+    if (!ok) lastLocalSaveError = lastLocalSaveError || "ブラウザ保存領域（localStorage）が一杯です";
     return;
   }
   Promise.all([idbPutMany(changed), idbDeleteMany(deleted)])
-    .then(() => { lastLocalSaveFailed = false; try { bc?.postMessage({ type: "changed" }); } catch { /* ignore */ } })
-    .catch((e) => { console.error("[project-db] write failed:", e); lastLocalSaveFailed = true; });
+    .then(() => { lastLocalSaveFailed = false; lastLocalSaveError = ""; try { bc?.postMessage({ type: "changed" }); } catch { /* ignore */ } })
+    .catch((e) => {
+      console.error("[project-db] write failed:", e);
+      if (retry) {
+        // 接続が閉じられた等の一時エラーは、開き直して1回だけ再試行
+        resetProjectDb();
+        setTimeout(() => persistProjects(changed, deleted, false), 300);
+        return;
+      }
+      lastLocalSaveFailed = true;
+      lastLocalSaveError = `IndexedDBへの書き込みに失敗: ${String((e as { message?: string })?.message || e).slice(0, 120)}`;
+    });
 }
 
 // サーバーからの取り込み等で一覧ごと置き換える（中身が変わった企画だけ書き込む）

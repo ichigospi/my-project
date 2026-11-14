@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { getProjectsByChannel, getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus, lastLocalSaveFailed, freeLocalStorageSpace, getLocalStorageUsageKB } from "@/lib/project-store";
+import { getProjectsByChannel, getProjects, saveProject, deleteProject, createProject, GENRE_LABELS, STYLE_LABELS, addTaskFromProject, updateTaskStepStatus, lastLocalSaveFailed, lastLocalSaveError, getProjectStorageInfo, freeLocalStorageSpace, getLocalStorageUsageKB } from "@/lib/project-store";
 import type { ScriptProject, Genre, Style, ReviewStatus } from "@/lib/project-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
@@ -267,7 +267,8 @@ export default function CreatePage() {
     pushSharedSettings();
     if (lastLocalSaveFailed && !storageWarnedRef.current) {
       storageWarnedRef.current = true;
-      alert("この端末のブラウザ保存領域が一杯で、ローカル保存に失敗しました。今の変更はメモリ上に保持してサーバーへ直接送っています。\nこのタブを閉じる前に、左下の同期表示が「同期済み」になっていることを確認してください。\nその後、画面右上の「🧹 保存領域を掃除」を押すか、ブラウザの閲覧データ（このサイトのデータ）を削除してから「同期」で復元してください。");
+      const info = getProjectStorageInfo();
+      alert(`この端末への保存に失敗しました（保存先: ${info.backend === "indexeddb" ? "IndexedDB" : "localStorage（旧方式）"}／理由: ${lastLocalSaveError || "不明"}）。\n今の変更はメモリ上に保持してサーバーへ直接送っています。このタブを閉じる前に、左下の同期表示が「同期済み」になっていることを確認してください。\n左下の「同期済み」をクリックすると診断が出ます。その内容を開発者に送ってください。`);
     }
 
     // 工程表との自動連動

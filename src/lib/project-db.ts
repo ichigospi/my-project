@@ -13,6 +13,11 @@ const VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+// 接続を捨てて次回開き直す（書き込み失敗時の再試行用）
+export function resetProjectDb(): void {
+  dbPromise = null;
+}
+
 export function idbAvailable(): boolean {
   return typeof window !== "undefined" && "indexedDB" in window;
 }
