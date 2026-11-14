@@ -7,6 +7,7 @@ import Link from "next/link";
 import Sidebar from "./Sidebar";
 import LaunchSidebar from "./LaunchSidebar";
 import { pullSharedSettings } from "@/lib/shared-sync";
+import { ensureProjectsLoaded } from "@/lib/project-store";
 
 const NO_SIDEBAR_PATHS = ["/login", "/setup", "/register", "/sales", "/notif", "/revenue"];
 const MOBILE_FULLSCREEN_PATHS = ["/sales", "/notif", "/revenue"];
@@ -62,6 +63,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const synced = useRef(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // 企画の保存先（IndexedDB）を最初に読み込み、各画面に反映を促す
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => {
+      try { window.dispatchEvent(new Event("fortune_yt_projects_updated")); } catch { /* ignore */ }
+    });
+  }, []);
 
   useEffect(() => {
     if (session && !synced.current) {

@@ -67,16 +67,8 @@ export default function CreatePage() {
     return () => window.removeEventListener("fortune_yt_projects_updated", onUpdated);
   }, [activeChannel]);
 
-  // 別タブで保存された変更を、この画面にも即反映する（古い状態を持ったまま上書きしてしまうのを防ぐ）
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== "fortune_yt_projects") return;
-      setProjects(getProjectsByChannel(activeChannel?.id || ""));
-      setActiveProject((cur) => (cur ? (getProjects().find((p) => p.id === cur.id) ?? cur) : cur));
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [activeChannel]);
+  // 別タブで保存された変更は、project-store が IndexedDB から取り込み直して
+  // fortune_yt_projects_updated を発火するので、上の onUpdated で反映される
 
   // Chatwork通知等からの直リンク対応: /create?project=<id>&step=review
   useEffect(() => {
