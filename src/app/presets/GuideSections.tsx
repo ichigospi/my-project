@@ -462,42 +462,72 @@ export function GuideEducation({ initialId, nav }: { initialId?: string; nav?: G
   );
 }
 
-// ===== 3. 構成ガイド =====
+// ===== 3. 構成ガイド（目的 → 視聴者の心理 → 基本構成 → ポイント） =====
 export function GuideStructure({ nav }: { nav?: GuideNav }) {
   const [style, setStyle] = useState<"tarot" | "healing">("tarot");
   const guide = STRUCTURE_GUIDE[style];
   return (
-    <div className="max-w-3xl">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-xs text-gray-400">スタイル:</span>
-        {(Object.keys(STRUCTURE_GUIDE) as ("tarot" | "healing")[]).map((s) => (
-          <button key={s} onClick={() => setStyle(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium ${style === s ? "bg-accent text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-            {STRUCTURE_GUIDE[s].label}
-          </button>
-        ))}
+    <div className="max-w-4xl">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 mb-5">
+        <p className="text-base text-gray-700 leading-7">
+          台本を頭から順に、パートごとに「<b>何のためのパートか</b>」「<b>視聴者はそのとき何を感じているか</b>」「<b>基本の組み立て</b>」「<b>ポイント</b>」で説明します。
+          各パートの右上のタグは、そのパートがしている<b>教育</b>です（押すと教育カードへ）。
+        </p>
+        <div className="flex items-center gap-2 mt-3">
+          <span className="text-sm text-gray-500">スタイル:</span>
+          {(Object.keys(STRUCTURE_GUIDE) as ("tarot" | "healing")[]).map((s) => (
+            <button key={s} onClick={() => setStyle(s)}
+              className={`px-4 py-2 rounded-lg text-sm font-bold ${style === s ? "bg-accent text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+              {STRUCTURE_GUIDE[s].label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {guide.blocks.map((b, i) => (
-          <div key={i} className="bg-card-bg rounded-xl border border-gray-100 p-5 relative">
-            {i < guide.blocks.length - 1 && <div className="absolute left-8 -bottom-3 w-0.5 h-3 bg-gray-200" />}
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <h3 className="font-bold text-sm">{b.title}</h3>
-              {b.time && <span className="text-[11px] text-gray-400">{b.time}</span>}
-              {b.eduIds.map((id) => (
-                <button key={id} onClick={() => nav?.({ section: "education", edu: id })} className="text-[11px] px-2 py-0.5 rounded-full bg-accent/10 text-accent hover:bg-accent hover:text-white">{eduTitle(id)}</button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500 mb-0.5">🎯 目的: {b.goal}</p>
-            <p className="text-xs text-gray-500 mb-3">💭 視聴者の心理: {b.viewer}</p>
-            <div className="grid sm:grid-cols-2 gap-3 text-xs">
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">✅ やること</p>
-                <ul className="space-y-1">{b.must.map((m, j) => <li key={j} className="text-gray-600 leading-5 pl-3 relative before:content-['・'] before:absolute before:left-0">{m}</li>)}</ul>
+          <div key={i} className="relative">
+            {i < guide.blocks.length - 1 && <div className="absolute left-7 -bottom-4 w-1 h-4 bg-gray-300" />}
+            <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden">
+              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-4 flex-wrap">
+                <span className="w-12 h-12 rounded-2xl bg-gray-800 text-white text-xl font-bold flex items-center justify-center">{i + 1}</span>
+                <div className="min-w-0">
+                  <h3 className="text-xl font-bold text-gray-900">{b.title}</h3>
+                  {b.time && <p className="text-sm text-gray-500">{b.time}</p>}
+                </div>
+                <div className="ml-auto flex flex-wrap gap-1.5">
+                  {b.eduIds.map((id) => (
+                    <button key={id} onClick={() => nav?.({ section: "education", edu: id })} className="text-xs px-2.5 py-1 rounded-full bg-accent/10 text-accent font-bold hover:bg-accent hover:text-white">{eduTitle(id)}</button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <p className="font-semibold text-red-500 mb-1">🚫 NG</p>
-                <ul className="space-y-1">{b.ng.map((n, j) => <li key={j} className="text-gray-600 leading-5 pl-3 relative before:content-['・'] before:absolute before:left-0">{n}</li>)}</ul>
+              <div className="p-6 space-y-6">
+                <section>
+                  <p className="text-sm font-bold text-accent mb-1">🎯 目的</p>
+                  <p className="text-base leading-8 text-gray-900">{b.goal}</p>
+                </section>
+                <section className="rounded-xl bg-sky-50 border border-sky-200 p-4">
+                  <p className="text-sm font-bold text-sky-900 mb-1">💭 視聴者の心理</p>
+                  <p className="text-base leading-8 text-gray-900">{b.viewer}</p>
+                </section>
+                <section>
+                  <p className="text-sm font-bold text-accent mb-2">📋 基本構成（この順番で）</p>
+                  <ol className="space-y-2">
+                    {b.flow.map((f, j) => (
+                      <li key={j} className="flex items-start gap-3">
+                        <span className="shrink-0 w-7 h-7 rounded-full bg-gray-800 text-white text-sm font-bold flex items-center justify-center mt-0.5">{j + 1}</span>
+                        <span className="text-base leading-7 text-gray-900">{f}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+                <section className="rounded-xl bg-amber-50/70 border border-amber-200 p-4">
+                  <p className="text-sm font-bold text-amber-900 mb-2">💡 ポイント</p>
+                  <ul className="space-y-2">
+                    {b.points.map((pt, j) => (
+                      <li key={j} className="flex items-start gap-2 text-base leading-7 text-gray-900"><span className="text-amber-600 shrink-0">●</span><span>{pt}</span></li>
+                    ))}
+                  </ul>
+                </section>
               </div>
             </div>
           </div>
