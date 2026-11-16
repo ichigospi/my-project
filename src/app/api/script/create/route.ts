@@ -74,7 +74,10 @@ export async function POST(request: NextRequest) {
   const segment: { index: number; total: number; skeletonPart?: string; previousScript?: string; partTargetChars?: number; totalTargetChars?: number } | undefined = body.segment;
   const aiModel = resolveAiModel(body.aiModel);
   // 主軸元ネタの文字数（±500字ルールの基準。クライアントで実測して送られる）
-  const refCharCount: number | undefined = typeof body.refCharCount === "number" && body.refCharCount > 0 ? body.refCharCount : undefined;
+  const refCharCountRaw: number | undefined = typeof body.refCharCount === "number" && body.refCharCount > 0 ? body.refCharCount : undefined;
+  // タロットは元ネタの長さに関わらず 6,000〜8,000 に収める（9,000 は絶対に超えない）
+  const refCharCount: number | undefined = refCharCountRaw === undefined ? undefined
+    : (body.style === "tarot" ? Math.max(6000, Math.min(refCharCountRaw, 8000)) : refCharCountRaw);
   // タロット単発生成時はサーバーでカードを抽選（分割時は骨組み由来のカードを使うため注入しない）
   // 骨組み段階の抽選結果（drawSpec）があればそれを使い、引き直さない（骨組みと台本の指定を一致させる）
   const cardPlan: CardPlan | null = body.cardPlan && Array.isArray(body.cardPlan.slots) && body.cardPlan.slots.length >= 5 ? (body.cardPlan as CardPlan) : null;
@@ -230,9 +233,9 @@ ${tarotDraw}
 - ただし【台本の骨組み】に具体的なカード名の指定がある場合は、骨組みのカードを最優先し、この抽選結果は使わないこと。
 ` : ""}` : ""}
 【総文字数（必達）】
-- 台本全体は【追加指示】で指定された目標文字数（およそ${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字）に収めること。${refCharCount ? `
-- 【元ネタとの文字数格差の禁止（最優先・必達）】主軸元ネタの台本は実測 約${refCharCount}字。生成台本の総文字数は${refCharCount - 500}〜${refCharCount + 500}字に収めること。元ネタとの差が500字以上になるのは禁止。この範囲はスタイル別の目標レンジより優先する` : ""}
-- 骨組みや他の箇所に「目標6,500〜7,500文字」等の大きい数字が書かれていても無視し、この目標を優先する。
+- 台本全体は【追加指示】で指定された目標文字数（${style === "tarot" ? "6,000〜8,000字。下限6,000字・上限9,000字は絶対に超えない" : "4,500〜5,000字"}）に収めること。${refCharCount ? `
+- 目標は 約${refCharCount}字（${refCharCount - 500}〜${refCharCount + 500}字）。${style === "tarot" ? "元ネタが長くても短くても、この目標に合わせる。" : ""}` : ""}
+- 骨組みや他の箇所に別の数字が書かれていても、この目標を優先する。
 - 過度な肉付け・水増し・同じ主張の繰り返しで文字数を膨らませない。密度を優先し、役割の無い文は書かない。
 
 【台本の骨組み（この構成に沿って台本を書くこと）】

@@ -5,7 +5,7 @@ import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { pullSharedSettings } from "@/lib/shared-sync";
-import { getPresetFor, getPerformanceRecordsByChannel, getProjects } from "@/lib/project-store";
+import { getPresetFor, getPerformanceRecordsByChannel, getProjects, TAROT_MIN_CHARS, TAROT_HARD_MAX, clampTargetChars } from "@/lib/project-store";
 import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
@@ -90,14 +90,8 @@ function splitSkeletonText(skeleton: string, n: number): string[] {
   return groups;
 }
 
-// 目標文字数のクランプ。タロットは5,000〜6,000字、それ以外は4,500〜5,000字。
-// 保存済みプリセットが範囲外の値でも矯正する
-// タロット台本は最低 6,000 字（それ未満は品質チェックで fail）
-const MIN_SCRIPT_CHARS_TAROT = 6000;
-function clampTargetChars(n?: number, style?: string): number {
-  if (style === "tarot") return Math.max(MIN_SCRIPT_CHARS_TAROT, Math.min(n || 6500, 7500));
-  return Math.max(4500, Math.min(n || 4750, 5000));
-}
+// 目標文字数のクランプ（共通定数は project-store）。タロットは 6,000〜8,000字（9,000字は超えない）、それ以外は4,500〜5,000字
+const MIN_SCRIPT_CHARS_TAROT = TAROT_MIN_CHARS;
 function targetRangeLabel(style?: string): string {
   return style === "tarot" ? "6,000〜7,500" : "4,500〜5,000";
 }
@@ -311,8 +305,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   // 生成・推奨分割で使う実効目標文字数: 骨組みの目標 > 元ネタ実測 > プリセット
   const getEffectiveTargetChars = (): number | undefined => {
     const raw = getSkeletonTargetChars() ?? getRefCharCount();
-    // タロットは最低 6,000 字を下回る目標にしない（元ネタが短くても底上げする）
-    if (project.style === "tarot") return Math.max(MIN_SCRIPT_CHARS_TAROT, raw ?? MIN_SCRIPT_CHARS_TAROT);
+    // タロットは元ネタの長さに関わらず 6,000〜8,000 に収める（短くても底上げ、長くても 9,000 を超えない）
+    if (project.style === "tarot") return clampTargetChars(raw ?? 7000, "tarot");
     return raw;
   };
 
@@ -1387,6 +1381,12 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
           </div>
 
+          {/* 文字数の超過警告（タロットは9,000字を超えない設計） */}
+          {project.style === "tarot" && project.generatedScript && (project.generatedScript || "").replace(/\s/g, "").length > TAROT_HARD_MAX && (
+            <div className="px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
+              ⚠️ 文字数が多すぎます: 現在 <b>{(project.generatedScript || "").replace(/\s/g, "").length.toLocaleString()}字</b>。タロット台本は 9,000字を超えない設計です（目標 6,000〜8,000字）。同じ主張の繰り返しや説明の重複を削ってください。このままでは品質チェックで fail になります
+            </div>
+          )}
           {/* 文字数の乖離警告（目標の8割未満なら増筆提案→1ポチ加筆ができる） */}
           {(() => {
             const target = getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style);

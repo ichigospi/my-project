@@ -602,6 +602,9 @@ export async function POST(request: NextRequest) {
       const tgt = typeof targetChars === "number" && targetChars > 0 ? targetChars : 0;
       if (minC && len < minC) {
         mech.push({ name: `文字数不足（最低${minC.toLocaleString()}字）`, status: "fail", comment: `実測${len.toLocaleString()}字。最低${minC.toLocaleString()}字に届いていません`, suggestion: "台本出力の「🪄 AIが判断して加筆（自動）」で目標まで増筆する（水増しではなく具体シーン・感情のディテール・理由づけで厚くする）" });
+      } else if (minC && len > 9000) {
+        // タロットの上限: 9,000字を超えたら fail（元ネタが長くても超えない設計）
+        mech.push({ name: "文字数超過（上限9,000字）", status: "fail", comment: `実測${len.toLocaleString()}字。タロット台本は9,000字を超えない設計です（目標6,000〜8,000字）`, suggestion: "同じ主張の繰り返し・説明の重複・比喩の長い段落を削り、8,000字台に収める" });
       } else if (tgt && len < Math.ceil(tgt * 0.8)) {
         mech.push({ name: `文字数が目標の80%未満（目標${tgt.toLocaleString()}字）`, status: "fail", comment: `実測${len.toLocaleString()}字（目標の${Math.round((len / tgt) * 100)}%）。大幅に不足しています`, suggestion: "台本出力の「🪄 AIが判断して加筆（自動）」で目標まで増筆する" });
       }

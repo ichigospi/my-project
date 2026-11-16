@@ -51,26 +51,59 @@ export interface ScriptEssence {
   extractedAt: string;
 }
 
-// 元ネタの本質をプロンプト用テキストに整形（骨組み・台本生成の両方で使う）
+// 本質の要素を「台本に出てくる順番」で並べたブロック（画面表示とプロンプトの両方で使う）
+export interface EssenceBlock { stage: string; title: string; text?: string; items?: string[] }
+export function essenceBlocksInOrder(e: ScriptEssence | null | undefined): EssenceBlock[] {
+  if (!e) return [];
+  const out: EssenceBlock[] = [];
+  const push = (stage: string, title: string, v: string | string[] | undefined) => {
+    if (Array.isArray(v)) { const xs = v.filter(Boolean); if (xs.length) out.push({ stage, title, items: xs }); }
+    else if (v && v.trim()) out.push({ stage, title, text: v });
+  };
+  push("冒頭", "ターゲットの名指し", e.targetCallout);
+  push("冒頭", "予告の切り口", e.agendaHook);
+  push("1〜2枚目", "悩みの本質（言い回しを活かす）", e.coreProblems);
+  push("1〜2枚目", "肯定のリフレーム", e.affirmReframe);
+  push("3枚目", "原因・常識破壊の軸", e.causeAxis);
+  push("4枚目", "具体行動", e.advice);
+  push("5枚目", "理想の未来の具体", e.idealFuture);
+  push("締め", "自己肯定の締め", e.selfAffirmClose);
+  push("締め", "最重要メッセージ（結論）", e.keyMessage);
+  push("CTA（参考）", "コメントCTAのロジック", e.commentCta);
+  push("CTA（参考）", "重CTAの未知数", e.heavyCtaUnknowns);
+  return out;
+}
+// 「必ず反映する要素」を元ネタでの出現順（冒頭→序盤→中盤→終盤、同じ段階ならカード番号順）に並べ替える
+export function mustKeepInOrder(e: ScriptEssence | null | undefined): { text: string; position?: string; card?: number }[] {
+  if (!e?.mustKeep?.length) return [];
+  const rank: Record<string, number> = { "冒頭": 0, "序盤": 1, "中盤": 2, "終盤": 3 };
+  const tl = e.timeline || [];
+  const find = (x: string) => tl.find((t) => t.element === x) || tl.find((t) => x.includes(t.element) || t.element.includes(x));
+  return e.mustKeep
+    .map((text, i) => { const t = find(text); return { text, position: t?.position, card: t?.card, i }; })
+    .sort((a, b) => {
+      const ra = a.position ? (rank[a.position] ?? 9) : 9; const rb = b.position ? (rank[b.position] ?? 9) : 9;
+      if (ra !== rb) return ra - rb;
+      const ca = a.card ?? 99; const cb = b.card ?? 99;
+      if (ca !== cb) return ca - cb;
+      return a.i - b.i;
+    })
+    .map(({ text, position, card }) => ({ text, position, card }));
+}
+
+// 元ネタの本質をプロンプト用テキストに整形（骨組み・台本生成の両方で使う。台本に出てくる順番で並べる）
 export function formatEssenceForPrompt(e: ScriptEssence | null | undefined, label = "元ネタ"): string {
   if (!e) return "";
   const li = (xs: string[]) => xs.filter(Boolean).map((x) => `  - ${x}`).join("\n");
   const lines: string[] = [];
   lines.push(`【${label}の本質（必達・骨組みと台本の両方に必ず反映する）】`);
-  lines.push("これは元ネタが視聴者に刺さった「中身」です。表面の構成だけ真似て中身を落とさないこと。各項目を対応するパートに必ず組み込む:");
-  if (e.coreProblems?.length) lines.push(`■ 悩みの本質（2枚目の深掘り・冒頭の問題提起に必ず使う。言い回しを活かす）\n${li(e.coreProblems)}`);
-  if (e.targetCallout) lines.push(`■ ターゲットの名指し（冒頭）: ${e.targetCallout}`);
-  if (e.affirmReframe) lines.push(`■ 肯定のリフレーム（1〜2枚目）: ${e.affirmReframe}`);
-  if (e.agendaHook) lines.push(`■ 予告の切り口（冒頭アジェンダ）: ${e.agendaHook}`);
-  if (e.causeAxis) lines.push(`■ 原因・常識破壊の軸（3枚目）: ${e.causeAxis}`);
-  if (e.advice?.length) lines.push(`■ 具体行動（4枚目／今週の行動）\n${li(e.advice)}`);
-  if (e.idealFuture?.length) lines.push(`■ 理想の未来の具体（5枚目）\n${li(e.idealFuture)}`);
-  if (e.selfAffirmClose) lines.push(`■ 自己肯定の締め（結末カードの後）: ${e.selfAffirmClose}`);
-  if (e.keyMessage) lines.push(`■ 最重要メッセージ（締めの結論に必ず入れる）: ${e.keyMessage}`);
-  if (e.commentCta) lines.push(`■ コメントCTAのロジック（参考）: ${e.commentCta}`);
-  if (e.heavyCtaUnknowns?.length) lines.push(`■ 重CTAの未知数（参考）\n${li(e.heavyCtaUnknowns)}`);
-  if (e.mustKeep?.length) lines.push(`■ 必ず反映する要素（優先順）\n${li(e.mustKeep)}`);
-  if (e.timeline?.length) lines.push(`■ 元ネタでの出現位置\n${li(e.timeline.map((t) => `${t.element}: ${t.position}${t.card ? `（${t.card}枚目相当）` : ""}`))}`);
+  lines.push("これは元ネタが視聴者に刺さった「中身」です。表面の構成だけ真似て中身を落とさないこと。各項目を対応するパートに必ず組み込む（台本に出てくる順）:");
+  const mk = mustKeepInOrder(e);
+  if (mk.length) lines.push(`■ 必ず反映する要素（元ネタでの出現順）\n${li(mk.map((m) => `${m.position ? `[${m.position}${m.card ? `・${m.card}枚目相当` : ""}] ` : ""}${m.text}`))}`);
+  for (const b of essenceBlocksInOrder(e)) {
+    if (b.items) lines.push(`■ ${b.stage}｜${b.title}\n${li(b.items)}`);
+    else lines.push(`■ ${b.stage}｜${b.title}: ${b.text}`);
+  }
   return lines.join("\n");
 }
 

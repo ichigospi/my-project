@@ -13,6 +13,7 @@ import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
 import type { ScriptProject, RuleProposal, SuggestionDraft, CardPlan, CardSlot } from "@/lib/project-store";
 import type { ScriptAnalysis, ScriptEssence } from "@/lib/script-analysis-store";
+import { essenceBlocksInOrder, mustKeepInOrder } from "@/lib/script-analysis-store";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
 export default function StepProposal({ project, onUpdate, onNavigate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void; onNavigate?: (stepId: string) => void }) {
@@ -291,7 +292,14 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     try {
       const res = await fetch("/api/script/card-plan", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ essence: mainAnalysis?.essence ?? null, topic: project.title, genre: project.genre, instruction: instruction || undefined, currentPlan: instruction ? project.cardPlan ?? null : null, aiApiKey, aiModel: getAiModel("check") }),
+        body: JSON.stringify({
+          essence: mainAnalysis?.essence ?? null, topic: project.title, genre: project.genre, instruction: instruction || undefined,
+          currentPlan: instruction ? project.cardPlan ?? null : null,
+          // 元ネタで「カードで何を視ていたか」を拾うための材料（追加カードの候補提案に使う）
+          transcript: mainAnalysis?.transcript ? mainAnalysis.transcript.slice(0, 7000) : undefined,
+          structure: mainAnalysis?.analysisResult?.structure?.map((sc) => ({ name: sc.name, timeRange: sc.timeRange, description: sc.description, purpose: sc.purpose })) || undefined,
+          aiApiKey, aiModel: getAiModel("check"),
+        }),
       });
       const d = await res.json();
       if (d.error) { setPlanError(d.error); return; }
@@ -316,6 +324,22 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     slots.splice(i, 1);
     savePlan(slots);
   };
+  // 元ネタ由来の追加カード候補を、指定の役割の直後に差し込む
+  const addSuggestedSlot = (idx: number) => {
+    const plan = project.cardPlan; if (!plan) return;
+    const sg = (plan.suggestions || [])[idx]; if (!sg) return;
+    const slots = [...plan.slots];
+    if (slots.length >= 7) { setPlanError("カードは最大7枚までです"); return; }
+    const anchor = slots.findIndex((sl) => sl.kind === "core" && sl.role === sg.afterRole);
+    const newSlot: CardSlot = { role: "追加", kind: "extra", title: sg.title.slice(0, 12), content: sg.content, source: sg.source || "元ネタ", reason: sg.reason || `「${sg.afterRole}」の後` };
+    if (anchor >= 0) slots.splice(anchor + 1, 0, newSlot); else slots.push(newSlot);
+    const suggestions = (plan.suggestions || []).filter((_, i) => i !== idx);
+    onUpdate({ ...project, cardPlan: { ...plan, slots, suggestions, updatedAt: new Date().toISOString() } });
+    pushSharedSettings();
+  };
+  const [essenceOpen, setEssenceOpen] = useState(true);
+  const [abstractEdit, setAbstractEdit] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const addPlanSlot = () => {
     const text = newCardText.trim();
     if (!text) return;
@@ -584,44 +608,6 @@ ${p.content}`;
     await runGenerate(mode, diff);
   };
 
-  // マークダウンを簡易HTML変換
-  const renderMarkdown = (md: string) => {
-    return md
-      .split("\n")
-      .map((line, i) => {
-        // 見出し
-        if (line.startsWith("# ")) return <h2 key={i} className="text-xl font-bold mt-6 mb-3">{line.slice(2)}</h2>;
-        if (line.startsWith("## ")) {
-          const heading = line.slice(3);
-          return (
-            <h3 key={i} className="text-lg font-bold mt-5 mb-2 text-accent flex items-center gap-2 flex-wrap">
-              <span>{heading}</span>
-              {patterns.length > 0 && (
-                <button onClick={() => setPicker({ mode: "section", heading })}
-                  className="text-[10px] px-2 py-0.5 rounded-full border border-accent/40 text-accent hover:bg-accent hover:text-white transition-colors font-normal shrink-0"
-                  title="このセクションをライブラリのパターンで差し替え（文脈は維持されます）">
-                  🔁 パターン参照
-                </button>
-              )}
-            </h3>
-          );
-        }
-        if (line.startsWith("### ")) return <h4 key={i} className="text-base font-semibold mt-4 mb-1">{line.slice(4)}</h4>;
-        // 引用（参考元ブロック）
-        if (line.startsWith("> ")) return <p key={i} className="pl-4 border-l-2 border-accent/30 text-sm text-gray-600 my-1">{line.slice(2)}</p>;
-        // ボールド
-        if (line.startsWith("**") && line.endsWith("**")) return <p key={i} className="font-semibold text-sm mt-3 mb-1">{line.slice(2, -2)}</p>;
-        // リスト
-        if (line.startsWith("- ")) return <li key={i} className="text-sm text-gray-700 ml-4 list-disc my-0.5">{line.slice(2)}</li>;
-        // 区切り線
-        if (line.startsWith("---")) return <hr key={i} className="my-4 border-gray-200" />;
-        // 空行
-        if (line.trim() === "") return <div key={i} className="h-2" />;
-        // 通常テキスト
-        return <p key={i} className="text-sm text-gray-700 leading-relaxed">{line}</p>;
-      });
-  };
-
   return (
     <div className="w-full max-w-3xl">
       <h2 className="text-xl font-bold mb-2">⑤ 構成提案</h2>
@@ -792,19 +778,53 @@ ${p.content}`;
         </div>
       )}
 
-      {/* 骨組みタブ */}
-      {viewTab === "skeleton" && (
+      {/* 骨組みタブ: Step 1 カード設計表 → Step 2 抽象ロジック → Step 3 台本の骨組み（具体ロジック） */}
+      {viewTab === "skeleton" && (() => {
+        const isTarot = project.style === "tarot";
+        const abstractText = abstractDraft ?? project.abstractLogic ?? "";
+        const step1Done = !!project.cardPlan?.slots?.length;
+        const step2Done = !!abstractText.trim();
+        const step3Done = !!skeleton;
+        const stepNo = (n: number) => (isTarot ? n : n - 2);
+        const Status = ({ done, label }: { done: boolean; label?: string }) => (
+          <span className={`text-sm px-3 py-1 rounded-full font-bold ${done ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"}`}>
+            {done ? `✓ ${label || "完了"}` : "未着手"}
+          </span>
+        );
+        const StepHeader = ({ n, title, desc, done, doneLabel, right }: { n: number; title: string; desc: string; done: boolean; doneLabel?: string; right?: React.ReactNode }) => (
+          <div className="flex items-start gap-4 mb-4">
+            <div className={`shrink-0 w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-bold ${done ? "bg-emerald-600 text-white" : "bg-gray-800 text-white"}`}>
+              <span className="text-[10px] leading-none opacity-80">STEP</span>
+              <span className="text-2xl leading-none">{n}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+                <Status done={done} label={doneLabel} />
+              </div>
+              <p className="text-base text-gray-600 mt-1">{desc}</p>
+            </div>
+            {right && <div className="shrink-0 flex items-center gap-2">{right}</div>}
+          </div>
+        );
+        const Connector = () => <div className="ml-7 h-6 border-l-4 border-dashed border-gray-300" />;
+
+        return (
         <>
-          {/* 元ネタの本質: 構成を決める前に必ず目に入るよう大きく表示（骨組み・台本プロンプトにも必達で注入される） */}
+          {/* 準備: 元ネタの本質（自動抽出。台本に出てくる順に表示） */}
           {mainAnalysis && (
-            <div className="mb-5 rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
-              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                <h3 className="text-lg font-bold text-amber-900">📌 元ネタの本質（骨組みに必ず反映）</h3>
+            <div className="mb-2 rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="shrink-0 w-14 h-14 rounded-2xl bg-amber-600 text-white flex items-center justify-center font-bold text-sm">準備</div>
+                  <div>
+                    <h3 className="text-xl font-bold text-amber-900">元ネタの本質（自動で抽出）</h3>
+                    <p className="text-base text-amber-800">元ネタ「{mainAnalysis.videoTitle}」が刺さった中身。台本に出てくる順に並んでいます。Step 1〜3の生成に自動で入ります。</p>
+                  </div>
+                </div>
                 <div className="flex items-center gap-2">
                   {extractingEssence && (
-                    <span className="inline-flex items-center gap-1.5 text-sm text-amber-700">
-                      <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />抽出中...
-                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-sm text-amber-700"><span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />抽出中...</span>
                   )}
                   {mainAnalysis.transcript && (
                     <button onClick={() => extractEssence(mainAnalysis, true)} disabled={extractingEssence}
@@ -812,347 +832,451 @@ ${p.content}`;
                       {mainAnalysis.essence ? "再抽出" : "本質を抽出"}
                     </button>
                   )}
+                  {mainAnalysis.essence && (
+                    <button onClick={() => setEssenceOpen((v) => !v)} className="text-sm px-3 py-1.5 rounded-lg border border-amber-400 text-amber-800 hover:bg-amber-100">
+                      {essenceOpen ? "たたむ" : "開く"}
+                    </button>
+                  )}
                 </div>
               </div>
-              <p className="text-sm text-amber-800 mb-4">メイン元ネタ「{mainAnalysis.videoTitle}」が視聴者に刺さった“中身”です。表面の構成だけ真似て中身を落とさないよう、各項目を対応するパートに組み込みます（骨組み・台本の生成プロンプトにも自動で入ります）。</p>
               {essenceError && <p className="text-sm text-red-600 mb-3">{essenceError}</p>}
-              {!mainAnalysis.transcript && <p className="text-sm text-amber-700">この元ネタは書き起こしが無いため抽出できません。</p>}
-              {mainAnalysis.essence && (() => {
-                const e = mainAnalysis.essence;
-                const Block = ({ title, children }: { title: string; children: React.ReactNode }) => (
-                  <div className="bg-white/80 rounded-xl p-4 border border-amber-200">
-                    <p className="text-sm font-bold text-amber-900 mb-1.5">{title}</p>
-                    <div className="text-base leading-7 text-gray-800">{children}</div>
-                  </div>
-                );
-                const List = ({ items }: { items: string[] }) => (
-                  <ul className="space-y-1">{items.map((x, i) => <li key={i}>・{x}</li>)}</ul>
-                );
-                return (
-                  <div className="space-y-3">
-                    {e.mustKeep?.length > 0 && (
-                      <div className="rounded-xl p-4 bg-amber-100 border border-amber-300">
-                        <p className="text-base font-bold text-amber-900 mb-2">★ 必ず反映する要素（優先順）</p>
-                        <ol className="space-y-1.5 text-lg leading-8 text-gray-900 font-medium list-decimal list-inside">
-                          {e.mustKeep.map((x, i) => <li key={i}>{x}</li>)}
-                        </ol>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {e.coreProblems?.length > 0 && <Block title="悩みの本質（2枚目の深掘り・冒頭の問題提起）"><List items={e.coreProblems} /></Block>}
-                      {e.causeAxis && <Block title="原因・常識破壊の軸（3枚目）">{e.causeAxis}</Block>}
-                      {e.targetCallout && <Block title="ターゲットの名指し（冒頭）">{e.targetCallout}</Block>}
-                      {e.agendaHook && <Block title="予告の切り口（冒頭アジェンダ）">{e.agendaHook}</Block>}
-                      {e.affirmReframe && <Block title="肯定のリフレーム（1〜2枚目）">{e.affirmReframe}</Block>}
-                      {e.advice?.length > 0 && <Block title="具体行動（4枚目／今週の行動）"><List items={e.advice} /></Block>}
-                      {e.idealFuture?.length > 0 && <Block title="理想の未来の具体（5枚目）"><List items={e.idealFuture} /></Block>}
-                      {e.selfAffirmClose && <Block title="自己肯定の締め（結末カードの後）">{e.selfAffirmClose}</Block>}
-                      {e.keyMessage && <Block title="最重要メッセージ（締めの結論）"><span className="font-semibold">{e.keyMessage}</span></Block>}
-                      {e.commentCta && <Block title="コメントCTAのロジック（参考）">{e.commentCta}</Block>}
-                      {e.heavyCtaUnknowns?.length > 0 && <Block title="重CTAの未知数（参考）"><List items={e.heavyCtaUnknowns} /></Block>}
-                    </div>
-                  </div>
-                );
-              })()}
+              {!mainAnalysis.transcript && <p className="text-base text-amber-700">この元ネタは書き起こしが無いため抽出できません。</p>}
+              {mainAnalysis.essence && essenceOpen && <EssenceOrdered e={mainAnalysis.essence} />}
             </div>
           )}
-          {/* カード設計表: 枚数・順番・役割を構成段階で確定する（外注が読みやすいよう、大きく・短く） */}
-          {project.style === "tarot" && (
-            <div className="mb-5 rounded-2xl border-2 border-sky-300 bg-sky-50 p-5 shadow-sm">
-              <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                <h3 className="text-lg font-bold text-sky-900">🃏 カード設計表（枚数・順番・役割）</h3>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => generateCardPlan()} disabled={planBusy}
-                    className="text-sm px-3 py-1.5 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">
-                    {planBusy ? "作成中..." : project.cardPlan ? "AIで作り直す" : "AIで設計表を作る"}
-                  </button>
-                </div>
-              </div>
-              <p className="text-sm text-sky-800 mb-3">コア5枚は固定。元ネタに合わせてAIがカードを足し、置き場所を決めます。矢印で順番を変更、追加カードは削除できます。</p>
-              {planError && <p className="text-sm text-red-600 mb-2">{planError}</p>}
-              {!project.cardPlan && !planBusy && (
-                <p className="text-base text-sky-900">まだ設計表がありません。「AIで設計表を作る」を押してください{!mainAnalysis?.essence ? "（元ネタの本質を抽出してからの方が精度が上がります）" : ""}。</p>
-              )}
-              {project.cardPlan && (
-                <ol className="space-y-2">
-                  {project.cardPlan.slots.map((sl, i) => (
-                    <li key={i} className={`rounded-xl p-3 border bg-white flex items-start gap-3 ${sl.kind === "extra" ? "border-amber-300" : "border-sky-200"}`}>
-                      <div className="shrink-0 w-10 h-10 rounded-full bg-sky-600 text-white flex items-center justify-center text-lg font-bold">{i + 1}</div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${sl.kind === "extra" ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>{sl.kind === "extra" ? "追加" : "コア"}・{sl.role}</span>
-                          <span className="text-lg font-bold text-gray-900">{sl.title}</span>
+
+          {isTarot && (
+            <>
+              <Connector />
+              {/* Step 1: カード設計表 */}
+              <div className={`rounded-2xl border-2 p-5 shadow-sm ${step1Done ? "border-sky-300 bg-sky-50" : "border-sky-400 bg-sky-50"}`}>
+                <StepHeader n={1} title="カード設計表を作る" desc="何枚引くか・順番・各カードの役割を決めます。コア5枚は固定。元ネタにあって、いつものテンプレに無いものを追加カードの候補として提案します。"
+                  done={step1Done} doneLabel={step1Done ? `${project.cardPlan!.slots.length}枚で確定` : undefined}
+                  right={
+                    <button onClick={() => generateCardPlan()} disabled={planBusy}
+                      className="text-base px-4 py-2.5 rounded-xl bg-sky-600 text-white font-bold hover:bg-sky-700 disabled:opacity-50">
+                      {planBusy ? "作成中..." : project.cardPlan ? "AIで作り直す" : "AIで設計表を作る"}
+                    </button>
+                  } />
+                {planError && <p className="text-sm text-red-600 mb-2">{planError}</p>}
+                {!project.cardPlan && !planBusy && (
+                  <p className="text-base text-sky-900">まだ設計表がありません。右上の「AIで設計表を作る」を押してください{!mainAnalysis?.essence ? "（元ネタの本質を抽出してからの方が精度が上がります）" : ""}。</p>
+                )}
+                {project.cardPlan && (
+                  <ol className="space-y-2">
+                    {project.cardPlan.slots.map((sl, i) => (
+                      <li key={i} className={`rounded-xl p-3 border bg-white flex items-start gap-3 ${sl.kind === "extra" ? "border-amber-300" : "border-sky-200"}`}>
+                        <div className="shrink-0 w-10 h-10 rounded-full bg-sky-600 text-white flex items-center justify-center text-lg font-bold">{i + 1}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${sl.kind === "extra" ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>{sl.kind === "extra" ? "追加" : "コア"}・{sl.role}</span>
+                            <span className="text-lg font-bold text-gray-900">{sl.title}</span>
+                          </div>
+                          <p className="text-base leading-7 text-gray-800 mt-1">{sl.content}</p>
+                          <p className="text-sm text-gray-500 mt-1">出どころ：{sl.source || "—"}　／　理由：{sl.reason || "—"}</p>
                         </div>
-                        <p className="text-base leading-7 text-gray-800 mt-1">{sl.content}</p>
-                        <p className="text-sm text-gray-500 mt-1">出どころ：{sl.source || "—"}　／　理由：{sl.reason || "—"}</p>
-                      </div>
-                      <div className="shrink-0 flex flex-col gap-1">
-                        <button onClick={() => movePlanSlot(i, -1)} disabled={i === 0} className="w-9 h-9 rounded-lg border border-gray-200 text-base hover:bg-gray-50 disabled:opacity-30" title="上へ">↑</button>
-                        <button onClick={() => movePlanSlot(i, 1)} disabled={i === project.cardPlan!.slots.length - 1} className="w-9 h-9 rounded-lg border border-gray-200 text-base hover:bg-gray-50 disabled:opacity-30" title="下へ">↓</button>
-                        {sl.kind === "extra" ? (
-                          <button onClick={() => deletePlanSlot(i)} className="w-9 h-9 rounded-lg border border-red-200 text-red-500 text-base hover:bg-red-50" title="このカードを外す">🗑</button>
-                        ) : (
-                          <span className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-300 text-base" title="コアは外せません">🔒</span>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {project.cardPlan && (project.cardPlan.outside?.length || 0) > 0 && (
-                <div className="mt-3 rounded-xl p-3 border border-gray-200 bg-white">
-                  <p className="text-sm font-medium text-gray-700 mb-1">カードにしない要素（カードで視る内容ではないので、設計表の枚数には入れません）</p>
-                  <ul className="text-sm text-gray-600 space-y-0.5">
-                    {project.cardPlan.outside!.map((o, i) => (
-                      <li key={i}>・{o.title} → {o.where}{o.note ? `（${o.note}）` : ""}</li>
+                        <div className="shrink-0 flex flex-col gap-1">
+                          <button onClick={() => movePlanSlot(i, -1)} disabled={i === 0} className="w-9 h-9 rounded-lg border border-gray-200 text-base hover:bg-gray-50 disabled:opacity-30" title="上へ">↑</button>
+                          <button onClick={() => movePlanSlot(i, 1)} disabled={i === project.cardPlan!.slots.length - 1} className="w-9 h-9 rounded-lg border border-gray-200 text-base hover:bg-gray-50 disabled:opacity-30" title="下へ">↓</button>
+                          {sl.kind === "extra" ? (
+                            <button onClick={() => deletePlanSlot(i)} className="w-9 h-9 rounded-lg border border-red-200 text-red-500 text-base hover:bg-red-50" title="このカードを外す">🗑</button>
+                          ) : (
+                            <span className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-300 text-base" title="コアは外せません">🔒</span>
+                          )}
+                        </div>
+                      </li>
                     ))}
-                  </ul>
-                </div>
-              )}
-              {project.cardPlan && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button onClick={() => { setNewCardOpen((v) => !v); setPlanInstructOpen(false); }}
-                    className="text-sm px-3 py-2 rounded-lg border border-sky-300 text-sky-800 bg-white hover:bg-sky-100">➕ カードを追加</button>
-                  <button onClick={() => { setPlanInstructOpen((v) => !v); setNewCardOpen(false); }}
-                    className="text-sm px-3 py-2 rounded-lg border border-sky-300 text-sky-800 bg-white hover:bg-sky-100">✏️ AIに指示して作り直す</button>
-                </div>
-              )}
-              {newCardOpen && (
-                <div className="mt-3 bg-white rounded-xl p-3 border border-sky-200">
-                  <p className="text-sm text-gray-600 mb-1">追加するカードで言うこと（1〜2文）</p>
-                  <input value={newCardText} onChange={(e) => setNewCardText(e.target.value)} placeholder="例: 運命の人がよく行く場所と、二人が近づくきっかけ"
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-base focus:outline-none focus:border-accent" />
-                  <div className="flex justify-end mt-2">
-                    <button onClick={addPlanSlot} disabled={!newCardText.trim()} className="text-sm px-4 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">末尾に追加（矢印で移動）</button>
+                  </ol>
+                )}
+                {/* 追加カードの候補（元ネタで占っていた内容のうち、テンプレに無いもの） */}
+                {project.cardPlan && (project.cardPlan.suggestions?.length || 0) > 0 && (
+                  <div className="mt-4 rounded-xl p-4 border-2 border-dashed border-amber-300 bg-amber-50/60">
+                    <p className="text-base font-bold text-amber-900 mb-1">➕ 元ネタから追加できるカードの候補</p>
+                    <p className="text-sm text-amber-800 mb-3">元ネタで占っていた内容のうち、いつものテンプレに無いものです。入れたいものの「追加」を押すだけで、適切な位置に入ります（最大7枚）。</p>
+                    <ul className="space-y-2">
+                      {project.cardPlan.suggestions!.map((sg, i) => (
+                        <li key={i} className="rounded-lg bg-white border border-amber-200 p-3 flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-base font-bold text-gray-900">{sg.title}<span className="ml-2 text-xs font-normal text-gray-500">「{sg.afterRole}」の後に入ります</span></p>
+                            <p className="text-base text-gray-800 mt-0.5">{sg.content}</p>
+                            <p className="text-sm text-gray-500 mt-0.5">元ネタで効いていた理由：{sg.reason || "—"}{sg.source ? `　／　出どころ：${sg.source}` : ""}</p>
+                          </div>
+                          <button onClick={() => addSuggestedSlot(i)} disabled={(project.cardPlan?.slots.length || 0) >= 7}
+                            className="shrink-0 px-4 py-2 rounded-lg bg-amber-600 text-white text-base font-bold hover:bg-amber-700 disabled:opacity-40">追加</button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {project.cardPlan && (project.cardPlan.outside?.length || 0) > 0 && (
+                  <div className="mt-3 rounded-xl p-3 border border-gray-200 bg-white">
+                    <p className="text-sm font-medium text-gray-700 mb-1">カードにしない要素（カードで視る内容ではないので、設計表の枚数には入れません）</p>
+                    <ul className="text-sm text-gray-600 space-y-0.5">
+                      {project.cardPlan.outside!.map((o, i) => (<li key={i}>・{o.title} → {o.where}{o.note ? `（${o.note}）` : ""}</li>))}
+                    </ul>
+                  </div>
+                )}
+                {project.cardPlan && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button onClick={() => { setNewCardOpen((v) => !v); setPlanInstructOpen(false); }}
+                      className="text-sm px-3 py-2 rounded-lg border border-sky-300 text-sky-800 bg-white hover:bg-sky-100">✍️ 自分で書いてカードを追加</button>
+                    <button onClick={() => { setPlanInstructOpen((v) => !v); setNewCardOpen(false); }}
+                      className="text-sm px-3 py-2 rounded-lg border border-sky-300 text-sky-800 bg-white hover:bg-sky-100">✏️ AIに指示して作り直す</button>
+                  </div>
+                )}
+                {newCardOpen && (
+                  <div className="mt-3 bg-white rounded-xl p-3 border border-sky-200">
+                    <p className="text-sm text-gray-600 mb-1">追加するカードで視ること（1〜2文）</p>
+                    <input value={newCardText} onChange={(e) => setNewCardText(e.target.value)} placeholder="例: 運命の人がよく行く場所と、二人が近づくきっかけ"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-base focus:outline-none focus:border-accent" />
+                    <div className="flex justify-end mt-2">
+                      <button onClick={addPlanSlot} disabled={!newCardText.trim()} className="text-sm px-4 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">末尾に追加（矢印で移動）</button>
+                    </div>
+                  </div>
+                )}
+                {planInstructOpen && (
+                  <div className="mt-3 bg-white rounded-xl p-3 border border-sky-200">
+                    <p className="text-sm text-gray-600 mb-1">AIへの指示（例:「相手の特徴は1枚目に統合して」「場所ときっかけを解決の後に1枚追加」）</p>
+                    <textarea value={planInstruction} onChange={(e) => setPlanInstruction(e.target.value)} rows={3}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-base focus:outline-none focus:border-accent" />
+                    <div className="flex justify-end mt-2">
+                      <button onClick={() => generateCardPlan(planInstruction)} disabled={planBusy || !planInstruction.trim()} className="text-sm px-4 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">
+                        {planBusy ? "作成中..." : "この指示で作り直す"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <Connector />
+
+              {/* Step 2: 抽象ロジック */}
+              <div className={`rounded-2xl border-2 p-5 shadow-sm ${step2Done ? "border-violet-300 bg-violet-50" : step1Done ? "border-violet-400 bg-violet-50" : "border-gray-200 bg-gray-50"}`}>
+                <StepHeader n={2} title="抽象ロジックを作る" desc="カードを引き、各カードで「何を伝えるか」の骨子を決めます。ここで流れと訴求を確認・修正してから、Step 3で具体化します。"
+                  done={step2Done}
+                  right={!step2Done ? (
+                    <button onClick={handleGenerate} disabled={generating || diffChecking || !step1Done}
+                      className="text-base px-4 py-2.5 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-40">
+                      {diffChecking ? "元ネタの構成をチェック中..." : generating ? "生成中..." : "抽象ロジックを生成"}
+                    </button>
+                  ) : (
+                    <button onClick={() => { if (confirm("抽象ロジックを作り直しますか？（カードも引き直されます）")) runGenerate(project.structureMode || "template", undefined, { phase: "abstract" }); }} disabled={generating}
+                      className="text-sm px-3 py-2 rounded-xl border border-violet-300 text-violet-800 bg-white hover:bg-violet-100 disabled:opacity-50">🔁 抽象からやり直す</button>
+                  )} />
+                {!step1Done && !step2Done && (
+                  <p className="text-base text-gray-600">先に Step 1 でカード設計表を作ってください。
+                    <button onClick={handleGenerate} disabled={generating || diffChecking} className="ml-2 text-sm text-gray-500 underline hover:text-gray-700">設計表なしで進む</button>
+                  </p>
+                )}
+                {project.structureMode && (
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <span className="text-sm text-gray-500">構成:</span>
+                    {(["template", "reference"] as const).map((m) => (
+                      <button key={m} onClick={() => onUpdate({ ...project, structureMode: m })}
+                        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${project.structureMode === m ? "bg-violet-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                        {m === "template" ? "いつものテンプレ" : "元ネタ準拠"}
+                      </button>
+                    ))}
+                    <span className="text-sm text-gray-400">変更したら作り直してください</span>
+                  </div>
+                )}
+                {step2Done && (
+                  <>
+                    <div className="flex items-center justify-end gap-2 mb-2">
+                      <button onClick={() => setAbstractEdit(false)} className={`px-3 py-1.5 rounded-lg text-sm ${!abstractEdit ? "bg-violet-600 text-white" : "bg-white border border-gray-200 text-gray-600"}`}>見やすく表示</button>
+                      <button onClick={() => setAbstractEdit(true)} className={`px-3 py-1.5 rounded-lg text-sm ${abstractEdit ? "bg-violet-600 text-white" : "bg-white border border-gray-200 text-gray-600"}`}>テキストで編集</button>
+                    </div>
+                    {!abstractEdit ? (
+                      <AbstractLogicView text={abstractText} />
+                    ) : (
+                      <textarea value={abstractDraft ?? ""} onChange={(e) => setAbstractDraft(e.target.value)}
+                        onBlur={() => { if (abstractDraft !== null && abstractDraft.trim() !== "" && abstractDraft !== project.abstractLogic) onUpdate({ ...project, abstractLogic: abstractDraft }); }}
+                        className="w-full h-96 p-4 rounded-xl border border-violet-200 bg-white text-base leading-7 focus:outline-none focus:border-accent font-sans" />
+                    )}
+                    {/* AI壁打ち */}
+                    <div className="mt-4 pt-4 border-t border-violet-200">
+                      <p className="text-base font-bold text-violet-900 mb-2">💬 AIに相談して直す（元台本を参照して回答。カードと正統な意味は固定のまま調整します）</p>
+                      {abChat.length > 0 && (
+                        <div className="space-y-1.5 mb-2 max-h-56 overflow-y-auto">
+                          {abChat.map((m, i) => (
+                            <div key={i} className={`text-base rounded-lg px-3 py-2 whitespace-pre-wrap ${m.role === "user" ? "bg-white border border-violet-200 ml-8" : "bg-violet-100/70 mr-8"}`}>
+                              <span className="font-semibold">{m.role === "user" ? "あなた: " : "AI: "}</span>{m.text}
+                            </div>
+                          ))}
+                          {abSending && <div className="text-sm text-violet-700 px-3 py-1.5 mr-8 flex items-center gap-2"><div className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />修正中...</div>}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <input type="text" value={abMsg} onChange={(e) => setAbMsg(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendAbstractChat(); } }}
+                          placeholder="例: 3枚目の常識破壊をもっと刺さる言い回しにして / 5枚目の未来をもっと具体的に"
+                          disabled={abSending}
+                          className="flex-1 px-3 py-2.5 rounded-lg border border-violet-200 bg-white text-base focus:outline-none focus:border-accent disabled:opacity-50" />
+                        <button onClick={sendAbstractChat} disabled={abSending || !abMsg.trim()}
+                          className="px-4 py-2 rounded-lg bg-violet-600 text-white text-base font-medium hover:bg-violet-700 disabled:opacity-50 shrink-0">
+                          {abSending ? "送信中..." : "送信"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <TarotCardGallery text={`${abstractText}\n${skeleton}`} />
+                    </div>
+                  </>
+                )}
+              </div>
+              <Connector />
+            </>
+          )}
+
+          {/* Step 3（タロット以外は Step 1）: 台本の骨組み */}
+          <div className={`rounded-2xl border-2 p-5 shadow-sm ${step3Done ? "border-emerald-300 bg-emerald-50/60" : (isTarot ? step2Done : true) ? "border-emerald-400 bg-emerald-50/60" : "border-gray-200 bg-gray-50"}`}>
+            <StepHeader n={stepNo(3)} title={isTarot ? "台本の骨組みを作る（具体ロジック）" : "台本の骨組みを作る"}
+              desc={isTarot ? "抽象ロジックを、セクションごとの具体的な骨組みに展開します。ここを確認して、次の「台本出力」に進みます。" : "参考動画の分析を基に、セクションごとの骨組みを作ります。"}
+              done={step3Done}
+              right={isTarot ? (
+                <button onClick={() => runGenerate(project.structureMode || "template", undefined, { phase: "concrete" })} disabled={generating || !step2Done}
+                  className="text-base px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-40">
+                  {generating ? "生成中..." : step3Done ? "▶ 抽象ロジックから作り直す" : "▶ 具体ロジックに展開"}
+                </button>
+              ) : (
+                <button onClick={handleGenerate} disabled={generating || diffChecking}
+                  className="text-base px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-40">
+                  {diffChecking ? "元ネタの構成をチェック中..." : generating ? "生成中..." : step3Done ? "再生成" : "骨組みを生成"}
+                </button>
+              )} />
+            {isTarot && !step2Done && <p className="text-base text-gray-600">先に Step 2 で抽象ロジックを作ってください。</p>}
+            {applyingFix && (
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
+                <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                骨組みを修正中...（対象セクション以外は変更されません）
+              </div>
+            )}
+            {skeleton && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditing(false)} className={`px-3 py-1.5 rounded-lg text-sm ${!editing ? "bg-emerald-600 text-white" : "bg-white border border-gray-200 text-gray-600"}`}>見やすく表示</button>
+                    <button onClick={() => setEditing(true)} className={`px-3 py-1.5 rounded-lg text-sm ${editing ? "bg-emerald-600 text-white" : "bg-white border border-gray-200 text-gray-600"}`}>テキストで編集</button>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {prevSkeleton !== null && (
+                      <button onClick={handleUndoPattern} className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-600 text-sm hover:bg-purple-50 bg-white" title="直前のパターン差し替え/再生成を取り消して元の骨組みに戻します">↩ 差し替え前に戻す</button>
+                    )}
+                    {patterns.some((p) => p.category === "全体構成") && (
+                      <button onClick={() => setPicker({ mode: "structure" })} disabled={generating} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 bg-white disabled:opacity-50" title="全体構成カテゴリのパターンを選んで骨組み全体を再生成します">🏗 構成全体をパターン参照</button>
+                    )}
+                    <button onClick={() => navigator.clipboard.writeText(skeleton)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 bg-white">コピー</button>
                   </div>
                 </div>
-              )}
-              {planInstructOpen && (
-                <div className="mt-3 bg-white rounded-xl p-3 border border-sky-200">
-                  <p className="text-sm text-gray-600 mb-1">AIへの指示（例:「相手の特徴は1枚目に統合して」「場所ときっかけを解決の後に1枚追加」）</p>
-                  <textarea value={planInstruction} onChange={(e) => setPlanInstruction(e.target.value)} rows={3}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-base focus:outline-none focus:border-accent" />
-                  <div className="flex justify-end mt-2">
-                    <button onClick={() => generateCardPlan(planInstruction)} disabled={planBusy || !planInstruction.trim()} className="text-sm px-4 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">
-                      {planBusy ? "作成中..." : "この指示で作り直す"}
+                {!editing ? (
+                  <SkeletonView md={skeleton} canPick={patterns.length > 0} onPick={(heading) => setPicker({ mode: "section", heading })} />
+                ) : (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <textarea value={skeleton}
+                      onChange={(e) => {
+                        setSkeleton(e.target.value);
+                        if (project.structureProposal) onUpdate({ ...project, structureProposal: { ...project.structureProposal, concept: e.target.value } });
+                      }}
+                      rows={28} className="w-full px-5 py-4 text-base leading-7 outline-none resize-y font-sans rounded-xl" />
+                  </div>
+                )}
+
+                {/* AIへの指示（修正依頼・追加指示） */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                  <label className="text-sm font-bold text-gray-700 mb-2 block">AIへの指示（修正依頼・追加指示）</label>
+                  <div className="flex gap-2">
+                    <textarea value={promptText} onChange={(e) => setPromptText(e.target.value)}
+                      placeholder="例: フックをもっと強くして / オープニングを短くして / 4枚目のワークをもっと簡単に"
+                      rows={2} className="flex-1 px-3 py-2 text-base border border-gray-200 rounded-lg outline-none focus:border-accent resize-none" />
+                    <button onClick={handleGenerate} disabled={generating || !promptText.trim()}
+                      className="px-4 py-2 rounded-lg bg-accent text-white text-base font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end">
+                      {generating ? "生成中..." : "反映"}
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
-          {/* タロット: 今回引いたカードの実際の絵柄を確認できるギャラリー */}
-          {project.style === "tarot" && (
-            <TarotCardGallery text={`${abstractDraft ?? project.abstractLogic ?? ""}\n${skeleton}`} />
-          )}
-          {applyingFix && (
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
-              <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              骨組みを修正中...（対象セクション以外は変更されません）
-            </div>
-          )}
-          {/* 構成モード表示・切替（一度でも確定したら表示） */}
-          {project.structureMode && (
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              <span className="text-xs text-gray-500">構成:</span>
-              {(["template", "reference"] as const).map((m) => (
-                <button key={m} onClick={() => onUpdate({ ...project, structureMode: m })}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${project.structureMode === m ? "bg-accent text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
-                  {m === "template" ? "いつものテンプレ" : "元ネタ準拠"}
-                </button>
-              ))}
-              <span className="text-xs text-gray-400">変更したら骨組みを再生成してください</span>
-            </div>
-          )}
 
-          {/* パターンライブラリから選択（構成提案に注入するパターン） */}
-          {patterns.length > 0 && (
-            <div className="mb-4 bg-card-bg rounded-xl border border-gray-100 p-3">
-              <button onClick={() => setShowPatterns(!showPatterns)} className="w-full flex items-center justify-between text-sm font-medium">
-                <span>📚 パターンを選択（{(project.selectedPatternIds || []).filter((id) => patterns.some((p) => p.id === id)).length}件選択中 / 全{patterns.length}件）</span>
-                <span className="text-gray-400">{showPatterns ? "▲" : "▼"}</span>
-              </button>
-              {showPatterns && (
-                <div className="mt-3 space-y-2 max-h-80 overflow-y-auto">
-                  {PATTERN_CATEGORIES.filter((cat) => patterns.some((p) => p.category === cat)).map((cat) => (
-                    <div key={cat}>
-                      <p className="text-[11px] font-bold text-gray-500 mt-2 mb-1">{cat}</p>
-                      {patterns.filter((p) => p.category === cat).map((p) => (
-                        <div key={p.id} className="flex items-start gap-2 text-xs hover:bg-gray-50 rounded p-1.5">
-                          <input type="checkbox" checked={(project.selectedPatternIds || []).includes(p.id)} onChange={() => togglePattern(p.id)} className="mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <span className="font-semibold">{p.title}</span>
-                            <span className="block text-gray-500 mt-0.5 line-clamp-2">{p.content}</span>
-                          </div>
-                          <select value={p.category}
-                            onChange={(e) => { updatePattern(p.id, { category: e.target.value }); setPatterns(getPatterns()); setTimeout(() => { pushSharedSettings(); }, 300); }}
-                            className="shrink-0 text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-600 max-w-[110px]"
-                            title="カテゴリを変更（後から自由に再割り振りできます）">
-                            {PATTERN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                          <button onClick={() => {
-                              if (!confirm(`パターン「${p.title}」を取り消しますか？（全端末のライブラリから削除されます）`)) return;
-                              removePattern(p.id); setPatterns(getPatterns()); setTimeout(() => { pushSharedSettings(); }, 300);
-                            }}
-                            className="shrink-0 text-gray-300 hover:text-red-500 text-sm leading-none mt-0.5" title="ライブラリから取り消し">✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                  <p className="text-[11px] text-gray-400">選択したパターンは骨組み生成・台本生成の両方に「必ず取り入れる」ルールとして注入されます。変更したら骨組みを再生成してください</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 追加ルール提案 */}
-          <div className="mb-4">
-            <button onClick={handleSuggestRules} disabled={suggesting || analyses.length === 0}
-              className="px-4 py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent hover:text-white transition-colors disabled:opacity-40"
-              title="元ネタ台本から、今後使えそうな勝ちパターンをプロマーケター視点で提案します">
-              {suggesting ? "元ネタを分析中..." : suggestions.length > 0 ? "🔄 再提案（現在の提案は過去タブへ）" : "💡 追加ルール提案"}
-            </button>
-            {sentToReview && <span className="ml-3 text-xs text-green-600 font-medium">✓ 添削部屋に送りました（オーナーが確認します）</span>}
-          </div>
-
-          {(suggestions.length > 0 || (project.suggestionArchive || []).length > 0) && (
-            <div className="mb-6 bg-card-bg rounded-xl border border-accent/30 p-4">
-              {/* タブ: 最新の提案 / 過去の提案 */}
-              <div className="flex gap-2 mb-3">
-                <button onClick={() => setSugTab("current")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium ${sugTab === "current" ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
-                  最新の提案（{suggestions.length}）
-                </button>
-                <button onClick={() => setSugTab("past")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium ${sugTab === "past" ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
-                  過去の提案（{(project.suggestionArchive || []).reduce((n, b) => n + b.items.length, 0)}）
-                </button>
-              </div>
-
-              {sugTab === "current" && suggestions.length > 0 && (
-                <>
-                  <p className="text-xs text-gray-400 mb-3">内容を確認・編集し、チェックを入れて「添削部屋に送る」を押してください（提案は送信しなくても保存されます）</p>
-                  <div className="space-y-3">
-                    {suggestions.map((s, i) => (
-                      <div key={i} className={`rounded-lg border p-3 ${s.include ? "border-gray-200" : "border-gray-100 opacity-50"}`}>
-                        <label className="flex items-center gap-2 mb-1 cursor-pointer">
-                          <input type="checkbox" checked={s.include}
-                            onChange={() => persistDrafts(suggestions.map((x, xi) => (xi === i ? { ...x, include: !x.include } : x)))} />
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{s.category}</span>
-                          <span className="text-sm font-semibold">{s.title}</span>
-                        </label>
-                        <textarea value={s.content}
-                          onChange={(e) => setSuggestions(suggestions.map((x, xi) => (xi === i ? { ...x, content: e.target.value } : x)))}
-                          onBlur={() => persistDrafts(suggestions)}
-                          className="w-full h-20 p-2 rounded border border-gray-200 text-xs leading-5 focus:outline-none focus:border-accent" />
-                        <p className="text-[11px] text-gray-500 mt-1">理由: {s.reason}</p>
-                      </div>
-                    ))}
+                {/* 骨組みの品質チェック */}
+                <div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <button onClick={handleSkeletonCheck} disabled={checkingSkeleton}
+                      className="px-4 py-2 rounded-lg bg-purple-600 text-white text-base font-medium hover:bg-purple-700 disabled:opacity-50">
+                      {checkingSkeleton ? "骨組みをチェック中..." : "🔍 骨組みの品質チェック"}
+                    </button>
+                    <span className="text-sm text-gray-500">構成ルール遵守・元台本からのズレを確認</span>
                   </div>
-                  <button onClick={handleSendProposals}
-                    className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
-                    チェックした提案を添削部屋に送る
-                  </button>
-                </>
-              )}
-              {sugTab === "current" && suggestions.length === 0 && (
-                <p className="text-xs text-gray-400">最新の提案はありません。「追加ルール提案」を押すと生成されます</p>
-              )}
-
-              {sugTab === "past" && (
-                <div className="space-y-4">
-                  {(project.suggestionArchive || []).length === 0 && (
-                    <p className="text-xs text-gray-400">過去の提案はありません（再提案すると、その時点の提案がここに格納されます）</p>
-                  )}
-                  {(project.suggestionArchive || []).map((batch, bi) => (
-                    <div key={bi}>
-                      <p className="text-[11px] font-medium text-gray-500 mb-1.5">
-                        📁 {new Date(batch.archivedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} の提案（{batch.items.length}件）
-                      </p>
-                      <div className="space-y-2">
-                        {batch.items.map((s, si) => (
-                          <div key={si} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-medium">{s.category}</span>
-                              <span className="text-sm font-semibold text-gray-700">{s.title}</span>
-                              <button onClick={() => navigator.clipboard.writeText(`[${s.category}] ${s.title}\n${s.content}`)}
-                                className="ml-auto text-[11px] text-accent hover:underline shrink-0">コピー</button>
+                  {skeletonCheck && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="font-bold text-lg">骨組み品質チェック <span className="text-accent">{skeletonCheck.overallScore} / 10</span></p>
+                        <button onClick={() => setSkeletonCheck(null)} className="text-sm text-gray-400 hover:text-gray-600">閉じる</button>
+                      </div>
+                      {skeletonCheck.topPriority && (
+                        <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                          <p className="text-sm font-medium text-amber-800 mb-1">最優先で直すべき</p>
+                          <p className="text-base text-amber-900">{skeletonCheck.topPriority}</p>
+                        </div>
+                      )}
+                      <div className="space-y-3">
+                        {skeletonCheck.categories.map((cat, ci) => (
+                          <div key={ci} className="border border-gray-100 rounded-lg p-3">
+                            <p className="text-base font-semibold mb-2">{cat.name}</p>
+                            <div className="space-y-1.5">
+                              {cat.items.map((it, ii) => (
+                                <div key={ii} className="flex gap-2 text-base">
+                                  <span>{it.status === "pass" ? "🟢" : it.status === "warn" ? "🟡" : "🔴"}</span>
+                                  <div className="flex-1">
+                                    <span className="text-gray-700">{it.name}</span>
+                                    {it.comment && <p className="text-sm text-gray-500 mt-0.5">{it.comment}</p>}
+                                    {it.status !== "pass" && it.suggestion && <p className="text-sm text-purple-700 mt-0.5">→ {it.suggestion}</p>}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                            <p className="text-xs text-gray-600 whitespace-pre-wrap leading-5">{s.content}</p>
-                            <p className="text-[11px] text-gray-400 mt-1">理由: {s.reason}</p>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* タロット: 抽象ロジック（カードリーディング設計）の確認・編集 */}
-          {project.style === "tarot" && (abstractDraft !== null ? true : !!project.abstractLogic) && (
-            <div className="mb-4 bg-amber-50/60 rounded-xl border border-amber-200 p-4">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h3 className="font-semibold text-sm">🧩 抽象ロジック（カードリーディング設計）</h3>
-                <span className="text-[11px] text-gray-500">流れ・訴求の骨子を確認・編集してから具体展開してください</span>
-              </div>
-              <textarea value={abstractDraft ?? ""} onChange={(e) => setAbstractDraft(e.target.value)}
-                onBlur={() => { if (abstractDraft !== null && abstractDraft.trim() !== "" && abstractDraft !== project.abstractLogic) onUpdate({ ...project, abstractLogic: abstractDraft }); }}
-                className="w-full h-72 p-3 rounded-lg border border-amber-200 bg-white text-xs leading-5 focus:outline-none focus:border-accent font-sans" />
-              <div className="flex flex-wrap gap-2 mt-2">
-                <button onClick={() => runGenerate(project.structureMode || "template", undefined, { phase: "concrete" })} disabled={generating}
-                  className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50">
-                  {generating ? "生成中..." : "▶ 具体ロジックに展開（骨組みを生成）"}
-                </button>
-                <button onClick={() => { if (confirm("抽象ロジックを作り直しますか？（カードも引き直されます）")) runGenerate(project.structureMode || "template", undefined, { phase: "abstract" }); }} disabled={generating}
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
-                  🔁 抽象からやり直す
-                </button>
-              </div>
-              {skeleton && <p className="text-[11px] text-gray-500 mt-2">※展開済みの骨組みがあります。ここを編集して「具体ロジックに展開」すると骨組みが作り直されます</p>}
-
-              {/* AI壁打ち: 指示や相談を送ると抽象ロジックが修正される */}
-              <div className="mt-3 pt-3 border-t border-amber-200">
-                <p className="text-xs font-semibold text-amber-800 mb-2">💬 AIと壁打ちして修正（元台本を参照して回答。カードと正統な意味は固定のまま調整します）</p>
-                {abChat.length > 0 && (
-                  <div className="space-y-1.5 mb-2 max-h-48 overflow-y-auto">
-                    {abChat.map((m, i) => (
-                      <div key={i} className={`text-xs rounded-lg px-3 py-1.5 whitespace-pre-wrap ${m.role === "user" ? "bg-white border border-amber-200 ml-8" : "bg-amber-100/70 mr-8"}`}>
-                        <span className="font-semibold">{m.role === "user" ? "あなた: " : "AI: "}</span>{m.text}
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+                        <button onClick={handleApplySkeletonFindings} disabled={applyingFix}
+                          className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-base font-medium hover:bg-emerald-700 disabled:opacity-50">
+                          {applyingFix ? "反映中..." : "🔧 指摘を骨組みに反映（加筆・違反箇所の削除）"}
+                        </button>
+                        <span className="text-sm text-gray-400">全文出力し直しではなく、指摘箇所だけを差分修正します</span>
                       </div>
-                    ))}
-                    {abSending && <div className="text-xs text-amber-700 px-3 py-1.5 mr-8 flex items-center gap-2"><div className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />修正中...</div>}
+                    </div>
+                  )}
+                  <div className="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                    <label className="text-sm font-bold text-gray-700 mb-2 block">加筆・削除で修正（差分／全文は作り直しません）</label>
+                    <div className="flex gap-2">
+                      <textarea value={fixNote} onChange={(e) => setFixNote(e.target.value)}
+                        placeholder="例: ❷のコメントCTAを削除して社会的証明だけ残す / 終盤に放置リスクのブロックを加筆 / ❹に時間軸予言を一文追加"
+                        rows={2} className="flex-1 px-3 py-2 text-base border border-gray-200 rounded-lg outline-none focus:border-accent resize-none" />
+                      <button onClick={() => applySkeletonFix(fixNote)} disabled={applyingFix || !fixNote.trim()}
+                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-base font-medium hover:bg-emerald-700 disabled:opacity-50 shrink-0 self-end">
+                        {applyingFix ? "反映中..." : "加筆・削除"}
+                      </button>
+                    </div>
+                    {fixSummary && (
+                      <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                        <p className="text-sm font-medium text-emerald-800 mb-1">適用した修正</p>
+                        <pre className="text-sm text-emerald-900 whitespace-pre-wrap font-sans">{fixSummary}</pre>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 上級者向け（任意）: パターンライブラリ・追加ルール提案 */}
+          <div className="mt-6 mb-6">
+            <button onClick={() => setShowAdvanced((v) => !v)} className="w-full flex items-center justify-between text-base font-bold text-gray-700 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50">
+              <span>⚙️ 上級者向け（任意）: パターンライブラリ・追加ルール提案</span>
+              <span className="text-gray-400">{showAdvanced ? "▲ たたむ" : "▼ 開く"}</span>
+            </button>
+            {showAdvanced && (
+              <div className="mt-3 space-y-4">
+                {patterns.length > 0 && (
+                  <div className="bg-card-bg rounded-xl border border-gray-100 p-3">
+                    <button onClick={() => setShowPatterns(!showPatterns)} className="w-full flex items-center justify-between text-sm font-medium">
+                      <span>📚 パターンを選択（{(project.selectedPatternIds || []).filter((id) => patterns.some((p) => p.id === id)).length}件選択中 / 全{patterns.length}件）</span>
+                      <span className="text-gray-400">{showPatterns ? "▲" : "▼"}</span>
+                    </button>
+                    {showPatterns && (
+                      <div className="mt-3 space-y-2 max-h-80 overflow-y-auto">
+                        {PATTERN_CATEGORIES.filter((cat) => patterns.some((p) => p.category === cat)).map((cat) => (
+                          <div key={cat}>
+                            <p className="text-[11px] font-bold text-gray-500 mt-2 mb-1">{cat}</p>
+                            {patterns.filter((p) => p.category === cat).map((p) => (
+                              <div key={p.id} className="flex items-start gap-2 text-xs hover:bg-gray-50 rounded p-1.5">
+                                <input type="checkbox" checked={(project.selectedPatternIds || []).includes(p.id)} onChange={() => togglePattern(p.id)} className="mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-semibold">{p.title}</span>
+                                  <span className="block text-gray-500 mt-0.5 line-clamp-2">{p.content}</span>
+                                </div>
+                                <select value={p.category}
+                                  onChange={(e) => { updatePattern(p.id, { category: e.target.value }); setPatterns(getPatterns()); setTimeout(() => { pushSharedSettings(); }, 300); }}
+                                  className="shrink-0 text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-600 max-w-[110px]" title="カテゴリを変更（後から自由に再割り振りできます）">
+                                  {PATTERN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                                <button onClick={() => {
+                                    if (!confirm(`パターン「${p.title}」を取り消しますか？（全端末のライブラリから削除されます）`)) return;
+                                    removePattern(p.id); setPatterns(getPatterns()); setTimeout(() => { pushSharedSettings(); }, 300);
+                                  }} className="shrink-0 text-gray-300 hover:text-red-500 text-sm leading-none mt-0.5" title="ライブラリから取り消し">✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                        <p className="text-[11px] text-gray-400">選択したパターンは骨組み生成・台本生成の両方に「必ず取り入れる」ルールとして注入されます。変更したら骨組みを再生成してください</p>
+                      </div>
+                    )}
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={abMsg}
-                    onChange={(e) => setAbMsg(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendAbstractChat(); } }}
-                    placeholder="例: 3枚目の常識破壊をもっと刺さる言い回しにして / 5枚目の未来をもっと具体的に"
-                    disabled={abSending}
-                    className="flex-1 px-3 py-2 rounded-lg border border-amber-200 bg-white text-xs focus:outline-none focus:border-accent disabled:opacity-50"
-                  />
-                  <button onClick={sendAbstractChat} disabled={abSending || !abMsg.trim()}
-                    className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 shrink-0">
-                    {abSending ? "送信中..." : "送信"}
+                <div>
+                  <button onClick={handleSuggestRules} disabled={suggesting || analyses.length === 0}
+                    className="px-4 py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent hover:text-white transition-colors disabled:opacity-40"
+                    title="元ネタ台本から、今後使えそうな勝ちパターンをプロマーケター視点で提案します">
+                    {suggesting ? "元ネタを分析中..." : suggestions.length > 0 ? "🔄 再提案（現在の提案は過去タブへ）" : "💡 追加ルール提案"}
                   </button>
+                  {sentToReview && <span className="ml-3 text-xs text-green-600 font-medium">✓ 添削部屋に送りました（オーナーが確認します）</span>}
                 </div>
+                {(suggestions.length > 0 || (project.suggestionArchive || []).length > 0) && (
+                  <div className="bg-card-bg rounded-xl border border-accent/30 p-4">
+                    <div className="flex gap-2 mb-3">
+                      <button onClick={() => setSugTab("current")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${sugTab === "current" ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>最新の提案（{suggestions.length}）</button>
+                      <button onClick={() => setSugTab("past")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${sugTab === "past" ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>過去の提案（{(project.suggestionArchive || []).reduce((n, b) => n + b.items.length, 0)}）</button>
+                    </div>
+                    {sugTab === "current" && suggestions.length > 0 && (
+                      <>
+                        <p className="text-xs text-gray-400 mb-3">内容を確認・編集し、チェックを入れて「添削部屋に送る」を押してください（提案は送信しなくても保存されます）</p>
+                        <div className="space-y-3">
+                          {suggestions.map((sg, i) => (
+                            <div key={i} className={`rounded-lg border p-3 ${sg.include ? "border-gray-200" : "border-gray-100 opacity-50"}`}>
+                              <label className="flex items-center gap-2 mb-1 cursor-pointer">
+                                <input type="checkbox" checked={sg.include} onChange={() => persistDrafts(suggestions.map((x, xi) => (xi === i ? { ...x, include: !x.include } : x)))} />
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{sg.category}</span>
+                                <span className="text-sm font-semibold">{sg.title}</span>
+                              </label>
+                              <textarea value={sg.content}
+                                onChange={(e) => setSuggestions(suggestions.map((x, xi) => (xi === i ? { ...x, content: e.target.value } : x)))}
+                                onBlur={() => persistDrafts(suggestions)}
+                                className="w-full h-20 p-2 rounded border border-gray-200 text-xs leading-5 focus:outline-none focus:border-accent" />
+                              <p className="text-[11px] text-gray-500 mt-1">理由: {sg.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <button onClick={handleSendProposals} className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">チェックした提案を添削部屋に送る</button>
+                      </>
+                    )}
+                    {sugTab === "current" && suggestions.length === 0 && <p className="text-xs text-gray-400">最新の提案はありません。「追加ルール提案」を押すと生成されます</p>}
+                    {sugTab === "past" && (
+                      <div className="space-y-4">
+                        {(project.suggestionArchive || []).length === 0 && <p className="text-xs text-gray-400">過去の提案はありません（再提案すると、その時点の提案がここに格納されます）</p>}
+                        {(project.suggestionArchive || []).map((batch, bi) => (
+                          <div key={bi}>
+                            <p className="text-[11px] font-medium text-gray-500 mb-1.5">📁 {new Date(batch.archivedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} の提案（{batch.items.length}件）</p>
+                            <div className="space-y-2">
+                              {batch.items.map((sg, si) => (
+                                <div key={si} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-medium">{sg.category}</span>
+                                    <span className="text-sm font-semibold text-gray-700">{sg.title}</span>
+                                    <button onClick={() => navigator.clipboard.writeText(`[${sg.category}] ${sg.title}\n${sg.content}`)} className="ml-auto text-[11px] text-accent hover:underline shrink-0">コピー</button>
+                                  </div>
+                                  <p className="text-xs text-gray-600 whitespace-pre-wrap leading-5">{sg.content}</p>
+                                  <p className="text-[11px] text-gray-400 mt-1">理由: {sg.reason}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* 生成ボタン */}
-          {!skeleton && !(project.style === "tarot" && (abstractDraft ?? project.abstractLogic)) && (
-            <button onClick={handleGenerate} disabled={generating || diffChecking}
-              className="px-6 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50 mb-6">
-              {diffChecking ? "元ネタの構成をチェック中..." : generating ? (project.style === "tarot" ? "抽象ロジックを生成中..." : "骨組みを生成中...") : (project.style === "tarot" ? "カードリーディングの抽象ロジックを生成" : "台本の骨組みを生成")}
-            </button>
-          )}
-
-          {/* パターン参照モーダル: セクション/構成全体の差し替え用パターン選択 */}
+          {/* パターン参照モーダル */}
           {picker && (() => {
             const pool = picker.mode === "structure" ? patterns.filter((p) => p.category === "全体構成") : patterns;
             const recs = picker.mode === "section" ? recommendedCategories(picker.heading || "") : [];
@@ -1160,19 +1284,11 @@ ${p.content}`;
             return (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPicker(null)}>
                 <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-5 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                  <h3 className="font-bold text-base mb-1">
-                    {picker.mode === "structure" ? "構成パターンを選択" : "パターンを選択"}
-                  </h3>
+                  <h3 className="font-bold text-base mb-1">{picker.mode === "structure" ? "構成パターンを選択" : "パターンを選択"}</h3>
                   <p className="text-xs text-gray-500 mb-3">
-                    {picker.mode === "structure"
-                      ? "選んだパターンを最優先の設計図として骨組みを再生成します（テーマ・元ネタ設定はそのまま）"
-                      : `「${picker.heading}」を選んだパターンで差し替えます。テーマ・前後の繋がり・尺は自動で維持されます`}
+                    {picker.mode === "structure" ? "選んだパターンを最優先の設計図として骨組みを再生成します（テーマ・元ネタ設定はそのまま）" : `「${picker.heading}」を選んだパターンで差し替えます。テーマ・前後の繋がり・尺は自動で維持されます`}
                   </p>
-                  {sorted.length === 0 && (
-                    <p className="text-sm text-gray-400 py-6 text-center">
-                      該当するパターンがありません。<br />添削部屋で提案を「ライブラリに追加」すると、ここから使えるようになります
-                    </p>
-                  )}
+                  {sorted.length === 0 && <p className="text-sm text-gray-400 py-6 text-center">該当するパターンがありません。<br />添削部屋で提案を「ライブラリに追加」すると、ここから使えるようになります</p>}
                   <div className="space-y-2">
                     {sorted.map((p) => (
                       <div key={p.id} className={`rounded-lg border p-3 ${recs.includes(p.category) ? "border-accent/40 bg-accent/5" : "border-gray-200"}`}>
@@ -1180,10 +1296,7 @@ ${p.content}`;
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{p.category}</span>
                           {recs.includes(p.category) && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">おすすめ</span>}
                           <span className="text-sm font-semibold">{p.title}</span>
-                          <button onClick={() => handleApplyPattern(p)}
-                            className="ml-auto shrink-0 px-3 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90">
-                            {picker.mode === "structure" ? "この構成で再生成" : "差し替え"}
-                          </button>
+                          <button onClick={() => handleApplyPattern(p)} className="ml-auto shrink-0 px-3 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90">{picker.mode === "structure" ? "この構成で再生成" : "差し替え"}</button>
                         </div>
                         <p className="text-xs text-gray-600 leading-5 line-clamp-3 whitespace-pre-wrap">{p.content}</p>
                       </div>
@@ -1195,207 +1308,26 @@ ${p.content}`;
             );
           })()}
 
-          {/* 構成乖離ポップアップ: 元ネタ準拠かテンプレか選択 */}
+          {/* 構成乖離ポップアップ */}
           {diffModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
               <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6">
                 <h3 className="font-bold text-base mb-2">元ネタの構成がいつものテンプレと大きく違います</h3>
                 {diffModal.differences.length > 0 && (
-                  <ul className="mb-3 space-y-1">
-                    {diffModal.differences.map((d, i) => (
-                      <li key={i} className="text-sm text-gray-700">・{d}</li>
-                    ))}
-                  </ul>
+                  <ul className="mb-3 space-y-1">{diffModal.differences.map((d, i) => (<li key={i} className="text-sm text-gray-700">・{d}</li>))}</ul>
                 )}
                 {diffModal.summary && <p className="text-xs text-gray-500 mb-4">{diffModal.summary}</p>}
-                <p className="text-xs text-gray-500 mb-4">
-                  どちらを選んでも、文字数（元ネタ±500字）・口調・語彙・重複禁止・CTA導線などの必須ルールはそのまま守られます。
-                </p>
+                <p className="text-xs text-gray-500 mb-4">どちらを選んでも、文字数（6,000〜8,000字）・口調・語彙・重複禁止・CTA導線などの必須ルールはそのまま守られます。</p>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <button onClick={() => runGenerate("reference", diffModal)}
-                    className="flex-1 px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">
-                    元ネタ準拠で作る（構成被りを避ける）
-                  </button>
-                  <button onClick={() => runGenerate("template", diffModal)}
-                    className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 text-sm font-medium hover:bg-gray-50">
-                    いつもの構成で作る
-                  </button>
+                  <button onClick={() => runGenerate("reference", diffModal)} className="flex-1 px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90">元ネタ準拠で作る（構成被りを避ける）</button>
+                  <button onClick={() => runGenerate("template", diffModal)} className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 text-sm font-medium hover:bg-gray-50">いつもの構成で作る</button>
                 </div>
               </div>
             </div>
           )}
-
-          {skeleton && (
-            <div className="space-y-4 mb-6">
-              {/* 表示/編集切り替え */}
-              <div className="flex items-center justify-between">
-                <div className="flex gap-2">
-                  <button onClick={() => setEditing(false)}
-                    className={`px-3 py-1.5 rounded-lg text-sm ${!editing ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
-                    プレビュー
-                  </button>
-                  <button onClick={() => setEditing(true)}
-                    className={`px-3 py-1.5 rounded-lg text-sm ${editing ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
-                    編集
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  {prevSkeleton !== null && (
-                    <button onClick={handleUndoPattern}
-                      className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-600 text-sm hover:bg-purple-50"
-                      title="直前のパターン差し替え/再生成を取り消して元の骨組みに戻します">
-                      ↩ 差し替え前に戻す
-                    </button>
-                  )}
-                  {patterns.some((p) => p.category === "全体構成") && (
-                    <button onClick={() => setPicker({ mode: "structure" })} disabled={generating}
-                      className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50"
-                      title="全体構成カテゴリのパターンを選んで骨組み全体を再生成します">
-                      🏗 構成全体をパターン参照
-                    </button>
-                  )}
-                  <button onClick={handleGenerate} disabled={generating}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50">
-                    {generating ? "生成中..." : "再生成"}
-                  </button>
-                  <button onClick={() => navigator.clipboard.writeText(skeleton)}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">
-                    コピー
-                  </button>
-                </div>
-              </div>
-
-          {/* プレビューモード */}
-          {!editing && (
-            <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-              {renderMarkdown(skeleton)}
-            </div>
-          )}
-
-          {/* 編集モード */}
-          {editing && (
-            <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100">
-              <textarea
-                value={skeleton}
-                onChange={(e) => {
-                  setSkeleton(e.target.value);
-                  if (project.structureProposal) {
-                    onUpdate({
-                      ...project,
-                      structureProposal: { ...project.structureProposal, concept: e.target.value },
-                    });
-                  }
-                }}
-                rows={25}
-                className="w-full px-6 py-4 text-sm leading-relaxed outline-none resize-y font-mono"
-              />
-            </div>
-          )}
-        </div>
-      )}
         </>
-      )}
-
-      {/* プロンプト入力欄（AIへの指示） */}
-      {skeleton && (
-        <div className="mb-6">
-          <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-4">
-            <label className="text-xs font-medium text-gray-500 mb-2 block">AIへの指示（修正依頼・追加指示）</label>
-            <div className="flex gap-2">
-              <textarea
-                value={promptText}
-                onChange={(e) => setPromptText(e.target.value)}
-                placeholder="例: フックをもっと強くして / オープニングを短くして / ヒーリングパートの前に共感セクションを入れて"
-                rows={2}
-                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent resize-none"
-              />
-              <button
-                onClick={handleGenerate}
-                disabled={generating || !promptText.trim()}
-                className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 self-end"
-              >
-                {generating ? "生成中..." : "反映"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 骨組みの品質チェック */}
-      {skeleton && (
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-3">
-            <button onClick={handleSkeletonCheck} disabled={checkingSkeleton}
-              className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
-              {checkingSkeleton ? "骨組みをチェック中..." : "🔍 骨組みの品質チェック"}
-            </button>
-            <span className="text-xs text-gray-400">構成ルール遵守・元台本からのズレを確認</span>
-          </div>
-
-          {skeletonCheck && (
-            <div className="bg-card-bg rounded-xl shadow-sm border border-gray-100 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="font-bold">骨組み品質チェック <span className="text-accent">{skeletonCheck.overallScore} / 10</span></p>
-                <button onClick={() => setSkeletonCheck(null)} className="text-sm text-gray-400 hover:text-gray-600">閉じる</button>
-              </div>
-              {skeletonCheck.topPriority && (
-                <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                  <p className="text-sm font-medium text-amber-800 mb-1">最優先で直すべき</p>
-                  <p className="text-base text-amber-900">{skeletonCheck.topPriority}</p>
-                </div>
-              )}
-              <div className="space-y-3">
-                {skeletonCheck.categories.map((cat, ci) => (
-                  <div key={ci} className="border border-gray-100 rounded-lg p-3">
-                    <p className="text-base font-semibold mb-2">{cat.name}</p>
-                    <div className="space-y-1.5">
-                      {cat.items.map((it, ii) => (
-                        <div key={ii} className="flex gap-2 text-base">
-                          <span>{it.status === "pass" ? "🟢" : it.status === "warn" ? "🟡" : "🔴"}</span>
-                          <div className="flex-1">
-                            <span className="text-gray-700">{it.name}</span>
-                            {it.comment && <p className="text-sm text-gray-500 mt-0.5">{it.comment}</p>}
-                            {it.status !== "pass" && it.suggestion && (
-                              <p className="text-sm text-purple-700 mt-0.5">→ {it.suggestion}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-3">
-                <button onClick={handleApplySkeletonFindings} disabled={applyingFix}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-base font-medium hover:bg-emerald-700 disabled:opacity-50">
-                  {applyingFix ? "反映中..." : "🔧 指摘を骨組みに反映（加筆・違反箇所の削除）"}
-                </button>
-                <span className="text-sm text-gray-400">全文出力し直しではなく、指摘箇所だけを差分修正します</span>
-              </div>
-            </div>
-          )}
-
-          {/* 加筆・削除の自由指示（差分修正） */}
-          <div className="mt-4 bg-card-bg rounded-xl shadow-sm border border-gray-100 p-4">
-            <label className="text-xs font-medium text-gray-500 mb-2 block">加筆・削除で修正（差分／全文は作り直しません）</label>
-            <div className="flex gap-2">
-              <textarea value={fixNote} onChange={(e) => setFixNote(e.target.value)}
-                placeholder="例: ❷のコメントCTAを削除して社会的証明だけ残す / 終盤に放置リスクのブロックを加筆 / ❹に時間軸予言を一文追加"
-                rows={2} className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-accent resize-none" />
-              <button onClick={() => applySkeletonFix(fixNote)} disabled={applyingFix || !fixNote.trim()}
-                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 shrink-0 self-end">
-                {applyingFix ? "反映中..." : "加筆・削除"}
-              </button>
-            </div>
-            {fixSummary && (
-              <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                <p className="text-xs font-medium text-emerald-800 mb-1">適用した修正</p>
-                <pre className="text-xs text-emerald-900 whitespace-pre-wrap font-sans">{fixSummary}</pre>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ナビゲーション */}
       {/* 進捗ステータスは「初めて進む時」だけ更新し、部屋の移動は onNavigate（表示遷移）で行う。
@@ -1468,6 +1400,200 @@ function ProfileWarning({ channelId }: { channelId?: string }) {
           → 自チャンネル設計を開く
         </Link>
       </div>
+    </div>
+  );
+}
+
+// ===== 表示用コンポーネント（外注向けに大きく・順番どおりに） =====
+
+// 元ネタの本質: 台本に出てくる順（冒頭→1〜2枚目→3枚目→4枚目→5枚目→締め→CTA参考）
+function EssenceOrdered({ e }: { e: ScriptEssence }) {
+  const mk = mustKeepInOrder(e);
+  const blocks = essenceBlocksInOrder(e);
+  const stageColor = (stage: string) =>
+    stage.startsWith("冒頭") ? "bg-rose-100 text-rose-800" :
+    stage.startsWith("1") ? "bg-sky-100 text-sky-800" :
+    stage.startsWith("3") ? "bg-violet-100 text-violet-800" :
+    stage.startsWith("4") ? "bg-emerald-100 text-emerald-800" :
+    stage.startsWith("5") ? "bg-amber-100 text-amber-800" :
+    stage.startsWith("締め") ? "bg-gray-200 text-gray-800" : "bg-gray-100 text-gray-600";
+  return (
+    <div className="space-y-3">
+      {mk.length > 0 && (
+        <div className="rounded-xl p-4 bg-amber-100 border border-amber-300">
+          <p className="text-base font-bold text-amber-900 mb-2">★ 必ず反映する要素（元ネタに出てくる順）</p>
+          <ol className="space-y-1.5">
+            {mk.map((m, i) => (
+              <li key={i} className="flex items-start gap-3 text-lg leading-8 text-gray-900">
+                <span className="shrink-0 w-8 h-8 rounded-full bg-amber-600 text-white text-base font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                <span className="flex-1">
+                  {m.position && <span className="mr-2 text-sm px-2 py-0.5 rounded-full bg-white border border-amber-300 text-amber-800 align-middle">{m.position}{m.card ? `・${m.card}枚目` : ""}</span>}
+                  {m.text}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      <ol className="space-y-2">
+        {blocks.map((b, i) => (
+          <li key={i} className="bg-white/90 rounded-xl p-4 border border-amber-200 flex items-start gap-3">
+            <span className={`shrink-0 text-sm font-bold px-2.5 py-1 rounded-lg ${stageColor(b.stage)}`}>{b.stage}</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-amber-900 mb-1">{b.title}</p>
+              {b.items ? (
+                <ul className="space-y-1 text-base leading-7 text-gray-800">{b.items.map((x, j) => <li key={j}>・{x}</li>)}</ul>
+              ) : (
+                <p className="text-base leading-7 text-gray-800">{b.text}</p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+// 抽象ロジック: 「メインテーマ／中心メタファー／一本線」＋カードごとの「正統な意味／絵柄の見せ場／伝えること／流れ」を、設計表と同じ見た目で
+function parseAbstractLogic(md: string): { pre: { k: string; v: string }[]; sections: { title: string; fields: { k: string; v: string }[]; notes: string[] }[] } {
+  const pre: { k: string; v: string }[] = [];
+  const sections: { title: string; fields: { k: string; v: string }[]; notes: string[] }[] = [];
+  let cur: { title: string; fields: { k: string; v: string }[]; notes: string[] } | null = null;
+  for (const raw of md.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("## ")) { cur = { title: line.slice(3).trim(), fields: [], notes: [] }; sections.push(cur); continue; }
+    if (line.startsWith("# ")) continue;
+    const kv = line.replace(/^[-・]\s*/, "").match(/^([^:：]{1,14})[:：]\s*(.+)$/);
+    if (!cur) { if (kv) pre.push({ k: kv[1], v: kv[2] }); else pre.push({ k: "", v: line }); continue; }
+    if (kv) cur.fields.push({ k: kv[1], v: kv[2] }); else cur.notes.push(line.replace(/^[-・]\s*/, ""));
+  }
+  return { pre, sections };
+}
+function AbstractLogicView({ text }: { text: string }) {
+  const { pre, sections } = parseAbstractLogic(text);
+  if (sections.length === 0) {
+    return <pre className="bg-white rounded-xl border border-violet-200 p-4 text-base leading-7 whitespace-pre-wrap font-sans text-gray-800">{text}</pre>;
+  }
+  return (
+    <div className="space-y-3">
+      {pre.length > 0 && (
+        <div className="rounded-xl p-4 bg-violet-100 border border-violet-300 space-y-1.5">
+          {pre.map((p, i) => (
+            <p key={i} className="text-base leading-7 text-gray-900">{p.k && <span className="font-bold text-violet-900 mr-2">{p.k}:</span>}{p.v}</p>
+          ))}
+        </div>
+      )}
+      <ol className="space-y-2">
+        {sections.map((sc, i) => (
+          <li key={i} className="rounded-xl p-4 border border-violet-200 bg-white flex items-start gap-3">
+            <div className="shrink-0 w-10 h-10 rounded-full bg-violet-600 text-white flex items-center justify-center text-lg font-bold">{i + 1}</div>
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-bold text-gray-900">{sc.title.replace(/^\d+枚目[:：]\s*/, "")}</p>
+              <dl className="mt-2 space-y-1.5">
+                {sc.fields.map((f, j) => (
+                  <div key={j} className="flex items-start gap-2">
+                    <dt className="shrink-0 w-28 text-sm font-bold text-violet-800 pt-1">{f.k}</dt>
+                    <dd className="flex-1 text-base leading-7 text-gray-800">{f.v}</dd>
+                  </div>
+                ))}
+              </dl>
+              {sc.notes.length > 0 && <ul className="mt-2 space-y-1 text-base leading-7 text-gray-700">{sc.notes.map((n, j) => <li key={j}>・{n}</li>)}</ul>}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+// 台本の骨組み: セクションごとにカード表示。参考元・理由・上位互換ポイント（> 行）は「詳細を見る」で開く
+type SkelSection = { kind: "major" | "section"; heading: string; body: string[]; details: string[] };
+function parseSkeleton(md: string): { header: string[]; sections: SkelSection[] } {
+  const header: string[] = [];
+  const sections: SkelSection[] = [];
+  let cur: SkelSection | null = null;
+  let seenTitle = false;
+  for (const raw of md.split("\n")) {
+    const line = raw.trimEnd();
+    const t = line.trim();
+    if (!t || t === "---") continue;
+    if (t.startsWith("# ")) {
+      if (!seenTitle) { seenTitle = true; continue; }
+      cur = { kind: "major", heading: t.slice(2).trim(), body: [], details: [] }; sections.push(cur); continue;
+    }
+    if (t.startsWith("## ")) { cur = { kind: "section", heading: t.slice(3).trim(), body: [], details: [] }; sections.push(cur); continue; }
+    if (!cur) { header.push(t); continue; }
+    if (t.startsWith("> ")) cur.details.push(t.slice(2).trim());
+    else cur.body.push(t);
+  }
+  return { header, sections };
+}
+function SkeletonView({ md, canPick, onPick }: { md: string; canPick: boolean; onPick: (heading: string) => void }) {
+  const { header, sections } = parseSkeleton(md);
+  const [open, setOpen] = useState<Record<number, boolean>>({});
+  const [allOpen, setAllOpen] = useState(false);
+  if (sections.length === 0) {
+    return <pre className="bg-white rounded-xl border border-emerald-200 p-4 text-base leading-7 whitespace-pre-wrap font-sans text-gray-800">{md}</pre>;
+  }
+  let n = 0;
+  return (
+    <div className="space-y-3">
+      {header.length > 0 && (
+        <div className="rounded-xl p-4 bg-emerald-100 border border-emerald-300 space-y-1">
+          {header.map((h, i) => <p key={i} className="text-base leading-7 text-gray-900">{h}</p>)}
+        </div>
+      )}
+      <div className="flex justify-end">
+        <button onClick={() => setAllOpen((v) => !v)} className="text-sm text-gray-500 underline hover:text-gray-700">{allOpen ? "すべての詳細をたたむ" : "すべての詳細を見る"}</button>
+      </div>
+      <ol className="space-y-2">
+        {sections.map((sc, i) => {
+          const isSec = sc.kind === "section";
+          if (isSec) n += 1;
+          const isOpen = allOpen || !!open[i];
+          const heading = sc.heading.replace(/^[❶❷❸❹❺❻❼❽❾❿⓫⓬]\s*/, "");
+          return (
+            <li key={i} className={`rounded-xl p-4 border bg-white ${isSec ? "border-emerald-200" : "border-gray-300 bg-gray-50"}`}>
+              <div className="flex items-start gap-3">
+                {isSec ? (
+                  <div className="shrink-0 w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center text-lg font-bold">{n}</div>
+                ) : (
+                  <div className="shrink-0 w-10 h-10 rounded-full bg-gray-700 text-white flex items-center justify-center text-base font-bold">■</div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-lg font-bold text-gray-900">{heading}</p>
+                    {isSec && canPick && (
+                      <button onClick={() => onPick(sc.heading)} className="text-[11px] px-2 py-0.5 rounded-full border border-accent/40 text-accent hover:bg-accent hover:text-white transition-colors shrink-0" title="このセクションをライブラリのパターンで差し替え">🔁 パターン参照</button>
+                    )}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {sc.body.map((b, j) => {
+                      if (b.startsWith("### ")) return <p key={j} className="text-base font-bold text-gray-800 mt-2">{b.slice(4)}</p>;
+                      if (/^[-・]\s/.test(b)) return <p key={j} className="text-base leading-7 text-gray-800 pl-4">・{b.replace(/^[-・]\s*/, "")}</p>;
+                      if (b.startsWith("**") && b.endsWith("**")) return <p key={j} className="text-base font-bold text-gray-800 mt-1">{b.slice(2, -2)}</p>;
+                      return <p key={j} className="text-base leading-7 text-gray-800">{b}</p>;
+                    })}
+                  </div>
+                  {sc.details.length > 0 && (
+                    <div className="mt-2">
+                      <button onClick={() => setOpen((o) => ({ ...o, [i]: !o[i] }))} className="text-sm text-emerald-700 underline hover:text-emerald-900">
+                        {isOpen ? "▲ 詳細をたたむ" : "▼ 詳細を見る（参考元・理由・上位互換ポイント）"}
+                      </button>
+                      {isOpen && (
+                        <div className="mt-2 pl-4 border-l-4 border-emerald-200 space-y-1">
+                          {sc.details.map((d, j) => <p key={j} className="text-sm leading-6 text-gray-600">{d}</p>)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
