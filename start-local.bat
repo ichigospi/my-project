@@ -71,11 +71,15 @@ if not exist "src\generated" (
 )
 
 echo.
-echo Starting... Open http://localhost:3000/ocr
+echo Starting... The browser opens automatically when the server is ready.
+echo (First start may take 1-3 minutes. Keep this window open.)
+echo If the browser shows "cannot connect", wait for "Ready" below, then reload.
 echo Close this window to stop.
 echo ================================
 echo.
 
-start /b cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:3000/ocr"
+REM Open the browser only after the server answers (first start can take minutes).
+REM Checks ports 3000 -> 3001 -> 3002 (Next.js moves to the next port if one is busy).
+start "" /b powershell -NoProfile -WindowStyle Hidden -Command "for($i=0;$i -lt 120;$i++){ foreach($p in 3000,3001,3002){ try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 ('http://localhost:'+$p+'/ocr') | Out-Null; Start-Process ('http://localhost:'+$p+'/ocr'); exit } catch {} }; Start-Sleep -Seconds 2 }"
 
 call npm run dev
