@@ -10,12 +10,8 @@ export interface DrawAssignment {
   full: string;        // 割り当ての全文（モーダル表示用）
 }
 
-const typeName = (text: string): string => {
-  const m = text.match(/【([^】]{1,24})】/);
-  if (m) return m[1];
-  const t = text.replace(/^[「『]/, "").replace(/\s+/g, " ").trim();
-  return t.length > 22 ? t.slice(0, 22) + "…" : t;
-};
+import { techTitle } from "./guide-overrides";
+const typeName = (text: string): string => techTitle(text);
 
 // 見出し【…】の直後にある「- …」「  …」「  ・…」「1. …」の本文行を取り出す
 function linesUnder(spec: string, heading: RegExp, max = 3): string[] {
