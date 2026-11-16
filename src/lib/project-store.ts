@@ -57,10 +57,22 @@ export interface CardSlot {
   source: string;          // 出典（元ネタのどこ／ルール）
   reason: string;          // 位置の理由（1行）
 }
+// ===== 目標文字数の設計 =====
+// タロット: 元ネタの長さに関わらず 6,000字以上・9,000字は超えない。目標は 6,000〜8,000 に収めて出力の揺れ込みでも 9,000 を超えないようにする
+export const TAROT_MIN_CHARS = 6000;
+export const TAROT_TARGET_MAX = 8000;
+export const TAROT_HARD_MAX = 9000;
+export function clampTargetChars(n?: number, style?: string): number {
+  if (style === "tarot") return Math.max(TAROT_MIN_CHARS, Math.min(n || 7000, TAROT_TARGET_MAX));
+  return Math.max(4500, Math.min(n || 4750, 5000));
+}
+
 export interface CardPlan {
   slots: CardSlot[];
   // カードにしない要素（今日占うこと・LINE誘導・高評価CTA等）。どこで扱うかのメモ。設計表の枚数には含めない
   outside?: { title: string; where: string; note?: string }[];
+  // 元ネタで占っていた内容のうち、テンプレの5役割に無いもの（追加カードの候補）。ライターは選ぶだけ
+  suggestions?: { title: string; content: string; afterRole: string; reason: string; source: string }[];
   updatedAt: string;
 }
 export function formatCardPlanForPrompt(plan: CardPlan | null | undefined): string {

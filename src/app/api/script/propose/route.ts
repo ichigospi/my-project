@@ -37,6 +37,11 @@ export async function POST(request: NextRequest) {
     return (primary.transcript || "").replace(/\s/g, "").length || undefined;
   })();
 
+  // 目標文字数: タロットは元ネタの長さに関わらず 6,000〜8,000 に収める（9,000 は超えない）。それ以外は元ネタ実測か 4,750
+  const targetChars = style === "tarot"
+    ? Math.max(6000, Math.min(refCharCount ?? 7000, 8000))
+    : Math.max(4500, Math.min(refCharCount ?? 4750, 5000));
+
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
 
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
@@ -290,17 +295,16 @@ ${structureMode === "reference" ? referenceModeBlock(style) : ""}
 ${rulesText || ""}
 ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
 
-【文字数の目標（必達）】${refCharCount ? `
-- 【元ネタとの文字数格差の禁止（最優先）】主軸元ネタの台本は実測 約${refCharCount}字。台本全体の目標は${refCharCount - 500}〜${refCharCount + 500}字とし、元ネタとの差が500字以上になる分量設計は禁止。骨組みの「目標文字数」の行には「約${refCharCount}字（元ネタ±500字）」と書くこと。` : `
-- 台本全体の目標文字数は「${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字」とする。骨組みの「目標文字数」の行には必ず「${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字」と書く。`}
-- これを超える分量の構成にしない（セクションを増やしすぎない・各セクションを詰め込みすぎない）。6,500〜7,500文字などの大きい数字は書かない。
+【文字数の目標（必達）】
+- 台本全体の目標は 約${targetChars}字（${style === "tarot" ? "下限6,000字・上限9,000字は絶対に超えない。元ネタが長くても短くても、この範囲に収める" : "4,500〜5,000字"}）。骨組みの「目標文字数」の行には必ず「約${targetChars}字」と書く。
+- これを超える分量の構成にしない（セクションを増やしすぎない・各セクションを詰め込みすぎない）。
 
 以下のマークダウン形式で出力してください。
 
 ---
 
 # 台本骨組み
-推定尺: ○○分 | 目標文字数: ${refCharCount ? `約${refCharCount}字（元ネタ±500字）` : `${style === "tarot" ? "5,000〜6,000" : "4,500〜5,000"}文字`}
+推定尺: ○○分 | 目標文字数: 約${targetChars}字
 ◆ コアメッセージ: （この台本が最初から最後まで言い続ける主張を1行で）
 ◆ 中心メタファー: 「◯◯」（この台本で使うスピ的比喩はこれ1つだけ。同じ内容を別の比喩＝器・川・磁石等で言い換えるのは禁止）
 ◆ 冒頭の約束: （冒頭で張るオープンループ。終盤でこの同じ言葉で回収する）

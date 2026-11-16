@@ -28,6 +28,13 @@ const SYSTEM_PROMPT = `あなたは占い系YouTube台本の構成プロデュ�
 - 元ネタの「必ず反映する要素」にそうした外側の要素が含まれていたら、カードにはせず outside に「要素名: どこで扱うか（オープニング／合間／クロージング）」として書く
 - 追加カードを作るときも、title は「◯◯（カードで何を視るか）」になっていること。「LINE誘導」「今日のテーマ」のような title は不可
 
+【追加カードの候補（suggestions。ライターが判断しなくて済むように、ツールが提案する）】
+- 元ネタの書き起こし・構成を読み、元ネタが「カードで視ている内容」のうち、背骨の5役割（今の状態／悩みの言い当て／原因／解決／理想の未来）に含まれないものを拾い出す
+  例（恋愛）: あの人の特徴・あの人の今の気持ち・二人が近づくきっかけ・出会う場所・乗り越える壁・最後の合図・時期の性質 ／（金運）: お金が入る経路・最初の予兆・受け取りを止めている癖
+- 候補は最大5つ。各候補に title（10字以内）、content（何を視るか1〜2文）、afterRole（どの背骨の後に置くか: 問題提起|深掘り|常識破壊|解決|未来）、reason（なぜ元ネタで効いていたか1行）、source（元ネタのどこか）を付ける
+- そのうち元ネタで1枚分の長さで語られていた最重要の1〜2枚は slots にも「追加」として入れる（slots に入れたものも suggestions に含めてよい。ツール側で重複は除く）
+- カードで視る内容でないもの（今日占うこと・CTA・LINE誘導 等）は候補にしない（outside へ）
+
 【元ネタ固有の必須要素の置き方】
 - 「元ネタの本質」の「必ず反映する要素」を1つずつ見て、背骨のどこかに「統合」するか、「追加カード」として差し込むかを決める
 - 追加カードは最大2枚（合計7枚まで）。元ネタがその要素を1枚分の長さで語っていれば「追加」、ひと言なら「統合」
@@ -43,6 +50,7 @@ const SYSTEM_PROMPT = `あなたは占い系YouTube台本の構成プロデュ�
 
 必ず次のJSONのみで回答（説明文・コードブロック記法は禁止）:
 { "slots": [ { "role": "問題提起|深掘り|常識破壊|解決|未来|追加", "kind": "core|extra", "title": "…", "content": "…", "source": "…", "reason": "…" } ],
+  "suggestions": [ { "title": "…", "content": "…", "afterRole": "問題提起|深掘り|常識破壊|解決|未来", "reason": "…", "source": "…" } ],
   "outside": [ { "title": "カードにしない要素名", "where": "オープニング|合間|クロージング", "note": "一言" } ] }`;
 
 // カードで視る内容ではないもの（AIが誤って入れた場合のサーバー側ガード）
@@ -66,8 +74,9 @@ const CORE_ROLES = ["問題提起", "深掘り", "常識破壊", "解決", "未�
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { essence, topic, genre, instruction, currentPlan, aiApiKey } = body as {
+    const { essence, topic, genre, instruction, currentPlan, aiApiKey, transcript, structure } = body as {
       essence?: ScriptEssence | null; topic?: string; genre?: string; instruction?: string; currentPlan?: CardPlan | null; aiApiKey: string;
+      transcript?: string; structure?: { name: string; timeRange?: string; description?: string; purpose?: string }[];
     };
     const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
@@ -77,6 +86,8 @@ export async function POST(request: NextRequest) {
 【企画】${topic || "（未設定）"}（ジャンル: ${genre || "不明"}）
 
 ${essence ? formatEssenceForPrompt(essence, "元ネタ") : "【元ネタの本質】（未抽出。背骨の5枚で設計する）"}
+${Array.isArray(structure) && structure.length ? `\n【元ネタの構成（分析結果）】\n${structure.map((sc, i) => `${i + 1}. ${sc.name}${sc.timeRange ? `（${sc.timeRange}）` : ""}: ${sc.description || ""}${sc.purpose ? `／目的: ${sc.purpose}` : ""}`).join("\n")}` : ""}
+${typeof transcript === "string" && transcript.trim() ? `\n【元ネタの書き起こし（冒頭から抜粋。カードで何を視ているかを拾う材料）】\n${transcript.replace(/\s+/g, " ").slice(0, 7000)}` : ""}
 ${essence?.timeline?.length ? `\n【元ネタでの出現位置】\n${essence.timeline.map((t) => `- ${t.element}: ${t.position}${t.card ? `（${t.card}枚目相当）` : ""}`).join("\n")}` : ""}
 ${currentPlan?.slots?.length ? `\n【今の設計表】\n${currentPlan.slots.map((sl, i) => `${i + 1}. [${sl.kind === "core" ? "コア" : "追加"}/${sl.role}] ${sl.title}: ${sl.content}`).join("\n")}` : ""}
 ${instruction ? `\n【オーナーからの指示（最優先で反映）】\n${instruction}` : ""}`;
@@ -114,6 +125,13 @@ ${instruction ? `\n【オーナーからの指示（最優先で反映）】\n${
 
     const parsed = parseJSON(raw);
     if (!parsed || !Array.isArray(parsed.slots)) return NextResponse.json({ error: "AI応答の解析に失敗しました" }, { status: 500 });
+    const suggestionsRaw: { title: string; content: string; afterRole: string; reason: string; source: string }[] = Array.isArray(parsed.suggestions)
+      ? (parsed.suggestions as Record<string, unknown>[]).map((o) => ({
+          title: String(o.title || "").slice(0, 20), content: String(o.content || "").slice(0, 120),
+          afterRole: CORE_ROLES.includes(String(o.afterRole)) ? String(o.afterRole) : "解決",
+          reason: String(o.reason || "").slice(0, 80), source: String(o.source || "").slice(0, 60),
+        })).filter((o) => o.title && o.content && !isNonReadingSlot(o)).slice(0, 5)
+      : [];
     const outside: { title: string; where: string; note: string }[] = Array.isArray(parsed.outside)
       ? (parsed.outside as Record<string, unknown>[]).map((o) => ({ title: String(o.title || "").slice(0, 30), where: String(o.where || "").slice(0, 20), note: String(o.note || "").slice(0, 60) })).filter((o) => o.title)
       : [];
@@ -141,7 +159,10 @@ ${instruction ? `\n【オーナーからの指示（最優先で反映）】\n${
       if (!roles.includes(r)) slots.push({ role: r, kind: "core", title: r, content: "（ルールどおり）", source: "ルールのコア", reason: "背骨" });
     }
     const ordered = reorderByBackbone(slots);
-    return NextResponse.json({ plan: { slots: ordered, outside, updatedAt: new Date().toISOString() } as CardPlan });
+    // 既に設計表に入っている追加カードと同じ候補は除く（title の一致、または content の前半一致）
+    const inPlan = ordered.filter((sl) => sl.kind === "extra");
+    const suggestions = suggestionsRaw.filter((sg) => !inPlan.some((sl) => sl.title === sg.title || sl.content.slice(0, 12) === sg.content.slice(0, 12)));
+    return NextResponse.json({ plan: { slots: ordered, outside, suggestions, updatedAt: new Date().toISOString() } as CardPlan });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "カード設計表の作成に失敗しました" }, { status: 500 });
   }
