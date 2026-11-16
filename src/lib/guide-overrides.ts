@@ -19,13 +19,21 @@ export interface ItemOverride {
   eduIds?: string[];         // この技がしている教育（上書き。指定した教育のデッキにも表示される）
   memo?: string;             // 解説メモ
 }
+export interface StructureOverride {
+  goal?: string;
+  viewer?: string[];
+  flow?: { title: string; desc: string }[];
+  points?: string[];
+  memo?: string;
+}
 export interface GuideOverrides {
   education: Record<string, EducationOverride>;
   items: Record<string, ItemOverride>;
+  structure?: Record<string, StructureOverride>;   // key: StructureBlock.id
   updatedAt?: string;
 }
 
-export const EMPTY_OVERRIDES: GuideOverrides = { education: {}, items: {} };
+export const EMPTY_OVERRIDES: GuideOverrides = { education: {}, items: {}, structure: {} };
 
 // 技カタログ項目の安定キー（本文のハッシュ。文面が変わると別キーになる）
 function djb2(s: string): string {
@@ -59,7 +67,7 @@ export async function fetchGuideOverrides(): Promise<GuideOverrides> {
     const d = await res.json();
     if (!res.ok || !d || typeof d !== "object") return EMPTY_OVERRIDES;
     const o = (d.overrides || {}) as Partial<GuideOverrides>;
-    return { education: o.education || {}, items: o.items || {}, updatedAt: o.updatedAt };
+    return { education: o.education || {}, items: o.items || {}, structure: o.structure || {}, updatedAt: o.updatedAt };
   } catch {
     return EMPTY_OVERRIDES;
   }

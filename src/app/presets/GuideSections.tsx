@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import {
   INTRO, EDUCATION_TYPES, EDUCATION_FIRST_THREE, STRUCTURE_GUIDE, PROHIBITIONS, CHECKLIST, educationIdsForBank,
-  type EducationType, type EducationExample,
+  type EducationType, type EducationExample, type StructureBlock,
 } from "@/lib/guide-content";
 import type { ScriptBank } from "@/lib/tarot-draw";
 import { getPatterns, type PatternItem } from "@/lib/pattern-store";
@@ -463,15 +463,64 @@ export function GuideEducation({ initialId, nav }: { initialId?: string; nav?: G
 }
 
 // ===== 3. 構成ガイド（目的 → 視聴者の心理 → 基本構成 → ポイント） =====
+function StructureEditModal({ b, ov, save, onClose }: { b: StructureBlock; ov: GuideOverrides; save: (n: GuideOverrides) => Promise<void>; onClose: () => void }) {
+  const cur = ov.structure?.[b.id] || {};
+  const [goal, setGoal] = useState(cur.goal ?? b.goal);
+  const [viewer, setViewer] = useState((cur.viewer ?? b.viewer).join("\n"));
+  const [flow, setFlow] = useState((cur.flow ?? b.flow).map((f) => `${f.title}｜${f.desc}`).join("\n"));
+  const [points, setPoints] = useState((cur.points ?? b.points).join("\n"));
+  const [memo, setMemo] = useState(cur.memo ?? b.memo);
+  const doSave = async () => {
+    const next: GuideOverrides = {
+      ...ov,
+      structure: {
+        ...(ov.structure || {}),
+        [b.id]: {
+          goal,
+          viewer: viewer.split("\n").map((x) => x.trim()).filter(Boolean),
+          flow: flow.split("\n").map((x) => x.trim()).filter(Boolean).map((line) => { const i = line.indexOf("｜"); return i >= 0 ? { title: line.slice(0, i).trim(), desc: line.slice(i + 1).trim() } : { title: line, desc: "" }; }),
+          points: points.split("\n").map((x) => x.trim()).filter(Boolean),
+          memo,
+        },
+      },
+    };
+    await save(next); onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto space-y-4" onClick={(ev) => ev.stopPropagation()}>
+        <div className="flex items-center justify-between"><h3 className="text-xl font-bold">{b.title} を編集</h3><button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-gray-800 text-white text-sm">✕ 閉じる</button></div>
+        <label className="block"><span className="text-sm font-bold text-gray-600">🎯 目的</span>
+          <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={5} className="mt-1 w-full p-3 rounded-lg border border-gray-300 text-base leading-7" /></label>
+        <label className="block"><span className="text-sm font-bold text-gray-600">💭 視聴者の心理（1行に1つ。セリフ調で）</span>
+          <textarea value={viewer} onChange={(e) => setViewer(e.target.value)} rows={6} className="mt-1 w-full p-3 rounded-lg border border-gray-300 text-base leading-7" /></label>
+        <label className="block"><span className="text-sm font-bold text-gray-600">📋 基本構成（1行に1つ。「見出し｜説明」の形。｜が無ければ見出しだけ）</span>
+          <textarea value={flow} onChange={(e) => setFlow(e.target.value)} rows={7} className="mt-1 w-full p-3 rounded-lg border border-gray-300 text-base leading-7" /></label>
+        <label className="block"><span className="text-sm font-bold text-gray-600">💡 ポイント（1行に1つ）</span>
+          <textarea value={points} onChange={(e) => setPoints(e.target.value)} rows={4} className="mt-1 w-full p-3 rounded-lg border border-gray-300 text-base leading-7" /></label>
+        <label className="block"><span className="text-sm font-bold text-gray-600">🗒 解説メモ</span>
+          <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} className="mt-1 w-full p-3 rounded-lg border border-gray-300 text-base leading-7" /></label>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-300 text-sm">キャンセル</button>
+          <button onClick={doSave} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-bold">保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GuideStructure({ nav }: { nav?: GuideNav }) {
   const [style, setStyle] = useState<"tarot" | "healing">("tarot");
   const guide = STRUCTURE_GUIDE[style];
+  const { ov, save, saving, saveError } = useOverrides();
+  const canEdit = useCanEdit();
+  const [editing, setEditing] = useState<StructureBlock | null>(null);
   return (
     <div className="max-w-4xl">
       <div className="rounded-2xl border border-gray-200 bg-white p-5 mb-5">
         <p className="text-base text-gray-700 leading-7">
           台本を頭から順に、パートごとに「<b>何のためのパートか</b>」「<b>視聴者はそのとき何を感じているか</b>」「<b>基本の組み立て</b>」「<b>ポイント</b>」で説明します。
-          各パートの右上のタグは、そのパートがしている<b>教育</b>です（押すと教育カードへ）。
+          基本構成は、どの動画にも共通する最低限の流れです。パート右上のタグは、そのパートがしている<b>教育</b>です（押すと教育カードへ）。
         </p>
         <div className="flex items-center gap-2 mt-3">
           <span className="text-sm text-gray-500">スタイル:</span>
@@ -482,10 +531,15 @@ export function GuideStructure({ nav }: { nav?: GuideNav }) {
             </button>
           ))}
         </div>
+        {saveError && <p className="text-sm text-red-600 mt-2">{saveError}</p>}
+        {saving && <p className="text-sm text-gray-500 mt-2">保存中...</p>}
       </div>
       <div className="space-y-4">
-        {guide.blocks.map((b, i) => (
-          <div key={i} className="relative">
+        {guide.blocks.map((base, i) => {
+          const o = ov.structure?.[base.id] || {};
+          const b: StructureBlock = { ...base, goal: o.goal ?? base.goal, viewer: o.viewer ?? base.viewer, flow: o.flow ?? base.flow, points: o.points ?? base.points, memo: o.memo ?? base.memo };
+          return (
+          <div key={b.id} className="relative">
             {i < guide.blocks.length - 1 && <div className="absolute left-7 -bottom-4 w-1 h-4 bg-gray-300" />}
             <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden">
               <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-4 flex-wrap">
@@ -494,45 +548,65 @@ export function GuideStructure({ nav }: { nav?: GuideNav }) {
                   <h3 className="text-xl font-bold text-gray-900">{b.title}</h3>
                   {b.time && <p className="text-sm text-gray-500">{b.time}</p>}
                 </div>
-                <div className="ml-auto flex flex-wrap gap-1.5">
+                <div className="ml-auto flex flex-wrap gap-1.5 items-center">
                   {b.eduIds.map((id) => (
                     <button key={id} onClick={() => nav?.({ section: "education", edu: id })} className="text-xs px-2.5 py-1 rounded-full bg-accent/10 text-accent font-bold hover:bg-accent hover:text-white">{eduTitle(id)}</button>
                   ))}
+                  {canEdit && <button onClick={() => setEditing(base)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-100">✏️ 編集</button>}
                 </div>
               </div>
               <div className="p-6 space-y-6">
                 <section>
                   <p className="text-sm font-bold text-accent mb-1">🎯 目的</p>
-                  <p className="text-base leading-8 text-gray-900">{b.goal}</p>
+                  <p className="text-base leading-8 text-gray-900 whitespace-pre-wrap">{b.goal}</p>
                 </section>
                 <section className="rounded-xl bg-sky-50 border border-sky-200 p-4">
-                  <p className="text-sm font-bold text-sky-900 mb-1">💭 視聴者の心理</p>
-                  <p className="text-base leading-8 text-gray-900">{b.viewer}</p>
+                  <p className="text-sm font-bold text-sky-900 mb-2">💭 視聴者の心理</p>
+                  <ul className="space-y-1.5">
+                    {b.viewer.map((v, j) => <li key={j} className="text-base leading-7 text-gray-900 flex items-start gap-2"><span className="text-sky-500 shrink-0">💬</span><span>{v}</span></li>)}
+                  </ul>
                 </section>
                 <section>
                   <p className="text-sm font-bold text-accent mb-2">📋 基本構成（この順番で）</p>
-                  <ol className="space-y-2">
+                  <ol className="space-y-3">
                     {b.flow.map((f, j) => (
                       <li key={j} className="flex items-start gap-3">
-                        <span className="shrink-0 w-7 h-7 rounded-full bg-gray-800 text-white text-sm font-bold flex items-center justify-center mt-0.5">{j + 1}</span>
-                        <span className="text-base leading-7 text-gray-900">{f}</span>
+                        <span className="shrink-0 w-8 h-8 rounded-full bg-gray-800 text-white text-sm font-bold flex items-center justify-center mt-0.5">{j + 1}</span>
+                        <div className="min-w-0">
+                          <p className="text-lg font-bold text-gray-900 leading-7">{f.title}</p>
+                          {f.desc && <p className="text-base leading-7 text-gray-700 mt-0.5">{f.desc}</p>}
+                        </div>
                       </li>
                     ))}
                   </ol>
                 </section>
-                <section className="rounded-xl bg-amber-50/70 border border-amber-200 p-4">
-                  <p className="text-sm font-bold text-amber-900 mb-2">💡 ポイント</p>
-                  <ul className="space-y-2">
-                    {b.points.map((pt, j) => (
-                      <li key={j} className="flex items-start gap-2 text-base leading-7 text-gray-900"><span className="text-amber-600 shrink-0">●</span><span>{pt}</span></li>
-                    ))}
-                  </ul>
-                </section>
+                {(b.points.length > 0 || canEdit) && (
+                  <section className="rounded-xl bg-amber-50/70 border border-amber-200 p-4">
+                    <p className="text-sm font-bold text-amber-900 mb-2">💡 ポイント</p>
+                    {b.points.length === 0 ? (
+                      <p className="text-sm text-gray-400">（ポイントはオーナーが随時追加します。「編集」から1行ずつ追加できます）</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {b.points.map((pt, j) => (
+                          <li key={j} className="flex items-start gap-2 text-base leading-7 text-gray-900"><span className="text-amber-600 shrink-0">●</span><span>{pt}</span></li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                )}
+                {b.memo && (
+                  <section className="rounded-xl border border-gray-200 p-4">
+                    <p className="text-sm font-bold text-gray-700 mb-1">🗒 解説メモ</p>
+                    <p className="text-base leading-7 text-gray-900 whitespace-pre-wrap">{b.memo}</p>
+                  </section>
+                )}
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
+      {editing && <StructureEditModal b={editing} ov={ov} save={save} onClose={() => setEditing(null)} />}
     </div>
   );
 }
