@@ -14,6 +14,7 @@ import TarotCardGallery from "@/components/TarotCardGallery";
 import type { ScriptProject, RuleProposal, SuggestionDraft, CardPlan, CardSlot } from "@/lib/project-store";
 import type { ScriptAnalysis, ScriptEssence } from "@/lib/script-analysis-store";
 import { essenceBlocksInOrder, mustKeepInOrder } from "@/lib/script-analysis-store";
+import { parseDrawAssignments, areaForSectionTitle, techniqueLink, type DrawAssignment } from "@/lib/draw-assignments";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
 export default function StepProposal({ project, onUpdate, onNavigate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void; onNavigate?: (stepId: string) => void }) {
@@ -986,7 +987,7 @@ ${p.content}`;
                       <button onClick={() => setAbstractEdit(true)} className={`px-3 py-1.5 rounded-lg text-sm ${abstractEdit ? "bg-violet-600 text-white" : "bg-white border border-gray-200 text-gray-600"}`}>テキストで編集</button>
                     </div>
                     {!abstractEdit ? (
-                      <AbstractLogicView text={abstractText} />
+                      <AbstractLogicView text={abstractText} assignments={parseDrawAssignments(project.drawSpec)} />
                     ) : (
                       <textarea value={abstractDraft ?? ""} onChange={(e) => setAbstractDraft(e.target.value)}
                         onBlur={() => { if (abstractDraft !== null && abstractDraft.trim() !== "" && abstractDraft !== project.abstractLogic) onUpdate({ ...project, abstractLogic: abstractDraft }); }}
@@ -1470,13 +1471,46 @@ function parseAbstractLogic(md: string): { pre: { k: string; v: string }[]; sect
   }
   return { pre, sections };
 }
-function AbstractLogicView({ text }: { text: string }) {
+// 「使っている技」のタグ（押すと台本ルールの技カタログが該当項目を開いた状態で別タブに開く）
+function TechChips({ items, compact }: { items: DrawAssignment[]; compact?: boolean }) {
+  if (items.length === 0) return null;
+  return (
+    <div className={`flex flex-wrap gap-1.5 ${compact ? "" : "mt-2"}`}>
+      {items.map((a, i) => (
+        <a key={i} href={techniqueLink(a.bankId, a.value)} target="_blank" rel="noreferrer" title={`${a.label}: ${a.full}`}
+          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-violet-100 text-violet-900 border border-violet-200 hover:bg-violet-600 hover:text-white transition">
+          <span className="opacity-70">{a.label}</span><span className="font-bold">{a.value}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+function AbstractLogicView({ text, assignments = [] }: { text: string; assignments?: DrawAssignment[] }) {
   const { pre, sections } = parseAbstractLogic(text);
+  const byArea = (area: DrawAssignment["area"]) => assignments.filter((a) => a.area === area);
   if (sections.length === 0) {
     return <pre className="bg-white rounded-xl border border-violet-200 p-4 text-base leading-7 whitespace-pre-wrap font-sans text-gray-800">{text}</pre>;
   }
   return (
     <div className="space-y-3">
+      {assignments.length > 0 && (
+        <div className="rounded-xl p-4 bg-white border border-violet-200">
+          <p className="text-sm font-bold text-violet-900 mb-1">🎲 今回の割り当て（ツールが抽選した技。タグを押すと台本ルールの説明が開きます）</p>
+          <p className="text-xs text-gray-500 mb-2">各カードの下にも、そのカードで使う技を表示しています。</p>
+          <div className="space-y-1.5">
+            {(["冒頭", "2枚目", "3枚目", "4枚目", "5枚目", "終盤", "本編"] as DrawAssignment["area"][]).map((area) => {
+              const items = byArea(area);
+              if (items.length === 0) return null;
+              return (
+                <div key={area} className="flex items-start gap-2">
+                  <span className="shrink-0 w-14 text-xs font-bold text-gray-600 pt-1">{area}</span>
+                  <TechChips items={items} compact />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {pre.length > 0 && (
         <div className="rounded-xl p-4 bg-violet-100 border border-violet-300 space-y-1.5">
           {pre.map((p, i) => (
@@ -1499,6 +1533,7 @@ function AbstractLogicView({ text }: { text: string }) {
                 ))}
               </dl>
               {sc.notes.length > 0 && <ul className="mt-2 space-y-1 text-base leading-7 text-gray-700">{sc.notes.map((n, j) => <li key={j}>・{n}</li>)}</ul>}
+              {(() => { const area = areaForSectionTitle(sc.title, i); return area ? <TechChips items={byArea(area)} /> : null; })()}
             </div>
           </li>
         ))}

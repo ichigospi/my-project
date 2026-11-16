@@ -21,6 +21,29 @@ export default function PresetsPage() {
   const [analyses, setAnalysesState] = useState<ScriptAnalysis[]>([]);
   // ガイド（教育）セクションと詳細設定（旧タブ群）の2階層ナビ
   const [section, setSection] = useState<"intro" | "education" | "structure" | "techniques" | "rules" | "settings">("intro");
+  // ディープリンク: /presets?section=techniques&bank=break_styles&item=内因型 ／ ?section=education&edu=breakthrough
+  const [deep, setDeep] = useState<{ edu?: string; bank?: string; item?: string }>({});
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const sec = sp.get("section");
+      if (sec && ["intro", "education", "structure", "techniques", "rules", "settings"].includes(sec)) setSection(sec as typeof section);
+      setDeep({ edu: sp.get("edu") || undefined, bank: sp.get("bank") || undefined, item: sp.get("item") || undefined });
+    } catch { /* ignore */ }
+  }, []);
+  const guideNav = (q: { section: "education" | "techniques"; edu?: string; bank?: string; item?: string }) => {
+    setSection(q.section);
+    setDeep({ edu: q.edu, bank: q.bank, item: q.item });
+    try {
+      const sp = new URLSearchParams();
+      sp.set("section", q.section);
+      if (q.edu) sp.set("edu", q.edu);
+      if (q.bank) sp.set("bank", q.bank);
+      if (q.item) sp.set("item", q.item);
+      window.history.replaceState(null, "", `/presets?${sp.toString()}`);
+      window.scrollTo({ top: 0 });
+    } catch { /* ignore */ }
+  };
   const [tab, setTab] = useState<"common" | "presets" | "knowledge">("common");
   // ジャンルナレッジ
   const [knowledgeMap, setKnowledgeMap] = useState(getGenreKnowledgeMap());
@@ -117,9 +140,9 @@ export default function PresetsPage() {
       </div>
 
       {section === "intro" && <GuideIntro />}
-      {section === "education" && <GuideEducation />}
-      {section === "structure" && <GuideStructure />}
-      {section === "techniques" && <GuideTechniques />}
+      {section === "education" && <GuideEducation initialId={deep.edu} nav={guideNav} />}
+      {section === "structure" && <GuideStructure nav={guideNav} />}
+      {section === "techniques" && <GuideTechniques initialBank={deep.bank} initialItem={deep.item} nav={guideNav} />}
       {section === "rules" && <GuideRules />}
 
       {/* ⚙️ 詳細設定: AIに渡る原文の管理（旧・台本ルールページの機能） */}

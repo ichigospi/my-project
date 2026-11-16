@@ -3,11 +3,12 @@
 // 台本ガイド（外注ライター教育用）の表示セクション群。
 // コンテンツは src/lib/guide-content.ts（解説）と /api/script-banks（抽選バンク実体）から供給。
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
-  INTRO, EDUCATION_TYPES, STRUCTURE_GUIDE, PROHIBITIONS, CHECKLIST,
+  INTRO, EDUCATION_TYPES, EDUCATION_FIRST_THREE, STRUCTURE_GUIDE, PROHIBITIONS, CHECKLIST, educationIdsForBank,
 } from "@/lib/guide-content";
 import type { ScriptBank } from "@/lib/tarot-draw";
+import { getPatterns, type PatternItem } from "@/lib/pattern-store";
 
 const eduTitle = (id: string) => EDUCATION_TYPES.find((e) => e.id === id)?.title || id;
 
@@ -65,51 +66,226 @@ export function GuideIntro() {
   );
 }
 
-// ===== 2. 教育の型 =====
-export function GuideEducation() {
-  const [open, setOpen] = useState<string | null>(EDUCATION_TYPES[0]?.id ?? null);
+// ===== 共通: 技カタログのバンク取得 =====
+function useBanks() {
+  const [banks, setBanks] = useState<ScriptBank[] | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/script-banks")
+      .then((r) => r.json())
+      .then((d) => { if (d.error) setError(d.error); else setBanks(d.banks || []); })
+      .catch(() => setError("バンクの取得に失敗しました"));
+  }, []);
+  return { banks, error };
+}
+
+// 技カタログの1項目を「カード」として表示するための見出し（【◯◯型】があればそれ、無ければ先頭）
+export function techTitle(item: string): string {
+  const m = item.match(/【([^】]{1,24})】/);
+  if (m) return m[1];
+  const t = item.replace(/^[「『]/, "").replace(/\s+/g, " ").trim();
+  return t.length > 18 ? t.slice(0, 18) + "…" : t;
+}
+
+export type GuideNav = (q: { section: "education" | "techniques"; edu?: string; bank?: string; item?: string }) => void;
+
+// 技カードのモーダル（文章全体＋どこで使うか）
+function TechModal({ bank, item, onClose, nav }: { bank: ScriptBank; item: string; onClose: () => void; nav?: GuideNav }) {
+  const edus = educationIdsForBank(bank.id).map((id) => EDUCATION_TYPES.find((e) => e.id === id)).filter(Boolean) as typeof EDUCATION_TYPES;
   return (
-    <div className="max-w-3xl space-y-3">
-      <p className="text-sm text-gray-500 mb-1">
-        台本・SNSのすべての技は、この11の教育のどれかを実行するためにあります。新しい技に迷ったら「どの教育をしているのか」に立ち返ってください。
-      </p>
-      {EDUCATION_TYPES.map((e) => (
-        <div key={e.id} className="bg-card-bg rounded-xl border border-gray-100 overflow-hidden">
-          <button onClick={() => setOpen(open === e.id ? null : e.id)}
-            className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50">
-            <span className="w-7 h-7 rounded-full bg-accent/10 text-accent text-xs font-bold flex items-center justify-center shrink-0">{e.no}</span>
-            <span className="font-semibold text-sm flex-1">{e.title}</span>
-            <svg className={`w-4 h-4 text-gray-400 transition-transform ${open === e.id ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-          </button>
-          {open === e.id && (
-            <div className="px-5 pb-5 space-y-3 text-sm">
-              <p className="text-gray-700 leading-6"><span className="font-semibold text-accent">目的：</span>{e.purpose}</p>
-              <div>
-                <p className="font-semibold text-xs text-gray-500 mb-1.5">構造（この順番で組む）</p>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {e.structure.map((s, i) => (
-                    <span key={i} className="inline-flex items-center gap-1.5">
-                      <span className="px-2.5 py-1 rounded-lg bg-gray-100 text-xs text-gray-700 leading-5">{s}</span>
-                      {i < e.structure.length - 1 && <span className="text-gray-300">→</span>}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <p className="text-gray-600 text-xs leading-5 bg-amber-50 border border-amber-100 rounded-lg p-3"><span className="font-semibold">💡 ポイント：</span>{e.point}</p>
-              <div className="grid sm:grid-cols-2 gap-2 text-xs">
-                <div className="bg-red-50 rounded-lg p-3 border border-red-100"><span className="font-semibold">▶ YouTube台本では：</span><span className="text-gray-600 leading-5">{e.youtube}</span></div>
-                <div className="bg-blue-50 rounded-lg p-3 border border-blue-100"><span className="font-semibold">▶ SNS投稿では：</span><span className="text-gray-600 leading-5">{e.sns}</span></div>
-              </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-sm text-gray-500">{bank.category}｜{bank.label}</p>
+            <h3 className="text-xl font-bold text-gray-900">{techTitle(item)}</h3>
+          </div>
+          <button onClick={onClose} className="shrink-0 px-3 py-1.5 rounded-lg bg-gray-800 text-white text-sm">✕ 閉じる</button>
+        </div>
+        <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 mb-4">
+          <p className="text-sm font-bold text-gray-500 mb-1">文章全体（型の説明と例文）</p>
+          <p className="text-base leading-8 text-gray-900 whitespace-pre-wrap">{item}</p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="rounded-xl border border-gray-200 p-4">
+            <p className="text-sm font-bold text-gray-500 mb-1">どこで使うか</p>
+            <p className="text-base text-gray-800">{edus.map((e) => e.place).filter(Boolean)[0] || bank.category}</p>
+            <p className="text-sm text-gray-500 mt-2">🎲 {bank.draw}（ツールが自動で抽選。暗記は不要）</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 p-4">
+            <p className="text-sm font-bold text-gray-500 mb-1">この技がしている教育</p>
+            {edus.length === 0 && <p className="text-base text-gray-500">（分類なし）</p>}
+            <div className="flex flex-wrap gap-2">
+              {edus.map((e) => (
+                <button key={e.id} onClick={() => { onClose(); nav?.({ section: "education", edu: e.id }); }}
+                  className="text-sm px-3 py-1.5 rounded-full bg-accent/10 text-accent font-bold hover:bg-accent hover:text-white">
+                  {e.no}. {e.title}
+                </button>
+              ))}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 技のデッキ（横並びのカード。クリックで文章全体）
+function TechDeck({ banks, bankIds, nav, limit = 8 }: { banks: ScriptBank[] | null; bankIds: string[]; nav?: GuideNav; limit?: number }) {
+  const [modal, setModal] = useState<{ bank: ScriptBank; item: string } | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  if (!banks) return <p className="text-sm text-gray-400">技カタログを読み込み中...</p>;
+  const list = bankIds.map((id) => banks.find((b) => b.id === id)).filter(Boolean) as ScriptBank[];
+  if (list.length === 0) return null;
+  return (
+    <div className="space-y-4">
+      {list.map((b) => {
+        const items = expanded[b.id] ? b.items : b.items.slice(0, limit);
+        return (
+          <div key={b.id}>
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <p className="text-base font-bold text-gray-800">{b.label}</p>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">🎲 {b.draw}</span>
+              <span className="text-xs text-gray-400">{b.items.length}種</span>
+              {nav && <button onClick={() => nav({ section: "techniques", bank: b.id })} className="text-xs text-accent underline ml-auto">技カタログで見る</button>}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {items.map((it, i) => (
+                <button key={i} onClick={() => setModal({ bank: b, item: it })}
+                  className="w-[150px] min-h-[84px] text-left rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-accent/60 transition p-3 flex flex-col justify-between">
+                  <span className="text-sm font-bold text-gray-900 leading-5 line-clamp-2">{techTitle(it)}</span>
+                  <span className="text-[11px] text-gray-400 mt-1">クリックで全文</span>
+                </button>
+              ))}
+              {b.items.length > limit && (
+                <button onClick={() => setExpanded((e) => ({ ...e, [b.id]: !e[b.id] }))}
+                  className="w-[150px] min-h-[84px] rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-accent hover:text-accent">
+                  {expanded[b.id] ? "たたむ" : `残り${b.items.length - limit}種を見る`}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {modal && <TechModal bank={modal.bank} item={modal.item} onClose={() => setModal(null)} nav={nav} />}
+    </div>
+  );
+}
+
+// ===== 2. 教育の型（目的 → 例 → ポイント） =====
+export function GuideEducation({ initialId, nav }: { initialId?: string; nav?: GuideNav }) {
+  const [open, setOpen] = useState<string>(initialId && EDUCATION_TYPES.some((e) => e.id === initialId) ? initialId : EDUCATION_TYPES[0].id);
+  useEffect(() => { if (initialId && EDUCATION_TYPES.some((e) => e.id === initialId)) setOpen(initialId); }, [initialId]);
+  const { banks } = useBanks();
+  const [patterns, setPatterns] = useState<PatternItem[]>([]);
+  useEffect(() => { setPatterns(getPatterns()); }, []);
+  const [patternModal, setPatternModal] = useState<PatternItem | null>(null);
+  const e = EDUCATION_TYPES.find((x) => x.id === open) || EDUCATION_TYPES[0];
+  const myPatterns = patterns.filter((p) => e.patternCategories.includes(p.category));
+  const detailRef = useRef<HTMLDivElement | null>(null);
+  const select = (id: string) => { setOpen(id); setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); };
+
+  return (
+    <div className="max-w-4xl space-y-5">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5">
+        <p className="text-base text-gray-700 leading-7">
+          台本のすべての技は、この<b>11の教育</b>のどれかをするためにあります。各カードは<b>目的 → 例 → ポイント</b>の順に読めば足ります。
+          初めての方は、まず <b>{EDUCATION_FIRST_THREE.map((id) => EDUCATION_TYPES.find((x) => x.id === id)?.title).filter(Boolean).join("・")}</b> の3つから。
+        </p>
+      </div>
+
+      {/* 11枚のタイル */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {EDUCATION_TYPES.map((t) => {
+          const first = EDUCATION_FIRST_THREE.includes(t.id);
+          const active = t.id === open;
+          return (
+            <button key={t.id} onClick={() => select(t.id)}
+              className={`text-left rounded-2xl border-2 p-4 transition ${active ? "border-accent bg-accent/5 shadow-md" : "border-gray-200 bg-white hover:border-accent/50 hover:shadow"}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`w-8 h-8 rounded-full text-sm font-bold flex items-center justify-center ${active ? "bg-accent text-white" : "bg-gray-800 text-white"}`}>{t.no}</span>
+                {first && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">まずこれ</span>}
+              </div>
+              <p className="text-base font-bold text-gray-900 leading-6">{t.title}</p>
+              <p className="text-xs text-gray-500 mt-1 line-clamp-2">{t.purpose}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 選択中の教育カード */}
+      <div ref={detailRef} className="rounded-2xl border-2 border-accent/40 bg-white shadow-sm overflow-hidden scroll-mt-24">
+        <div className="px-6 py-5 bg-accent/5 border-b border-accent/20 flex items-center gap-4 flex-wrap">
+          <span className="w-12 h-12 rounded-2xl bg-accent text-white text-2xl font-bold flex items-center justify-center">{e.no}</span>
+          <h2 className="text-2xl font-bold text-gray-900">{e.title}</h2>
+          <span className="ml-auto text-sm px-3 py-1.5 rounded-full bg-white border border-gray-300 text-gray-700">使う場所: {e.place}</span>
+        </div>
+        <div className="p-6 space-y-6">
+          <section>
+            <p className="text-sm font-bold text-accent mb-1">🎯 目的</p>
+            <p className="text-xl leading-9 text-gray-900 font-medium">{e.purpose}</p>
+          </section>
+          <section>
+            <p className="text-sm font-bold text-accent mb-2">📝 例</p>
+            <div className="space-y-3">
+              {e.examples.map((ex, i) => (
+                <div key={i} className="rounded-xl border-l-4 border-accent bg-amber-50/60 p-4">
+                  <p className="text-base leading-8 text-gray-900 whitespace-pre-wrap">{ex.text}</p>
+                  <p className="text-sm text-gray-500 mt-2">出所: {ex.source}</p>
+                  <p className="text-sm text-amber-900 mt-1 font-medium">ここが効いている: {ex.note}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section>
+            <p className="text-sm font-bold text-accent mb-2">💡 ポイント</p>
+            <ol className="space-y-2">
+              {e.points.map((pt, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="shrink-0 w-7 h-7 rounded-full bg-gray-800 text-white text-sm font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                  <span className="text-base leading-7 text-gray-800">{pt}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+          <section className="pt-4 border-t border-gray-200">
+            <p className="text-sm font-bold text-gray-700 mb-1">🎲 この教育で使う技（ツールが自動で抽選。カードを押すと全文）</p>
+            <p className="text-sm text-gray-500 mb-3">骨組みや台本に出てきた「◯◯型」が何なのかを確認する辞書です。暗記は不要です。</p>
+            <TechDeck banks={banks} bankIds={e.bankIds} nav={nav} />
+          </section>
+          {myPatterns.length > 0 && (
+            <section className="pt-4 border-t border-gray-200">
+              <p className="text-sm font-bold text-gray-700 mb-3">📚 オーナーが登録したパターン（{e.patternCategories.join("・")}）</p>
+              <div className="flex gap-2 flex-wrap">
+                {myPatterns.map((p) => (
+                  <button key={p.id} onClick={() => setPatternModal(p)}
+                    className="w-[150px] min-h-[84px] text-left rounded-xl border border-emerald-200 bg-emerald-50 shadow-sm hover:shadow-md p-3 flex flex-col justify-between">
+                    <span className="text-sm font-bold text-gray-900 leading-5 line-clamp-2">{p.title}</span>
+                    <span className="text-[11px] text-emerald-700 mt-1">{p.category}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
           )}
         </div>
-      ))}
+      </div>
+      {patternModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPatternModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6 max-h-[85vh] overflow-y-auto" onClick={(ev) => ev.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div><p className="text-sm text-gray-500">パターンライブラリ｜{patternModal.category}</p><h3 className="text-xl font-bold">{patternModal.title}</h3></div>
+              <button onClick={() => setPatternModal(null)} className="shrink-0 px-3 py-1.5 rounded-lg bg-gray-800 text-white text-sm">✕ 閉じる</button>
+            </div>
+            <p className="text-base leading-8 text-gray-900 whitespace-pre-wrap rounded-xl bg-gray-50 border border-gray-200 p-4">{patternModal.content}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ===== 3. 構成ガイド =====
-export function GuideStructure() {
+export function GuideStructure({ nav }: { nav?: GuideNav }) {
   const [style, setStyle] = useState<"tarot" | "healing">("tarot");
   const guide = STRUCTURE_GUIDE[style];
   return (
@@ -131,7 +307,7 @@ export function GuideStructure() {
               <h3 className="font-bold text-sm">{b.title}</h3>
               {b.time && <span className="text-[11px] text-gray-400">{b.time}</span>}
               {b.eduIds.map((id) => (
-                <span key={id} className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent">{eduTitle(id)}</span>
+                <button key={id} onClick={() => nav?.({ section: "education", edu: id })} className="text-[11px] px-2 py-0.5 rounded-full bg-accent/10 text-accent hover:bg-accent hover:text-white">{eduTitle(id)}</button>
               ))}
             </div>
             <p className="text-xs text-gray-500 mb-0.5">🎯 目的: {b.goal}</p>
@@ -154,18 +330,25 @@ export function GuideStructure() {
 }
 
 // ===== 4. 技カタログ =====
-export function GuideTechniques() {
-  const [banks, setBanks] = useState<ScriptBank[] | null>(null);
-  const [error, setError] = useState("");
+export function GuideTechniques({ initialBank, initialItem, nav }: { initialBank?: string; initialItem?: string; nav?: GuideNav }) {
+  const { banks, error } = useBanks();
   const [query, setQuery] = useState("");
-  const [openBank, setOpenBank] = useState<string | null>(null);
+  const [openBank, setOpenBank] = useState<string | null>(initialBank || null);
+  const [modal, setModal] = useState<{ bank: ScriptBank; item: string } | null>(null);
+  const bankRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  // ディープリンク: 指定バンクを開き、指定項目があれば全文モーダルで表示
   useEffect(() => {
-    fetch("/api/script-banks")
-      .then((r) => r.json())
-      .then((d) => { if (d.error) setError(d.error); else setBanks(d.banks || []); })
-      .catch(() => setError("バンクの取得に失敗しました"));
-  }, []);
+    if (!banks || !initialBank) return;
+    const b = banks.find((x) => x.id === initialBank);
+    if (!b) return;
+    setOpenBank(b.id);
+    setTimeout(() => bankRefs.current[b.id]?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    if (initialItem) {
+      const it = b.items.find((x) => techTitle(x) === initialItem || x.includes(initialItem));
+      if (it) setModal({ bank: b, item: it });
+    }
+  }, [banks, initialBank, initialItem]);
 
   const filtered = useMemo(() => {
     if (!banks) return null;
@@ -187,43 +370,56 @@ export function GuideTechniques() {
   }, [filtered]);
 
   return (
-    <div className="max-w-3xl">
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 text-sm text-gray-700 leading-6">
-        🎲 ここにある技は、<b>すべてシステムが生成のたびに自動で抽選して台本に割り当てます</b>。暗記は不要です。
-        「骨組みや台本に出てきた指定が、どういう狙いの技なのか」を理解するための辞書として使ってください。項目はツールの更新で自動的に最新になります。
+    <div className="max-w-4xl">
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 text-base text-gray-700 leading-7">
+        🎲 ここにある技は、<b>すべてツールが生成のたびに自動で抽選して台本に割り当てます</b>。暗記は不要です。
+        骨組みや台本に出てきた「◯◯型」が何なのかを確認する辞書として使ってください。各バンクの「教育」タグを押すと、その技が何のためにあるかの説明に戻れます。
       </div>
       <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
         placeholder="🔎 技を検索（例: CTA / 言い当て / 切迫）"
-        className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent mb-4 bg-card-bg" />
+        className="w-full px-4 py-3 rounded-lg border border-gray-200 text-base outline-none focus:border-accent mb-4 bg-card-bg" />
       {error && <p className="text-sm text-red-500">{error}</p>}
       {!banks && !error && <p className="text-sm text-gray-400">読み込み中...</p>}
       <div className="space-y-6">
         {categories.map(([cat, catBanks]) => (
           <div key={cat}>
-            <h3 className="font-bold text-sm mb-2">{cat} <span className="text-xs text-gray-400 font-normal">（{catBanks.reduce((s, b) => s + b.items.length, 0)}項目）</span></h3>
+            <h3 className="font-bold text-base mb-2">{cat} <span className="text-sm text-gray-400 font-normal">（{catBanks.reduce((s, b) => s + b.items.length, 0)}項目）</span></h3>
             <div className="space-y-2">
-              {catBanks.map((b) => (
-                <div key={b.id} className="bg-card-bg rounded-xl border border-gray-100 overflow-hidden">
-                  <button onClick={() => setOpenBank(openBank === b.id ? null : b.id)}
-                    className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50">
-                    <span className="font-medium text-sm flex-1">{b.label}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">🎲 {b.draw}</span>
-                    <span className="text-xs text-gray-400 shrink-0">{b.items.length}種</span>
-                    <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${openBank === b.id ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                  </button>
-                  {(openBank === b.id || query.trim()) && (
-                    <div className="px-4 pb-4 space-y-1.5">
-                      {b.items.map((it, i) => (
-                        <div key={i} className="text-xs text-gray-700 leading-5 bg-gray-50 rounded-lg p-2.5 whitespace-pre-wrap">{it}</div>
+              {catBanks.map((b) => {
+                const edus = educationIdsForBank(b.id).map((id) => EDUCATION_TYPES.find((e) => e.id === id)).filter(Boolean) as typeof EDUCATION_TYPES;
+                const isOpen = openBank === b.id || !!query.trim();
+                return (
+                  <div key={b.id} ref={(el) => { bankRefs.current[b.id] = el; }} className={`bg-card-bg rounded-xl border overflow-hidden scroll-mt-24 ${initialBank === b.id ? "border-accent" : "border-gray-100"}`}>
+                    <button onClick={() => setOpenBank(openBank === b.id ? null : b.id)}
+                      className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 flex-wrap">
+                      <span className="font-bold text-base">{b.label}</span>
+                      {edus.map((e) => (
+                        <span key={e.id} role="link" onClick={(ev) => { ev.stopPropagation(); nav?.({ section: "education", edu: e.id }); }}
+                          className="text-[11px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-bold hover:bg-accent hover:text-white cursor-pointer">教育 {e.no}. {e.title}</span>
                       ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                      <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">🎲 {b.draw}</span>
+                      <span className="text-xs text-gray-400 shrink-0">{b.items.length}種</span>
+                      <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                    {isOpen && (
+                      <div className="px-4 pb-4 flex gap-2 flex-wrap">
+                        {b.items.map((it, i) => (
+                          <button key={i} onClick={() => setModal({ bank: b, item: it })}
+                            className={`w-[150px] min-h-[84px] text-left rounded-xl border bg-white shadow-sm hover:shadow-md hover:border-accent/60 transition p-3 flex flex-col justify-between ${initialItem && (techTitle(it) === initialItem || it.includes(initialItem)) ? "border-accent ring-2 ring-accent/30" : "border-gray-200"}`}>
+                            <span className="text-sm font-bold text-gray-900 leading-5 line-clamp-2">{techTitle(it)}</span>
+                            <span className="text-[11px] text-gray-400 mt-1">クリックで全文</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
       </div>
+      {modal && <TechModal bank={modal.bank} item={modal.item} onClose={() => setModal(null)} nav={nav} />}
     </div>
   );
 }
