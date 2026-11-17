@@ -3,12 +3,16 @@
 // - 漢数字（算用数字ルール）
 // - 直近の台本との同一文（前回の文の流用）
 import type { QualityCheckItem } from "@/lib/project-store";
+import { getScriptBanks } from "@/lib/tarot-draw";
 
 // level: fail=常に禁止（意味不明・ルール違反）／warn=注意／track=繰り返し管理（合格した直近2本の両方で使っていたら3連続→fail。2連続まではOK）
 export interface BlacklistRule { pattern: RegExp; level: "fail" | "warn" | "track"; reason: string; fix?: string }
 
 export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /加護を[、]?(確かに)?受け取ります/, level: "fail", reason: "軽CTAの意味づけが「守護天使様の加護を受け取る合図」のデフォルト（禁止）", fix: "その動画のコンセプト語（扉・周波数・天秤 等）から意味づけを作る。高評価＝チューニング、コメント＝宣言、のように役割を分ける" },
+  { pattern: /言い当て(させ)?ても(いい|よろしい)(ですか|でしょうか)/, level: "fail", reason: "言い当ての前置き「あなたのことを言い当ててもいいですか」（禁止。わざとらしく、視聴者に許可を求める形になる）", fix: "前置きなしで場面から入る（「人と会った帰り道、玄関のドアを閉めた瞬間に、どっと疲れが出ることがありませんか」）" },
+  { pattern: /違いますか[？?。、]/, level: "fail", reason: "言い当ての確認形「違いますか？」（禁止。詰問に聞こえる）", fix: "確認は「〜ことがありませんか」「〜はずです」の形で。確認そのものを置かなくてもよい" },
+  { pattern: /これ、?本当なんです/, level: "track", reason: "打ち明け口調「これ、本当なんですよ」（毎回入れる決まり文句ではない。2連続まで）", fix: "温度は別の手段で出す（感嘆符つきの口コミ、縮約、呼びかけ）。この句は省く" },
   { pattern: /あなただけのための無料の霊視鑑定/, level: "fail", reason: "LINE誘導の定型文（禁止。「行っています」「お受けしています」等、後ろの言い回しを変えても同じ）", fix: "動画の内容に接続した言い回しに（例:「あなたの場合はどうなのか、概要欄のLINEから友だち追加してくれたら、一人ずつ無料で視ています」）" },
   { pattern: /概要欄のLINEから受け取ってください/, level: "warn", reason: "LINE誘導の定型句", fix: "「概要欄のLINEから友だち追加してくださいね」等、言い回しを変える" },
   { pattern: /コメントは.{0,4}全部読んで/, level: "track", reason: "常連化の定型文（3回に1回・抽選に従う）", fix: "今回は省くか、抽選で指定された常連化の一言に差し替える" },
@@ -431,14 +435,15 @@ export function scanRetentionLoss(script: string): QualityCheckItem[] {
 export function scanTemperature(script: string): QualityCheckItem[] {
   const t = script.replace(/\s+/g, "");
   if (t.length < 1500) return [];
-  const markers = t.match(/ピコン|パタっ|ガラッ|ドキッ|きゅっ|ぐっすり|ずーっと|めちゃくちゃ|ちゃう|ちゃい|ちゃっ|！|ですからね|ますからね|ですよね|でしょう？|じゃないですか|これ、本当なんです|実は、/g) || [];
+  // 温度の目印は「種類」で数える（擬音／感嘆符／縮約／口語の語尾／伸ばし音／問いかけ）。特定の決まり文句は目印にしない（入れれば通る、になって毎回同じ句が出るため）
+  const markers = t.match(/[ァ-ヶ]{2,4}っ?と|[ァ-ヶ]{2,3}ン|ドキッ|きゅっ|ぐっすり|ずーっと|ずっーと|めちゃくちゃ|ちゃう|ちゃい|ちゃっ|じゃう|！|ですからね|ますからね|ですよね|でしょう？|ませんか|じゃないですか|なんですよ|だなー|なあ/g) || [];
   const per1000 = (markers.length / t.length) * 1000;
   if (per1000 >= 1.5) return [];
   return [{
     name: `平熱の疑い（温度の目印が${markers.length}個／${t.length}字）`,
     status: per1000 < 0.8 ? "fail" : "warn",
-    comment: "擬音・感嘆符つきのセリフ・口語の縮約・「ですからね」等がほとんど無く、正しいが冷めた文になっています",
-    suggestion: "導入・CTA・理想の未来の各段落に1つずつ、擬音（ピコン・パタっと）、セリフの「！」、縮約（なっちゃうかも）、「ますからね」を入れる。「実は」「これ、本当なんですよ」の打ち明け口調で切り出す",
+    comment: "擬音・感嘆符つきのセリフ・口語の縮約・呼びかけの語尾がほとんど無く、正しいが冷めた文になっています",
+    suggestion: "口コミのセリフに「！」を入れる、場面の描写に擬音を入れる、「〜しちゃう」「〜ますからね」「〜ませんか」の口語を混ぜる。決まり文句（「これ、本当なんですよ」等）を足して済ませない。文そのものを話し言葉にする",
   }];
 }
 
@@ -613,8 +618,93 @@ export function scanAuthorityStack(script: string): QualityCheckItem[] {
   }];
 }
 
-export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[] }): QualityCheckItem[] {
+// ===== 同じ文が毎回出る問題への対策 =====
+
+// 固定でよい文（挨拶・固定句・決め台詞）。丸写し・連続使用の判定から除く
+const FIXED_LINES = /守護天使様が今、このカードをあなたのために運んでくださいました|一緒に、?最幸の未来へと|またここで、お会いしましょうね|アリサの引き寄せ部屋へようこそ|お待ちしてました/;
+const norm = (s: string) => s.replace(/\s+/g, "");
+
+// 抽選バンク・ルール本文の「例文」をそのまま使っていないか。例文は型の説明であって、台本に貼る文ではない
+// - バンクの各項目を文に分け、18字以上の文を例文として採用。ルール本文からは「」内の18字以上を採用
+export function scanVerbatimExamples(script: string, rules?: string, approvedScripts?: string[]): QualityCheckItem[] {
+  const t = norm(script);
+  const latest = norm((approvedScripts || [])[0] || "");
+  const examples = new Set<string>();
+  const addSentences = (text: string) => {
+    for (const s of norm(text).split(/(?<=[。！？!?])/)) {
+      const x = s.replace(/^[「『（(]+|[」』）)]+$/g, "").replace(/^【[^】]*】/, "").trim();
+      if (x.length >= 18 && !FIXED_LINES.test(x)) examples.add(x);
+    }
+  };
+  const addQuotes = (text: string) => {
+    for (const m of text.matchAll(/「([^「」]{18,})」/g)) {
+      const x = norm(m[1]);
+      if (!FIXED_LINES.test(x)) { examples.add(x); addSentences(x); }
+    }
+  };
+  try {
+    for (const bank of getScriptBanks()) for (const item of bank.items) { addSentences(item); addQuotes(item); }
+  } catch { /* バンクが読めない環境では省略 */ }
+  if (rules) addQuotes(rules);
+  const hits: string[] = [];
+  for (const ex of examples) {
+    if (t.includes(ex) && !hits.some((h) => h.includes(ex) || ex.includes(h))) hits.push(ex);
+    if (hits.length >= 6) break;
+  }
+  if (hits.length === 0) return [];
+  // 1〜2件は注意、3件以上は不合格。直前の合格台本でも同じ例文を使っていた（＝定着し始めている）場合は件数に関係なく不合格
+  const repeated = hits.filter((h) => latest.includes(h));
+  const status: "fail" | "warn" = hits.length >= 3 || repeated.length > 0 ? "fail" : "warn";
+  return [{
+    name: `例文の丸写し（${hits.length}件${repeated.length > 0 ? `・うち${repeated.length}件は前回も使用` : ""}）`,
+    status,
+    comment: `抽選ブロック・ルールの例文をそのまま使っています。例文は「型」の説明で、台本に貼る文ではありません。毎回同じ文が出る原因です。\n${hits.map((h) => `「${h.slice(0, 50)}${h.length > 50 ? "…" : ""}」${repeated.includes(h) ? "（前回も）" : ""}`).join("\n")}`,
+    suggestion: "例文の意味（何を言う場面か）だけを取り、その台本のテーマ語・場面・比喩で文を作り直す。語順・言い回し・例の中身を変える",
+  }];
+}
+
+// 直近2本の合格台本の両方にある文（8字以上）を今回も使っている＝3本連続。定型句の自動検出（手で登録した型に限らない）
+export function scanStockSentences(script: string, approvedScripts: string[]): QualityCheckItem[] {
+  const prev = (approvedScripts || []).slice(0, 2);
+  if (prev.length < 2) return [];
+  const split = (x: string) => new Set(norm(x).split(/(?<=[。！？!?])/).map((s) => s.trim()).filter((s) => s.length >= 8 && !FIXED_LINES.test(s)));
+  const mine = split(script);
+  const a = split(prev[0]); const b = split(prev[1]);
+  const hits = Array.from(mine).filter((s) => a.has(s) && b.has(s)).slice(0, 8);
+  if (hits.length === 0) return [];
+  return [{
+    name: `3本連続で同じ文（${hits.length}件）`,
+    status: "fail",
+    comment: `直近2本の合格台本の両方にある文を、今回もそのまま使っています。\n${hits.map((h) => `「${h.slice(0, 50)}${h.length > 50 ? "…" : ""}」`).join("\n")}`,
+    suggestion: "同じ役目の文でも、言い回し・例・語順を変える（固定句・挨拶・決め台詞は対象外）",
+  }];
+}
+
+// 離脱阻止の重複: 「最後まで一緒にいてください」と「画面を閉じないでください」は同じ意味。両方言うと「その前に」の論理も壊れる
+export function scanRetentionDuplicate(script: string): QualityCheckItem[] {
+  const head = norm(script).slice(0, 2200);
+  const items: QualityCheckItem[] = [];
+  const stay = head.match(/最後まで(一緒に|見て|聞いて|受け取って|ご覧|いて)[^。]{0,16}(ください|くださいね|いてね)/);
+  const close = head.match(/(画面|動画)を?[^。]{0,8}閉じないで/);
+  if (stay && close) {
+    items.push({ name: "離脱阻止の重複（最後まで一緒に＋画面を閉じないで）", status: "warn",
+      comment: `「${stay[0]}」と「${close[0]}」は同じお願いです。冒頭で2回頼むとしつこく、間に「その前に」が入ると論理が壊れます`,
+      suggestion: "離脱阻止は冒頭で1回。最後のカードの予告に「だから最後まで」を添えるか、「画面を閉じないで」の損失型か、どちらか1つ" });
+  }
+  const sonomae = head.match(/その前に[。、][^。]{0,40}閉じないで/);
+  if (sonomae && !(stay && close)) {
+    items.push({ name: "「その前に」の後が離脱阻止", status: "warn",
+      comment: `「${sonomae[0]}」。「その前に」は本編に入る前の高評価・コメントの案内に使う言葉です。離脱阻止を置くと前の文と同じ内容の繰り返しになります`,
+      suggestion: "「その前に」は軽CTAの直前だけに使う" });
+  }
+  return items;
+}
+
+export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
+    ...scanVerbatimExamples(script, opts?.rules, approvedScripts),
+    ...scanStockSentences(script, approvedScripts || []),
+    ...scanRetentionDuplicate(script),
     ...scanUnknownsVsTiming(script),
     ...scanUnknownsVsForms(script),
     ...scanCommentWordConsistency(script),
