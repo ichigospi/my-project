@@ -5,6 +5,7 @@ import { getProjectsByChannel, getProjects, saveProject, deleteProject, createPr
 import type { ScriptProject, Genre, Style, ReviewStatus } from "@/lib/project-store";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
+import { useProjectLock, fetchProjectLocks, minutesSince, type ProjectLock } from "@/lib/project-lock";
 import StepGenre from "./StepGenre";
 import StepTitle from "./StepTitle";
 import StepReferences from "./StepReferences";
@@ -39,6 +40,23 @@ export default function CreatePage() {
     storageWarnedRef.current = false;
     alert(`保存領域を掃除しました（約${freed}KB 解放／現在 約${getLocalStorageUsageKB()}KB 使用）。履歴・検索キャッシュ・古いバックアップを削除しました。台本や分析はサーバーに残っています。`);
   };
+  // 編集中ロック（ゆるいロック）: 開いている企画に印を付け、他の人が開いたら警告を出す
+  const lock = useProjectLock(activeProject?.id);
+  const [listLocks, setListLocks] = useState<Record<string, ProjectLock>>({});
+  const [meId, setMeId] = useState("");
+  useEffect(() => {
+    if (activeProject) return;
+    let stopped = false;
+    const load = async () => {
+      const ids = getProjectsByChannel(activeChannel?.id || "").map((p) => p.id);
+      const r = await fetchProjectLocks(ids);
+      if (!stopped) { setListLocks(r.locks); setMeId(r.me); }
+    };
+    load();
+    const t = setInterval(load, 30_000);
+    return () => { stopped = true; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject?.id, activeChannel?.id, projects.length]);
   const [listQuery, setListQuery] = useState("");
   // プロジェクト一覧の並び順（date=日付順がベース / priority=タスク優先度順）
   const [listSort, setListSort] = useState<"date" | "priority">("date");
@@ -548,6 +566,11 @@ export default function CreatePage() {
                 <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleResume(p)}>
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-sm">{p.title || "（タイトル未定）"}</p>
+                    {listLocks[p.id] && listLocks[p.id].userId !== meId && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold shrink-0 border border-amber-300" title={`${listLocks[p.id].userName}さんが${minutesSince(listLocks[p.id].since)}分前から開いています`}>
+                        ✏️ {listLocks[p.id].userName}さんが編集中
+                      </span>
+                    )}
                     {p.status === "review" && p.scriptReviewStatus === "pending" && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-600 text-white font-bold shrink-0">🟣 台本添削待ち</span>
                     )}
@@ -710,6 +733,20 @@ export default function CreatePage() {
           </button>
         </div>
       </div>
+
+      {/* 編集中の警告: 他の人が同じ企画を開いている */}
+      {lock.lockedBy && (
+        <div className="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-4 flex items-start gap-3 flex-wrap">
+          <span className="text-2xl">✏️</span>
+          <div className="flex-1 min-w-[240px]">
+            <p className="text-base font-bold text-amber-900">{lock.lockedBy.userName}さんが編集中です（{minutesSince(lock.lockedBy.since)}分前から）</p>
+            <p className="text-sm text-amber-800 mt-1">見るだけなら問題ありません。ここで保存すると、{lock.lockedBy.userName}さんの変更と上書きし合う可能性があります。編集が必要なら、相手が閉じるのを待つか「自分が編集する」で引き継いでください（オーナー・管理者のみ）。</p>
+            {lock.error && <p className="text-sm text-red-600 mt-1">{lock.error}</p>}
+          </div>
+          <button onClick={() => { if (confirm(`${lock.lockedBy?.userName}さんが編集中です。引き継ぎますか？（相手の画面には警告が出ます）`)) lock.takeover(); }}
+            className="shrink-0 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-bold hover:bg-amber-700">自分が編集する</button>
+        </div>
+      )}
 
       {/* ステップインジケーター */}
       <div className="flex items-center gap-1 mb-6 md:mb-8 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0">
