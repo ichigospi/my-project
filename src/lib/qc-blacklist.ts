@@ -162,10 +162,15 @@ export function scanImageryClaims(script: string, cards: { name: string; img?: s
 // 無料鑑定の案内文で「守護天使様からのメッセージ」を約束していないか（有料領域）
 export function scanFreeReadingScope(script: string): QualityCheckItem[] {
   const t = script.replace(/\s+/g, "");
-  const m = t.search(/無料の霊視鑑定|無料鑑定|概要欄のLINE|LINEから/);
-  if (m < 0) return [];
-  const tail = t.slice(Math.max(0, m - 150));
-  const hit = tail.match(/守護天使様(から|の)(の)?メッセージ[^。]{0,30}(お伝え|届け|お届け|伝え)/);
+  // 中盤にも1文のLINE誘導を置ける運用なので、LINE言及ごとに前後の窓だけを調べる（本編まで巻き込まない）
+  const positions = allIndexes(t, /無料の霊視鑑定|無料鑑定|概要欄のLINE|LINEから/g);
+  if (positions.length === 0) return [];
+  let hit: RegExpMatchArray | null = null;
+  for (const m of positions) {
+    const win = t.slice(Math.max(0, m - 150), m + 600);
+    hit = win.match(/守護天使様(から|の)(の)?メッセージ[^。]{0,30}(お伝え|届け|お届け|伝え)/);
+    if (hit) break;
+  }
   if (!hit) return [];
   return [{
     name: "無料鑑定の領域違反: 守護天使様からのメッセージ",
@@ -302,10 +307,24 @@ export function scanFixedPhrases(script: string): QualityCheckItem[] {
   return items;
 }
 
+// 正規表現の全ヒット位置
+function allIndexes(t: string, re: RegExp): number[] {
+  const out: number[] = [];
+  const g = re.global ? re : new RegExp(re.source, re.flags + "g");
+  let m: RegExpExecArray | null;
+  while ((m = g.exec(t)) !== null) { out.push(m.index); if (m[0].length === 0) g.lastIndex++; }
+  return out;
+}
+// 終盤のLINE誘導の位置（最後の言及）。中盤に1文だけ置いた誘導は終盤扱いにしない
+function lastLineMention(t: string): number {
+  const idx = allIndexes(t, /概要欄のLINE|LINEから|無料の霊視鑑定|無料鑑定/g);
+  return idx.length === 0 ? -1 : idx[idx.length - 1];
+}
+
 // 終盤の未知数が本編の予言と被っていないか: 本編で時期（◯日後／◯のつく日）を出した回は、無料鑑定の未知数に「いつ・時期」を使わない
 export function scanUnknownsVsTiming(script: string): QualityCheckItem[] {
   const t = script.replace(/\s+/g, "");
-  const lineAt = t.search(/概要欄のLINE|LINEから|無料の霊視鑑定|無料鑑定/);
+  const lineAt = lastLineMention(t);
   if (lineAt < 0) return [];
   const body = t.slice(0, lineAt);
   const tail = t.slice(Math.max(0, lineAt - 400));
@@ -324,7 +343,7 @@ export function scanUnknownsVsTiming(script: string): QualityCheckItem[] {
 // 終盤の未知数が本編で出した「どんな形で来るか」と被っていないか（形を3例出した回は未知数に「形」を使わない）
 export function scanUnknownsVsForms(script: string): QualityCheckItem[] {
   const t = script.replace(/\s+/g, "");
-  const lineAt = t.search(/概要欄のLINE|LINEから|無料の霊視鑑定|無料鑑定/);
+  const lineAt = lastLineMention(t);
   if (lineAt < 0) return [];
   const body = t.slice(0, lineAt);
   const tail = t.slice(Math.max(0, lineAt - 500));
