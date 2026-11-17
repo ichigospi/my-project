@@ -148,6 +148,8 @@ ${segmentScript}`;
     const mech = runMechanicalChecks(segmentScript, recentScripts).filter((it) => {
       // 固定句（最後のカードの導入・決め台詞）と未知数の判定は最終パートだけ。文字数系は全文チェック側で見る
       if (/^固定句/.test(it.name) || /^未知数/.test(it.name)) return isLast;
+      // 「全文:」で始まる項目（まとめの欠落・時期の欠落 等）は台本全体でしか判定できないので、パート採点では除外
+      if (/^全文:/.test(it.name)) return false;
       return true;
     });
     if (mech.length > 0) {

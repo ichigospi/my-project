@@ -9,7 +9,7 @@ export interface BlacklistRule { pattern: RegExp; level: "fail" | "warn" | "trac
 
 export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /加護を[、]?(確かに)?受け取ります/, level: "fail", reason: "軽CTAの意味づけが「守護天使様の加護を受け取る合図」のデフォルト（禁止）", fix: "その動画のコンセプト語（扉・周波数・天秤 等）から意味づけを作る。高評価＝チューニング、コメント＝宣言、のように役割を分ける" },
-  { pattern: /あなただけのための無料の霊視鑑定を行っています/, level: "fail", reason: "LINE誘導の定型文（禁止）", fix: "動画の内容に接続した言い回しに（例:「あなたの場合はどうなのか、概要欄のLINEから友だち追加してくれたら、一人ずつ無料で視ています」）" },
+  { pattern: /あなただけのための無料の霊視鑑定/, level: "fail", reason: "LINE誘導の定型文（禁止。「行っています」「お受けしています」等、後ろの言い回しを変えても同じ）", fix: "動画の内容に接続した言い回しに（例:「あなたの場合はどうなのか、概要欄のLINEから友だち追加してくれたら、一人ずつ無料で視ています」）" },
   { pattern: /概要欄のLINEから受け取ってください/, level: "warn", reason: "LINE誘導の定型句", fix: "「概要欄のLINEから友だち追加してくださいね」等、言い回しを変える" },
   { pattern: /コメントは.{0,4}全部読んで/, level: "track", reason: "常連化の定型文（3回に1回・抽選に従う）", fix: "今回は省くか、抽選で指定された常連化の一言に差し替える" },
   { pattern: /あなたのことが[、]?(私は)?とても大切/, level: "track", reason: "常連化の定型文", fix: "省くか別の言い回しに" },
@@ -57,7 +57,7 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /あなたには.{0,25}(クセ|癖)があ/, level: "fail", reason: "欠点の断定（視聴者を責める言い方）", fix: "「〜してしまうこと、ありませんでしたか」の問いかけ形に" },
   { pattern: /見てください[。、]この(カード|絵)/, level: "fail", reason: "倒置（動詞を先に言って目的語を後から足す）", fix: "「このカードの〜を見てください」の語順に" },
   { pattern: /、と。/, level: "fail", reason: "引用の後置（「〜と言っています。〜、と。」の倒置）", fix: "引用を動詞の前に置く（「〜、と伝えているんです」）" },
-  { pattern: /ここからが.{0,3}今日.{0,3}(一番|いちばん)大(事|切)/, level: "track", reason: "3枚目前の離脱防止句の使い回し", fix: "「次のカードから話が大きく変わります」等、別の言い回しに" },
+  { pattern: /ここからが.{0,3}今日.{0,3}(一番|いちばん)大(事|切)/, level: "warn", reason: "3枚目前の離脱防止句「ここからが今日一番大事」（バンクから外した言い回し。読点を挟んでも同じ）", fix: "「次のカードから話が大きく変わります」等、別の言い回しに" },
   { pattern: /カードが.{0,4}決めるんじゃ/, level: "track", reason: "「早めるのも遅らせるのもカードが決めるんじゃない」型の使い回し", fix: "別の締め方に（例: 速さを決めるのは、あなたが顔を上げている時間の長さ）" },
   { pattern: /手のひらに.{0,4}吸い/, level: "track", reason: "引き演出「手のひらに吸い付く／吸い寄せられる」の使い回し", fix: "別の登場演出に" },
   { pattern: /ひとつだけ.{0,3}(心配|気がかり)なこと/, level: "track", reason: "終盤の橋渡し「ひとつだけ心配なことが」の使い回し", fix: "別の切り出しに（例: ひとつだけ、引っかかっていることがあって）" },
@@ -225,7 +225,9 @@ export function scanKanjiNumerals(script: string): QualityCheckItem[] {
 export function findRepeatedSentences(script: string, others: string[]): QualityCheckItem[] {
   const norm = (t: string) => t.replace(/\s+/g, "");
   const split = (t: string) => norm(t).split(/(?<=[。！？!?])/).map((x) => x.trim()).filter((x) => x.length >= 25);
-  const mine = split(script);
+  // 固定句（毎回同じでよい文）は対象外
+  const FIXED = /守護天使様が今、このカードをあなたのために運んでくださいました|一緒に、?最幸の未来へと|またここで、お会いしましょうね|アリサの引き寄せ部屋へようこそ/;
+  const mine = split(script).filter((s) => !FIXED.test(s));
   const pool = new Set<string>();
   for (const o of others || []) for (const s of split(o)) pool.add(s);
   if (pool.size === 0) return [];
@@ -300,8 +302,21 @@ export function scanDrawSpecCompliance(script: string, drawSpec?: string): Quali
 export function scanFixedPhrases(script: string): QualityCheckItem[] {
   const t = script.replace(/\s+/g, "");
   const items: QualityCheckItem[] = [];
-  if (!/守護天使様が.{0,24}運んで/.test(t)) {
+  const fixedAt = t.search(/守護天使様が.{0,24}運んで/);
+  if (fixedAt < 0) {
     items.push({ name: "固定句: 最後のカードの導入", status: "warn", comment: "「守護天使様が今、このカードをあなたのために運んでくださいました」が見当たりません", suggestion: "最後のカードの直前に固定句を入れる" });
+  } else {
+    // 固定句は最後のカード専用。固定句の後（まとめより前）にまだ別のカードをめくっていたら、途中のカードで使っている
+    let rest = t.slice(fixedAt);
+    const sumAt = rest.search(/(カード|今日)のまとめ|振り返(り|っ)/);
+    if (sumAt > 0) rest = rest.slice(0, sumAt);
+    // 固定句の直後に「最後の1枚は、山の真ん中から…」と最後のカード自身の説明が続くのは正常なので、番号つきのカードだけを見る
+    const later = rest.match(/([2-9２-９]枚目)(を|に|です|。|、|は)/);
+    if (later) {
+      items.push({ name: "固定句: 最後のカード以外で使用", status: "warn",
+        comment: `「守護天使様が運んでくださった」の固定句の後に、まだ「${later[1]}」をめくっています。この句は最後のカードだけに使う決まりです（途中で使うと最後の重みが消える）`,
+        suggestion: "途中のカードの格上げは別の言い方にし、固定句は最後のカードの直前に移す" });
+    }
   }
   // 決め台詞「一緒に最幸の未来へと」は毎回入れないローテーション運用に変更（欠けていても指摘しない。3本連続は scanConsecutive で止める）
   return items;
@@ -450,6 +465,12 @@ export function scanStyleHabits(script: string): QualityCheckItem[] {
   if (mite >= 3 || honrai >= 2) items.push({ name: `絵柄説明の定型反復（見てください${mite}回／本来この絵${honrai}回）`, status: "fail", comment: "各カードの絵柄説明が同じ型で始まっています。絵柄は一言で止め、入り方を毎回変える", suggestion: "絵柄の説明は「絵柄の一言→意味→当てはめ」で1カード2文まで。「見てください」「本来この絵は」は1回ずつまで" });
   const gyaku = count(/逆さま[—、。]*逆位置で現れ|逆位置で現れ/g);
   if (gyaku >= 3) items.push({ name: `「逆位置で現れ」${gyaku}回`, status: "warn", comment: "逆位置の告げ方が毎回同じです", suggestion: "「逆さまでした」「上下が反対で出ました」「逆位置です」など言い方を変える" });
+  // 「〜側」の口癖（縛られる側・回す側・背負う側・眺める側…）
+  const gawa = count(/[^両片右左裏表内外相手]側(に|へ|で|から|の|です|でいい|に立|に回)/g);
+  if (gawa >= 6) items.push({ name: `「〜側」${gawa}回`, status: "warn", comment: "「◯◯する側／◯◯される側」の対比が口癖になっています。多いと説教調に聞こえます", suggestion: "対比は1本で2〜3回まで。残りは具体的な場面や動作で言い換える" });
+  // 同じ演出の出だし（「お、この1枚」「お、出ましたね」が2回以上）
+  const oh = count(/(^|[。」！？])お、/g);
+  if (oh >= 2) items.push({ name: `めくる演出の出だし「お、」${oh}回`, status: "warn", comment: "カードをめくる演出の出だしが同じです（同じ演出表現を1本で2回使うのは禁止）", suggestion: "2枚目以降は「あ…」「…ほら」「出ました」「これは…」など出だしを変える" });
   const daiji = count(/(一番|いちばん)大事/g);
   if (daiji >= 2) items.push({ name: `「一番大事」${daiji}回`, status: "warn", comment: "最上級が複数あると価値が薄れます（「一番大切なカード」の予告は数えていません）", suggestion: "「一番大事」は台本全体で1回。他は「ここは大事」「ここから」に" });
   // 段落内の同語反復（2〜3字の語が同じ段落に4回以上）
@@ -459,11 +480,132 @@ export function scanStyleHabits(script: string): QualityCheckItem[] {
     const freq = new Map<string, number>();
     for (const m of para.matchAll(/[一-龥]{2,3}/g)) freq.set(m[0], (freq.get(m[0]) || 0) + 1);
     for (const [w, n] of freq) {
-      if (n >= 4 && !/^(あなた|自分|守護天使|天使様|カード|連絡|今日|相手|二人|関係|時間|本当|無料|鑑定|未来|気持)$/.test(w) && !repeated.includes(w)) repeated.push(`${w}×${n}`);
+      if (n >= 4 && !/^(あなた|自分|守護天使|天使様|カード|連絡|今日|相手|二人|関係|時間|本当|無料|鑑定|未来|気持|枚目|正位置|逆位置|最後)$/.test(w) && !repeated.includes(w)) repeated.push(`${w}×${n}`);
     }
   }
   if (repeated.length > 0) items.push({ name: `同じ語の反復（段落内4回以上）: ${repeated.slice(0, 5).join("、")}`, status: "warn", comment: "比喩の語が段落に居座り、現実の言葉に戻っていない可能性があります", suggestion: "比喩は1〜2回で現実の言葉（連絡・あの人・縁 等）に言い換える" });
   return items;
+}
+
+// ===== 全文チェック（台本全体にだけ適用。パート単位の採点では名前が「全文:」で始まる項目を除外する） =====
+
+// 全文かどうかの目安: 3枚以上カードをめくっていて、終盤のLINE誘導がある
+function looksLikeFullScript(t: string): boolean {
+  const cards = (t.match(/[1-9１-９]枚目|最後の(1枚|カード)/g) || []).length;
+  return cards >= 3 && lastLineMention(t) >= 0;
+}
+
+// コメントCTAの型の混在: 「宣言」と「予祝」の両方でコメントを意味づけていたら不合格（型と語形の一致ルール）
+export function scanCommentCtaTypeMix(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const nearComment = (re: RegExp) => {
+    for (const m of t.matchAll(/コメント/g)) {
+      const win = t.slice(Math.max(0, m.index! - 160), m.index! + 220);
+      if (re.test(win)) return true;
+    }
+    return false;
+  };
+  const sengen = nearComment(/宣言/);
+  const yoshuku = nearComment(/予祝/) || /予祝/.test(t);
+  if (!(sengen && yoshuku)) return [];
+  return [{
+    name: "コメントCTAの型が混在（宣言＋予祝）",
+    status: "fail",
+    comment: "コメントの意味づけに「宣言」と「予祝」の両方を使っています。宣言型は未来形（受け取ります）、予祝型は完了形（叶いました）で、別の型です。冒頭と終盤で呼び方を揃えてください",
+    suggestion: "書かせる言葉が完了形なら冒頭から「予祝（先に叶った体で書く）」で一貫させる。未来形なら「宣言」で一貫させ、終盤で予祝の説明をしない",
+  }];
+}
+
+// 終盤の「カードのまとめ」の欠落（必須: 1枚1文で振り返り→時期の再掲→「ただし」）
+export function scanSummaryPresence(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  if (!looksLikeFullScript(t)) return [];
+  // 「めくる」文脈の最後のカード（「6枚目です」「最後の1枚を」）。まとめの中の「5枚目のペンタクルは」は「の」が続くので数えない
+  const idx = allIndexes(t, /(最後の(1枚|カード)|[5-9５-９]枚目)(です|を|、|。|にいき|めくり|引き)/g);
+  const lastCard = idx.length > 0 ? idx[idx.length - 1] : -1;
+  if (lastCard < 0) return [];
+  const tail = t.slice(lastCard);
+  // 「今日のカードのまとめです」「ここまでが、今日のカードの流れです」「1枚目は〜」のいずれか
+  if (/(カード|今日)のまとめ|まとめ(です|ますね|ると|させて)|今日のカードの流れ|ここまでが、?今日の|おさらい|[1１]枚目(の|は|で|から)/.test(tail)) return [];
+  return [{
+    name: "全文: 終盤のカードのまとめが無い",
+    status: "fail",
+    comment: "最後のカードの後に「今日のカードのまとめ」（1枚目はこう、2枚目はこう、と1枚1文で振り返り、時期を再掲）が見当たりません。まとめ→「ただし」の放置リスク、の順が必須です",
+    suggestion: "最後のカードの後に「最後に、今日のカードのまとめです。1枚目の◯◯は〜。2枚目の◯◯は〜。（全カード）早い人は◯日後から〜」を入れてから「ただし」に繋ぐ",
+  }];
+}
+
+// 本編の時期の予言と、無料鑑定を受けた人の口コミの欠落（5枚目の役割）
+export function scanBodyEssentials(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  if (!looksLikeFullScript(t)) return [];
+  const items: QualityCheckItem[] = [];
+  const lineAt = lastLineMention(t);
+  const body = t.slice(0, lineAt);
+  if (!/[0-9０-９]+日後|[0-9０-９]+のつく日|[0-9０-９]+週間(後|以内)|[0-9０-９]+か月(後|以内)|数日(後|で|のうち)/.test(body)) {
+    items.push({ name: "全文: 本編に時期の予言が無い", status: "warn",
+      comment: "本編に「◯日後」「◯のつく日」のような時期の予言がありません。時期は満足度と既成事実化の柱です（3段階で進める型が有効）",
+      suggestion: "5枚目か最後のカードで「早い人は◯日後に小さな変化→◯日後に目に見える形→◯日で出揃う」と段階で出し、「日にちを数えて待たなくていい」を添える。出した場合、終盤の未知数に「時期」は使わない" });
+  }
+  if (!/鑑定を受け|鑑定の後|鑑定(した|させていただいた|させてもらった)方|鑑定で視|視させて(もらった|いただいた)方|視た方/.test(body)) {
+    items.push({ name: "全文: 本編に無料鑑定を受けた人の口コミが無い", status: "warn",
+      comment: "本編（5枚目あたり）に「無料鑑定を受けた方」の口コミが無く、終盤でしか鑑定に触れていません。本編の口コミは時期の予言の根拠にもなります",
+      suggestion: "5枚目の毎日の変化の後に「無料鑑定を受けた◯◯さんは、◯日後に〜」の口コミを1つ置き、そこから時期へ繋ぐ" });
+  }
+  return items;
+}
+
+// 口コミ（体験談）の使い回し: 同じエピソードを1本の中で2回使っていないか（文字2-gramの重なりで判定）
+export function scanRepeatedEpisode(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  // 「！」で切ると「〜なったんです！と教えてくださいました」の引用が分断されるので、句点だけで切る
+  const sentences = t.split(/(?<=。)/).filter((s) => /(教えてくださ|報告|届きました|届いて|言ってくださ|連絡をくださ)/.test(s) && s.length >= 30);
+  // 体験談の「中身の語」（カタカナ語・擬音・2字以上の漢字語）を取り出し、一般語を除く。3語以上重なれば同じエピソード扱い
+  const GENERIC = /^(鑑定|報告|連絡|教え|以前|方々|最近|本当|自分|相手|関係|毎日|未来|今日|先日|実際|結果|状態|内容|無料|霊視|大切|最高|幸せ|変化|流れ|仕事|生活|気持|言葉|時間|人生|世界|環境|空気|職場|家族|友達|彼女|彼氏|お金|連絡|報告)$/;
+  const tokens = (s: string) => new Set(Array.from(s.matchAll(/[ァ-ヶー]{2,}|[一-龥]{2,}/g), (m) => m[0]).filter((w) => !GENERIC.test(w)));
+  const items: QualityCheckItem[] = [];
+  for (let i = 0; i < sentences.length; i++) {
+    for (let j = i + 1; j < sentences.length; j++) {
+      const a = tokens(sentences[i]); const b = tokens(sentences[j]);
+      const shared = Array.from(a).filter((w) => b.has(w));
+      // 擬音・カタカナ語（ピコン・ガラッ 等）が重なっていれば2語で成立
+      const hasKana = shared.some((w) => /^[ァ-ヶー]+$/.test(w));
+      if (shared.length >= 3 || (hasKana && shared.length >= 2)) {
+        items.push({ name: "口コミの使い回し（同じ体験談を2回）", status: "warn",
+          comment: `同じエピソードを言い換えて2回使っています（共通の語: ${shared.slice(0, 5).join("・")}）。1本の中で体験談は1回ずつ。\n①${sentences[i].slice(0, 60)}…\n②${sentences[j].slice(0, 60)}…`,
+          suggestion: "終盤の口コミは別の人・別の形の報告にする（冒頭が連絡系なら終盤は人間関係の変化系、等）" });
+        return items;
+      }
+    }
+  }
+  return items;
+}
+
+// 既成事実化と「あなた次第」の衝突: 「結果はもう決まっている」と「早めるのも遅らせるのもあなた次第」を同じ台本で言わない
+export function scanDestinyConflict(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const fixed = t.match(/(分かれ道|分岐点|結末|未来|結果)は、?(もう|すでに)決まって/);
+  const yourCall = t.match(/(あなた|心の状態|選択)次第/);
+  if (!fixed || !yourCall) return [];
+  return [{
+    name: "既成事実と「あなた次第」の衝突",
+    status: "warn",
+    comment: `「${fixed[0]}」と「${yourCall[0]}」が同じ台本にあります。結果を確定させる言い方と、速さは本人次第という言い方が矛盾します`,
+    suggestion: "既成事実化は「流れに入った」「分岐点は今日」までにし、結果そのものを「決まっている」と言わない",
+  }];
+}
+
+// 格上げの重ね使い: 「気配で分かっていた」「出ると分かっていた」型を1本で2回以上
+export function scanAuthorityStack(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const hits = t.match(/気配で分かって|出ると分かって|出ると.{0,8}分かっていた|分かっていたから.{0,10}(撮|録)/g) || [];
+  if (hits.length < 2) return [];
+  return [{
+    name: `格上げの重ね使い（${hits.length}回）`,
+    status: "warn",
+    comment: `「${hits.join("」「")}」。カードが出ることを先に知っていた型の格上げが複数あります。2回目以降は嘘っぽさが増し、引く前に結果が分かっている理屈になります`,
+    suggestion: "格上げは1本に1回。残りは削るか、別の型（シャッフル前に守護天使様から「待っている人がいる」と告げられた、等）に替える",
+  }];
 }
 
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[] }): QualityCheckItem[] {
@@ -483,6 +625,12 @@ export function runMechanicalChecks(script: string, approvedScripts?: string[], 
     ...findRepeatedSentences(script, approvedScripts || []),
     ...(opts?.revealed ? scanCardCount(script, opts.revealed) : []),
     ...scanDuplicateAnnouncements(script),
+    ...scanCommentCtaTypeMix(script),
+    ...scanSummaryPresence(script),
+    ...scanBodyEssentials(script),
+    ...scanRepeatedEpisode(script),
+    ...scanDestinyConflict(script),
+    ...scanAuthorityStack(script),
     ...scanDrawSpecCompliance(script, opts?.drawSpec),
     ...(opts?.imagery ? scanImageryClaims(script, opts.imagery) : []),
     ...(opts?.imagery ? scanColorClaims(script, opts.imagery) : []),
