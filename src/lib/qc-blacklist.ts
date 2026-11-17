@@ -700,11 +700,43 @@ export function scanRetentionDuplicate(script: string): QualityCheckItem[] {
   return items;
 }
 
+// 占い師の思い（一人称の感情・願い）の有無。説明と予言だけの台本を止める
+// 対象の形: 「私は／私も／私が …（嬉しい・痛い・心配・願って・ほしい）」「あなたには…してほしい／なってほしい」
+const FEELING_RE = /(私|わたし|アリサ)(は|も|が|自身|にとって|の)[^。！？]{0,40}(嬉し|うれし|痛(かった|い|く)|胸が(いっぱい|熱|痛|きゅ)|泣|ほっと|悔し|心配|願って|祈って|思っている|思っています|本気で|ほしい|ほしくない|見届けたい|手伝(い|え)|嬉しかった|びっくり)|あなたに(は|も)?[^。！？]{0,40}(なってほしい|してほしい|過ごしてほしい|いてほしい|迎えてほしい|してほしくない|ほしくない)/g;
+export function scanFeelingPresence(script: string): QualityCheckItem[] {
+  const t = norm(script);
+  if (!looksLikeFullScript(t)) return [];
+  const all = Array.from(t.matchAll(FEELING_RE));
+  const lineAt = lastLineMention(t);
+  const tailStart = Math.max(0, lineAt - 700);
+  const inTail = all.filter((m) => (m.index ?? 0) >= tailStart).length;
+  const items: QualityCheckItem[] = [];
+  if (all.length === 0) {
+    items.push({ name: "全文: 占い師の思いが無い", status: "fail",
+      comment: "「私は〜嬉しい」「私も胸が痛かった」「あなたには〜してほしい」のような、占い師自身の感情や願いが1つもありません。説明と予言だけの台本になっています",
+      suggestion: "本編に1箇所（言い当て・免責の直後か理想の未来の中）、終盤のLINE誘導の中に1箇所、一人称の思いを入れる（抽選ブロックの【占い師の思い】の種類で）" });
+  } else if (all.length === 1) {
+    items.push({ name: "全文: 占い師の思いが1箇所だけ", status: "warn",
+      comment: `占い師の思いが「${all[0][0].slice(0, 40)}」の1箇所しかありません。本編1＋終盤1が必須です`,
+      suggestion: inTail > 0 ? "本編（言い当て・免責の直後か理想の未来の中）に1箇所足す" : "終盤のLINE誘導の中（未知数・枠の前）に「あなたには◯◯になってほしい。だからこの機会を無駄にしてほしくない」の形で1箇所足す" });
+  } else if (inTail === 0) {
+    items.push({ name: "全文: 終盤のLINE誘導に占い師の思いが無い", status: "warn",
+      comment: "思いは本編にありますが、終盤のLINE誘導の中に一人称の思いがありません。理屈（未知数・枠）だけで案内しています",
+      suggestion: "未知数の前に「私は、あなたに◯◯になってほしいと本気で思っている。だからこの機会を無駄にしてほしくない」を置き、思いが先・案内が後の順にする" });
+  }
+  if (all.length >= 5) {
+    items.push({ name: `全文: 占い師の思いが${all.length}箇所`, status: "warn",
+      comment: "一人称の感情・願いが多すぎます。4箇所以上は押しつけや自分語りに聞こえます", suggestion: "2〜3箇所に絞る（本編1・終盤1・締め1まで）" });
+  }
+  return items;
+}
+
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
     ...scanVerbatimExamples(script, opts?.rules, approvedScripts),
     ...scanStockSentences(script, approvedScripts || []),
     ...scanRetentionDuplicate(script),
+    ...scanFeelingPresence(script),
     ...scanUnknownsVsTiming(script),
     ...scanUnknownsVsForms(script),
     ...scanCommentWordConsistency(script),
