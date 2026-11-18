@@ -133,7 +133,7 @@ export function scanImageryClaims(script: string, cards: { name: string; img?: s
   const items: QualityCheckItem[] = [];
   positions.forEach((c, i) => {
     const end = i + 1 < positions.length ? positions[i + 1].pos : Math.min(t.length, c.pos + 1500);
-    const passage = t.slice(c.pos, end);
+    const passage = t.slice(c.pos, end).replace(/目が覚め/g, "");  // 「朝、目が覚めた瞬間」は視線の描写ではない
     // 「カード／絵／女性／人物／描かれ」が同じ文か直前の文にある視線・表情語だけを対象（視聴者の描写は除外）
     const cardish = /(カード|絵|この(女性|男性|人物|王|農夫|子ども)|描かれ|見てください)/;
     const sentences = passage.split(/(?<=[。！？!?])/);
@@ -196,7 +196,7 @@ export function scanColorClaims(script: string, cards: { name: string; img?: str
   const items: QualityCheckItem[] = [];
   positions.forEach((c, i) => {
     const end = i + 1 < positions.length ? positions[i + 1].pos : Math.min(t.length, c.pos + 1500);
-    const passage = t.slice(c.pos, end);
+    const passage = t.slice(c.pos, end).replace(/目が覚め/g, "");  // 「朝、目が覚めた瞬間」は視線の描写ではない
     const m = passage.match(/(黄色|金色|黄金色)(い|の)?(カード|絵)/);
     if (!m) return;
     if (/黄|金色|金の/.test(c.img || "")) return;
@@ -731,12 +731,41 @@ export function scanFeelingPresence(script: string): QualityCheckItem[] {
   return items;
 }
 
+// 倒置・言いさし: 助詞で終わる文（「想像してみてください。〜毎日を。」「片足は水に、片足は陸に。」）。動詞を先に言って目的語を後から足す形は禁止
+export function scanInvertedEndings(script: string): QualityCheckItem[] {
+  const t = norm(script);
+  // 「〜ますから。」「〜ですからね。」の理由の「から」は対象外
+  const hits = t.split(/(?<=[。！？!?])/).filter((s) => s.length > 8 && /(を|へ|まで|(?<!ます|です|ません|せん)から|[^こもの]に)[。！？!?]$/.test(s)).slice(0, 5);
+  if (hits.length === 0) return [];
+  return [{
+    name: `倒置・言いさし（${hits.length}文）`,
+    status: "fail",
+    comment: `助詞で終わる文があります。動詞の後に目的語を足す倒置か、述語の無い言いさしです。\n${hits.map((h) => `「${h.slice(-50)}」`).join("\n")}`,
+    suggestion: "目的語を動詞の前に置いて1文にする（「〜毎日を、想像してみてください」）。言いさしは述語で締める",
+  }];
+}
+
+// 「◯枚目でお話しした」の多用: 視聴者は細かく覚えていないので、前に戻る言い方は1本で2回まで
+export function scanBackrefOveruse(script: string): QualityCheckItem[] {
+  const t = norm(script);
+  const hits = Array.from(t.matchAll(/([1-9１-９]枚目|冒頭|最初|さっき|先ほど)で[、]?[^。]{0,30}?(言いました|言った|お話しし|お伝えし|触れ|申し上げ)/g)).map((m) => m[0]).slice(0, 8);
+  if (hits.length < 3) return [];
+  return [{
+    name: `前のカードへの言及が${hits.length}回`,
+    status: hits.length >= 4 ? "fail" : "warn",
+    comment: `「◯枚目でお話しした」型の言い方が多すぎます。視聴者は前のカードの中身を細かく覚えていません。\n${hits.map((h) => `「${h}」`).join("\n")}`,
+    suggestion: "戻る言い方は1本で2回まで（冒頭フックの回収と、核心の1回）。それ以外は前を参照せず、その場で言い直す",
+  }];
+}
+
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
     ...scanVerbatimExamples(script, opts?.rules, approvedScripts),
     ...scanStockSentences(script, approvedScripts || []),
     ...scanRetentionDuplicate(script),
     ...scanFeelingPresence(script),
+    ...scanInvertedEndings(script),
+    ...scanBackrefOveruse(script),
     ...scanUnknownsVsTiming(script),
     ...scanUnknownsVsForms(script),
     ...scanCommentWordConsistency(script),
