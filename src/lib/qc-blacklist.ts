@@ -758,6 +758,55 @@ export function scanBackrefOveruse(script: string): QualityCheckItem[] {
   }];
 }
 
+// 比喩の連続: 出たカードの絵柄の語（杯・水・道・輪・灯り 等）が1段落に4回以上出ているのに、「つまり」「ということです」で現実の言葉に戻していない
+export function scanMetaphorPileup(script: string, imagery?: { name: string; img?: string }[]): QualityCheckItem[] {
+  const words = new Set<string>();
+  for (const im of imagery || []) {
+    for (const m of (im.img || "").matchAll(/[一-龥]{2,3}|[ァ-ヶー]{2,}/g)) words.add(m[0]);
+  }
+  // 台本側の比喩語（絵柄に無くても台本で比喩として使われやすい語）
+  for (const w of ["灯り", "帳簿", "請求書", "水位", "輪", "鎖", "窓の外", "扉", "器", "川", "畑", "種", "鍵", "天秤", "歯車"]) words.add(w);
+  const GENERIC = /^(人物|女性|男性|若者|老人|人間|男女|2人|二人|一人|背景|遠く|手前|足元|頭上|背後|両手|片手|左右|上下|正面|全体|部分|場面|様子|状態|意味|中|上|下|前|後|外|内|空|町|山|海|雲|夜|朝|光)$/;
+  const metaphors = Array.from(words).filter((w) => !GENERIC.test(w) && w.length >= 1);
+  const items: QualityCheckItem[] = [];
+  const paras = script.split(/\n\s*\n/).map((x) => x.replace(/\s+/g, ""));
+  for (const para of paras) {
+    if (para.length < 80) continue;
+    // 絵柄そのものの説明段落（「〜の絵です」「描かれています」「〜を表すカード」）は対象外。比喩の連続は、絵を離れて語り続ける段落で見る
+    if (/の絵|絵です|絵が|描かれ|描いた|描いて|表すカード|を表し|という意味|正位置|逆位置/.test(para)) continue;
+    const hits = metaphors.filter((w) => para.includes(w));
+    const count = hits.reduce((n, w) => n + (para.split(w).length - 1), 0);
+    const grounded = /つまり|ということです|要するに|現実で言うと|言い換えると|簡単に言うと/.test(para);
+    if (hits.length >= 3 && count >= 5 && !grounded) {
+      items.push({ name: `比喩の連続（${hits.slice(0, 5).join("・")}）`, status: "warn",
+        comment: `1つの段落に比喩の語が${count}回（${hits.length}種類）出ていて、「つまり」で現実の言葉に戻していません。視聴者には何の話か分からなくなります。\n「${para.slice(0, 60)}…」`,
+        suggestion: "絵柄や比喩の説明は2文まで。そのあと必ず「つまり、〜ということです」で、あの人・気持ち・毎日・連絡のような現実の言葉に言い換える。1段落に比喩は2種類まで" });
+      if (items.length >= 3) break;
+    }
+  }
+  return items;
+}
+
+// 目的語のない動詞: 「整えた人」「手放した方」「受け取ったあなた」のように「何を」が無い言い方
+export function scanMissingObject(script: string): QualityCheckItem[] {
+  const t = norm(script);
+  const re = /(整え|整っ|手放し|受け取っ|満たされ|緩め|溜め|戻し)(た|る)(人|方|あなた|もの|分|側|瞬間|とき)/g;
+  const hits: string[] = [];
+  for (const m of t.matchAll(re)) {
+    const before = t.slice(Math.max(0, (m.index ?? 0) - 12), m.index ?? 0);
+    if (/[をがも]|まで|から/.test(before)) continue;   // 直前に「気持ちを」「流れが」「最後の1枚まで」があればよい
+    hits.push(before.slice(-8) + m[0]);
+    if (hits.length >= 6) break;
+  }
+  if (hits.length === 0) return [];
+  return [{
+    name: `「何を」が無い動詞（${hits.length}件）`,
+    status: hits.length >= 3 ? "fail" : "warn",
+    comment: `動詞に目的語が無く、何の話か分かりません。\n${hits.map((h) => `「…${h}」`).join("\n")}`,
+    suggestion: "必ず「何を」を付ける（「気持ちを整えた人」「あの人の荷物を手放した方」「連絡を受け取った瞬間」）",
+  }];
+}
+
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
     ...scanVerbatimExamples(script, opts?.rules, approvedScripts),
@@ -766,6 +815,8 @@ export function runMechanicalChecks(script: string, approvedScripts?: string[], 
     ...scanFeelingPresence(script),
     ...scanInvertedEndings(script),
     ...scanBackrefOveruse(script),
+    ...scanMetaphorPileup(script, opts?.imagery),
+    ...scanMissingObject(script),
     ...scanUnknownsVsTiming(script),
     ...scanUnknownsVsForms(script),
     ...scanCommentWordConsistency(script),
