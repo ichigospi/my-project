@@ -732,7 +732,8 @@ function findReveal(t: string, name: string): { idx: number; orientation: "正�
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const quoted = new RegExp(`[「『]${esc}[」』][^。]{0,24}?。?[^。]{0,16}?(正位置|逆位置|逆さま|逆さ)`);
   // 括弧なし: 「ペンタクルの7、正位置です」「女帝です。正位置」「星のカード、逆位置」の形。「力を信じて」「太陽のように」は対象外
-  const bare = new RegExp(`(?<![一-龥ァ-ヶー「『])${esc}(?:のカード|カード|、|です、|です。|が出ました。|が出ました、)[^。]{0,14}?(正位置|逆位置)`);
+  // 「カップのエース。正位置です」「死神。正位置です」のように句点で区切る開示も拾う（句点の直後に向きが続く場合だけ）
+  const bare = new RegExp(`(?<![一-龥ァ-ヶー「『])${esc}(?:のカード|カード|、|です、|です。|が出ました。|が出ました、|。(?=[^。]{0,4}(?:正位置|逆位置)))[^。]{0,14}?(正位置|逆位置)`);
   const m = quoted.exec(t) || bare.exec(t);
   if (!m) return null;
   return { idx: m.index, orientation: m[1] === "正位置" ? "正位置" : "逆位置" };
