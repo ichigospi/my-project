@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
+import { countCardReveals } from "@/lib/tarot-draw";
 
 // 全文を書き直させると指示外の箇所まで改変されるため、
 // 「該当箇所だけの find→replace パッチ」をモデルに出させ、サーバ側で元台本に適用する。
@@ -177,6 +178,9 @@ ${script}`;
     let result = script as string;
     const applied: string[] = [];
     const unmatched: string[] = [];
+    // 【カードの追加禁止ガード】明示的な「カードを1枚追加」の指示が無い限り、修正で新しいカードが本文に増える編集は適用しない
+    const allowCardAdd = /【カードを1枚追加】/.test(String(revisionNote || ""));
+    const baseCards = new Set(countCardReveals(script as string).cards);
     for (const ed of parsed.edits) {
       const find = String(ed.find ?? "");
       const replace = String(ed.replace ?? "");
@@ -184,6 +188,13 @@ ${script}`;
       if (!find) continue;
       const next = applyOneEdit(result, find, replace);
       if (next !== null) {
+        if (!allowCardAdd) {
+          const added = countCardReveals(next).cards.filter((c) => !baseCards.has(c));
+          if (added.length > 0) {
+            unmatched.push(`・[不適用] ${reason || "修正"}（骨組みに無いカード「${added.join("・")}」を追加する内容のため適用しませんでした。カードを足すときは「追加カードの提案」から行ってください）`);
+            continue;
+          }
+        }
         result = next;
         applied.push(`・${reason || "修正を適用"}`);
       } else {
