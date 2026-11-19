@@ -210,17 +210,15 @@ export function extractCardsFromProse(script: string): DrawnCard[] {
   const slotMarks = Array.from(t.matchAll(/([1-9１-９])枚目(?!の)/g)).map((m) => ({ idx: m.index ?? 0, slot: Number(m[1].replace(/[１-９]/g, (d) => String("１２３４５６７８９".indexOf(d) + 1))) }));
   const hits: { idx: number; card: DrawnCard }[] = [];
   for (const name of CARD_NAMES) {
-    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // 「「吊るされた男」のカードが出ました。正位置です」のように句点を1つ挟む形も拾う
-    const re = new RegExp(`(?<![一-龥ァ-ヶー])${esc}(?![一-龥ァ-ヶー])[」』]?[^。]{0,24}?。?[^。]{0,16}?(正位置|逆位置|逆さま|逆さ)`);
-    const m = re.exec(t);
+    // 「力を信じて…逆さま」「太陽のように…逆位置」のような普通の単語を拾わないよう、開示の形（括弧つき／「のカード」つき）に限定する
+    const m = findReveal(t, name);
     if (!m) continue;
-    const orientation: "正位置" | "逆位置" = m[1] === "正位置" ? "正位置" : "逆位置";
+    const orientation = m.orientation;
     // 直前200字以内の「N枚目」を枚数ラベルにする（「最後の1枚」は番号なし＝登場順で補う）
-    const mark = slotMarks.filter((s) => s.idx < m.index && m.index - s.idx <= 200).pop();
-    const lastMark = t.lastIndexOf("最後の1枚", m.index);
-    const slot = lastMark >= 0 && m.index - lastMark <= 200 && (!mark || mark.idx < lastMark) ? undefined : mark?.slot;
-    hits.push({ idx: m.index, card: { name, orientation, slot } });
+    const mark = slotMarks.filter((s) => s.idx < m.idx && m.idx - s.idx <= 200).pop();
+    const lastMark = t.lastIndexOf("最後の1枚", m.idx);
+    const slot = lastMark >= 0 && m.idx - lastMark <= 200 && (!mark || mark.idx < lastMark) ? undefined : mark?.slot;
+    hits.push({ idx: m.idx, card: { name, orientation, slot } });
   }
   // 番号は登場順に単調増加させる（番号が無い・前のカードと同じ番号なら、前の番号＋1）
   let prev = 0;
@@ -726,16 +724,25 @@ export function getCardMeaning(name: string, orientation: "正位置" | "逆位�
   const info = CARD_INFO[name];
   return info ? (orientation === "逆位置" ? info.rev : info.up) : undefined;
 }
+// 本文中で「カードをめくった」箇所を探す。
+// 「力を信じて…逆さまに」「太陽のように…逆位置」のような普通の単語を拾わないよう、開示の形を限定する:
+//  (a) 「星」「死神」のように括弧で囲まれたカード名 → 24字以内（句点を1つまたいでよい）に 正位置／逆位置／逆さま
+//  (b) 括弧なしのカード名 → 直後が「のカード」「カード」で、20字以内（句点をまたがない）に 正位置／逆位置
+function findReveal(t: string, name: string): { idx: number; orientation: "正位置" | "逆位置" } | null {
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const quoted = new RegExp(`[「『]${esc}[」』][^。]{0,24}?。?[^。]{0,16}?(正位置|逆位置|逆さま|逆さ)`);
+  // 括弧なし: 「ペンタクルの7、正位置です」「女帝です。正位置」「星のカード、逆位置」の形。「力を信じて」「太陽のように」は対象外
+  const bare = new RegExp(`(?<![一-龥ァ-ヶー「『])${esc}(?:のカード|カード|、|です、|です。|が出ました。|が出ました、)[^。]{0,14}?(正位置|逆位置)`);
+  const m = quoted.exec(t) || bare.exec(t);
+  if (!m) return null;
+  return { idx: m.index, orientation: m[1] === "正位置" ? "正位置" : "逆位置" };
+}
+
 export function countCardReveals(script: string): { count: number; cards: string[] } {
   const t = script.replace(/\s+/g, "");
   const found: string[] = [];
   for (const name of CARD_NAMES) {
-    // 1〜2字のカード名（力・塔・星・月 等）は「努力の塔」「魅力」のような熟語の一部に誤反応するため、
-    // 直前が漢字・カタカナでないこと（＝語頭）を要求する
-    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // 「「吊るされた男」のカードが出ました。正位置です」のように少し離れて向きを言う形も拾う（30字以内）
-    const re = new RegExp("(?<![一-龥ァ-ヶー])" + esc + "(?![一-龥ァ-ヶー]).{0,30}?(正位置|逆位置|逆さま)");
-    if (re.test(t) && !found.includes(name)) found.push(name);
+    if (findReveal(t, name) && !found.includes(name)) found.push(name);
   }
   return { count: found.length, cards: found };
 }
