@@ -1134,7 +1134,7 @@ ${p.content}`;
                                   <div className="flex-1">
                                     <span className="text-gray-700">{it.name}</span>
                                     {it.comment && <p className="text-sm text-gray-500 mt-0.5">{it.comment}</p>}
-                                    {it.status !== "pass" && it.suggestion && <p className="text-sm text-purple-700 mt-0.5">→ {it.suggestion}</p>}
+                                    {it.status !== "pass" && it.suggestion && <p className="text-sm text-purple-700 mt-0.5 whitespace-pre-line">→ {it.suggestion}</p>}
                                   </div>
                                 </div>
                               ))}
