@@ -7,6 +7,7 @@
 // - 最後に「再提出を依頼」「合格」ボタン → プロジェクト一覧に反映
 
 import { useMemo, useState, useEffect } from "react";
+import { resyncSegments } from "@/lib/segments";
 import { diffTexts, segKey, formatTranscript, type DiffSeg } from "@/lib/text-diff";
 import { addPattern, removePattern, normalizeCategory } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
@@ -155,6 +156,7 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
         scriptReviewStatus: "approved",
         approvedAt: new Date().toISOString(),
         generatedScript: reviewed, // 添削後の台本を最終稿として反映
+        scriptSegments: resyncSegments(project.scriptSegments, reviewed),
         status: "completed",
       });
     } else {

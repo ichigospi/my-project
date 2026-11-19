@@ -11,6 +11,7 @@ import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt, withChannelVocabRules } from "@/lib/rules-injector";
 import { buildSelectedPatternsBlock, getPatterns } from "@/lib/pattern-store";
+import { resyncSegments } from "@/lib/segments";
 import { formatTranscript } from "@/lib/text-diff";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -37,8 +38,7 @@ function pureTextLength(text: string): number {
     .replace(/^[-*]\s+/gm, "")
     .replace(/^>\s+/gm, "")
     .replace(/---+/g, "")
-    .replace(/\n{2,}/g, "\n")
-    .trim()
+    .replace(/\s+/g, "")   // 空白・改行は数えない（品質チェック・目標文字数と同じ基準）
     .length;
 }
 
@@ -175,7 +175,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         checkedAt: new Date().toISOString(),
         rounds: (prev?.rounds || 0) + 1,
       };
-      onUpdate({ ...base, generatedScript: script, proofreadResult: result });
+      onUpdate({ ...base, generatedScript: script, scriptSegments: resyncSegments(base.scriptSegments, script), proofreadResult: result });
       pushSharedSettings();
     } catch (e) {
       setProofError(e instanceof Error ? e.message : "日本語校閲に失敗しました");
@@ -206,6 +206,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     const next: ScriptProject = {
       ...project,
       generatedScript: text,
+      scriptSegments: resyncSegments(project.scriptSegments, text),
       proofreadResult: { ...proof, items: remaining, scriptHash: newHash, passed: false },
       qualityCheckResult: project.qualityCheckResult ? { ...project.qualityCheckResult, scriptHash: newHash } : undefined,
     };
@@ -572,7 +573,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         const parts = data.script.split("---修正箇所---");
         const revisedScript = parts[0].trim();
         const summary = parts[1]?.trim() || "";
-        onUpdate({ ...project, generatedScript: revisedScript });
+        onUpdate({ ...project, generatedScript: revisedScript, scriptSegments: resyncSegments(project.scriptSegments, revisedScript) });
         pushSharedSettings();
         setRevisionSummary(summary);
         setRevisionNote("");
@@ -657,7 +658,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         const revised = String(rdata.script).split("---修正箇所---")[0].trim();
         if (revised.replace(/\s/g, "").length <= len) { setError("加筆しても文字数が増えませんでした。増筆ポイントを提案から手動で指定してください"); break; }
         current = revised;
-        base = { ...base, generatedScript: current, qualityCheckResult: undefined, proofreadResult: undefined };
+        base = { ...base, generatedScript: current, scriptSegments: resyncSegments(base.scriptSegments, current), qualityCheckResult: undefined, proofreadResult: undefined };
         onUpdate(base);
         pushSharedSettings();
       }
@@ -672,7 +673,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     if (project.generatedScript) {
       setScriptHistory((prev) => [...prev, project.generatedScript]);
     }
-    onUpdate({ ...project, generatedScript: scriptHistory[idx] });
+    onUpdate({ ...project, generatedScript: scriptHistory[idx], scriptSegments: resyncSegments(project.scriptSegments, scriptHistory[idx]) });
     pushSharedSettings();
   };
 
@@ -975,7 +976,9 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const estimatedMinutes = Math.round(pureChars / CHARS_PER_MINUTE);
   const sections = project.generatedScript ? getSectionStats(project.generatedScript) : [];
   // 骨組みのセクションごとの目安字数（骨組みに「約N字」がある場合）。台本のセクション別文字数と並べて差を見る
-  const planSections = parseSkeletonSections(project.structureProposal?.concept || "").filter((s) => s.chars);
+  const planSectionsAll = parseSkeletonSections(project.structureProposal?.concept || "").filter((s) => s.chars);
+  // 骨組みと台本のセクション数が合うときだけ目安と並べる（合わないと別のセクションの目安を見せてしまう）
+  const planSections = planSectionsAll.length === sections.length ? planSectionsAll : [];
   const totalSeconds = project.telopScript?.reduce((sum, t) => sum + t.displaySeconds, 0) || 0;
 
   return (
@@ -1113,7 +1116,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                     onClick={() => {
                       const text = pasteText.trim();
                       if (!text) return;
-                      onUpdate({ ...project, generatedScript: text, qualityCheckResult: undefined });
+                      onUpdate({ ...project, generatedScript: text, scriptSegments: resyncSegments(project.scriptSegments, text), qualityCheckResult: undefined });
                       pushSharedSettings();
                       setPasteText("");
                       setPasteOpen(false);
@@ -1157,7 +1160,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
 
             {/* セクション別文字数 */}
-            {sections.length > 0 && (
+            {sections.length >= 2 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs text-gray-500 mb-2">セクション別文字数</p>
                 <div className="flex gap-1 items-end h-16">
@@ -1201,6 +1204,19 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           {/* 分割パート（パート1→チェック/修正→次のパート、と逐次に進める） */}
           {project.scriptSegments && project.scriptSegments.length >= 1 && (project.splitCount || 1) > 1 && (
             <div className="space-y-4">
+              {/* 全体の台本とパートが食い違っている（全体修正・加筆の後など）ときは、合わせ直すまでパートを信用しない */}
+              {project.scriptSegments.map((s) => s.script).join("\n\n").replace(/\s+/g, "") !== project.generatedScript.replace(/\s+/g, "") && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 flex flex-wrap items-center gap-2">
+                  <span className="font-bold">⚠ パートの内容が全体の台本と食い違っています</span>
+                  <span className="text-xs">全体への修正・加筆・校閲の後に起きます。上の文字数は全体の台本、パートは古い内容です。</span>
+                  <button onClick={() => {
+                      const synced = resyncSegments(project.scriptSegments, project.generatedScript);
+                      if (synced) { onUpdate({ ...project, scriptSegments: synced }); pushSharedSettings(); setError(""); }
+                      else if (confirm("パートの切れ目を全体の台本の中に見つけられませんでした。パート分けを解除して全体の台本だけにしますか？（本文は消えません）")) { onUpdate({ ...project, scriptSegments: undefined, splitCount: 1 }); pushSharedSettings(); }
+                    }}
+                    className="px-3 py-1 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700">全体の台本にパートを合わせる</button>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-700">分割パート（{project.scriptSegments.length}/{plannedTotalParts()} 生成済み・各パートをチェック/修正してから次へ）</p>
                 <button onClick={handleResetOutput} disabled={generating}
@@ -1480,7 +1496,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             </div>
             <div className="p-6">
               <textarea value={project.generatedScript}
-                onChange={(e) => onUpdate({ ...project, generatedScript: e.target.value })}
+                onChange={(e) => onUpdate({ ...project, generatedScript: e.target.value, scriptSegments: resyncSegments(project.scriptSegments, e.target.value) })}
                 onBlur={() => pushSharedSettings()}
                 rows={20} className="w-full text-sm leading-7 outline-none resize-y" />
             </div>
