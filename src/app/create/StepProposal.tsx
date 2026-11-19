@@ -261,6 +261,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   const [replaceOrient, setReplaceOrient] = useState<"正位置" | "逆位置">("正位置");
   const [openImagery, setOpenImagery] = useState<Record<number, boolean>>({});
   const [migrateNotice, setMigrateNotice] = useState("");
+  const [autoFillNotice, setAutoFillNotice] = useState("");
 
   // 旧フロー（抽象ロジックの文章）の企画を、新フロー（設計表にカード＋伝えること）へ自動で取り込む。
   // 抽象ロジック／骨組みに書かれたカードと「伝えること」を設計表に流し込み、全部入ったら抽象ロジックは外す
@@ -459,7 +460,9 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   };
 
   // 骨組みの品質チェック（構成ルール遵守・元台本ズレ）
-  const handleSkeletonCheck = async () => {
+  // noAutoFill: 自動補完の直後の再チェックでは、もう一度補完しない（ループ防止）
+  const handleSkeletonCheck = async (arg?: unknown) => {
+    const noAutoFill = !!(arg && typeof arg === "object" && (arg as { noAutoFill?: boolean }).noAutoFill);
     if (!skeleton.trim()) { setError("先に骨組みを生成してください"); return; }
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
@@ -522,6 +525,26 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         topPriority: (data.topPriority as string) || "",
         checkedAt: new Date().toISOString(),
       });
+      // 【自動補完】不足が1,000字未満なら、元ネタ・過去台本にあってこの骨組みに無い要素（訴求・アドバイス・コメントを唱えるワーク 等）を
+      // 自動で足し、そのあと一度だけ再チェックする。1,000字以上はカード追加の判断が要るので手動のまま
+      const est = (data as { charEstimate?: { estimated: number; targetChars: number; deficit: number } }).charEstimate;
+      const cadds = Array.isArray((data as { contentAdditions?: ContentAddition[] }).contentAdditions) ? ((data as { contentAdditions: ContentAddition[] }).contentAdditions) : [];
+      if (!noAutoFill && project.style === "tarot" && est && est.deficit > 0 && est.deficit < 1000 && cadds.length > 0) {
+        setCheckingSkeleton(false);
+        setAutoFillNotice(`不足 約${est.deficit.toLocaleString()}字（推定${est.estimated.toLocaleString()}字／目標${est.targetChars.toLocaleString()}字）。元ネタ・過去台本にある要素を自動で足しています…`);
+        const picked = cadds.slice(0, 4);
+        const newSk = await applySkeletonFix(skeletonContentBatchInstruction(picked));
+        if (newSk) {
+          setContentAdditions([]);
+          onUpdate({ ...project, contentAdditionProposals: [] });
+          setAutoFillNotice(`不足 約${est.deficit.toLocaleString()}字を自動で補完しました（${picked.map((a) => `${a.title}→「${a.into}」の${a.position}`).join("／")}）。再チェック中…`);
+          await handleSkeletonCheck({ noAutoFill: true });
+          setAutoFillNotice((prev) => prev.replace("再チェック中…", "再チェック済み"));
+        } else {
+          setAutoFillNotice(`不足 約${est.deficit.toLocaleString()}字の自動補完に失敗しました。下の「追加できる要素の提案」から手動で足してください`);
+        }
+        return;
+      }
     } catch { setError("骨組みチェックに失敗しました"); }
     finally { setCheckingSkeleton(false); }
   };
@@ -1560,6 +1583,12 @@ ${p.content}`;
                     </div>
                   )}
                   {/* カードは増やさずに足せる要素（元ネタにあってこの骨組みに無い構成内容）。選ぶと該当セクションに加筆する */}
+                  {autoFillNotice && (
+                    <div className="flex items-start justify-between gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900">
+                      <span>🪄 {autoFillNotice}</span>
+                      <button onClick={() => setAutoFillNotice("")} className="text-emerald-500 hover:text-emerald-800">✕</button>
+                    </div>
+                  )}
                   {(contentAdditions.length > 0 || suggestingContent) && (
                     <div className="rounded-xl p-4 border-2 border-dashed border-sky-300 bg-sky-50/60">
                       <div className="flex items-start justify-between gap-3 mb-2">
