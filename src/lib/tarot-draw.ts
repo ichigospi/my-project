@@ -770,7 +770,11 @@ export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string; car
   const futureScale = rand(futureScalePool.length > 0 ? futureScalePool : FUTURE_SCALE_LINES).replace(/^【恋愛】/, "");
   const alreadyStarted = rand(ALREADY_STARTED_LINES);
   const proofPos = 1 + Math.floor(Math.random() * 3);
-  const reveals = shuffle(REVEAL_EXPRESSIONS).slice(0, count);
+  // シャッフルは冒頭の1回だけ。シャッフル中の出来事を語る演出は1枚目にしか使えないので、2枚目以降には「山から1枚引く」演出だけを割り当てる
+  const isShuffleReveal = (r: string) => /シャッフル|切り直/.test(r);
+  const nonShuffle = shuffle(REVEAL_EXPRESSIONS.filter((r) => !isShuffleReveal(r)));
+  const firstPool = shuffle(REVEAL_EXPRESSIONS);
+  const reveals = [firstPool[0], ...nonShuffle.filter((r) => r !== firstPool[0])].slice(0, count);
   const proofExpr = rand(PROOF_EXPRESSIONS);
   const openingHook = rand(OPENING_RETENTION_HOOKS);
   const midHook = rand(MID_RETENTION_HOOKS);
@@ -870,6 +874,7 @@ ${slots.join("\n")}
   ・驚きは「短い一言（声のトーンが変わる）＋驚いた理由（『10番が2枚も』等、実際の抽選結果にある事実）」で構成する
 - 今回の演出案（サーバーがランダム割り当て。この雰囲気をベースに、チャンネルの口調ルールに合わせて言い換えてよい）:
 ${reveals.map((r, i) => `  ${i + 1}枚目:「${r}」`).join("\n")}
+- 【シャッフルは冒頭の1回だけ（必達）】カードを切るのは1枚目をめくる前の1回だけ。2枚目以降は「山（束）から1枚ずつ引く」演出にし、シャッフルし直す・切り直す・混ぜ直す描写は禁止。「シャッフルの時から気配がしていた」のように冒頭のシャッフルを振り返る言い方は可
 
 【枚数は言わない（必達）】
 - 「今日は◯枚引きます」「◯枚のカードは」のように枚数を言わない。予告は「この動画で何が明らかになるか」「最後まで見るとどうなるか」を大まかに伝える

@@ -821,6 +821,29 @@ export function scanMissingObject(script: string): QualityCheckItem[] {
   }];
 }
 
+// シャッフルは冒頭の1回だけ。2枚目以降でシャッフルし直す・切り直す描写があれば不合格（冒頭のシャッフルを振り返る言い方は可）
+export function scanReshuffle(script: string): QualityCheckItem[] {
+  const t = norm(script);
+  const second = t.search(/[2２]枚目(?!の)/);
+  if (second < 0) return [];
+  const tail = t.slice(second);
+  const hits: string[] = [];
+  for (const m of tail.matchAll(/シャッフル|切り直|混ぜ直|カードを切(っ|り)/g)) {
+    const around = tail.slice(Math.max(0, m.index! - 14), m.index! + 20);
+    // 冒頭のシャッフルを振り返る言い方（「シャッフルの時から」「シャッフルをする前に」「シャッフルの間」）は対象外
+    if (/シャッフル(の時|のとき|をする前|する前|の前|の間|中に|している時|していた)/.test(around)) continue;
+    hits.push(around);
+    if (hits.length >= 3) break;
+  }
+  if (hits.length === 0) return [];
+  return [{
+    name: `2枚目以降でシャッフルしている（${hits.length}件）`,
+    status: "fail",
+    comment: `シャッフルは1枚目をめくる前の1回だけです。2枚目以降は山から1枚ずつ引く演出にします。\n${hits.map((h) => `「…${h}…」`).join("\n")}`,
+    suggestion: "「山の上から1枚」「束からはみ出した1枚」「山を崩したら表を向いた1枚」のように、山から引く演出に書き換える",
+  }];
+}
+
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
     ...scanVerbatimExamples(script, opts?.rules, approvedScripts),
@@ -831,6 +854,7 @@ export function runMechanicalChecks(script: string, approvedScripts?: string[], 
     ...scanBackrefOveruse(script),
     ...scanMetaphorPileup(script, opts?.imagery),
     ...scanMissingObject(script),
+    ...scanReshuffle(script),
     ...scanUnknownsVsTiming(script),
     ...scanUnknownsVsForms(script),
     ...scanCommentWordConsistency(script),

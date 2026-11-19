@@ -8,7 +8,7 @@ import { getAnalyses, deleteAnalysis, getProfileByChannel, saveAnalysis } from "
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor, getProjects } from "@/lib/project-store";
-import { skeletonInsertInstruction, type CardAddition } from "@/lib/card-additions";
+import { skeletonInsertInstruction, skeletonContentInstruction, type CardAddition, type ContentAddition } from "@/lib/card-additions";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -32,6 +32,10 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   const [cardAdditions, setCardAdditions] = useState<CardAddition[]>(project.cardAdditionProposals || []);
   const [suggestingCards, setSuggestingCards] = useState(false);
   const [addingCard, setAddingCard] = useState<number | null>(null);
+  // カードは増やさずに足せる要素の候補（元ネタにあってこの骨組みに無い構成内容）
+  const [contentAdditions, setContentAdditions] = useState<ContentAddition[]>(project.contentAdditionProposals || []);
+  const [suggestingContent, setSuggestingContent] = useState(false);
+  const [addingContent, setAddingContent] = useState<number | null>(null);
   const [applyingFix, setApplyingFix] = useState(false);
   const [fixNote, setFixNote] = useState("");
   const [fixSummary, setFixSummary] = useState("");
@@ -182,6 +186,47 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     } finally { setAddingCard(null); }
   };
 
+  // カードは増やさずに足せる要素の候補を手動で取り直す
+  const requestContentAdditions = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    if (!skeleton.trim()) { setError("骨組みがありません"); return; }
+    setSuggestingContent(true);
+    setError("");
+    try {
+      const referenceTranscripts = analyses.filter((a) => a.transcript).map((a) => a.transcript || "").slice(0, 2);
+      const referenceStructure = analyses.map((a, i) => {
+        const st = a.analysisResult?.structure;
+        return st?.length ? `元ネタ${i + 1}「${a.videoTitle || "無題"}」: ${st.map((s) => `${s.name}(${s.timeRange})→${s.purpose || ""}`).join(" / ")}` : "";
+      }).filter(Boolean).join("\n");
+      const targetChars = Number((skeleton.match(/目標文字数[:：]\s*約?\s*([0-9,，]+)\s*字/)?.[1] || "").replace(/[,，]/g, "")) || (project.style === "tarot" ? 7000 : 4750);
+      const res = await fetch("/api/script/suggest-card-additions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: skeleton, kind: "skeleton", mode: "content", targetChars, referenceTranscripts, referenceStructure, aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+      const adds = (data.contentAdditions || []) as ContentAddition[];
+      setContentAdditions(adds);
+      onUpdate({ ...project, contentAdditionProposals: adds });
+      if (adds.length === 0) setError("足せる要素の候補が作れませんでした");
+    } catch { setError("要素の提案に失敗しました"); }
+    finally { setSuggestingContent(false); }
+  };
+  // 選んだ要素を骨組みのセクションに加筆（カードは増やさない）
+  const applyContentAddition = async (idx: number) => {
+    const a = contentAdditions[idx]; if (!a) return;
+    setAddingContent(idx);
+    try {
+      const ok = await applySkeletonFix(skeletonContentInstruction(a));
+      if (ok) {
+        const rest = contentAdditions.filter((_, i) => i !== idx);
+        setContentAdditions(rest);
+        onUpdate({ ...project, contentAdditionProposals: rest });
+      }
+    } finally { setAddingContent(null); }
+  };
+
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
   const applySkeletonFix = async (revisionNote: string): Promise<boolean> => {
     if (!revisionNote.trim()) return false;
@@ -283,7 +328,12 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
       setError("");
       {
         const adds = Array.isArray((data as { cardAdditions?: CardAddition[] }).cardAdditions) ? ((data as { cardAdditions: CardAddition[] }).cardAdditions) : [];
-        if (adds.length > 0) { setCardAdditions(adds); onUpdate({ ...project, cardAdditionProposals: adds }); }
+        const cadds = Array.isArray((data as { contentAdditions?: ContentAddition[] }).contentAdditions) ? ((data as { contentAdditions: ContentAddition[] }).contentAdditions) : [];
+        if (adds.length > 0 || cadds.length > 0) {
+          if (adds.length > 0) setCardAdditions(adds);
+          if (cadds.length > 0) setContentAdditions(cadds);
+          onUpdate({ ...project, ...(adds.length > 0 ? { cardAdditionProposals: adds } : {}), ...(cadds.length > 0 ? { contentAdditionProposals: cadds } : {}) });
+        }
       }
       setSkeletonCheck({
         categories: (data.categories as QualityCheckCategory[]) || [],
@@ -1197,6 +1247,40 @@ ${p.content}`;
                         ))}
                       </ul>
                       <p className="text-xs text-rose-700/70 mt-2">※ 既存のカードは減らしません。追加後は骨組みのチェックをもう一度回してください</p>
+                    </div>
+                  )}
+                  {/* カードは増やさずに足せる要素（元ネタにあってこの骨組みに無い構成内容）。選ぶと該当セクションに加筆する */}
+                  {(contentAdditions.length > 0 || suggestingContent) && (
+                    <div className="rounded-xl p-4 border-2 border-dashed border-sky-300 bg-sky-50/60">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div>
+                          <p className="text-base font-bold text-sky-900">📝 追加できる要素の提案（カードは増やさない）</p>
+                          <p className="text-sm text-sky-800">元ネタにあって、この骨組みに無い構成内容です。入れたい要素の「この要素を追加」を押すと、該当するセクションに加筆します。</p>
+                        </div>
+                        <button onClick={requestContentAdditions} disabled={suggestingContent || addingContent !== null}
+                          className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-sky-300 text-sky-800 bg-white hover:bg-sky-100 disabled:opacity-50">
+                          {suggestingContent ? "提案中..." : "候補を出し直す"}
+                        </button>
+                      </div>
+                      <ul className="space-y-2">
+                        {contentAdditions.map((a, i) => (
+                          <li key={i} className="rounded-lg bg-white border border-sky-200 p-3 flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-base font-bold text-gray-900">
+                                {a.title}
+                                <span className="ml-2 text-xs font-normal text-gray-500">{a.intoIndex ? `${a.intoIndex}枚目` : a.into}の{a.position}に入ります　／　約{a.chars}字</span>
+                              </p>
+                              <p className="text-base text-gray-800 mt-1">{a.content}</p>
+                              <p className="text-sm text-gray-500 mt-0.5">出どころ：{a.source || "元ネタ"}</p>
+                            </div>
+                            <button onClick={() => applyContentAddition(i)} disabled={addingContent !== null || applyingFix}
+                              className="shrink-0 px-4 py-2 rounded-lg bg-sky-600 text-white text-base font-bold hover:bg-sky-700 disabled:opacity-40">
+                              {addingContent === i ? "反映中..." : "この要素を追加"}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-sky-700/70 mt-2">※ 複数選んで順に追加できます。追加後は骨組みのチェックをもう一度回してください</p>
                     </div>
                   )}
                   {skeletonCheck && (

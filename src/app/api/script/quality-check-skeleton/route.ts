@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
-import { buildCardAdditionPrompt, parseCardAdditions, type CardAddition } from "@/lib/card-additions";
+import { buildCardAdditionPrompt, parseCardAdditions, buildContentAdditionPrompt, parseContentAdditions, type CardAddition, type ContentAddition } from "@/lib/card-additions";
 import { extractDrawnCards } from "@/lib/tarot-draw";
 import { referenceModeQcNote } from "@/lib/structure-mode";
 
@@ -283,6 +283,17 @@ ${transcripts.length ? `\n【元ネタ台本の書き起こし】\n${transcripts
       }
     }
 
+    // 不足があれば（量に関係なく）、カードは増やさずに足せる要素の候補も作る（元ネタにあってこの骨組みに無い構成内容）
+    let contentAdditions: ContentAddition[] = [];
+    if (estimated > 0 && estimated < targetChars * 0.95) {
+      const refStructure = (referenceAnalyses || []).map((a, i) => {
+        const st = a.analysisResult?.structure;
+        return st?.length ? `元ネタ${i + 1}「${a.videoTitle || "無題"}」: ${st.map((s) => `${s.name}(${s.timeRange})→${s.purpose || ""}`).join(" / ")}` : "";
+      }).filter(Boolean).join("\n");
+      const plan = await callModel(buildContentAdditionPrompt({ text: skeleton, kind: "skeleton", deficit, targetChars, transcripts, referenceStructure: refStructure }), 4000);
+      if (!("error" in plan)) contentAdditions = parseContentAdditions(parseJSON(plan.raw));
+    }
+
     // 機械判定: 尺からの見積もりが目標に明らかに届かなければ fail を足す（見積もりは上で計算済み）
     if (targetChars > 0 && estimated > 0) {
       const ratio = estimated / targetChars;
@@ -327,6 +338,7 @@ ${transcripts.length ? `\n【元ネタ台本の書き起こし】\n${transcripts
       }
     }
     if (cardAdditions.length > 0) parsed.cardAdditions = cardAdditions;
+    if (contentAdditions.length > 0) parsed.contentAdditions = contentAdditions;
     return NextResponse.json(parsed);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "骨組みの品質チェックに失敗しました";
