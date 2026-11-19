@@ -3,7 +3,7 @@ import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysi
 import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
-import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES, extractDrawnCards, syncDrawSpecToCards } from "@/lib/tarot-draw";
+import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES, extractDrawnCards, extractCardsFromProse, syncDrawSpecToCards } from "@/lib/tarot-draw";
 import { referenceModeBlock } from "@/lib/structure-mode";
 
 // 6,500〜7,500文字級の台本生成は出力トークン・所要時間ともに大きいため実行上限を延長
@@ -509,7 +509,68 @@ ${!isFirst && previousScript ? `\n【直前の締め（前パートの最後の�
       text = data.choices?.[0]?.message?.content || "";
     }
 
-    return NextResponse.json({ script: text, drawSpec: tarotDraw || undefined });
+    // 【骨組みに無いカードを絶対に出さないガード】生成結果のカードを骨組みと照合し、違えば修正パスをかける（最大2回）。
+    // それでも直らなければ、そのまま返さず cardMismatch を付けて画面で止める
+    let cardMismatch: string[] = [];
+    if (style === "tarot" && skeletonCards.length >= 3) {
+      const diffOf = (s: string): string[] => {
+        const actual = extractCardsFromProse(s);
+        const out: string[] = [];
+        if (!segment && actual.length !== skeletonCards.length) out.push(`枚数: 骨組み${skeletonCards.length}枚／本文${actual.length}枚`);
+        for (const a of actual) if (!skeletonCards.some((p) => p.name === a.name)) out.push(`骨組みに無いカード: ${a.name}（${a.orientation}）`);
+        if (!segment) {
+          for (let i = 0; i < Math.min(actual.length, skeletonCards.length); i++) {
+            const p = skeletonCards[i]; const a = actual[i];
+            if (p.name !== a.name || p.orientation !== a.orientation) out.push(`${i + 1}枚目: 骨組み「${p.name}（${p.orientation}）」／本文「${a.name}（${a.orientation}）」`);
+          }
+        }
+        return out;
+      };
+      const callFix = async (prompt: string): Promise<string> => {
+        if (isAnthropic) {
+          const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: anthropicHeaders(aiApiKey, aiModel),
+            body: JSON.stringify({ model: aiModel, max_tokens: 16000, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
+          });
+          if (!res.ok) return "";
+          const data = await res.json();
+          recordUsage({ model: data.model || aiModel, usage: data.usage });
+          return (data.content || []).filter((b: { type?: string }) => b.type === "text").map((b: { text?: string }) => b.text || "").join("");
+        }
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
+          body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 16000 }),
+        });
+        if (!res.ok) return "";
+        const data = await res.json();
+        recordUsage({ model: "gpt-4o", usage: data.usage });
+        return data.choices?.[0]?.message?.content || "";
+      };
+      cardMismatch = diffOf(text);
+      for (let attempt = 0; attempt < 2 && cardMismatch.length > 0; attempt++) {
+        const fixed = await callFix(`次の台本は、骨組みで確定したカードと食い違っています。食い違いだけを直して、台本の全文をそのまま出力してください（前置き・後書き・見出しの追加は禁止）。
+
+【骨組みで確定したカード（これ以外のカードを本文に出してはいけない。枚数・順番・向きもこのとおり）】
+${skeletonCards.map((c) => `${c.slot ?? ""}枚目: ${c.name}（${c.orientation}）`).join("\n")}
+
+【食い違い】
+${cardMismatch.join("\n")}
+
+【直し方】
+- 骨組みに無いカードのパート（めくる演出〜そのカードの読み）は丸ごと削除し、後ろのカードの「◯枚目」の番号を詰め、終盤の「今日のカードのまとめ」からもそのカードの文を外す
+- 向きが違うカードは、骨組みの向きにしてその向きの正統な意味で読みを書き直す（カード名が違う場合は骨組みのカード名にして読みを書き直す）
+- それ以外の文は一字も変えない
+
+【台本】
+${text}`);
+        if (fixed && fixed.replace(/\s/g, "").length > text.replace(/\s/g, "").length * 0.6) {
+          const d = diffOf(fixed);
+          if (d.length < cardMismatch.length) { text = fixed; cardMismatch = d; }
+        }
+      }
+    }
+
+    return NextResponse.json({ script: text, drawSpec: tarotDraw || undefined, ...(cardMismatch.length ? { cardMismatch } : {}) });
   } catch {
     return NextResponse.json({ error: "台本生成に失敗しました" }, { status: 500 });
   }
