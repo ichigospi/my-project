@@ -231,6 +231,21 @@ export function extractCardsFromProse(script: string): DrawnCard[] {
   });
 }
 
+// 抽選ブロック（drawSpec）のカード一覧を、指定のカード（骨組みに書かれているカード）に合わせて作り直す。
+// 骨組みでカードを差し替え・追加・向きの変更をした後も、台本生成と品質チェックが同じカードを指すようにするための同期。
+// 他の抽選項目（CTAの型・演出 等）はそのまま残す。
+export function syncDrawSpecToCards(drawSpec: string | undefined, cards: DrawnCard[]): string | undefined {
+  if (!drawSpec || cards.length < 3) return drawSpec;
+  const current = extractDrawnCards(drawSpec);
+  const same = current.length === cards.length && current.every((c, i) => c.name === cards[i].name && c.orientation === cards[i].orientation);
+  if (same) return drawSpec;
+  const lines = cards.map((c, i) => cardLine(i + 1, c.name, c.orientation)).join("\n");
+  const count = cards.length;
+  let out = drawSpec.replace(/【今回の抽選カード[^】]*】\n[\s\S]*?(?=\n\n【カードの読み方)/, `【今回の抽選カード（骨組みで確定したカード。必ずこの${count}枚を、この順番で使うこと）】\n${lines}`);
+  out = out.replace(/必ずこの\d+枚を/g, `必ずこの${count}枚を`).replace(/この\d+枚で構成する/g, `この${count}枚で構成する`);
+  return out;
+}
+
 // --- カード登場演出のバリエーション（マンネリ防止） ---
 // 毎回「このカードが出ることは分かっていました」等の同じ定型文に収束しないよう、
 // 抽選時にスロットごとへランダム割り当てしてプロンプトに渡す（口調はチャンネルルールに合わせて言い換え可）

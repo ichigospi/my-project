@@ -3,7 +3,7 @@ import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysi
 import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
-import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES } from "@/lib/tarot-draw";
+import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES, extractDrawnCards, syncDrawSpecToCards } from "@/lib/tarot-draw";
 import { referenceModeBlock } from "@/lib/structure-mode";
 
 // 6,500〜7,500文字級の台本生成は出力トークン・所要時間ともに大きいため実行上限を延長
@@ -82,11 +82,16 @@ export async function POST(request: NextRequest) {
   // 骨組み段階の抽選結果（drawSpec）があればそれを使い、引き直さない（骨組みと台本の指定を一致させる）
   const cardPlan: CardPlan | null = body.cardPlan && Array.isArray(body.cardPlan.slots) && body.cardPlan.slots.length >= 5 ? (body.cardPlan as CardPlan) : null;
   const cardPlanText = cardPlan ? formatCardPlanForPrompt(cardPlan) : "";
+  // 骨組みに書かれているカード（差し替え・追加・向きの変更を含む）を正とし、抽選ブロックのカード一覧をそれに合わせる。
+  // これが無いと、骨組みでカードを増やした後も抽選ブロックは古い枚数のままで、台本が両方を混ぜて枚数が増える
+  const skeletonCards = extractDrawnCards(proposal?.concept || "");
+  const baseDraw = (typeof body.drawSpec === "string" && body.drawSpec.trim())
+    ? body.drawSpec
+    : buildTarotDrawBlock({ genre, topic, cardCount: skeletonCards.length >= 3 ? skeletonCards.length : cardPlan?.slots.length, negativeIndex: cardPlan ? Math.max(1, cardPlan.slots.findIndex((sl) => sl.role === "常識破壊") + 1) : undefined });
+  const syncedDraw = skeletonCards.length >= 3 ? (syncDrawSpecToCards(baseDraw, skeletonCards) || baseDraw) : baseDraw;
   const tarotDraw = style === "tarot" && !segment
-    ? (((typeof body.drawSpec === "string" && body.drawSpec.trim())
-        ? body.drawSpec
-        : buildTarotDrawBlock({ genre, topic, cardCount: cardPlan?.slots.length, negativeIndex: cardPlan ? Math.max(1, cardPlan.slots.findIndex((sl) => sl.role === "常識破壊") + 1) : undefined }))
-      + (cardPlanText ? "\n\n" + cardPlanText : ""))
+    ? (syncedDraw + (cardPlanText ? "\n\n" + cardPlanText : "")
+      + `\n\n【枚数の厳守（必達）】めくるカードは上の抽選カードの${skeletonCards.length >= 3 ? skeletonCards.length : (extractDrawnCards(syncedDraw).length || "指定")}枚だけ。骨組みに無いカードを足さない。減らさない。カード名と向きは抽選カードどおりにする`)
     : "";
 
   if (!aiApiKey) {
