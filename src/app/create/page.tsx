@@ -13,6 +13,7 @@ import StepAnalyze from "./StepAnalyze";
 import StepProposal from "./StepProposal";
 import StepScript from "./StepScript";
 import StepReview from "./StepReview";
+import StepFinal from "./StepFinal";
 import StepErrorBoundary from "@/components/StepErrorBoundary";
 
 const STEPS = [
@@ -23,6 +24,7 @@ const STEPS = [
   { id: "proposal", label: "構成提案" },
   { id: "script", label: "台本出力" },
   { id: "review", label: "添削部屋" },
+  { id: "final", label: "完成台本" },
 ];
 
 export default function CreatePage() {
@@ -357,6 +359,8 @@ export default function CreatePage() {
       ? STEPS.findIndex((s) => s.id === "script")
       : -1;
   const effectiveStepIndex = Math.max(statusStepIndex, dataStepIndex);
+  // 完成台本の部屋は、提出済み（または添削済み）の台本があれば、進捗に関係なく入れる（添削の✓は付けない）
+  const canEnterFinal = !!(activeProject?.reviewedScript?.trim() || activeProject?.submittedScript?.trim());
 
   // 表示中のステップ（進捗ステータスとは独立。⑥⑦を行き来しても「台本添削待ち」等の進捗を壊さない）
   const displayedStepId = viewStep ?? (activeProject?.status === "completed" ? "review" : activeProject?.status);
@@ -755,9 +759,9 @@ export default function CreatePage() {
             <button
               onClick={() => goToStep(s.id)}
               className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                i === displayedIndex ? "bg-accent text-white" : i <= effectiveStepIndex ? "bg-accent/10 text-accent cursor-pointer hover:bg-accent/20" : "bg-gray-100 text-gray-400"
+                i === displayedIndex ? "bg-accent text-white" : (i <= effectiveStepIndex || (s.id === "final" && canEnterFinal)) ? "bg-accent/10 text-accent cursor-pointer hover:bg-accent/20" : "bg-gray-100 text-gray-400"
               }`}
-              disabled={i > effectiveStepIndex}
+              disabled={i > effectiveStepIndex && !(s.id === "final" && canEnterFinal)}
             >
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
                 i === displayedIndex ? "bg-white/20" : i < effectiveStepIndex ? "bg-accent/20" : "bg-gray-200"
@@ -783,6 +787,7 @@ export default function CreatePage() {
         {displayedStepId === "proposal" && <StepProposal project={activeProject} onUpdate={updateProject} onNavigate={goToStep} />}
         {displayedStepId === "script" && <StepScript project={activeProject} onUpdate={updateProject} />}
         {displayedStepId === "review" && <StepReview project={activeProject} onUpdate={updateProject} />}
+        {displayedStepId === "final" && <StepFinal project={activeProject} onUpdate={updateProject} />}
       </StepErrorBoundary>
     </div>
   );
