@@ -86,7 +86,15 @@ export interface CardPlan {
   backbone?: CardPlanBackbone;
   drawnAt?: string;    // カードを引いた日時
   filledAt?: string;   // 「伝えること」をAIで埋めた日時
+  // カードを引いたときに一緒に抽選した「型」（離脱防止フック・訴求・アドバイスの型など）。チャンネルごとに使用回数の少ないものを優先するローテーション抽選
+  techniques?: DrawnTechnique[];
   updatedAt: string;
+}
+export interface DrawnTechnique {
+  bankId: string;   // 抽選バンクのid（getScriptBanks のid）
+  label: string;    // バンクの表示名（例: 冒頭の離脱防止フック）
+  short: string;    // 型の短い名前（例: 周波数型）
+  item: string;     // 型の全文（プロンプトに入る内容）
 }
 // 設計表にカードと「伝えること」が揃っているか（＝旧・抽象ロジックの代わりになる状態か）
 export function isCardPlanFilled(plan: CardPlan | null | undefined): boolean {
@@ -206,6 +214,8 @@ export interface ScriptProject {
   abstractLogic?: string;
   // 構成提案で選択したパターンライブラリのID
   selectedPatternIds?: string[];
+  // カードを引いたときにローテーションで自動選択された登録パターンのid（selectedPatternIds にも含まれる。手動で外せる）
+  autoPatternIds?: string[];
   // 企画チェック（step1〜2 後にいつでも依頼可能）
   reviewStatus?: ReviewStatus;
   reviewNote?: string;

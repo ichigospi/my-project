@@ -1,9 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
-import { buildTarotDrawBlock, extractDrawnCards, getCardImagery, getCardMeaning, CARD_NAMES } from "@/lib/tarot-draw";
+import { buildTarotDrawBlock, extractDrawnCards, getCardImagery, getCardMeaning, CARD_NAMES, makeRotationPicker, bankKey, bankLabel, techniqueShort } from "@/lib/tarot-draw";
+import { prisma } from "@/lib/prisma";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
-import type { CardPlan, CardSlot, CardPlanBackbone } from "@/lib/project-store";
+import type { CardPlan, CardSlot, CardPlanBackbone, DrawnTechnique } from "@/lib/project-store";
+
+// 型のローテーション: チャンネルごとに「どの型を何回使ったか」を保存し、使用回数の少ない型を優先して引く
+interface BankUsage { banks: Record<string, Record<string, number>>; patterns: Record<string, number> }
+const usageKey = (channelId: string) => `bank_usage_${(channelId || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 60)}`;
+async function loadUsage(channelId: string): Promise<BankUsage> {
+  try {
+    const row = await prisma.appSetting.findUnique({ where: { key: usageKey(channelId) } });
+    const parsed = row?.value ? (JSON.parse(row.value) as Partial<BankUsage>) : null;
+    return { banks: parsed?.banks && typeof parsed.banks === "object" ? parsed.banks : {}, patterns: parsed?.patterns && typeof parsed.patterns === "object" ? parsed.patterns : {} };
+  } catch { return { banks: {}, patterns: {} }; }
+}
+async function saveUsage(channelId: string, usage: BankUsage): Promise<void> {
+  try {
+    const key = usageKey(channelId); const value = JSON.stringify(usage);
+    await prisma.appSetting.upsert({ where: { key }, update: { value }, create: { key, value } });
+  } catch { /* 保存できなくても抽選自体は成立させる */ }
+}
+// 登録パターンを、カテゴリごとに1つ、使用回数の少ないものを優先して自動選択（チャンネル指定のあるパターンは一致するチャンネルだけ）
+function pickPatternsByRotation(patterns: { id: string; category: string; channelId?: string }[], channelId: string, used: Record<string, number>): string[] {
+  const byCat = new Map<string, { id: string; n: number }[]>();
+  for (const p of patterns) {
+    if (!p?.id) continue;
+    if (p.channelId && channelId && p.channelId !== channelId) continue;
+    const list = byCat.get(p.category || "その他") || [];
+    list.push({ id: p.id, n: used[p.id] || 0 });
+    byCat.set(p.category || "その他", list);
+  }
+  const out: string[] = [];
+  for (const list of byCat.values()) {
+    const min = Math.min(...list.map((x) => x.n));
+    const cands = list.filter((x) => x.n === min);
+    out.push(cands[Math.floor(Math.random() * cands.length)].id);
+  }
+  return out;
+}
 
 // カード設計表に「実際のカード」と「伝えること」を入れる（旧・抽象ロジックの役割を設計表に統合）。
 // action=draw   : 設計表の枚数ぶんカードを引く（サーバー乱数）。抽選ブロック（drawSpec）も返す
@@ -33,14 +69,29 @@ export async function POST(request: NextRequest) {
     if (action === "draw") {
       if (!plan?.slots?.length) return NextResponse.json({ error: "カード設計表がありません" }, { status: 400 });
       const negativeIndex = Math.max(1, plan.slots.findIndex((sl) => sl.role === "常識破壊") + 1);
-      const drawSpec = buildTarotDrawBlock({ genre, topic, cardCount: plan.slots.length, negativeIndex });
+      const channelId = String(body.channelId || "");
+      const usage = await loadUsage(channelId);
+      const { picker, picks } = makeRotationPicker(usage.banks);
+      const drawSpec = buildTarotDrawBlock({ genre, topic, cardCount: plan.slots.length, negativeIndex, picker });
       const cards = extractDrawnCards(drawSpec);
+      // 今回引いた型を記録（次回は使用回数の少ない型が優先される）
+      const techniques: DrawnTechnique[] = [];
+      for (const pk of picks) {
+        const bank = usage.banks[pk.bankId] || (usage.banks[pk.bankId] = {});
+        bank[bankKey(pk.item)] = (bank[bankKey(pk.item)] || 0) + 1;
+        techniques.push({ bankId: pk.bankId, label: bankLabel(pk.bankId), short: techniqueShort(pk.item), item: pk.item });
+      }
+      // 登録パターンもカテゴリごとに1つ、ローテーションで自動選択
+      const patterns = Array.isArray(body.patterns) ? (body.patterns as { id: string; category: string; channelId?: string }[]) : [];
+      const pickedPatternIds = pickPatternsByRotation(patterns, channelId, usage.patterns);
+      for (const id of pickedPatternIds) usage.patterns[id] = (usage.patterns[id] || 0) + 1;
+      await saveUsage(channelId, usage);
       const slots: CardSlot[] = plan.slots.map((sl, i) => {
         const c = cards[i];
         if (!c) return sl;
         return { ...sl, card: { name: c.name, orientation: c.orientation }, meaning: getCardMeaning(c.name, c.orientation) || "", imagery: getCardImagery(c.name) || "", highlight: "", message: "", flow: "" };
       });
-      return NextResponse.json({ drawSpec, slots, drawnAt: new Date().toISOString() });
+      return NextResponse.json({ drawSpec, slots, drawnAt: new Date().toISOString(), techniques, pickedPatternIds });
     }
 
     if (action === "redraw") {

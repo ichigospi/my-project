@@ -14,7 +14,7 @@ import { migratePlanToNewFlow } from "@/lib/plan-migrate";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
-import type { ScriptProject, RuleProposal, SuggestionDraft, CardPlan, CardSlot } from "@/lib/project-store";
+import type { ScriptProject, RuleProposal, SuggestionDraft, CardPlan, CardSlot, DrawnTechnique } from "@/lib/project-store";
 import type { ScriptAnalysis, ScriptEssence } from "@/lib/script-analysis-store";
 import { essenceBlocksInOrder, mustKeepInOrder } from "@/lib/script-analysis-store";
 import { parseDrawAssignments, areaForSectionTitle, techniqueLink, type DrawAssignment } from "@/lib/draw-assignments";
@@ -314,11 +314,19 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     try {
       const needAll = redrawAll || !plan.slots.some((sl) => sl.card);
       if (needAll) {
-        const res = await fetch("/api/script/card-plan/draw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "draw", cardPlan: plan, genre: project.genre, topic: project.title }) });
+        // 登録パターンも渡して、カテゴリごとに1つローテーションで自動選択してもらう（チャンネルごとの使用回数で偏りを防ぐ）
+        const patternList = getPatterns().map((p) => ({ id: p.id, category: p.category, channelId: p.channelId }));
+        const res = await fetch("/api/script/card-plan/draw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "draw", cardPlan: plan, genre: project.genre, topic: project.title, channelId: project.channelId || "", patterns: patternList }) });
         const data = await res.json().catch(() => ({ error: `サーバーエラー（HTTP ${res.status}）` }));
         if (data.error) { setPlanError(data.error); return; }
         const slots = (data.slots as CardSlot[]).map((sl) => ({ ...sl, highlight: "", message: "", flow: "" }));
-        onUpdate({ ...project, cardPlan: { ...plan, slots, backbone: undefined, drawnAt: data.drawnAt, filledAt: undefined, updatedAt: new Date().toISOString() }, drawSpec: data.drawSpec, abstractLogic: "" });
+        const techniques = Array.isArray(data.techniques) ? (data.techniques as DrawnTechnique[]) : [];
+        const picked: string[] = Array.isArray(data.pickedPatternIds) ? data.pickedPatternIds : [];
+        // 前回の自動選択は外し、今回の自動選択を足す（手動で選んだものは残す）
+        const prevAuto = project.autoPatternIds || [];
+        const manual = (project.selectedPatternIds || []).filter((id) => !prevAuto.includes(id));
+        onUpdate({ ...project, cardPlan: { ...plan, slots, backbone: undefined, drawnAt: data.drawnAt, filledAt: undefined, techniques, updatedAt: new Date().toISOString() }, drawSpec: data.drawSpec, abstractLogic: "",
+          selectedPatternIds: [...new Set([...manual, ...picked])], autoPatternIds: picked });
         pushSharedSettings();
         return;
       }
@@ -810,7 +818,8 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
 
   const togglePattern = (id: string) => {
     const cur = project.selectedPatternIds || [];
-    onUpdate({ ...project, selectedPatternIds: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
+    const removing = cur.includes(id);
+    onUpdate({ ...project, selectedPatternIds: removing ? cur.filter((x) => x !== id) : [...cur, id], ...(removing && (project.autoPatternIds || []).includes(id) ? { autoPatternIds: (project.autoPatternIds || []).filter((x) => x !== id) } : {}) });
   };
 
   // ===== パターン参照（骨組みのセクション単位/構成全体の差し替え） =====
@@ -1233,6 +1242,17 @@ ${p.content}`;
                         <input value={fillInstruction} onChange={(e) => setFillInstruction(e.target.value)} placeholder="AIへの指示（任意。例: 3枚目の常識破壊は『我慢』を仮想敵に／中心メタファーは1枚目の絵柄から）"
                           className="w-full px-3 py-1.5 rounded-lg border border-violet-200 bg-white text-sm" />
                       </div>
+                    )}
+                    {(project.cardPlan.techniques?.length || 0) > 0 && (
+                      <details className="mt-2 rounded-lg border border-violet-200 bg-white p-2">
+                        <summary className="cursor-pointer text-xs font-bold text-violet-800">🎲 今回の型（{project.cardPlan.techniques!.length}件・使用回数の少ない型を優先して抽選）{(project.autoPatternIds?.length || 0) > 0 ? `＋登録パターン${project.autoPatternIds!.length}件を自動選択` : ""}</summary>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {project.cardPlan.techniques!.map((tq, i) => (
+                            <span key={i} title={tq.item} className="text-[11px] px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-900"><span className="text-violet-500">{tq.label}:</span> {tq.short}</span>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-gray-500">チャンネルごとに「どの型を何回使ったか」を記録し、次回は使っていない型が先に出ます。ジャンルに合わない型（恋愛専用など）は最初から外しています。型の全文は台本出力時の抽選ブロックに入ります。</p>
+                      </details>
                     )}
                     {project.cardPlan.backbone && (
                       <div className="mt-3 grid gap-1.5">
@@ -1721,6 +1741,7 @@ ${p.content}`;
                                 <input type="checkbox" checked={(project.selectedPatternIds || []).includes(p.id)} onChange={() => togglePattern(p.id)} className="mt-0.5" />
                                 <div className="flex-1 min-w-0">
                                   <span className="font-semibold">{p.title}</span>
+                                  {(project.autoPatternIds || []).includes(p.id) && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-800" title="カードを引いたときにローテーションで自動選択されました（外してもOK）">自動</span>}
                                   <span className="block text-gray-500 mt-0.5 line-clamp-2">{p.content}</span>
                                 </div>
                                 <select value={p.category}

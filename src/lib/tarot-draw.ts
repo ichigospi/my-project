@@ -747,9 +747,65 @@ export function countCardReveals(script: string): { count: number; cards: string
   return { count: found.length, cards: found };
 }
 
+// ===== 抽選の文脈適合とローテーション =====
+// 型の文中の「（金運・仕事運で有効）」「【恋愛】」のような注記から、その型が効くジャンルを読む。注記が無ければ共通
+export type BankPicker = (bankId: string, items: string[], count: number) => string[];
+const GENRE_WORDS: Record<string, string[]> = { love: ["恋愛", "出会い", "復縁"], money: ["金運", "仕事", "お金"], relationship: ["人間関係", "職場", "家族"], general: [] };
+export function itemGenres(item: string): string[] {
+  const out = new Set<string>();
+  const m = item.match(/[（(][^）\)]{2,30}?(?:で|に)(?:特に)?有効[^）\)]*[）\)]/);
+  const tagsText = (m ? m[0] : "") + (item.match(/^【(恋愛|金運|人間関係|恋愛・出会い|恋愛・復縁|仕事)】/)?.[1] || "");
+  for (const [g, words] of Object.entries(GENRE_WORDS)) if (words.some((w) => tagsText.includes(w))) out.add(g);
+  if (/全般|全ジャンル|共通/.test(tagsText)) out.clear();
+  return Array.from(out);
+}
+export function filterByGenre(items: string[], genre?: string): string[] {
+  if (!genre || genre === "general") return items;
+  const fit = items.filter((it) => { const g = itemGenres(it); return g.length === 0 || g.includes(genre); });
+  return fit.length > 0 ? fit : items;
+}
+// 使用回数の少ない型を優先して引くピッカー（同数なら乱数）。引いた結果は picks に溜まるので、呼び出し側で保存する
+export function makeRotationPicker(usage: Record<string, Record<string, number>>): { picker: BankPicker; picks: { bankId: string; item: string }[] } {
+  const picks: { bankId: string; item: string }[] = [];
+  const picker: BankPicker = (bankId, items, count) => {
+    const used = usage[bankId] || {};
+    const scored = shuffle(items).map((it) => ({ it, n: used[bankKey(it)] || 0 })).sort((a, b) => a.n - b.n);
+    const chosen = scored.slice(0, Math.max(1, count)).map((s) => s.it);
+    for (const it of chosen) picks.push({ bankId, item: it });
+    return chosen;
+  };
+  return { picker, picks };
+}
+export function bankKey(item: string): string {
+  let h = 5381;
+  for (let i = 0; i < item.length; i++) h = ((h << 5) + h + item.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+// 引いた型の表示用ラベル（【型名】があればそれ、無ければ冒頭を短く）
+export function techniqueShort(item: string): string {
+  const m = item.match(/^【([^】]{1,40})】\s*([\s\S]*)$/);
+  // 【恋愛】のようなジャンル注記だけの場合は、本文の冒頭も添える
+  if (m && !/^(恋愛|金運|人間関係|仕事|恋愛・出会い|恋愛・復縁)$/.test(m[1])) return m[1];
+  const s = (m ? `${m[1]}: ${m[2]}` : item).replace(/^[「『]/, "").replace(/\s+/g, " ");
+  return s.length > 28 ? s.slice(0, 28) + "…" : s;
+}
+export function bankLabel(bankId: string): string {
+  return getScriptBanks().find((b) => b.id === bankId)?.label || bankId;
+}
+
 // カードを抽選し、プロンプトへ注入するテキストブロックを返す。
 // 呼ばれるたびに引き直される（＝骨組みを再生成すればカードが変わる）。
-export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string; cardCount?: number; negativeIndex?: number }): string {
+export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string; cardCount?: number; negativeIndex?: number; picker?: BankPicker }): string {
+  // 抽選の仕方: picker があればローテーション（使用回数の少ない型を優先）、無ければ乱数。どちらもジャンルに合わない型は先に外す
+  const pick1 = (bankId: string, arr: string[]): string => {
+    const pool = filterByGenre(arr, opts?.genre);
+    return opts?.picker ? opts.picker(bankId, pool, 1)[0] ?? rand(pool) : rand(pool);
+  };
+  const pickN = (bankId: string, arr: string[], n: number): string[] => {
+    const pool = filterByGenre(arr, opts?.genre);
+    return opts?.picker ? opts.picker(bankId, pool, n) : shuffle(pool).slice(0, n);
+  };
   // カード設計表がある場合は枚数（5〜7）と常識破壊スロットの位置に合わせて引く
   const count = Math.min(7, Math.max(5, Math.floor(opts?.cardCount || 5)));
   const negIdx = Math.min(count, Math.max(1, Math.floor(opts?.negativeIndex || 3)));
@@ -787,29 +843,29 @@ export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string; car
   const suitsDrawn = Array.from(new Set(drawnNames.map((nm) => SUITS.find((s) => nm.startsWith(s))).filter(Boolean))) as string[];
   const courtCards = drawnNames.filter((nm) => /キング|クイーン/.test(nm));
   const endingCards = drawnNames.filter((nm) => /^(死神|塔|ソードの10|ソードの3|ソードの9|カップの5|カップの8)$/.test(nm));
-  const bodyScene = rand(BODY_SENSE_SCENES);
-  const wantedWord = rand(WANTED_WORDS);
-  const strengthLabel = rand(STRENGTH_LABELS);
-  const endingMeaning = rand(ENDING_MEANING_LINES);
+  const bodyScene = pick1("bodySense", BODY_SENSE_SCENES);
+  const wantedWord = pick1("wantedWords", WANTED_WORDS);
+  const strengthLabel = pick1("strengthLabels", STRENGTH_LABELS);
+  const endingMeaning = pick1("endingMeaning", ENDING_MEANING_LINES);
   // 理想の未来の「規模の段差」: 恋愛系は【恋愛】タグの行から、それ以外はタグ無しの行から抽選
   const futureScalePool = FUTURE_SCALE_LINES.filter((l) => (isLove ? l.startsWith("【恋愛】") : !l.startsWith("【恋愛】")));
-  const futureScale = rand(futureScalePool.length > 0 ? futureScalePool : FUTURE_SCALE_LINES).replace(/^【恋愛】/, "");
-  const alreadyStarted = rand(ALREADY_STARTED_LINES);
+  const futureScale = pick1("futureScale", futureScalePool.length > 0 ? futureScalePool : FUTURE_SCALE_LINES).replace(/^【恋愛】/, "");
+  const alreadyStarted = pick1("alreadyStarted", ALREADY_STARTED_LINES);
   const proofPos = 1 + Math.floor(Math.random() * 3);
   // シャッフルは冒頭の1回だけ。シャッフル中の出来事を語る演出は1枚目にしか使えないので、2枚目以降には「山から1枚引く」演出だけを割り当てる
   const isShuffleReveal = (r: string) => /シャッフル|切り直/.test(r);
   const nonShuffle = shuffle(REVEAL_EXPRESSIONS.filter((r) => !isShuffleReveal(r)));
   const firstPool = shuffle(REVEAL_EXPRESSIONS);
   const reveals = [firstPool[0], ...nonShuffle.filter((r) => r !== firstPool[0])].slice(0, count);
-  const proofExpr = rand(PROOF_EXPRESSIONS);
-  const openingHook = rand(OPENING_RETENTION_HOOKS);
-  const midHook = rand(MID_RETENTION_HOOKS);
-  const selectionHook = rand(SELECTION_HOOKS);
-  const openingLine = rand(OPENING_SELECTION_LINES);
+  const proofExpr = pick1("proofs", PROOF_EXPRESSIONS);
+  const openingHook = pick1("opening_hooks", OPENING_RETENTION_HOOKS);
+  const midHook = pick1("mid_hooks", MID_RETENTION_HOOKS);
+  const selectionHook = pick1("selection", SELECTION_HOOKS);
+  const openingLine = pick1("openingLine", OPENING_SELECTION_LINES);
   const useSoul = Math.random() < 0.25; // 魂の正当化は4回に1回だけ
-  const spices = shuffle(SPICE_TECHNIQUES).slice(0, 2);
-  const feelingBody = rand(FEELING_TYPES_BODY);
-  const feelingTail = rand(FEELING_TYPES_TAIL);
+  const spices = pickN("spices", SPICE_TECHNIQUES, 2);
+  const feelingBody = pick1("feelingBody", FEELING_TYPES_BODY);
+  const feelingTail = pick1("feelingTail", FEELING_TYPES_TAIL);
   // 言い当てシーンはテーマに合うものから抽選（汎用＋該当ジャンル。ジャンル不明なら全件）
   const scenePool = COLD_READING_SCENES.filter((sc) => {
     if (sc.startsWith("【汎用】")) return true;
@@ -817,13 +873,13 @@ export function buildTarotDrawBlock(opts?: { genre?: string; topic?: string; car
     if (isMoney) return sc.startsWith("【金運】");
     return !genre && !topic; // ジャンル不明なら全件
   });
-  const scenes = shuffle(scenePool.length >= 2 ? scenePool : COLD_READING_SCENES).slice(0, 2);
+  const scenes = pickN("scenes", scenePool.length >= 2 ? scenePool : COLD_READING_SCENES, 2);
   // 運命の人・出会い系の素材（該当テーマのみ）
   const destinyBlock = isMeet ? (() => {
-    const prox = rand(PROXIMITY_HOOKS);
+    const prox = pick1("proximity", PROXIMITY_HOOKS);
     const axes = DESTINY_PROFILE_AXES.map((a) => `  ・${a.axis}: ${rand(a.items)}`).join("\n");
-    const admired = rand(ADMIRED_TRAITS);
-    const words = rand(FUTURE_PARTNER_WORDS);
+    const admired = pick1("admired", ADMIRED_TRAITS);
+    const words = pick1("partnerWords", FUTURE_PARTNER_WORDS);
     return `
 【運命の人・出会い系の素材（今回の抽選。恋愛×出会いテーマ専用）】
 - 近接既存フック（冒頭で使う。運命の人を"遠い未来の誰か"ではなく"もう生活圏にいる人"に置く）:
@@ -843,21 +899,21 @@ ${axes}
 【復縁層の両取り（恋愛系・必達。今回の抽選）】
 - 恋愛系の視聴者には「新しい出会いを待つ層」と「一度結ばれて今は離れてしまった層（復縁）」が混在する。最もマネタイズにつながるのは復縁層なので、
   ${isMeet ? "メインは新しい出会い層、サブで復縁層を必ず拾う" : "復縁層をメインに据えつつ、片思い・疎遠層も成立する言い回しにする"}。復縁側は断定せず仮定形で拾う（「もし今、頭に浮かんだ顔があるなら。一度は結ばれて、今は離れてしまった人の顔なら」）
-- 復縁側の言い当てシーン（深掘りの中で1段落。他の言い当てと同じ段落に混ぜない）: 「${rand(REUNION_SCENES)}」
+- 復縁側の言い当てシーン（深掘りの中で1段落。他の言い当てと同じ段落に混ぜない）: 「${pick1("reunionScenes", REUNION_SCENES)}」
 - 悩みを軽くする意味づけ（深掘りの締め、または「終わり」系カード（死神・塔・ソードの3・ソードの10等）の意味説明に乗せて1段落）: 「${rand(REUNION_MEANING_LINES)}」
   ※この指定を軸に言い回しを変える（丸写しにしない）
 - 理想の未来とLINE導線に、復縁側の分岐を1文ずつ入れる（例:「戻ってくる人なら、形は少し違います。ふいに届く、向こうからの一通の連絡」／「離れた人がいるなら、ご縁の糸が今どうなっているのか」）
 - 両層への語りかけを切り替えるときは合図を入れる（「新しい出会いを待っている人も、戻ってくる人を待っている人も」）。どちらの話か分からない段落を作らない` : "";
-  const strawman = rand(STRAWMAN_TARGETS);
-  const commentCta = rand(COMMENT_CTA_VARIANTS);
-  const negPosAppeal = rand(NEGATIVE_POSITIVE_APPEALS);
-  const adviceType = rand(ADVICE_TYPES);
-  const breakStyle = rand(COMMON_SENSE_BREAK_STYLES);
-  const lightCtaStyle = rand(LIGHT_CTA_STYLES);
-  const regularTalk = rand(REGULAR_TALK_VARIANTS);
-  const proofEpisodes = shuffle(SOCIAL_PROOF_EPISODES).slice(0, 2);
-  const contrastMetaphor = rand(CONTRAST_METAPHORS);
-  const scarcityStyle = rand(SCARCITY_STYLES);
+  const strawman = pick1("strawmen", STRAWMAN_TARGETS);
+  const commentCta = pick1("comment_cta", COMMENT_CTA_VARIANTS);
+  const negPosAppeal = pick1("negpos", NEGATIVE_POSITIVE_APPEALS);
+  const adviceType = pick1("advice", ADVICE_TYPES);
+  const breakStyle = pick1("break_styles", COMMON_SENSE_BREAK_STYLES);
+  const lightCtaStyle = pick1("light_cta", LIGHT_CTA_STYLES);
+  const regularTalk = pick1("regular", REGULAR_TALK_VARIANTS);
+  const proofEpisodes = pickN("social_proof", SOCIAL_PROOF_EPISODES, 2);
+  const contrastMetaphor = pick1("contrast", CONTRAST_METAPHORS);
+  const scarcityStyle = pick1("scarcity", SCARCITY_STYLES);
   // 確率搭載モジュール: 25%でなし / 45%で1つ / 30%で2つ（詰め込みすぎ防止）
   const moduleRoll = Math.random();
   const moduleCount = moduleRoll < 0.25 ? 0 : moduleRoll < 0.7 ? 1 : 2;
