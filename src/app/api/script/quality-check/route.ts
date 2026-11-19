@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { runMechanicalChecks } from "@/lib/qc-blacklist";
+import { buildTechniqueCheckPrompt, parseTechniqueVerdicts, buildTechniqueItems, REQUIRED_BANKS, type TechniqueSpec } from "@/lib/technique-check";
 import { countCardReveals, getCardImagery } from "@/lib/tarot-draw";
 import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
@@ -555,7 +556,7 @@ async function callOpenAI(aiApiKey: string, userPrompt: string, systemPrompt: st
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary, essence, genre, drawSpec, recentScripts, cardPlan, targetChars, minChars } = body as {
+    const { script, title, profile, preset, winningPatterns, referenceAnalyses, aiApiKey, previousSummary, essence, genre, drawSpec, recentScripts, cardPlan, targetChars, minChars, techniques, patterns } = body as {
       script: string;
       title: string;
       profile?: ChannelProfile;
@@ -571,6 +572,9 @@ export async function POST(request: NextRequest) {
       cardPlan?: CardPlan | null;
       targetChars?: number;
       minChars?: number;
+      // カードを引いたときに抽選した型（設計表の techniques）と、選択中の登録パターン。反映を構造化判定する
+      techniques?: { bankId: string; label: string; short: string; item: string }[];
+      patterns?: { id: string; title: string; category: string; content: string }[];
     };
 
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
@@ -604,7 +608,19 @@ export async function POST(request: NextRequest) {
           .replace("5001〜5500字", "6001〜6600字")
           .replace("5500字超", "6600字超")
       : SYSTEM_PROMPT;
-    const raw = isAnthropic ? await callAnthropic(aiApiKey, userPrompt, aiModel, systemPrompt) : await callOpenAI(aiApiKey, userPrompt, systemPrompt);
+    // 指定の型・登録パターンの反映チェック（本体の採点と並行して走らせる）
+    const specs: TechniqueSpec[] = [
+      ...(Array.isArray(techniques) ? techniques : []).filter((tq) => tq && tq.item).map((tq, i) => ({ id: `t${i + 1}`, kind: "technique" as const, label: String(tq.label || tq.bankId), short: String(tq.short || "").slice(0, 40), text: String(tq.item), required: REQUIRED_BANKS.has(String(tq.bankId)) })),
+      ...(Array.isArray(patterns) ? patterns : []).filter((p) => p && p.content).map((p, i) => ({ id: `p${i + 1}`, kind: "pattern" as const, label: String(p.category || "登録パターン"), short: String(p.title || "").slice(0, 40), text: String(p.content), required: true })),
+    ];
+    const techniqueSystem = "あなたは厳格な台本校閲者です。指定ごとに台本への反映を判定し、JSONのみで回答します。";
+    const techniquePromise: Promise<string> = specs.length > 0
+      ? (isAnthropic ? callAnthropic(aiApiKey, buildTechniqueCheckPrompt(script, specs), aiModel, techniqueSystem) : callOpenAI(aiApiKey, buildTechniqueCheckPrompt(script, specs), techniqueSystem)).catch(() => "")
+      : Promise.resolve("");
+    const [raw, techniqueRaw] = await Promise.all([
+      isAnthropic ? callAnthropic(aiApiKey, userPrompt, aiModel, systemPrompt) : callOpenAI(aiApiKey, userPrompt, systemPrompt),
+      techniquePromise,
+    ]);
     const parsed = parseJSON(raw);
     if (!parsed) {
       return NextResponse.json({ error: "AI応答の解析に失敗しました", raw }, { status: 500 });
@@ -636,6 +652,23 @@ export async function POST(request: NextRequest) {
         parsed.overallScore = Math.min(score, 6.5);
         const names = mech.filter((it) => it.status === "fail").map((it) => it.name).join("／");
         parsed.topPriority = `【機械判定でfail】${names}。` + String(parsed.topPriority || "");
+      }
+    }
+    // M. 指定の型・登録パターンの反映（構造化判定＋引用の機械照合）
+    if (specs.length > 0) {
+      const verdicts = techniqueRaw ? parseTechniqueVerdicts(techniqueRaw) : [];
+      const items = verdicts.length > 0
+        ? buildTechniqueItems(specs, verdicts, script)
+        : [{ name: "指定の型の反映チェック", status: "warn" as const, comment: "反映チェックのAI応答が得られませんでした（要目視）。もう一度品質チェックを実行してください" }];
+      const cats = Array.isArray(parsed.categories) ? (parsed.categories as Record<string, unknown>[]) : [];
+      const hasFail = items.some((it) => it.status === "fail");
+      cats.push({ name: "M. 指定の型・登録パターンの反映（カードを引いたときの抽選どおりか）", passed: !hasFail, items });
+      parsed.categories = cats;
+      if (hasFail) {
+        const score = Number(parsed.overallScore) || 0;
+        parsed.overallScore = Math.min(score, 6.5);
+        const names = items.filter((it) => it.status === "fail").map((it) => it.name.replace(/^(型|登録パターン): /, "")).join("／");
+        parsed.topPriority = `【指定の型が未反映】${names}。` + String(parsed.topPriority || "");
       }
     }
     return NextResponse.json(parsed);
