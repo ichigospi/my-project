@@ -4,10 +4,15 @@
 // 抽象ロジック・骨組み・台本テキストからカード名（正位置/逆位置）を抽出し、
 // ウェイト版（パブリックドメイン）のスキャン画像を表示する。逆位置は上下反転で表示。
 import { useMemo, useState } from "react";
-import { extractDrawnCards, tarotCardImageUrl, type DrawnCard } from "@/lib/tarot-draw";
+import { extractDrawnCards, extractCardsFromProse, tarotCardImageUrl, type DrawnCard } from "@/lib/tarot-draw";
 
-export default function TarotCardGallery({ text }: { text: string }) {
-  const cards = useMemo(() => extractDrawnCards(text), [text]);
+// text: 抽選ブロック・抽象ロジック・骨組み（「N枚目: カード名（正位置）」形式）
+// script: 台本の本文。本文から3枚以上読み取れたら、差し替え・並べ替え後の実際のカードとしてこちらを優先する
+export default function TarotCardGallery({ text, script }: { text: string; script?: string }) {
+  const fromScript = useMemo(() => extractCardsFromProse(script || ""), [script]);
+  const fromText = useMemo(() => extractDrawnCards(text), [text]);
+  const useScript = fromScript.length >= 3;
+  const cards = useScript ? fromScript : fromText;
   const [zoom, setZoom] = useState<DrawnCard | null>(null);
   const [failed, setFailed] = useState<Record<string, boolean>>({});
   const [open, setOpen] = useState(true);
@@ -41,7 +46,7 @@ export default function TarotCardGallery({ text }: { text: string }) {
   return (
     <div className="bg-purple-50/60 rounded-xl border border-purple-100 p-3 mb-4">
       <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between text-sm font-medium text-purple-800">
-        <span>🃏 今回のカードの絵柄（{cards.length}枚・ウェイト版）</span>
+        <span>🃏 今回のカードの絵柄（{cards.length}枚・ウェイト版{useScript ? "・台本の本文から読み取り" : "・抽選時"}）</span>
         <span className="text-purple-400">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
