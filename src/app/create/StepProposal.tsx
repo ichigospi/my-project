@@ -10,6 +10,7 @@ import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor, getProjects, isCardPlanFilled } from "@/lib/project-store";
 import { skeletonInsertInstruction, skeletonContentInstruction, skeletonContentBatchInstruction, type CardAddition, type ContentAddition } from "@/lib/card-additions";
 import { extractDrawnCards, syncDrawSpecToCards, tarotCardImageUrl, CARD_NAMES } from "@/lib/tarot-draw";
+import { migratePlanToNewFlow } from "@/lib/plan-migrate";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -259,6 +260,31 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   const [replaceName, setReplaceName] = useState("");
   const [replaceOrient, setReplaceOrient] = useState<"正位置" | "逆位置">("正位置");
   const [openImagery, setOpenImagery] = useState<Record<number, boolean>>({});
+  const [migrateNotice, setMigrateNotice] = useState("");
+
+  // 旧フロー（抽象ロジックの文章）の企画を、新フロー（設計表にカード＋伝えること）へ自動で取り込む。
+  // 抽象ロジック／骨組みに書かれたカードと「伝えること」を設計表に流し込み、全部入ったら抽象ロジックは外す
+  const migrateToNewFlow = (silent: boolean) => {
+    if (project.style !== "tarot") return;
+    if (isCardPlanFilled(project.cardPlan)) { if (!silent) setMigrateNotice("この企画はすでに新しい形です"); return; }
+    const abstract = abstractDraft ?? project.abstractLogic ?? "";
+    const r = migratePlanToNewFlow(project.cardPlan, abstract, project.structureProposal?.concept);
+    if (!r) { if (!silent) setMigrateNotice("抽象ロジックにも骨組みにもカードが見つからず、取り込めませんでした。「カードを引く」から始めてください"); return; }
+    if (!r.changed) { if (!silent) setMigrateNotice("取り込める内容はありませんでした"); return; }
+    const cards = r.plan.slots.filter((sl) => sl.card).map((sl, i) => ({ name: sl.card!.name, orientation: sl.card!.orientation, slot: i + 1 }));
+    const synced = cards.length === r.plan.slots.length ? syncDrawSpecToCards(project.drawSpec, cards) : project.drawSpec;
+    onUpdate({ ...project, cardPlan: r.plan, ...(synced !== project.drawSpec ? { drawSpec: synced } : {}), ...(r.filled ? { abstractLogic: "" } : {}) });
+    if (r.filled) setAbstractDraft("");
+    pushSharedSettings();
+    setMigrateNotice(r.filled
+      ? "旧・抽象ロジックの内容を設計表に取り込みました（カード・伝えること・背骨）。抽象ロジックの段階は不要になりました"
+      : "カードを設計表に取り込みました。「伝えること」が無いカードは「伝えることをAIで埋める」で作れます");
+  };
+  useEffect(() => {
+    // 企画を開いたとき、旧フローのままなら自動で取り込む（AIは使わない）
+    if (project.style === "tarot" && !isCardPlanFilled(project.cardPlan) && (project.abstractLogic || project.structureProposal?.concept)) migrateToNewFlow(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
 
   // 設計表のカードに抽選ブロックを合わせて保存（設計表が唯一の正）
   const planCardsOf = (slots: CardSlot[]) => slots.filter((sl) => sl.card).map((sl, i) => ({ name: sl.card!.name, orientation: sl.card!.orientation, slot: i + 1 }));
@@ -1114,6 +1140,19 @@ ${p.content}`;
                     </button>
                   } />
                 {planError && <p className="text-sm text-red-600 mb-2">{planError}</p>}
+                {migrateNotice && (
+                  <div className="mb-2 flex items-start justify-between gap-2 rounded-lg bg-violet-100 border border-violet-200 px-3 py-2 text-sm text-violet-900">
+                    <span>🔄 {migrateNotice}</span>
+                    <button onClick={() => setMigrateNotice("")} className="text-violet-500 hover:text-violet-800">✕</button>
+                  </div>
+                )}
+                {isTarot && !isCardPlanFilled(project.cardPlan) && (abstractText.trim() || skeleton.trim()) && (
+                  <div className="mb-2">
+                    <button onClick={() => migrateToNewFlow(false)} className="text-sm px-3 py-1.5 rounded-lg border border-violet-300 text-violet-800 bg-white hover:bg-violet-100">
+                      🔄 抽象ロジック／骨組みのカードを設計表に取り込む（新しい形にする）
+                    </button>
+                  </div>
+                )}
                 {!project.cardPlan && !planBusy && (
                   <p className="text-base text-sky-900">まだ設計表がありません。右上の「AIで設計表を作る」を押してください{!mainAnalysis?.essence ? "（元ネタの本質を抽出してからの方が精度が上がります）" : ""}。</p>
                 )}
