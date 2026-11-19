@@ -1082,7 +1082,8 @@ ${p.content}`;
         const planFilled = isTarot && isCardPlanFilled(project.cardPlan);
         const step2Done = planFilled || !!abstractText.trim();
         const step3Done = !!skeleton;
-        const stepNo = (n: number) => (isTarot ? n : n - 2);
+        // 新フロー（設計表が揃っている）では抽象ロジックの段階が無いので、骨組みは Step 2 として表示する
+        const stepNo = (n: number) => (isTarot ? (planFilled && n === 3 ? 2 : n) : n - 2);
         const Status = ({ done, label }: { done: boolean; label?: string }) => (
           <span className={`text-sm px-3 py-1 rounded-full font-bold ${done ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"}`}>
             {done ? `✓ ${label || "完了"}` : "未着手"}
@@ -1450,12 +1451,12 @@ ${p.content}`;
           {/* Step 3（タロット以外は Step 1）: 台本の骨組み */}
           <div className={`rounded-2xl border-2 p-5 shadow-sm ${step3Done ? "border-emerald-300 bg-emerald-50/60" : (isTarot ? step2Done : true) ? "border-emerald-400 bg-emerald-50/60" : "border-gray-200 bg-gray-50"}`}>
             <StepHeader n={stepNo(3)} title={isTarot ? "台本の骨組みを作る（具体ロジック）" : "台本の骨組みを作る"}
-              desc={isTarot ? "抽象ロジックを、セクションごとの具体的な骨組みに展開します。ここを確認して、次の「台本出力」に進みます。" : "参考動画の分析を基に、セクションごとの骨組みを作ります。"}
+              desc={isTarot ? (planFilled ? "カード設計表（カード・伝えること・背骨）を、セクションごとの具体的な骨組みに展開します。ここを確認して、次の「台本出力」に進みます。" : "抽象ロジックを、セクションごとの具体的な骨組みに展開します。ここを確認して、次の「台本出力」に進みます。") : "参考動画の分析を基に、セクションごとの骨組みを作ります。"}
               done={step3Done}
               right={isTarot ? (
                 <button onClick={() => runGenerate(project.structureMode || "template", undefined, { phase: "concrete" })} disabled={generating || !step2Done}
                   className="text-base px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-40">
-                  {generating ? "生成中..." : step3Done ? "▶ 抽象ロジックから作り直す" : "▶ 具体ロジックに展開"}
+                  {generating ? "生成中..." : step3Done ? (planFilled ? "▶ 設計表から作り直す" : "▶ 抽象ロジックから作り直す") : "▶ 具体ロジックに展開"}
                 </button>
               ) : (
                 <button onClick={handleGenerate} disabled={generating || diffChecking}
