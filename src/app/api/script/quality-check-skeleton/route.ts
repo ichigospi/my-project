@@ -157,7 +157,34 @@ export async function POST(request: NextRequest) {
     const systemPrompt = style === "tarot"
       ? SYSTEM_PROMPT.replace("目安4,500〜5,000文字", "目安6,000〜8,000文字。下限6,000字・上限9,000字。この範囲内なら文字数そのものは指摘しない")
       : SYSTEM_PROMPT;
+    // 尺から総文字数を見積もる（1分≒250字）。不足していれば、不足量に応じた増筆提案の方針と材料をプロンプトに渡す
+    const CHARS_PER_MINUTE = 250;
+    const targetFromSkeleton = Number((skeleton.match(/目標文字数[:：]\s*約?\s*([0-9,，]+)\s*字/)?.[1] || "").replace(/[,，]/g, ""));
+    const targetChars = Number((body as { targetChars?: number }).targetChars) || targetFromSkeleton || (style === "tarot" ? 7000 : 4750);
+    let maxEndMin = 0;
+    for (const m of skeleton.matchAll(/(\d{1,2}):(\d{2})\s*[-〜~ー–]\s*(\d{1,2}):(\d{2})/g)) {
+      const end = Number(m[3]) + Number(m[4]) / 60;
+      if (end > maxEndMin) maxEndMin = end;
+    }
+    const estimated = maxEndMin > 0 ? Math.round(maxEndMin * CHARS_PER_MINUTE) : 0;
+    const deficit = estimated > 0 ? Math.max(0, targetChars - estimated) : 0;
+    const { referenceTranscripts, recentScripts } = body as { referenceTranscripts?: string[]; recentScripts?: string[] };
+    const transcripts = (referenceTranscripts || []).filter((t) => t && t.trim()).slice(0, 2);
+    const approved = (recentScripts || []).filter((t) => t && t.trim()).slice(0, 2);
+    const expansionNote = estimated > 0 && estimated < targetChars * 0.95
+      ? `
+【文字数の見込みと増筆提案（必達）】
+尺からの見積もりは約${estimated.toLocaleString()}字で、目標約${targetChars.toLocaleString()}字に対して約${deficit.toLocaleString()}字足りません。
+観点Dの suggestion には、次の方針で「どのセクションに・何を・約何字」足すかを具体に書くこと（セクション・カードを減らす提案はしない）:
+${deficit >= 1000
+  ? `- 不足が1,000字以上なので「新しいリーディング内容の追加」を最優先にする。元ネタ台本の書き起こしから、この骨組みにまだ無い「カードで視ている内容」（相手の今の様子・なぜ今動くのか・どんな形で返るか／来るか・前触れのサイン・時期の段階・返った後の毎日 等）を抜き出し、意味の近い既存のセクション（カード）に足す。元ネタのどの部分から取ったかを添える`
+  : `- 不足が1,000字未満なので「新しいアドバイスの追加」を最優先にする。元ネタ台本や同チャンネルの合格台本にある軽い行動・構え・やらないこと・受け取り方のうち、この骨組みに無いものを1つ選び、解決（行動を渡す）セクションの中か直後に足す。どこから取ったかを添える`}
+- それでも足りない分は、深掘りの場面・理想の未来の具体・常識破壊の「現実がどう変わるか」で補う
+${transcripts.length ? `\n【元ネタ台本の書き起こし（増筆の材料。文はそのまま写さない）】\n${transcripts.map((t, i) => `■ 元ネタ${i + 1}\n${t.slice(0, 6000)}`).join("\n\n")}\n` : ""}${deficit < 1000 && approved.length ? `\n【同チャンネルの合格台本（アドバイスの材料。文はそのまま写さない）】\n${approved.map((t, i) => `■ 合格台本${i + 1}\n${t.slice(0, 5000)}`).join("\n\n")}\n` : ""}`
+      : "";
+
     const userPrompt = `${systemPrompt}
+${expansionNote}
 ${(body as { structureMode?: string }).structureMode === "reference" ? referenceModeQcNote() : ""}
 【スタイル】${styleLabel}
 
@@ -207,31 +234,26 @@ ${skeleton}`;
     const parsed = parseJSON(raw);
     if (!parsed) return NextResponse.json({ error: "AI応答の解析に失敗しました" }, { status: 500 });
 
-    // 機械判定: 骨組みの尺（分:秒）から総文字数を見積もり（1分≒250字）、目標に明らかに届かなければ fail を足す
-    const CHARS_PER_MINUTE = 250;
-    const targetFromSkeleton = Number((skeleton.match(/目標文字数[:：]\s*約?\s*([0-9,，]+)\s*字/)?.[1] || "").replace(/[,，]/g, ""));
-    const targetChars = Number((body as { targetChars?: number }).targetChars) || targetFromSkeleton || (style === "tarot" ? 7000 : 4750);
-    let maxEndMin = 0;
-    for (const m of skeleton.matchAll(/(\d{1,2}):(\d{2})\s*[-〜~ー–]\s*(\d{1,2}):(\d{2})/g)) {
-      const end = Number(m[3]) + Number(m[4]) / 60;
-      if (end > maxEndMin) maxEndMin = end;
-    }
-    if (targetChars > 0 && maxEndMin > 0) {
-      const estimated = Math.round(maxEndMin * CHARS_PER_MINUTE);
+    // 機械判定: 尺からの見積もりが目標に明らかに届かなければ fail を足す（見積もりは上で計算済み）
+    if (targetChars > 0 && estimated > 0) {
       const ratio = estimated / targetChars;
       const hardMax = style === "tarot" ? 9000 : Math.round(targetChars * 1.15);
+      // 不足量に応じた増筆の方針（台本の増筆提案と同じ基準）
+      const policy = deficit >= 1000
+        ? `不足が約${deficit.toLocaleString()}字（1,000字以上）なので、新しいリーディング内容の追加を最優先にする。元ネタ台本にあってこの骨組みに無い「カードで視ている内容」（相手の今の様子・なぜ今動くのか・どんな形で返るか・前触れのサイン・時期の段階・返った後の毎日 等）を、意味の近い既存のセクションに足す`
+        : `不足が約${deficit.toLocaleString()}字（1,000字未満）なので、新しいアドバイスの追加を最優先にする。元ネタ台本や同チャンネルの合格台本にある軽い行動・構えのうち、この骨組みに無いものを1つ、解決のセクションの中か直後に足す`;
       const items: { name: string; status: "pass" | "warn" | "fail"; comment: string; suggestion?: string }[] = [];
       if (ratio < 0.85) {
         items.push({
           name: `目標文字数に届かない見込み（推定${estimated.toLocaleString()}字／目標${targetChars.toLocaleString()}字）`, status: "fail",
           comment: `骨組みの尺は約${Math.round(maxEndMin)}分で、1分≒${CHARS_PER_MINUTE}字で見積もると約${estimated.toLocaleString()}字です。目標の${Math.round(ratio * 100)}%しかなく、この骨組みのまま書くと文字数不足になります`,
-          suggestion: "セクションの尺を伸ばすか、元ネタにあってこの骨組みに無い内容（カードで視る内容・前触れのサイン・時期の段階・返った後の毎日 等）を本編のセクションに足して、尺を目標に合わせる。セクションやカードを減らして合わせない",
+          suggestion: `${policy}。具体的にどのセクションに何を足すかは、上の「D. 尺・文字数配分」の提案を参照。セクションやカードを減らして合わせない`,
         });
       } else if (ratio < 0.95) {
         items.push({
           name: `目標文字数にやや足りない見込み（推定${estimated.toLocaleString()}字／目標${targetChars.toLocaleString()}字）`, status: "warn",
           comment: `骨組みの尺（約${Math.round(maxEndMin)}分）からの見積もりが目標の${Math.round(ratio * 100)}%です`,
-          suggestion: "本編のどこか1〜2セクションを少し厚くする（深掘りの場面、理想の未来の具体）",
+          suggestion: `${policy}。具体案は「D. 尺・文字数配分」の提案を参照`,
         });
       } else if (estimated > hardMax) {
         items.push({

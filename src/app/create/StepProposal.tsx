@@ -7,7 +7,7 @@ import { getAiModel } from "@/lib/ai-model";
 import { getAnalyses, deleteAnalysis, getProfileByChannel, saveAnalysis } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
-import { getPresetFor } from "@/lib/project-store";
+import { getPresetFor, getProjects } from "@/lib/project-store";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -196,7 +196,14 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         videoTitle: a.videoTitle, channelName: a.channelName, views: a.views, analysisResult: a.analysisResult,
         role: analyses.length > 1 ? (a.id === effectivePrimaryId ? "main" : "sub") : undefined,
       }));
-      const body = JSON.stringify({ skeleton, referenceAnalyses, rulesText, style: project.style, structureMode: project.structureMode, aiApiKey, aiModel: getAiModel("check") });
+      // 文字数が足りない骨組みへの増筆提案の材料: 元ネタの書き起こし（新しいリーディング内容の抜粋元）と、同チャンネルの合格台本（アドバイスの抜粋元）
+      const referenceTranscripts = analyses.filter((a) => a.transcript).map((a) => a.transcript || "").slice(0, 2);
+      const recentScripts = getProjects()
+        .filter((p) => p.id !== project.id && p.channelId === project.channelId && p.scriptReviewStatus === "approved" && (p.reviewedScript || p.submittedScript || p.generatedScript))
+        .sort((a, b) => (b.approvedAt || b.updatedAt || "").localeCompare(a.approvedAt || a.updatedAt || ""))
+        .slice(0, 2)
+        .map((p) => (p.reviewedScript || p.submittedScript || p.generatedScript || ""));
+      const body = JSON.stringify({ skeleton, referenceAnalyses, referenceTranscripts, recentScripts, rulesText, style: project.style, structureMode: project.structureMode, aiApiKey, aiModel: getAiModel("check") });
       let data: Record<string, unknown> | null = null;
       let lastErr = "";
       for (let attempt = 0; attempt < 4; attempt++) {
