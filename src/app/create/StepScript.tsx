@@ -93,7 +93,7 @@ function splitSkeletonText(skeleton: string, n: number): string[] {
 // 目標文字数のクランプ（共通定数は project-store）。タロットは 6,000〜8,000字（9,000字は超えない）、それ以外は4,500〜5,000字
 const MIN_SCRIPT_CHARS_TAROT = TAROT_MIN_CHARS;
 function targetRangeLabel(style?: string): string {
-  return style === "tarot" ? "6,000〜7,500" : "4,500〜5,000";
+  return style === "tarot" ? "6,000〜8,000" : "4,500〜5,000";
 }
 
 // 推定動画尺（千代婆ベース: 後で調整、デフォルト250文字/分）
