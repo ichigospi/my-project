@@ -591,7 +591,16 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         setAutoExpanding(`${round}周目: 増筆ポイントを分析中...（現在${len.toLocaleString()}字 / 目標${target.toLocaleString()}字）`);
         const sres = await fetch("/api/script/suggest-expansion", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ script: current, skeleton: project.structureProposal?.concept || "", targetChars: target, aiApiKey, aiModel: getAiModel("check") }),
+          body: JSON.stringify({
+            script: current, skeleton: project.structureProposal?.concept || "", targetChars: target, aiApiKey, aiModel: getAiModel("check"),
+            // 増筆の材料: 元ネタの書き起こし（新しいリーディング内容の抜粋元）と、同チャンネルの合格台本（アドバイスの抜粋元）
+            referenceTranscripts: getAnalyses().filter((a) => project.analyses?.includes(a.id) && a.transcript).map((a) => a.transcript || "").slice(0, 2),
+            recentScripts: getProjects()
+              .filter((p) => p.id !== project.id && p.channelId === project.channelId && p.scriptReviewStatus === "approved" && (p.reviewedScript || p.submittedScript || p.generatedScript))
+              .sort((a, b) => (b.approvedAt || b.updatedAt || "").localeCompare(a.approvedAt || a.updatedAt || ""))
+              .slice(0, 2)
+              .map((p) => (p.reviewedScript || p.submittedScript || p.generatedScript || "")),
+          }),
         });
         const sdata = await sres.json();
         if (sdata.error || !sdata.suggestion) { setError(sdata.error || "増筆提案が空でした"); break; }
