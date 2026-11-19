@@ -10,7 +10,7 @@ import { getWinningPatternsByChannel } from "@/lib/winning-patterns-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import { calcSimilarity } from "@/lib/similarity";
 import { buildInjectedRules, formatRulesForPrompt, withChannelVocabRules } from "@/lib/rules-injector";
-import { buildSelectedPatternsBlock } from "@/lib/pattern-store";
+import { buildSelectedPatternsBlock, getPatterns } from "@/lib/pattern-store";
 import { formatTranscript } from "@/lib/text-diff";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -710,6 +710,9 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         genre: project.genre,
         drawSpec: syncDrawSpecToCards(project.drawSpec, extractDrawnCards(project.structureProposal?.concept || "")),
         cardPlan: project.cardPlan,
+        // カードを引いたときに抽選した型と、選択中の登録パターン（反映の構造化チェック用）
+        techniques: project.cardPlan?.techniques || [],
+        patterns: getPatterns().filter((p) => (project.selectedPatternIds || []).includes(p.id)).map((p) => ({ id: p.id, title: p.title, category: p.category, content: p.content })),
         targetChars: getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style),
         minChars: project.style === "tarot" ? MIN_SCRIPT_CHARS_TAROT : undefined,
         // 元ネタの本質（必ず反映する要素）: メイン元ネタの抽出結果を渡し、反映チェックに使う
