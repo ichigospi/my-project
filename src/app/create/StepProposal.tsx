@@ -8,7 +8,7 @@ import { getAnalyses, deleteAnalysis, getProfileByChannel, saveAnalysis } from "
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor, getProjects } from "@/lib/project-store";
-import { skeletonInsertInstruction, skeletonContentInstruction, type CardAddition, type ContentAddition } from "@/lib/card-additions";
+import { skeletonInsertInstruction, skeletonContentInstruction, skeletonContentBatchInstruction, type CardAddition, type ContentAddition } from "@/lib/card-additions";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -36,6 +36,8 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   const [contentAdditions, setContentAdditions] = useState<ContentAddition[]>(project.contentAdditionProposals || []);
   const [suggestingContent, setSuggestingContent] = useState(false);
   const [addingContent, setAddingContent] = useState<number | null>(null);
+  const [selectedContent, setSelectedContent] = useState<Record<number, boolean>>({});
+  const [addingBatch, setAddingBatch] = useState(false);
   const [applyingFix, setApplyingFix] = useState(false);
   const [fixNote, setFixNote] = useState("");
   const [fixSummary, setFixSummary] = useState("");
@@ -225,6 +227,22 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         onUpdate({ ...project, contentAdditionProposals: rest });
       }
     } finally { setAddingContent(null); }
+  };
+
+  // チェックした要素をまとめて骨組みに加筆（1回の差分パッチで全部反映）
+  const applySelectedContentAdditions = async () => {
+    const picked = contentAdditions.filter((_, i) => selectedContent[i]);
+    if (picked.length === 0) { setError("追加する要素にチェックを入れてください"); return; }
+    setAddingBatch(true);
+    try {
+      const ok = await applySkeletonFix(skeletonContentBatchInstruction(picked));
+      if (ok) {
+        const rest = contentAdditions.filter((_, i) => !selectedContent[i]);
+        setContentAdditions(rest);
+        setSelectedContent({});
+        onUpdate({ ...project, contentAdditionProposals: rest });
+      }
+    } finally { setAddingBatch(false); }
   };
 
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
@@ -1233,7 +1251,7 @@ ${p.content}`;
                             <div className="flex-1 min-w-0">
                               <p className="text-base font-bold text-gray-900">
                                 {a.title}
-                                <span className="ml-2 text-xs font-normal text-gray-500">{a.afterIndex ? `${a.afterIndex}枚目` : a.after}の後に入ります　／　約{a.chars}字</span>
+                                <span className="ml-2 text-xs font-normal text-gray-500">「{a.after}」の後に入ります　／　約{a.chars}字</span>
                               </p>
                               <p className="text-sm text-rose-800 mt-0.5">カード: <b>{a.card.name}（{a.card.orientation}）</b>　{a.cardReason}</p>
                               <p className="text-base text-gray-800 mt-1">{a.content}</p>
@@ -1255,32 +1273,44 @@ ${p.content}`;
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div>
                           <p className="text-base font-bold text-sky-900">📝 追加できる要素の提案（カードは増やさない）</p>
-                          <p className="text-sm text-sky-800">元ネタにあって、この骨組みに無い構成内容です。入れたい要素の「この要素を追加」を押すと、該当するセクションに加筆します。</p>
+                          <p className="text-sm text-sky-800">元ネタにあって、この骨組みに無い構成内容です。内容は「こういう内容を追記する」という要点で、元ネタの文は写しません。入れたい要素にチェックを入れて「チェックした要素をまとめて追加」を押すと、該当するセクションに加筆します。</p>
                         </div>
-                        <button onClick={requestContentAdditions} disabled={suggestingContent || addingContent !== null}
+                        <button onClick={requestContentAdditions} disabled={suggestingContent || addingContent !== null || addingBatch}
                           className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-sky-300 text-sky-800 bg-white hover:bg-sky-100 disabled:opacity-50">
                           {suggestingContent ? "提案中..." : "候補を出し直す"}
                         </button>
                       </div>
                       <ul className="space-y-2">
                         {contentAdditions.map((a, i) => (
-                          <li key={i} className="rounded-lg bg-white border border-sky-200 p-3 flex items-start gap-3">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-base font-bold text-gray-900">
-                                {a.title}
-                                <span className="ml-2 text-xs font-normal text-gray-500">{a.intoIndex ? `${a.intoIndex}枚目` : a.into}の{a.position}に入ります　／　約{a.chars}字</span>
-                              </p>
-                              <p className="text-base text-gray-800 mt-1">{a.content}</p>
-                              <p className="text-sm text-gray-500 mt-0.5">出どころ：{a.source || "元ネタ"}</p>
-                            </div>
-                            <button onClick={() => applyContentAddition(i)} disabled={addingContent !== null || applyingFix}
-                              className="shrink-0 px-4 py-2 rounded-lg bg-sky-600 text-white text-base font-bold hover:bg-sky-700 disabled:opacity-40">
-                              {addingContent === i ? "反映中..." : "この要素を追加"}
+                          <li key={i} className={`rounded-lg bg-white border p-3 flex items-start gap-3 ${selectedContent[i] ? "border-sky-500 ring-1 ring-sky-300" : "border-sky-200"}`}>
+                            <label className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer">
+                              <input type="checkbox" checked={!!selectedContent[i]} onChange={(e) => setSelectedContent({ ...selectedContent, [i]: e.target.checked })}
+                                className="mt-1.5 w-4 h-4 accent-sky-600 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-base font-bold text-gray-900">
+                                  {a.title}
+                                  <span className="ml-2 text-xs font-normal text-gray-500">「{a.into}」の{a.position}に入ります　／　約{a.chars}字</span>
+                                </p>
+                                <p className="text-base text-gray-800 mt-1">{a.content}</p>
+                                <p className="text-sm text-gray-500 mt-0.5">出どころ：{a.source || "元ネタ"}</p>
+                              </div>
+                            </label>
+                            <button onClick={() => applyContentAddition(i)} disabled={addingContent !== null || applyingFix || addingBatch}
+                              className="shrink-0 px-3 py-2 rounded-lg border border-sky-300 text-sky-800 bg-white text-sm hover:bg-sky-100 disabled:opacity-40">
+                              {addingContent === i ? "反映中..." : "これだけ追加"}
                             </button>
                           </li>
                         ))}
                       </ul>
-                      <p className="text-xs text-sky-700/70 mt-2">※ 複数選んで順に追加できます。追加後は骨組みのチェックをもう一度回してください</p>
+                      <div className="mt-3 flex items-center gap-3 flex-wrap">
+                        <button onClick={applySelectedContentAdditions} disabled={addingBatch || applyingFix || addingContent !== null || !Object.values(selectedContent).some(Boolean)}
+                          className="px-4 py-2 rounded-lg bg-sky-600 text-white text-base font-bold hover:bg-sky-700 disabled:opacity-40">
+                          {addingBatch ? "まとめて反映中..." : `チェックした要素をまとめて追加（${Object.values(selectedContent).filter(Boolean).length}件）`}
+                        </button>
+                        <button onClick={() => setSelectedContent(Object.fromEntries(contentAdditions.map((_, i) => [i, true])))} className="text-sm text-sky-700 hover:underline">すべて選択</button>
+                        <button onClick={() => setSelectedContent({})} className="text-sm text-sky-700 hover:underline">選択解除</button>
+                      </div>
+                      <p className="text-xs text-sky-700/70 mt-2">※ 追加後は骨組みのチェックをもう一度回してください</p>
                     </div>
                   )}
                   {skeletonCheck && (
