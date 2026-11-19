@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { runMechanicalChecks } from "@/lib/qc-blacklist";
+import { loadCustomBans, scanCustomBans } from "@/lib/custom-bans";
 import { buildTechniqueCheckPrompt, parseTechniqueVerdicts, buildTechniqueItems, REQUIRED_BANKS, type TechniqueSpec } from "@/lib/technique-check";
 import { countCardReveals, getCardImagery } from "@/lib/tarot-draw";
 import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
@@ -628,6 +629,8 @@ export async function POST(request: NextRequest) {
     // 機械判定（定型文・前回台本との同一文・漢数字）をカテゴリとして合成。fail があればスコア上限を 6.5 にして「提出基準クリア」にさせない
     const revealed = countCardReveals(script);
     const mech = runMechanicalChecks(script, recentScripts, { revealed, drawSpec, imagery: revealed.cards.map((name) => ({ name, img: getCardImagery(name) })), rules: (body as { rules?: string }).rules });
+    // 添削で登録された禁止表現（サーバー保存）
+    mech.push(...scanCustomBans(script, await loadCustomBans().catch(() => [])));
     // 文字数（機械判定）: 最低文字数未満、または目標の80%未満は fail
     {
       const len = script.replace(/\s/g, "").length;

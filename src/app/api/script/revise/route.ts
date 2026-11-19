@@ -4,6 +4,7 @@ import { recordUsage } from "@/lib/usage-tracker";
 import { countCardReveals } from "@/lib/tarot-draw";
 import { blacklistPromptBlock } from "@/lib/qc-blacklist";
 import { callAi } from "@/lib/ai-call";
+import { loadCustomBans } from "@/lib/custom-bans";
 import { splitParagraphs, numberedParagraphs, parseParagraphEdits, applyParagraphEdits, summarizeApply } from "@/lib/paragraph-edit";
 
 // 全文を書き直させると指示外の箇所まで改変されるため、
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
 
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
   const referenceText = buildReferenceText(referenceAnalyses);
+  const customBans = await loadCustomBans().catch(() => []);
 
   // 段落書き直しモード（タロット）: 指摘に該当する段落を丸ごと書き直して差し替える。find→replace の継ぎ足しをしない
   if (body.mode === "paragraph") {
@@ -127,7 +129,7 @@ export async function POST(request: NextRequest) {
 - カードの削除・統合・追加は禁止。番号の不整合は番号を振り直す
 - 直した段落に、下の禁止表現・漢数字を入れない
 ${referenceText}
-${blacklistPromptBlock()}
+${blacklistPromptBlock(customBans)}
 
 【現在日時】今日は${jstToday()}（日本時間）。
 
@@ -191,7 +193,7 @@ ${numberedParagraphs(paras)}
 ${referenceText}
 【現在日時】今日は${jstToday()}（日本時間）。時期の訴求を書く場合は今日を基点にし、過ぎた月を未来の予言として書かないこと。
 
-${blacklistPromptBlock()}
+${blacklistPromptBlock(customBans)}
 ※ replace の文にも上記の禁止表現・漢数字を入れない（直した結果がまた不合格になる）
 
 【修正指示】

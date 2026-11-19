@@ -8,6 +8,7 @@ export interface ConsistencyContext {
   backbone?: { theme?: string; metaphor?: string; promise?: string } | null;
   cards?: { name: string; orientation: string }[];
   techniqueBrief?: string;
+  customBans?: { phrase: string; reason?: string }[];
 }
 
 const ALLOWED_REASONS = ["重複", "矛盾", "場所違い", "AIっぽさ", "文脈"];
@@ -30,7 +31,7 @@ export function buildConsistencyPrompt(script: string, ctx?: ConsistencyContext)
 - 段落の字数（直した段落も元の字数の±20%に収める。全体の字数を減らさない）
 ${b ? `\n【背骨】主張: ${b.theme || "—"}／中心メタファー: ${b.metaphor || "—"}／冒頭の約束: ${b.promise || "—"}` : ""}${ctx?.cards?.length ? `\n【カード】${ctx.cards.map((c, i) => `${i + 1}枚目 ${c.name}（${c.orientation}）`).join("、")}` : ""}
 ${ctx?.techniqueBrief ? `\n${ctx.techniqueBrief.slice(0, 3000)}\n` : ""}
-${blacklistPromptBlock()}
+${blacklistPromptBlock(ctx?.customBans)}
 
 【台本（段落番号つき。全${paras.length}段落）】
 ${numberedParagraphs(paras)}

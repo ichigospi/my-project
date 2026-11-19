@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runConsistencyPass } from "@/lib/consistency";
 import { buildTechniqueBrief } from "@/lib/tarot-norms";
+import { loadCustomBans } from "@/lib/custom-bans";
 import type { CardPlan } from "@/lib/project-store";
 
 // 整合編集: 重複・矛盾・場所違い・AIっぽさだけを段落単位で直す（台本出力室のボタンから手動でも呼べる）
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
       backbone: plan?.backbone || null,
       cards: plan?.slots?.filter((sl) => sl.card).map((sl) => ({ name: sl.card!.name, orientation: sl.card!.orientation })) || [],
       techniqueBrief: buildTechniqueBrief(plan?.techniques, { genre }),
+      customBans: await loadCustomBans().catch(() => []),
     });
     if (error) return NextResponse.json({ error }, { status: 500 });
     return NextResponse.json({ script: result.script, summary, applied: result.applied.length, rejected: result.rejected.length, changes: result.applied.map((a) => ({ index: a.index, reason: a.reason, before: a.before, after: a.after })) });

@@ -15,7 +15,7 @@ import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/li
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
-import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction } from "@/lib/project-store";
+import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction, ReviewLearn } from "@/lib/project-store";
 import { getScriptHistory } from "@/lib/project-store";
 import TarotCardGallery from "@/components/TarotCardGallery";
 
@@ -144,12 +144,58 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
     setOpenSeg(null);
   };
 
+  // 添削から学ぶ: 提出台本と添削後の差分から、ルール候補・消された言い回し・型の有効性を取り出す（合格時に自動。手動でも可）
+  const [learning, setLearning] = useState(false);
+  const [learnError, setLearnError] = useState("");
+  const learnFromReview = async (base?: ScriptProject): Promise<ReviewLearn | null> => {
+    const aiApiKey = getApiKey("ai_api_key");
+    const cur = base || project;
+    if (!aiApiKey || !cur.submittedScript || !reviewed.trim()) return null;
+    setLearning(true); setLearnError("");
+    try {
+      const res = await fetch("/api/script/review-learn", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submitted: cur.submittedScript, reviewed, techniques: cur.cardPlan?.techniques || [], channelId: cur.channelId || "", projectId: cur.id, comments: cur.reviewComments || [], aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const data = await res.json().catch(() => ({ error: `サーバーエラー（HTTP ${res.status}）` }));
+      if (data.error) { setLearnError(data.error); return null; }
+      const learned: ReviewLearn = { at: new Date().toISOString(), rewritePatterns: data.learned?.rewritePatterns || [], bannedPhrases: data.learned?.bannedPhrases || [], techniques: data.learned?.techniques || [], candidates: data.candidates || [] };
+      return learned;
+    } catch { setLearnError("添削の分析に失敗しました"); return null; }
+    finally { setLearning(false); }
+  };
+  const runLearn = async () => {
+    const learned = await learnFromReview();
+    if (learned) { onUpdate({ ...project, reviewLearn: learned }); pushSharedSettings(); }
+  };
+  // 学んだ書き直しの型を「追加ルール提案」に入れる（既存の採用フローでライブラリへ）
+  const proposeLearned = (i: number) => {
+    const rl = project.reviewLearn; if (!rl) return;
+    const p = rl.rewritePatterns[i]; if (!p || p.proposed) return;
+    const item: RuleProposal = { id: `rp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, category: normalizeCategory(p.category), title: p.title, content: p.content, reason: p.reason || "添削の差分から", status: "proposed", createdAt: new Date().toISOString() };
+    onUpdate({ ...project, ruleProposals: [...(project.ruleProposals || []), item], reviewLearn: { ...rl, rewritePatterns: rl.rewritePatterns.map((x, k) => (k === i ? { ...x, proposed: true } : x)) } });
+    pushSharedSettings();
+  };
+  const [banBusy, setBanBusy] = useState<string | null>(null);
+  const registerBan = async (phrase: string, reason: string) => {
+    setBanBusy(phrase);
+    try {
+      const res = await fetch("/api/custom-bans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add", phrase, reason }) });
+      const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      if (data.error) { setLearnError(data.error); return; }
+      const rl = project.reviewLearn; if (!rl) return;
+      onUpdate({ ...project, reviewLearn: { ...rl, bannedPhrases: rl.bannedPhrases.map((b) => (b.phrase === phrase ? { ...b, registered: true } : b)), candidates: (rl.candidates || []).filter((c) => c.phrase !== phrase) } });
+      pushSharedSettings();
+    } catch { setLearnError("禁止表現の登録に失敗しました"); }
+    finally { setBanBusy(null); }
+  };
+
   const decide = (result: "approved" | "rejected") => {
     const telop = thumbTelop.trim();
     const designUrl = thumbDesignUrl.trim();
     if (result === "approved" && !telop && !confirm("サムネテロップが未入力です。テロップなしのまま合格にしますか？")) return;
     if (result === "approved") {
-      onUpdate({
+      const approvedProject: ScriptProject = {
         ...project,
         thumbTelop: telop,
         thumbDesignUrl: designUrl,
@@ -158,7 +204,10 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
         generatedScript: reviewed, // 添削後の台本を最終稿として反映
         scriptSegments: resyncSegments(project.scriptSegments, reviewed),
         status: "completed",
-      });
+      };
+      onUpdate(approvedProject);
+      // 添削から学ぶ（差分の分析はAIなので非同期。結果はこの企画に保存して下のパネルに出す）
+      void learnFromReview(approvedProject).then((learned) => { if (learned) { onUpdate({ ...approvedProject, reviewLearn: learned }); pushSharedSettings(); } });
     } else {
       onUpdate({ ...project, thumbTelop: telop, thumbDesignUrl: designUrl, scriptReviewStatus: "rejected" });
     }
@@ -479,6 +528,67 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* 添削から学んだこと */}
+      {project.submittedScript && (
+        <div className="bg-card-bg rounded-xl p-4 border border-violet-100 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <h3 className="font-semibold text-sm">📚 添削から学んだこと{project.reviewLearn ? `（${new Date(project.reviewLearn.at).toLocaleString("ja-JP")}）` : ""}</h3>
+            <button onClick={runLearn} disabled={learning || !reviewed.trim()} className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 disabled:opacity-50">
+              {learning ? "分析中..." : project.reviewLearn ? "もう一度分析する" : "添削の差分から学ぶ"}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">提出台本と添削後の差分から、書き直しの型（ルール候補）・消された言い回し（禁止表現の候補）・抽選した型が残ったかを取り出します。合格時は自動で走ります。型の有効性は次回の抽選の重みに反映済みです。</p>
+          {learnError && <p className="text-xs text-red-600 mb-2">⚠ {learnError}</p>}
+          {project.reviewLearn && (
+            <div className="space-y-4 text-sm">
+              <div>
+                <p className="text-xs font-bold text-gray-600 mb-1">書き直しの型（{project.reviewLearn.rewritePatterns.length}件）→「提案に追加」で下の追加ルール提案に入り、ライブラリへ採用できます</p>
+                {project.reviewLearn.rewritePatterns.length === 0 && <p className="text-xs text-gray-400">（なし）</p>}
+                {project.reviewLearn.rewritePatterns.map((p, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-lg border border-gray-100 p-2 mb-1.5">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 mr-1">{p.category}</span><span className="font-semibold">{p.title}</span>
+                      <p className="text-xs text-gray-700 mt-0.5">{p.content}</p>
+                      {p.reason && <p className="text-[11px] text-gray-400 mt-0.5">理由: {p.reason}</p>}
+                    </div>
+                    <button onClick={() => proposeLearned(i)} disabled={!!p.proposed} className="shrink-0 px-2 py-1 rounded text-xs border border-violet-200 text-violet-800 hover:bg-violet-50 disabled:opacity-50">{p.proposed ? "追加済み" : "提案に追加"}</button>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-600 mb-1">消された言い回し（{project.reviewLearn.bannedPhrases.length}件）→「禁止表現に登録」すると、品質チェックで不合格になり、生成・修正の禁止一覧にも入ります</p>
+                {project.reviewLearn.bannedPhrases.length === 0 && <p className="text-xs text-gray-400">（なし）</p>}
+                <div className="flex flex-wrap gap-1.5">
+                  {project.reviewLearn.bannedPhrases.map((b, i) => {
+                    const cand = (project.reviewLearn?.candidates || []).find((c) => c.phrase === b.phrase.replace(/\s+/g, ""));
+                    return (
+                      <span key={i} className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border ${b.registered ? "bg-red-50 border-red-200 text-red-800" : "bg-white border-gray-200 text-gray-700"}`} title={b.reason}>
+                        「{b.phrase}」{cand && cand.count >= 2 && <span className="text-[10px] text-amber-700 font-bold">×{cand.count}本</span>}
+                        {b.registered ? <span className="text-[10px]">登録済み</span> : (
+                          <button onClick={() => registerBan(b.phrase, b.reason)} disabled={banBusy === b.phrase} className="text-[10px] px-1.5 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">{banBusy === b.phrase ? "…" : "禁止表現に登録"}</button>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              {project.reviewLearn.techniques.length > 0 && project.cardPlan?.techniques && (
+                <div>
+                  <p className="text-xs font-bold text-gray-600 mb-1">抽選した型の行方（残った: 次回も出やすく／消された: 次回は出にくく）</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {project.reviewLearn.techniques.map((v, i) => {
+                      const tq = project.cardPlan?.techniques?.[v.index]; if (!tq) return null;
+                      const cls = v.verdict === "kept" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : v.verdict === "removed" ? "bg-red-50 border-red-200 text-red-800" : "bg-amber-50 border-amber-200 text-amber-800";
+                      return <span key={i} title={`${tq.label}: ${v.note}`} className={`text-[11px] px-2 py-0.5 rounded-full border ${cls}`}>{v.verdict === "kept" ? "✓" : v.verdict === "removed" ? "✕" : "△"} {tq.short}</span>;
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

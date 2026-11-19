@@ -257,7 +257,7 @@ function toArabic(s: string): string {
   });
 }
 // 生成・修正プロンプトに入れる「機械判定で不合格になる表現」の一覧（fail判定のものだけ。正規表現を読める形に崩す）
-export function blacklistPromptBlock(): string {
+export function blacklistPromptBlock(custom?: { phrase: string; reason?: string }[]): string {
   const readable = (re: RegExp): string => re.source
     .replace(/\(\?<?[!=:]/g, "(")
     .replace(/\[([^\]]*)\]\?/g, "")
@@ -270,9 +270,10 @@ export function blacklistPromptBlock(): string {
     .replace(/\|/g, "／")
     .replace(/◯+/g, "…");
   const lines = QC_BLACKLIST.filter((r) => r.level === "fail").map((r) => `・「${r.label || readable(r.pattern)}」: ${r.reason}${r.fix ? `（→ ${r.fix}）` : ""}`);
+  const customLines = (custom || []).filter((c) => c && c.phrase).slice(0, 60).map((c) => `・「${c.phrase}」: ${c.reason || "添削で消された言い回し"}`);
   return `【禁止表現（機械判定で不合格。言い回しを変えても同じ意味の定型は避ける）】
 ・漢数字で数を書かない: 「一枚」「一枚目」「三つ」「三週間」→「1枚」「1枚目」「3つ」「3週間」（慣用の「一緒」「一人」「一番」「一瞬」「一度」はそのまま）
-${lines.join("\n")}`;
+${lines.join("\n")}${customLines.length ? `\n【添削で登録された禁止表現】\n${customLines.join("\n")}` : ""}`;
 }
 
 export function scanKanjiNumerals(script: string): QualityCheckItem[] {
