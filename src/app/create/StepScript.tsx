@@ -423,6 +423,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       }
       onUpdate({ ...project, cardPlan, generatedScript: data.script, status: "completed", scriptSegments: undefined, splitCount: 1, qualityCheckResult: undefined, proofreadResult: undefined });
       pushSharedSettings();
+      if (data.consistencySummary) setRevisionSummary(`【整合編集（生成直後の自動）】\n${data.consistencySummary}`);
       if (mismatch.length) setError(`⚠ カードが指定と食い違っています（${mismatch.join("／")}）。「再生成」するか、該当箇所を修正指示で直してください`);
     } catch { setError("台本生成に失敗しました"); }
     finally { setGenerating(false); }
@@ -545,7 +546,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const res = await fetch("/api/script/revise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: segs[idx].script, revisionNote: note, referenceAnalyses: buildRefs(), aiApiKey, aiModel: getAiModel("generate") }),
+        body: JSON.stringify({ script: segs[idx].script, revisionNote: note, referenceAnalyses: buildRefs(), aiApiKey, aiModel: getAiModel("generate"), ...(project.style === "tarot" ? { mode: "paragraph" } : {}) }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); return; }
@@ -594,6 +595,27 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
     setSegmentReviseNote((p) => ({ ...p, [idx]: note }));
   };
 
+  // 整合編集（手動）: 重複・矛盾・場所違い・AIっぽさだけを段落単位で直す
+  const [consistencyRunning, setConsistencyRunning] = useState(false);
+  const handleConsistency = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    if (!project.generatedScript) return;
+    setScriptHistory((prev) => [...prev, project.generatedScript]);
+    setConsistencyRunning(true); setError("");
+    try {
+      const res = await fetch("/api/script/consistency", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script: project.generatedScript, cardPlan: project.cardPlan, genre: project.genre, aiApiKey, aiModel: getAiModel("generate") }) });
+      const data = await res.json().catch(() => ({ error: `サーバーエラー（HTTP ${res.status}）` }));
+      if (data.error) { setError(data.error); return; }
+      if (data.script && data.script !== project.generatedScript) {
+        onUpdate({ ...project, generatedScript: data.script, scriptSegments: resyncSegments(project.scriptSegments, data.script), qualityCheckResult: undefined, proofreadResult: undefined });
+        pushSharedSettings();
+      }
+      setRevisionSummary(`【整合編集】\n${data.summary || "（変更はありませんでした）"}`);
+    } catch { setError("整合編集に失敗しました"); }
+    finally { setConsistencyRunning(false); }
+  };
+
   // 修正指示で台本を修正
   const handleRevise = async (noteOverride?: string) => {
     const note = (noteOverride ?? revisionNote).trim();
@@ -617,7 +639,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       const res = await fetch("/api/script/revise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: project.generatedScript, revisionNote: note, referenceAnalyses, aiApiKey, aiModel: getAiModel("generate") }),
+        body: JSON.stringify({ script: project.generatedScript, revisionNote: note, referenceAnalyses, aiApiKey, aiModel: getAiModel("generate"), ...(project.style === "tarot" ? { mode: "paragraph" } : {}) }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
@@ -704,7 +726,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         const note = `【増筆指示】目標は約${target.toLocaleString()}字（現在${len.toLocaleString()}字）。以下の提案に従って該当箇所を増筆し、目標に届かせてください。既存の文・流れ・CTA・カードの順番は変えないこと。水増しの繰り返し・同じ内容の言い換えは禁止（具体シーン・感情のディテール・理由づけで厚くする）。\n\n${sdata.suggestion}`;
         const rres = await fetch("/api/script/revise", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ script: current, revisionNote: note, referenceAnalyses: refs, aiApiKey, aiModel: getAiModel("generate") }),
+          body: JSON.stringify({ script: current, revisionNote: note, referenceAnalyses: refs, aiApiKey, aiModel: getAiModel("generate"), ...(project.style === "tarot" ? { mode: "paragraph" } : {}) }),
         });
         const rdata = await rres.json();
         if (rdata.error || !rdata.script) { setError(rdata.error || "加筆に失敗しました"); break; }
@@ -1550,6 +1572,13 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                 <button onClick={handleGenerateMain} disabled={generating} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">
                   {generating ? "生成中..." : "再生成"}
                 </button>
+                {project.style === "tarot" && (
+                  <button onClick={handleConsistency} disabled={consistencyRunning || generating || revising}
+                    className="px-3 py-1.5 rounded-lg border border-violet-300 text-violet-800 bg-violet-50 text-xs hover:bg-violet-100 disabled:opacity-50"
+                    title="重複・矛盾・場所違い・AIっぽさだけを段落単位で直します。問題の無い段落は変わりません">
+                    {consistencyRunning ? "整合編集中..." : "🧹 整合編集"}
+                  </button>
+                )}
                 <button onClick={handleResetOutput} disabled={generating}
                   className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs hover:bg-red-50 disabled:opacity-50">
                   🔄 やり直す
