@@ -4,6 +4,7 @@ import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES, extractDrawnCards, extractCardsFromProse, syncDrawSpecToCards } from "@/lib/tarot-draw";
+import { formatSectionTargets } from "@/lib/skeleton-chars";
 import { referenceModeBlock } from "@/lib/structure-mode";
 
 // 6,500〜7,500文字級の台本生成は出力トークン・所要時間ともに大きいため実行上限を延長
@@ -245,6 +246,7 @@ ${tarotDraw}
 
 【台本の骨組み（この構成に沿って台本を書くこと）】
 ${skeletonText}
+${formatSectionTargets(skeletonText) ? `\n【セクションごとの目安字数（必達。各セクションはこの目安の±20%で書く。合計が目標文字数）】\n${formatSectionTargets(skeletonText)}\n- 前半で使い切って後半が薄くなる、全体が短くなる、を防ぐための配分。目安より大きく短いセクションは、そのセクションの役割の中で具体（場面・言い当て・毎日の変化・口コミ）を足して埋める` : ""}
 
 ${structureMode === "reference" ? referenceModeBlock(style) : ""}
 ${rulesText || ""}

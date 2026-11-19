@@ -3,6 +3,7 @@ import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-m
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildCardAdditionPrompt, parseCardAdditions, buildContentAdditionPrompt, parseContentAdditions, type CardAddition, type ContentAddition } from "@/lib/card-additions";
 import { extractDrawnCards } from "@/lib/tarot-draw";
+import { sumSkeletonChars } from "@/lib/skeleton-chars";
 import { referenceModeQcNote } from "@/lib/structure-mode";
 
 // 骨組み(構成)を構成ルール遵守・元台本ズレの観点で評価する。
@@ -168,7 +169,10 @@ export async function POST(request: NextRequest) {
       const end = Number(m[3]) + Number(m[4]) / 60;
       if (end > maxEndMin) maxEndMin = end;
     }
-    const estimated = maxEndMin > 0 ? Math.round(maxEndMin * CHARS_PER_MINUTE) : 0;
+    // 推定は「約N字」の合計を優先（骨組みに字数配分がある場合）。無い古い骨組みは尺×250字/分で見積もる
+    const charSum = sumSkeletonChars(skeleton);
+    const estimated = charSum.annotated >= 3 ? charSum.total : (maxEndMin > 0 ? Math.round(maxEndMin * CHARS_PER_MINUTE) : 0);
+    if (charSum.annotated >= 3) maxEndMin = estimated / CHARS_PER_MINUTE;
     const deficit = estimated > 0 ? Math.max(0, targetChars - estimated) : 0;
     const { referenceTranscripts, recentScripts } = body as { referenceTranscripts?: string[]; recentScripts?: string[] };
     const transcripts = (referenceTranscripts || []).filter((t) => t && t.trim()).slice(0, 2);

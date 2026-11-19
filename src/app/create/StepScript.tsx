@@ -16,6 +16,7 @@ import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/li
 import TarotCardGallery from "@/components/TarotCardGallery";
 import { scriptInsertInstruction, type CardAddition } from "@/lib/card-additions";
 import { countCardReveals, extractDrawnCards, extractCardsFromProse, syncDrawSpecToCards } from "@/lib/tarot-draw";
+import { parseSkeletonSections } from "@/lib/skeleton-chars";
 import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow, ProofreadItem, ProofreadResult } from "@/lib/project-store";
 import { isProofreadPassed, PROOFREAD_MAX_UNNATURAL } from "@/lib/project-store";
 
@@ -968,6 +969,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const pureChars = project.generatedScript ? pureTextLength(project.generatedScript) : 0;
   const estimatedMinutes = Math.round(pureChars / CHARS_PER_MINUTE);
   const sections = project.generatedScript ? getSectionStats(project.generatedScript) : [];
+  // 骨組みのセクションごとの目安字数（骨組みに「約N字」がある場合）。台本のセクション別文字数と並べて差を見る
+  const planSections = parseSkeletonSections(project.structureProposal?.concept || "").filter((s) => s.chars);
   const totalSeconds = project.telopScript?.reduce((sum, t) => sum + t.displaySeconds, 0) || 0;
 
   return (
@@ -1157,8 +1160,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                     const maxChars = Math.max(...sections.map((x) => x.chars), 1);
                     const height = Math.max((s.chars / maxChars) * 100, 5);
                     return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`${s.name}: ${s.chars}文字`}>
-                        <span className="text-[10px] text-gray-400">{s.chars}</span>
+                      <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`${s.name}: ${s.chars}文字${planSections[i]?.chars ? `（骨組みの目安 ${planSections[i].chars}字）` : ""}`}>
+                        <span className={`text-[10px] ${planSections[i]?.chars && s.chars < planSections[i].chars * 0.8 ? "text-red-600 font-bold" : "text-gray-400"}`}>{s.chars}{planSections[i]?.chars ? `/${planSections[i].chars}` : ""}</span>
                         <div className="w-full bg-accent/70 rounded-t" style={{ height: `${height}%` }} />
                         <span className="text-[10px] text-gray-400 truncate w-full text-center">{s.name.substring(0, 6)}</span>
                       </div>
