@@ -71,6 +71,9 @@ C. 必須要素の有無
 D. 尺・文字数配分の妥当性
    各セクションの尺・文字数配分が目標（目安4,500〜5,000文字 / 推定尺）に対して妥当か。前半が長すぎて本編が遅れる、終盤CTAが薄い等の偏りがないか。
    - 大きな偏り → fail / やや偏り → warn / 妥当 → pass
+   - 【目標文字数に届くか（必達）】骨組み冒頭の「目標文字数」と、各セクションの尺（分:秒）・説明の量から、この骨組みで書いたときの総文字数を見積もる（目安: 1分≒250字）。
+     見積もりが目標の85%に届かない「明らかな不足」は fail とし、comment に「推定◯字／目標◯字」を書き、suggestion に「どのセクションに、元ネタのどの内容（カードで視る内容・前触れ・時期・毎日の変化 等）を足せば届くか」を具体に書く。
+     85〜95%は warn。上限（タロットは9,000字）を超える見込みも warn。セクションを減らす・カードを減らす提案はしない
 
 E. プロットの一本線
    骨組み全体が「1本の線」として最初から最後まで繋がっているかを評価する。
@@ -203,6 +206,51 @@ ${skeleton}`;
 
     const parsed = parseJSON(raw);
     if (!parsed) return NextResponse.json({ error: "AI応答の解析に失敗しました" }, { status: 500 });
+
+    // 機械判定: 骨組みの尺（分:秒）から総文字数を見積もり（1分≒250字）、目標に明らかに届かなければ fail を足す
+    const CHARS_PER_MINUTE = 250;
+    const targetFromSkeleton = Number((skeleton.match(/目標文字数[:：]\s*約?\s*([0-9,，]+)\s*字/)?.[1] || "").replace(/[,，]/g, ""));
+    const targetChars = Number((body as { targetChars?: number }).targetChars) || targetFromSkeleton || (style === "tarot" ? 7000 : 4750);
+    let maxEndMin = 0;
+    for (const m of skeleton.matchAll(/(\d{1,2}):(\d{2})\s*[-〜~ー–]\s*(\d{1,2}):(\d{2})/g)) {
+      const end = Number(m[3]) + Number(m[4]) / 60;
+      if (end > maxEndMin) maxEndMin = end;
+    }
+    if (targetChars > 0 && maxEndMin > 0) {
+      const estimated = Math.round(maxEndMin * CHARS_PER_MINUTE);
+      const ratio = estimated / targetChars;
+      const hardMax = style === "tarot" ? 9000 : Math.round(targetChars * 1.15);
+      const items: { name: string; status: "pass" | "warn" | "fail"; comment: string; suggestion?: string }[] = [];
+      if (ratio < 0.85) {
+        items.push({
+          name: `目標文字数に届かない見込み（推定${estimated.toLocaleString()}字／目標${targetChars.toLocaleString()}字）`, status: "fail",
+          comment: `骨組みの尺は約${Math.round(maxEndMin)}分で、1分≒${CHARS_PER_MINUTE}字で見積もると約${estimated.toLocaleString()}字です。目標の${Math.round(ratio * 100)}%しかなく、この骨組みのまま書くと文字数不足になります`,
+          suggestion: "セクションの尺を伸ばすか、元ネタにあってこの骨組みに無い内容（カードで視る内容・前触れのサイン・時期の段階・返った後の毎日 等）を本編のセクションに足して、尺を目標に合わせる。セクションやカードを減らして合わせない",
+        });
+      } else if (ratio < 0.95) {
+        items.push({
+          name: `目標文字数にやや足りない見込み（推定${estimated.toLocaleString()}字／目標${targetChars.toLocaleString()}字）`, status: "warn",
+          comment: `骨組みの尺（約${Math.round(maxEndMin)}分）からの見積もりが目標の${Math.round(ratio * 100)}%です`,
+          suggestion: "本編のどこか1〜2セクションを少し厚くする（深掘りの場面、理想の未来の具体）",
+        });
+      } else if (estimated > hardMax) {
+        items.push({
+          name: `上限を超える見込み（推定${estimated.toLocaleString()}字／上限${hardMax.toLocaleString()}字）`, status: "warn",
+          comment: `骨組みの尺（約${Math.round(maxEndMin)}分）からの見積もりが上限を超えています`,
+          suggestion: "各セクションの説明を詰め込みすぎない。カードは減らさず、1枚あたりの話題を絞る",
+        });
+      } else {
+        items.push({ name: `文字数の見込み（推定${estimated.toLocaleString()}字／目標${targetChars.toLocaleString()}字）`, status: "pass", comment: "尺からの見積もりは目標の範囲内です" });
+      }
+      const cats = Array.isArray(parsed.categories) ? (parsed.categories as Record<string, unknown>[]) : [];
+      cats.push({ name: "L. 機械判定（尺から見た文字数）", passed: !items.some((it) => it.status === "fail"), items });
+      parsed.categories = cats;
+      if (items.some((it) => it.status === "fail")) {
+        const score = Number(parsed.overallScore) || 0;
+        parsed.overallScore = Math.min(score, 6.5);
+        if (!parsed.topPriority || /^\s*$/.test(String(parsed.topPriority))) parsed.topPriority = items[0].name;
+      }
+    }
     return NextResponse.json(parsed);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "骨組みの品質チェックに失敗しました";
