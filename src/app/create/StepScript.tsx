@@ -14,6 +14,8 @@ import { buildSelectedPatternsBlock } from "@/lib/pattern-store";
 import { formatTranscript } from "@/lib/text-diff";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
 import TarotCardGallery from "@/components/TarotCardGallery";
+import { scriptInsertInstruction, type CardAddition } from "@/lib/card-additions";
+import { countCardReveals } from "@/lib/tarot-draw";
 import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow, ProofreadItem, ProofreadResult } from "@/lib/project-store";
 import { isProofreadPassed, PROOFREAD_MAX_UNNATURAL } from "@/lib/project-store";
 
@@ -119,6 +121,10 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   // 文字数不足時の増筆提案（警告バナーの1ポチ機能）
   const [expandSuggestion, setExpandSuggestion] = useState<string | null>(null);
   const [expandSuggesting, setExpandSuggesting] = useState(false);
+  // 文字数不足（1,000字以上）のときの「カードを1枚追加する」候補
+  const [cardAdditions, setCardAdditions] = useState<CardAddition[]>(project.cardAdditionProposals || []);
+  const [suggestingCards, setSuggestingCards] = useState(false);
+  const [addingCard, setAddingCard] = useState<number | null>(null);
   const [revisionSummary, setRevisionSummary] = useState("");
   const [scriptHistory, setScriptHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -575,6 +581,40 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 
   // 文字数が足りないとき: AIが「どこをどう増やすか」を判断して加筆し、再計測して足りなければもう1周（最大2周）
   const [autoExpanding, setAutoExpanding] = useState<string | null>(null);
+  // 「カードを1枚追加する」候補を取得（1,000字以上の不足のとき）
+  const requestCardAdditions = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey || !project.generatedScript) { setError("AI APIキーを設定してください"); return; }
+    setSuggestingCards(true);
+    setError("");
+    try {
+      const target = getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style);
+      const referenceTranscripts = getAnalyses().filter((a) => project.analyses?.includes(a.id) && a.transcript).map((a) => a.transcript || "").slice(0, 2);
+      const res = await fetch("/api/script/suggest-card-additions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: project.generatedScript, kind: "script", targetChars: target, referenceTranscripts, aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+      const adds = (data.additions || []) as CardAddition[];
+      setCardAdditions(adds);
+      onUpdate({ ...project, cardAdditionProposals: adds });
+      if (adds.length === 0) setError("追加カードの候補が作れませんでした（元ネタの書き起こしがあると候補が出やすくなります）");
+    } catch { setError("追加カードの提案に失敗しました"); }
+    finally { setSuggestingCards(false); }
+  };
+  // 選んだ候補を台本に差し込む（差分パッチ。既存のカードは減らさない）
+  const applyCardAddition = async (idx: number) => {
+    const a = cardAdditions[idx]; if (!a || !project.generatedScript) return;
+    setAddingCard(idx);
+    try {
+      const total = countCardReveals(project.generatedScript).count;
+      await handleRevise(scriptInsertInstruction(a, total));
+      setCardAdditions([]);
+      onUpdate({ ...project, cardAdditionProposals: [] });
+    } finally { setAddingCard(null); }
+  };
+
   const handleAutoExpand = async () => {
     const target = getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style);
     const aiApiKey = getApiKey("ai_api_key");
@@ -1488,6 +1528,49 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                         className="px-3 py-2 rounded-lg text-amber-500 text-xs hover:bg-amber-100">閉じる</button>
                     </div>
                   </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* 文字数不足が1,000字以上のとき: カードを1枚追加する候補（元ネタで占っていた内容）。選ぶと差分パッチで本文に差し込む */}
+          {(() => {
+            const target = getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style);
+            const len = (project.generatedScript || "").replace(/\s/g, "").length;
+            const deficit = target - len;
+            if (!project.generatedScript || project.style !== "tarot" || deficit < 1000) return null;
+            return (
+              <div className="rounded-xl p-4 border-2 border-dashed border-rose-300 bg-rose-50/60">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div>
+                    <p className="text-base font-bold text-rose-900">➕ カードを1枚追加する提案（不足 約{deficit.toLocaleString()}字）</p>
+                    <p className="text-sm text-rose-800">1,000字以上足りないときは、既存のカードを膨らませるのではなく、元ネタで占っていたのにこの台本に無い内容をカード1枚分として足します。候補を選ぶと本文に差し込み、後ろのカードの番号とまとめも直します。</p>
+                  </div>
+                  <button onClick={requestCardAdditions} disabled={suggestingCards || addingCard !== null || revising}
+                    className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50">
+                    {suggestingCards ? "提案中..." : cardAdditions.length ? "候補を出し直す" : "候補を出す"}
+                  </button>
+                </div>
+                {cardAdditions.length > 0 && (
+                  <ul className="space-y-2">
+                    {cardAdditions.map((a, i) => (
+                      <li key={i} className="rounded-lg bg-white border border-rose-200 p-3 flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-base font-bold text-gray-900">
+                            {a.title}
+                            <span className="ml-2 text-xs font-normal text-gray-500">{a.afterIndex ? `${a.afterIndex}枚目` : a.after}の後に入ります　／　約{a.chars}字</span>
+                          </p>
+                          <p className="text-sm text-rose-800 mt-0.5">カード: <b>{a.card.name}（{a.card.orientation}）</b>　{a.cardReason}</p>
+                          <p className="text-sm text-gray-800 mt-1">{a.content}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">出どころ：{a.source || "元ネタ"}</p>
+                        </div>
+                        <button onClick={() => applyCardAddition(i)} disabled={addingCard !== null || revising}
+                          className="shrink-0 px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-bold hover:bg-rose-700 disabled:opacity-40">
+                          {addingCard === i ? "差し込み中..." : "このカードを追加"}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             );

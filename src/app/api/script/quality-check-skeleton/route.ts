@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
+import { buildCardAdditionPrompt, parseCardAdditions, type CardAddition } from "@/lib/card-additions";
+import { extractDrawnCards } from "@/lib/tarot-draw";
 import { referenceModeQcNote } from "@/lib/structure-mode";
 
 // 骨組み(構成)を構成ルール遵守・元台本ズレの観点で評価する。
@@ -239,7 +241,16 @@ ${skeleton}`;
     // 文字数不足のときは、追加するリーディング内容（またはアドバイス）の具体案を別途作らせる。
     // 「どのセクションの後に／何を視る内容を／約何字／元ネタのどこから」を箇条書きで返し、機械判定の提案文にそのまま載せる
     let expansionPlan = "";
-    if (estimated > 0 && estimated < targetChars * 0.95) {
+    let cardAdditions: CardAddition[] = [];
+    if (estimated > 0 && estimated < targetChars * 0.95 && deficit >= 1000) {
+      // 1,000字以上の不足＝カードを1枚追加する提案（候補を複数返し、画面で選んで反映する）
+      const usedCards = extractDrawnCards(skeleton).map((c) => c.name);
+      const plan = await callModel(buildCardAdditionPrompt({ text: skeleton, kind: "skeleton", deficit, targetChars, transcripts, usedCards }), 4000);
+      if (!("error" in plan)) cardAdditions = parseCardAdditions(parseJSON(plan.raw), usedCards);
+      if (cardAdditions.length > 0) {
+        expansionPlan = `【カードを1枚追加する候補（下の「追加カードの提案」から1つ選んで反映）】\n${cardAdditions.map((a, i) => `${i + 1}. ${a.afterIndex ? `${a.afterIndex}枚目` : a.after}の後に【${a.title}】 カード: ${a.card.name}（${a.card.orientation}） 約${a.chars}字\n　　${a.content.slice(0, 120)}\n　　（出どころ: ${a.source}）`).join("\n")}`;
+      }
+    } else if (estimated > 0 && estimated < targetChars * 0.95) {
       const planPrompt = `あなたは占いスピリチュアル系YouTube台本の構成プロデューサーです。
 次の台本の骨組みは、尺からの見積もりが約${estimated.toLocaleString()}字で、目標約${targetChars.toLocaleString()}字に対して約${deficit.toLocaleString()}字足りません。
 足りない分を埋めるために「追加する内容」を具体的に提案してください。
@@ -278,7 +289,7 @@ ${transcripts.length ? `\n【元ネタ台本の書き起こし】\n${transcripts
       const hardMax = style === "tarot" ? 9000 : Math.round(targetChars * 1.15);
       // 不足量に応じた増筆の方針（台本の増筆提案と同じ基準）
       const policy = deficit >= 1000
-        ? `不足が約${deficit.toLocaleString()}字（1,000字以上）なので、新しいリーディング内容の追加を最優先にする。元ネタ台本にあってこの骨組みに無い「カードで視ている内容」（相手の今の様子・なぜ今動くのか・どんな形で返るか・前触れのサイン・時期の段階・返った後の毎日 等）を、意味の近い既存のセクションに足す`
+        ? `不足が約${deficit.toLocaleString()}字（1,000字以上）なので、カードを1枚追加する。追加するカードで視る内容は、元ネタで占っていたのにこの骨組みに無いもの（相手の今の様子・なぜ今動くのか・どんな形で返るか・前触れのサイン・時期の段階・返った後の毎日 等）。既存のセクションを膨らませて埋めない`
         : `不足が約${deficit.toLocaleString()}字（1,000字未満）なので、新しいアドバイスの追加を最優先にする。元ネタ台本や同チャンネルの合格台本にある軽い行動・構えのうち、この骨組みに無いものを1つ、解決のセクションの中か直後に足す`;
       const items: { name: string; status: "pass" | "warn" | "fail"; comment: string; suggestion?: string }[] = [];
       if (ratio < 0.85) {
@@ -315,6 +326,7 @@ ${transcripts.length ? `\n【元ネタ台本の書き起こし】\n${transcripts
         if (!parsed.topPriority || /^\s*$/.test(String(parsed.topPriority))) parsed.topPriority = items[0].name;
       }
     }
+    if (cardAdditions.length > 0) parsed.cardAdditions = cardAdditions;
     return NextResponse.json(parsed);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "骨組みの品質チェックに失敗しました";
