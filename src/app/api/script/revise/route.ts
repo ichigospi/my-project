@@ -3,6 +3,8 @@ import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-m
 import { recordUsage } from "@/lib/usage-tracker";
 import { countCardReveals } from "@/lib/tarot-draw";
 import { blacklistPromptBlock } from "@/lib/qc-blacklist";
+import { callAi } from "@/lib/ai-call";
+import { splitParagraphs, numberedParagraphs, parseParagraphEdits, applyParagraphEdits, summarizeApply } from "@/lib/paragraph-edit";
 
 // 全文を書き直させると指示外の箇所まで改変されるため、
 // 「該当箇所だけの find→replace パッチ」をモデルに出させ、サーバ側で元台本に適用する。
@@ -110,6 +112,48 @@ export async function POST(request: NextRequest) {
 
   const isAnthropic = aiApiKey.startsWith("sk-ant-");
   const referenceText = buildReferenceText(referenceAnalyses);
+
+  // 段落書き直しモード（タロット）: 指摘に該当する段落を丸ごと書き直して差し替える。find→replace の継ぎ足しをしない
+  if (body.mode === "paragraph") {
+    const paras = splitParagraphs(String(script));
+    const prompt = `あなたはプロのタロット占い師で、YouTube台本の校閲者です。次の台本に対する【修正指示】を、該当する段落を丸ごと書き直す形で反映してください。
+
+【守ること】
+- 指示に該当する段落だけを書き直す。該当しない段落は返さない（返さなければ1文字も変わらない）
+- 書き直す段落は、指摘の箇所だけでなく段落全体を自然な一続きの語りとして書き直す（文の継ぎ足し・差し込みはしない。元の文を残したまま直した文を足さない）
+- 段落の字数は元の±20%。情報・テーマ語・カード名・向き・固定句・決め台詞は変えない
+- 「（N箇所）」「全部直す」の指摘は、該当する段落を全部書き直す
+- 「該当:」に引用された文が入っている段落を探して直す
+- カードの削除・統合・追加は禁止。番号の不整合は番号を振り直す
+- 直した段落に、下の禁止表現・漢数字を入れない
+${referenceText}
+${blacklistPromptBlock()}
+
+【現在日時】今日は${jstToday()}（日本時間）。
+
+【修正指示】
+${revisionNote}
+
+【台本（段落番号つき。全${paras.length}段落）】
+${numberedParagraphs(paras)}
+
+必ず次のJSONのみで回答（説明文・コードブロック記法は禁止）:
+{ "edits": [ { "index": 段落番号, "reason": "何をどう直したか（短く）", "text": "書き直した段落の全文" } ] }`;
+    const r = await callAi(aiApiKey, aiModel, prompt, { maxTokens: 12000 });
+    if (r.error) return NextResponse.json({ error: r.error, ...(r.retryable ? { retryable: true } : {}) }, { status: r.status || 500 });
+    const edits = parseParagraphEdits(r.text);
+    if (edits.length === 0 && !/"edits"\s*:\s*\[\s*\]/.test(r.text)) {
+      return NextResponse.json({ error: "修正結果の解析に失敗しました。もう一度お試しください。" }, { status: 502 });
+    }
+    // カード追加ガード: 明示の指示が無い限り、新しいカードが増える差し替えは落とす
+    const allowCardAdd = /【カードを1枚追加】/.test(String(revisionNote || ""));
+    const baseCards = new Set(countCardReveals(String(script)).cards);
+    const safeEdits = edits.filter((e) => allowCardAdd || countCardReveals(e.text).cards.every((c) => baseCards.has(c)));
+    const result = applyParagraphEdits(String(script), safeEdits, { minKeepRatio: 0.6, allowDelete: false, minTotalRatio: 0.93 });
+    let summary = summarizeApply(result);
+    if (safeEdits.length < edits.length) summary += `\n⚠ 骨組みに無いカードを足す差し替え${edits.length - safeEdits.length}件は適用しませんでした`;
+    return NextResponse.json({ script: `${result.script}\n\n---修正箇所---\n${summary}`, applied: result.applied.length, unmatched: result.rejected.length, changes: result.applied.map((a) => ({ index: a.index, reason: a.reason, before: a.before, after: a.after })) });
+  }
 
   const prompt = `あなたはプロのスピーチマーケター兼YouTube台本ライターです。
 以下の【現在の台本】に対し、【修正指示】で挙げられた箇所「だけ」をピンポイントで直す**差分パッチ**を作成してください。

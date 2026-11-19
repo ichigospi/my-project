@@ -6,6 +6,7 @@ import { formatSectionTargets, parseSkeletonSections } from "@/lib/skeleton-char
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { blacklistPromptBlock } from "@/lib/qc-blacklist";
 import { TAROT_WRITING_NORMS, buildTechniqueBrief } from "@/lib/tarot-norms";
+import { runConsistencyPass } from "@/lib/consistency";
 import type { CardPlan } from "@/lib/project-store";
 
 // タロット台本の生成（新方式）: 分割せず1回で書く。
@@ -200,9 +201,26 @@ ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ?
     // 最良を選ぶ: カード一致を最優先、次に目標との近さ
     const best = attempts.slice().sort((a, c) => (a.mismatch.length - c.mismatch.length) || (Math.abs(a.chars - targetChars) - Math.abs(c.chars - targetChars)))[0];
     if (!best) return NextResponse.json({ error: "台本が生成できませんでした" }, { status: 500 });
+    // 整合編集: 重複・矛盾・場所違い・AIっぽさだけを段落単位で直す（失敗しても生成結果は返す）
+    let finalScript = best.script;
+    let consistencySummary = "";
+    if (body.consistencyPass !== false) {
+      const c = await runConsistencyPass(aiApiKey, aiModel, best.script, {
+        backbone: plan.backbone || null,
+        cards: cards.map((x) => ({ name: x.name, orientation: x.orientation })),
+        techniqueBrief,
+      });
+      if (!c.error) {
+        // 整合編集でカードが崩れていないことを確認してから採用
+        if (diffOf(c.result.script).length <= best.mismatch.length) { finalScript = c.result.script; consistencySummary = c.summary; }
+        else consistencySummary = "（整合編集の結果はカードが崩れたため採用しませんでした）";
+      } else consistencySummary = `（整合編集は実行できませんでした: ${c.error}）`;
+    }
     return NextResponse.json({
-      script: best.script,
-      chars: best.chars,
+      script: finalScript,
+      rawScript: best.script,
+      consistencySummary,
+      chars: bodyChars(finalScript),
       targetChars,
       attempts: attempts.length,
       sections: sections.length,
