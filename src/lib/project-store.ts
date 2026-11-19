@@ -94,7 +94,8 @@ export interface DrawnTechnique {
   bankId: string;   // 抽選バンクのid（getScriptBanks のid）
   label: string;    // バンクの表示名（例: 冒頭の離脱防止フック）
   short: string;    // 型の短い名前（例: 周波数型）
-  item: string;     // 型の全文（プロンプトに入る内容）
+  item: string;     // 型の全文（教育カード・品質チェック用）
+  intent?: string;  // 狙いの1行（生成に渡す。例文の語句を含まない。初回の台本生成時にAIで要約して保存）
 }
 // 設計表にカードと「伝えること」が揃っているか（＝旧・抽象ロジックの代わりになる状態か）
 export function isCardPlanFilled(plan: CardPlan | null | undefined): boolean {

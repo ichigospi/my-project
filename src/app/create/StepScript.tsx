@@ -376,7 +376,60 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   };
 
   // 生成ボタン：単発、または分割の「パート1」を生成（分割は以降「次のパート」で続ける）
+  // タロット（新方式）: 分割せず1回で書く。ブリーフ（設計表・骨組み・型の割り当て・元ネタの要点）と語り手と短い規範だけを渡す
+  const handleGenerateTarot = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    if (!project.structureProposal?.concept) { setError("骨組みがありません。先に構成提案で骨組みを作ってください"); return; }
+    if (!project.cardPlan?.slots?.length) { setError("カード設計表がありません"); return; }
+    if (project.generatedScript) setScriptHistory((prev) => [...prev, project.generatedScript]);
+    setGenerating(true); setError("");
+    try {
+      const preset = getPresetFor(project.genre, project.style, project.channelId);
+      const analyses = getAnalyses().filter((a) => project.analyses?.includes(a.id));
+      const main = analyses.find((a) => a.id === project.primaryAnalysisId) || analyses.slice().sort((a, b) => (b.views || 0) - (a.views || 0))[0];
+      // 語り手の文体サンプル: 同チャンネルの直近の合格台本から、長さの揃った段落を冒頭・中盤・終盤から1つずつ
+      const approved = getProjects()
+        .filter((p) => p.id !== project.id && p.channelId === project.channelId && p.scriptReviewStatus === "approved" && (p.reviewedScript || p.submittedScript || p.generatedScript))
+        .sort((a, b) => (b.approvedAt || b.updatedAt || "").localeCompare(a.approvedAt || a.updatedAt || ""))[0];
+      const styleSamples: { text: string }[] = [];
+      if (approved) {
+        const paras = (approved.reviewedScript || approved.submittedScript || approved.generatedScript || "").split(/\n\s*\n/).map((s) => s.trim()).filter((s) => s.length >= 110 && s.length <= 280);
+        if (paras.length >= 3) [0, Math.floor(paras.length / 2), paras.length - 1].forEach((i) => styleSamples.push({ text: paras[i] }));
+      }
+      const patterns = getPatterns().filter((p) => (project.selectedPatternIds || []).includes(p.id)).map((p) => ({ title: p.title, category: p.category, content: p.content }));
+      const targetChars = getEffectiveTargetChars() ?? clampTargetChars(preset?.targetWordCount, project.style);
+      const res = await fetch("/api/script/create-tarot", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: project.title, genre: project.genre, structureMode: project.structureMode,
+          skeleton: project.structureProposal.concept, cardPlan: project.cardPlan,
+          channelProfile: getProfileByChannel(project.channelId || ""),
+          essence: main?.essence ?? null, patterns, styleSamples, targetChars,
+          instruction: preset?.prompt || "",
+          aiApiKey, aiModel: getAiModel("generate"),
+        }),
+      });
+      const data = await res.json().catch(() => ({ error: `サーバーエラー（HTTP ${res.status}）` }));
+      if (data.error) { setError(data.error); return; }
+      if (!data.script) { setError("台本が空でした"); return; }
+      const mismatch: string[] = Array.isArray(data.cardMismatch) ? data.cardMismatch : [];
+      // 型の「狙い」（AI要約）を設計表に保存。次回からは要約をスキップできる
+      let cardPlan = project.cardPlan;
+      const intents = Array.isArray(data.techniqueIntents) ? (data.techniqueIntents as { index: number; intent: string }[]) : [];
+      if (cardPlan?.techniques && intents.length) {
+        const techniques = cardPlan.techniques.map((tq, i) => { const hit = intents.find((x) => x.index === i); return hit ? { ...tq, intent: hit.intent } : tq; });
+        cardPlan = { ...cardPlan, techniques };
+      }
+      onUpdate({ ...project, cardPlan, generatedScript: data.script, status: "completed", scriptSegments: undefined, splitCount: 1, qualityCheckResult: undefined, proofreadResult: undefined });
+      pushSharedSettings();
+      if (mismatch.length) setError(`⚠ カードが指定と食い違っています（${mismatch.join("／")}）。「再生成」するか、該当箇所を修正指示で直してください`);
+    } catch { setError("台本生成に失敗しました"); }
+    finally { setGenerating(false); }
+  };
+
   const handleGenerateMain = async () => {
+    if (project.style === "tarot") { handleGenerateTarot(); return; }
     if (splitCount <= 1) { handleGenerate(); return; }
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
@@ -1053,7 +1106,13 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 
       {!project.generatedScript && (
         <div className="text-center py-12">
-          {/* 出力回数（分割）セレクタ */}
+          {/* 出力回数（分割）セレクタ。タロットは1回生成に固定（分割は重複と矛盾の原因になるため） */}
+          {project.style === "tarot" ? (
+            <div className="mb-5 max-w-2xl mx-auto text-left rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+              <p className="font-bold text-gray-700 mb-1">1回で全文を書きます</p>
+              <p className="text-xs leading-5">渡すのは、カード設計表（背骨・伝えること）、骨組み（セクション別の字数）、カードを引いたときに割り当てた型（使う場所つき）、元ネタの訴求の要点、語り手の人格と文体サンプル、短い規範、禁止表現の一覧です。元ネタの本文と型の例文は渡しません。生成後にカードの一致と文字数を機械で確認し、外れていれば理由を添えて書き直します。</p>
+            </div>
+          ) : (
           <div className="mb-5">
             <p className="text-sm text-gray-500 mb-2">出力回数（分割数）</p>
             {(() => {
@@ -1086,14 +1145,15 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                 : `骨組みを${splitCount}分割。まずパート1を生成し、品質チェック・修正してから「次のパート」を生成（前パートを引き継いで続きを書きます）`}
             </p>
           </div>
+          )}
           <button onClick={handleGenerateMain} disabled={generating}
             className="px-8 py-4 rounded-xl bg-accent text-white text-lg font-medium hover:bg-accent/90 disabled:opacity-50">
             {generating ? (
               <span className="flex items-center gap-2">
                 <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {splitCount > 1 ? "パート1を生成中..." : "台本を生成中..."}
+                {splitCount > 1 && project.style !== "tarot" ? "パート1を生成中..." : "台本を生成中..."}
               </span>
-            ) : (splitCount > 1 ? `パート1を生成する（全${splitCount}分割）` : "台本を生成する")}
+            ) : (splitCount > 1 && project.style !== "tarot" ? `パート1を生成する（全${splitCount}分割）` : "台本を生成する")}
           </button>
 
           {/* 既存の台本を貼り付けて使う（生成済みの台本が消えた時・外部で仕上げた台本を添削部屋へ回す時） */}
@@ -1479,12 +1539,14 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                   className={`px-3 py-1.5 rounded-lg text-xs ${syncDone ? "bg-green-500 text-white" : "bg-blue-500 text-white hover:bg-blue-600"} disabled:opacity-50`}>
                   {syncing ? "同期中..." : syncDone ? "同期済み" : "同期"}
                 </button>
+                {project.style !== "tarot" && (
                 <select value={splitCount} onChange={(e) => setSplitCount(Number(e.target.value))}
                   className="px-2 py-1.5 rounded-lg border border-gray-200 text-xs bg-white" title="出力回数（分割数）">
                   <option value={1}>1回出力</option>
                   <option value={2}>2分割</option>
                   <option value={3}>3分割</option>
                 </select>
+                )}
                 <button onClick={handleGenerateMain} disabled={generating} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">
                   {generating ? "生成中..." : "再生成"}
                 </button>

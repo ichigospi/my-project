@@ -753,7 +753,8 @@ export type BankPicker = (bankId: string, items: string[], count: number) => str
 const GENRE_WORDS: Record<string, string[]> = { love: ["恋愛", "出会い", "復縁"], money: ["金運", "仕事", "お金"], relationship: ["人間関係", "職場", "家族"], general: [] };
 export function itemGenres(item: string): string[] {
   const out = new Set<string>();
-  const m = item.match(/[（(][^）\)]{2,30}?(?:で|に)(?:特に)?有効[^）\)]*[）\)]/);
+  // 「（金運・仕事運で有効）」「（恋愛・出会い系向け）」「（恋愛テーマで特に有効）」「【恋愛】」のような注記を拾う
+  const m = item.match(/[（(][^）\)]{2,40}?(?:で(?:特に)?有効|に(?:特に)?有効|向け|専用|限定|テーマ)[^）\)]*[）\)]/);
   const tagsText = (m ? m[0] : "") + (item.match(/^【(恋愛|金運|人間関係|恋愛・出会い|恋愛・復縁|仕事)】/)?.[1] || "");
   for (const [g, words] of Object.entries(GENRE_WORDS)) if (words.some((w) => tagsText.includes(w))) out.add(g);
   if (/全般|全ジャンル|共通/.test(tagsText)) out.clear();
