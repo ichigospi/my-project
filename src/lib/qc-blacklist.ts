@@ -264,9 +264,23 @@ export function scanCardCount(script: string, revealed: { count: number; cards: 
   if (maxOrdinal && maxOrdinal !== revealed.count) {
     items.push({ name: `番号の不整合（最大「${maxOrdinal}枚目」、開示は${revealed.count}枚）`, status: "fail",
       comment: `「◯枚目」の最大が${maxOrdinal}なのに、実際に開示したカードは${revealed.count}枚です（番号外の「もう一枚」がある可能性）`,
-      suggestion: `全カードに1〜${revealed.count}枚目の連番を振る` });
+      suggestion: `全カードに1〜${revealed.count}枚目の連番を振る。カードを削除して数を合わせるのは禁止` });
   }
   return items;
+}
+
+// 設計（抽選ブロック）のカード枚数より、本文で開示したカードが少ない＝カードが減っている。減らす修正は禁止（合わないカードは差し替える）
+export function scanMissingPlannedCards(script: string, drawSpec: string | undefined, revealed: { count: number; cards: string[] }): QualityCheckItem[] {
+  if (!drawSpec || revealed.count === 0) return [];
+  const planned = Array.from(drawSpec.matchAll(/(\d)枚目[:：]\s*([^（\n]+?)（(正位置|逆位置)）/g)).map((m) => m[2].trim());
+  if (planned.length === 0 || revealed.count >= planned.length) return [];
+  const missing = planned.filter((n) => !revealed.cards.includes(n));
+  return [{
+    name: `カードが減っている（設計${planned.length}枚→開示${revealed.count}枚）`,
+    status: "fail",
+    comment: `設計では${planned.length}枚（${planned.join("・")}）なのに、本文で開示しているのは${revealed.count}枚（${revealed.cards.join("・")}）です。${missing.length ? `本文に無いカード: ${missing.join("・")}。` : ""}カードを減らす修正は禁止です`,
+    suggestion: "枚数は設計どおりに戻す。カードが流れに合わないなら、削除ではなく別のカードへの差し替え（カード名・向き・理由）を提案して枚数を維持する",
+  }];
 }
 
 // 「◯枚目」を同じ番号で2回宣言（宣言→脱線→再宣言）
@@ -831,6 +845,7 @@ export function runMechanicalChecks(script: string, approvedScripts?: string[], 
     ...scanFreeReadingScope(script),
     ...findRepeatedSentences(script, approvedScripts || []),
     ...(opts?.revealed ? scanCardCount(script, opts.revealed) : []),
+    ...(opts?.revealed ? scanMissingPlannedCards(script, opts.drawSpec, opts.revealed) : []),
     ...scanDuplicateAnnouncements(script),
     ...scanCommentCtaTypeMix(script),
     ...scanSummaryPresence(script),

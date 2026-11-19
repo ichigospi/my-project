@@ -211,16 +211,24 @@ export function extractCardsFromProse(script: string): DrawnCard[] {
   const hits: { idx: number; card: DrawnCard }[] = [];
   for (const name of CARD_NAMES) {
     const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`(?<![一-龥ァ-ヶー])${esc}(?![一-龥ァ-ヶー])[」』]?[^。]{0,24}?(正位置|逆位置|逆さま|逆さ)`);
+    // 「「吊るされた男」のカードが出ました。正位置です」のように句点を1つ挟む形も拾う
+    const re = new RegExp(`(?<![一-龥ァ-ヶー])${esc}(?![一-龥ァ-ヶー])[」』]?[^。]{0,24}?。?[^。]{0,16}?(正位置|逆位置|逆さま|逆さ)`);
     const m = re.exec(t);
     if (!m) continue;
     const orientation: "正位置" | "逆位置" = m[1] === "正位置" ? "正位置" : "逆位置";
-    // 直前200字以内の「N枚目」を枚数ラベルにする
+    // 直前200字以内の「N枚目」を枚数ラベルにする（「最後の1枚」は番号なし＝登場順で補う）
     const mark = slotMarks.filter((s) => s.idx < m.index && m.index - s.idx <= 200).pop();
-    hits.push({ idx: m.index, card: { name, orientation, slot: mark?.slot } });
+    const lastMark = t.lastIndexOf("最後の1枚", m.index);
+    const slot = lastMark >= 0 && m.index - lastMark <= 200 && (!mark || mark.idx < lastMark) ? undefined : mark?.slot;
+    hits.push({ idx: m.index, card: { name, orientation, slot } });
   }
-  // 「最後の1枚」のように番号が無いカードは、登場順から番号を補う
-  return hits.sort((a, b) => a.idx - b.idx).slice(0, 8).map((h, i) => ({ ...h.card, slot: h.card.slot ?? i + 1 }));
+  // 番号は登場順に単調増加させる（番号が無い・前のカードと同じ番号なら、前の番号＋1）
+  let prev = 0;
+  return hits.sort((a, b) => a.idx - b.idx).slice(0, 8).map((h) => {
+    const slot = h.card.slot && h.card.slot > prev ? h.card.slot : prev + 1;
+    prev = slot;
+    return { ...h.card, slot };
+  });
 }
 
 // --- カード登場演出のバリエーション（マンネリ防止） ---
@@ -706,7 +714,8 @@ export function countCardReveals(script: string): { count: number; cards: string
     // 1〜2字のカード名（力・塔・星・月 等）は「努力の塔」「魅力」のような熟語の一部に誤反応するため、
     // 直前が漢字・カタカナでないこと（＝語頭）を要求する
     const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp("(?<![一-龥ァ-ヶー])" + esc + ".{0,14}?(正位置|逆位置)");
+    // 「「吊るされた男」のカードが出ました。正位置です」のように少し離れて向きを言う形も拾う（30字以内）
+    const re = new RegExp("(?<![一-龥ァ-ヶー])" + esc + "(?![一-龥ァ-ヶー]).{0,30}?(正位置|逆位置|逆さま)");
     if (re.test(t) && !found.includes(name)) found.push(name);
   }
   return { count: found.length, cards: found };
