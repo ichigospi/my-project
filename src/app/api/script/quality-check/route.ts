@@ -594,7 +594,7 @@ export async function POST(request: NextRequest) {
 
     const isAnthropic = aiApiKey.startsWith("sk-ant-");
     const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
-    // タロットは目標5,000〜6,000字のため、文字数カテゴリの基準を差し替える
+    // タロットは目標6,000〜8,000字（下限6,000・上限9,000）のため、文字数カテゴリの基準を差し替える（合否は機械判定側）
     const isTarot = (body as { style?: string }).style === "tarot";
     const systemPrompt = isTarot
       ? SYSTEM_PROMPT

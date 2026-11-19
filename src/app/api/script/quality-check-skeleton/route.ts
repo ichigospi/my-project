@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     const styleLabel = style === "healing" ? "ヒーリング系" : style === "tarot" ? "タロット系（リーディング進行型）" : "教育系";
 
     const systemPrompt = style === "tarot"
-      ? SYSTEM_PROMPT.replace("目安4,500〜5,000文字", "目安5,000〜6,000文字")
+      ? SYSTEM_PROMPT.replace("目安4,500〜5,000文字", "目安6,000〜8,000文字。下限6,000字・上限9,000字。この範囲内なら文字数そのものは指摘しない")
       : SYSTEM_PROMPT;
     const userPrompt = `${systemPrompt}
 ${(body as { structureMode?: string }).structureMode === "reference" ? referenceModeQcNote() : ""}
