@@ -339,6 +339,8 @@ ${transcripts.length ? `\n【元ネタ台本の書き起こし】\n${transcripts
     }
     if (cardAdditions.length > 0) parsed.cardAdditions = cardAdditions;
     if (contentAdditions.length > 0) parsed.contentAdditions = contentAdditions;
+    // 画面側の自動補完（1,000字未満の不足は要素を自動で足す）の判断材料
+    parsed.charEstimate = { estimated, targetChars, deficit };
     return NextResponse.json(parsed);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "骨組みの品質チェックに失敗しました";
