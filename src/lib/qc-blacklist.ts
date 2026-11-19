@@ -3,7 +3,7 @@
 // - 漢数字（算用数字ルール）
 // - 直近の台本との同一文（前回の文の流用）
 import type { QualityCheckItem } from "@/lib/project-store";
-import { getScriptBanks } from "@/lib/tarot-draw";
+import { getScriptBanks, extractDrawnCards, extractCardsFromProse } from "@/lib/tarot-draw";
 
 // level: fail=常に禁止（意味不明・ルール違反）／warn=注意／track=繰り返し管理（合格した直近2本の両方で使っていたら3連続→fail。2連続まではOK）
 export interface BlacklistRule { pattern: RegExp; level: "fail" | "warn" | "track"; reason: string; fix?: string }
@@ -309,6 +309,24 @@ export function scanDrawSpecCompliance(script: string, drawSpec?: string): Quali
   }
   if (/【冒頭の選民宣言の型（今回の指定・必達）】/.test(drawSpec) && !/【選ばれた型】/.test(drawSpec.split("【冒頭の選民宣言の型")[1]?.split("【選民・的中の追加演出")[0] || "") && /守護天使様に[、]?(はっきりと)?選ばれた一人/.test(script)) {
     items.push({ name: "抽選指定違反: 冒頭の選民宣言", status: "fail", comment: "今回は「選ばれた型」以外の冒頭が指定されているのに、「守護天使様に選ばれた一人です」で始めています", suggestion: "指定された冒頭の型に書き換える" });
+  }
+  // 抽選カード（＝骨組みで確定したカード）と本文のカードの食い違い（枚数・カード名・向き）
+  const planned = extractDrawnCards(drawSpec);
+  const actual = extractCardsFromProse(script);
+  if (planned.length >= 3 && actual.length >= 3) {
+    const diffs: string[] = [];
+    if (planned.length !== actual.length) diffs.push(`枚数: 指定${planned.length}枚／本文${actual.length}枚`);
+    const n = Math.max(planned.length, actual.length);
+    for (let i = 0; i < n; i++) {
+      const p = planned[i]; const a = actual[i];
+      if (!p || !a) { diffs.push(`${i + 1}枚目: 指定「${p ? `${p.name}（${p.orientation}）` : "なし"}」／本文「${a ? `${a.name}（${a.orientation}）` : "なし"}」`); continue; }
+      if (p.name !== a.name || p.orientation !== a.orientation) diffs.push(`${i + 1}枚目: 指定「${p.name}（${p.orientation}）」／本文「${a.name}（${a.orientation}）」`);
+    }
+    if (diffs.length > 0) {
+      items.push({ name: `抽選指定と違うカード（${diffs.length}件）`, status: "fail",
+        comment: `骨組みで確定したカードと本文のカードが食い違っています。\n${diffs.slice(0, 8).join("\n")}`,
+        suggestion: "本文のカードを指定どおりの枚数・カード名・向きに直す（骨組みのカードが正。足したカードは外し、向きを取り違えたカードは読みごと直す）" });
+    }
   }
   if (/霊聴（未来の相手のセリフ）/.test(drawSpec) && !/守護天使様を通して/.test(script)) {
     items.push({ name: "霊聴の導入が指定どおりでない", status: "warn", comment: "相手のセリフを「その人からのメッセージが、守護天使様を通して伝わってきました」の導入なしで語っています", suggestion: "指定の導入文を付けてからセリフを置く" });

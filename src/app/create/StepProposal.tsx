@@ -9,6 +9,7 @@ import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor, getProjects } from "@/lib/project-store";
 import { skeletonInsertInstruction, skeletonContentInstruction, skeletonContentBatchInstruction, type CardAddition, type ContentAddition } from "@/lib/card-additions";
+import { extractDrawnCards, syncDrawSpecToCards } from "@/lib/tarot-draw";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -183,8 +184,13 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
       } else {
         onUpdate({ ...project, cardAdditionProposals: [] });
       }
-      const ok = await applySkeletonFix(skeletonInsertInstruction(a));
-      if (ok) setCardAdditions([]);
+      const newSkeleton = await applySkeletonFix(skeletonInsertInstruction(a));
+      if (newSkeleton) {
+        setCardAdditions([]);
+        // 抽選ブロックのカード一覧を、追加後の骨組みのカードに合わせる（台本生成・品質チェックが同じカードを指すように）
+        const synced = syncDrawSpecToCards(project.drawSpec, extractDrawnCards(newSkeleton));
+        if (synced && synced !== project.drawSpec) onUpdate({ ...project, drawSpec: synced });
+      }
     } finally { setAddingCard(null); }
   };
 
@@ -246,7 +252,8 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   };
 
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
-  const applySkeletonFix = async (revisionNote: string): Promise<boolean> => {
+  // 成功時は修正後の骨組みテキストを返す（呼び出し側で抽選ブロックのカード同期に使う）。失敗は false
+  const applySkeletonFix = async (revisionNote: string): Promise<string | false> => {
     if (!revisionNote.trim()) return false;
     if (!skeleton.trim()) { setError("骨組みがありません"); return false; }
     const aiApiKey = getApiKey("ai_api_key");
@@ -272,7 +279,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         // 内容が変わったので古いチェック結果は破棄（再チェックを促す）
         setSkeletonCheck(null);
         setFixNote("");
-        return true;
+        return data.skeleton as string;
       }
       return false;
     } catch { setError("骨組みの修正に失敗しました"); return false; }

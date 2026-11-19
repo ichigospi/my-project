@@ -15,7 +15,7 @@ import { formatTranscript } from "@/lib/text-diff";
 import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
 import TarotCardGallery from "@/components/TarotCardGallery";
 import { scriptInsertInstruction, type CardAddition } from "@/lib/card-additions";
-import { countCardReveals } from "@/lib/tarot-draw";
+import { countCardReveals, extractDrawnCards, extractCardsFromProse, syncDrawSpecToCards } from "@/lib/tarot-draw";
 import type { ScriptProject, TelopLine, Genre, Style, QualityCheckResult, QualityCheckCategory, QualityCheckItem, QualityComparisonRow, ProofreadItem, ProofreadResult } from "@/lib/project-store";
 import { isProofreadPassed, PROOFREAD_MAX_UNNATURAL } from "@/lib/project-store";
 
@@ -278,7 +278,8 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           style: project.style,
           topic: project.title,
           genre: project.genre,
-          drawSpec: project.drawSpec,
+          // 骨組みに書かれているカードに抽選ブロックを合わせて渡す（骨組みでカードを変えた後も台本が同じカードになる）
+          drawSpec: syncDrawSpecToCards(project.drawSpec, extractDrawnCards(project.structureProposal?.concept || "")),
           cardPlan: project.cardPlan,
           additionalNotes: preset ? `【台本ルール】\n${preset.rules}\n\n【ベースプロンプト】\n${preset.prompt}\n\n【目標文字数】${clampTargetChars(preset.targetWordCount, project.style)}文字（${targetRangeLabel(project.style)}字の範囲。超えない）\n\n【フックパターン】${preset.hookPattern}\n\n【CTAパターン】${preset.ctaPattern}` : "",
           rulesText: formatRulesForPrompt(buildInjectedRules(project.genre as Genre, project.style as Style, project.channelId)) + buildSelectedPatternsBlock(project.selectedPatternIds),
@@ -706,7 +707,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         style: project.style,
         structureMode: project.structureMode,
         genre: project.genre,
-        drawSpec: project.drawSpec,
+        drawSpec: syncDrawSpecToCards(project.drawSpec, extractDrawnCards(project.structureProposal?.concept || "")),
         cardPlan: project.cardPlan,
         targetChars: getEffectiveTargetChars() ?? clampTargetChars(undefined, project.style),
         minChars: project.style === "tarot" ? MIN_SCRIPT_CHARS_TAROT : undefined,
@@ -979,6 +980,28 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       {project.style === "tarot" && (
         <div className="max-w-3xl">
           <TarotCardGallery text={`${project.abstractLogic || ""}\n${project.structureProposal?.concept || ""}`} script={project.generatedScript || ""} />
+          {(() => {
+            // 骨組みのカードと台本本文のカードが食い違っていたら警告（枚数・カード名・向き）
+            const planned = extractDrawnCards(project.structureProposal?.concept || "");
+            const actual = extractCardsFromProse(project.generatedScript || "");
+            if (planned.length < 3 || actual.length < 3) return null;
+            const diffs: string[] = [];
+            if (planned.length !== actual.length) diffs.push(`枚数: 骨組み${planned.length}枚 → 台本${actual.length}枚`);
+            const n = Math.max(planned.length, actual.length);
+            for (let i = 0; i < n; i++) {
+              const p = planned[i]; const a = actual[i];
+              if (!p || !a) { diffs.push(`${i + 1}枚目: 骨組み「${p ? `${p.name}（${p.orientation}）` : "なし"}」／台本「${a ? `${a.name}（${a.orientation}）` : "なし"}」`); continue; }
+              if (p.name !== a.name || p.orientation !== a.orientation) diffs.push(`${i + 1}枚目: 骨組み「${p.name}（${p.orientation}）」／台本「${a.name}（${a.orientation}）」`);
+            }
+            if (diffs.length === 0) return null;
+            return (
+              <div className="mb-4 rounded-lg bg-red-50 border border-red-300 p-3 text-sm text-red-800">
+                <p className="font-bold">⚠ 台本のカードが骨組みと違います</p>
+                <ul className="mt-1 list-disc pl-5 text-xs space-y-0.5">{diffs.slice(0, 8).map((d, i) => <li key={i}>{d}</li>)}</ul>
+                <p className="mt-1 text-xs">骨組みのカードが正です。修正指示で「骨組みどおりのカード・枚数・向きに直す」と指示するか、台本を作り直してください</p>
+              </div>
+            );
+          })()}
         </div>
       )}
 
