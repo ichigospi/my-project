@@ -8,6 +8,7 @@ import { getAnalyses, deleteAnalysis, getProfileByChannel, saveAnalysis } from "
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
 import { getPresetFor, getProjects } from "@/lib/project-store";
+import { skeletonInsertInstruction, type CardAddition } from "@/lib/card-additions";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -27,6 +28,10 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   const [promptText, setPromptText] = useState("");
   const [checkingSkeleton, setCheckingSkeleton] = useState(false);
   const [skeletonCheck, setSkeletonCheck] = useState<QualityCheckResult | null>(null);
+  // 文字数不足（1,000字以上）のときの「カードを1枚追加する」候補（骨組みチェックが返す／手動でも提案できる）
+  const [cardAdditions, setCardAdditions] = useState<CardAddition[]>(project.cardAdditionProposals || []);
+  const [suggestingCards, setSuggestingCards] = useState(false);
+  const [addingCard, setAddingCard] = useState<number | null>(null);
   const [applyingFix, setApplyingFix] = useState(false);
   const [fixNote, setFixNote] = useState("");
   const [fixSummary, setFixSummary] = useState("");
@@ -133,6 +138,50 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     });
   };
 
+  // 文字数不足のときの「カードを1枚追加する」候補を手動で取り直す
+  const requestCardAdditions = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
+    if (!skeleton.trim()) { setError("骨組みがありません"); return; }
+    setSuggestingCards(true);
+    setError("");
+    try {
+      const referenceTranscripts = analyses.filter((a) => a.transcript).map((a) => a.transcript || "").slice(0, 2);
+      const targetChars = Number((skeleton.match(/目標文字数[:：]\s*約?\s*([0-9,，]+)\s*字/)?.[1] || "").replace(/[,，]/g, "")) || (project.style === "tarot" ? 7000 : 4750);
+      const res = await fetch("/api/script/suggest-card-additions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: skeleton, kind: "skeleton", targetChars, referenceTranscripts, aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+      const adds = (data.additions || []) as CardAddition[];
+      setCardAdditions(adds);
+      onUpdate({ ...project, cardAdditionProposals: adds });
+      if (adds.length === 0) setError("追加カードの候補が作れませんでした（元ネタの書き起こしがあると候補が出やすくなります）");
+    } catch { setError("追加カードの提案に失敗しました"); }
+    finally { setSuggestingCards(false); }
+  };
+
+  // 選んだ候補を反映: カード設計表に追加カードを足し、骨組みにもセクションを差し込む
+  const applyCardAddition = async (idx: number) => {
+    const a = cardAdditions[idx]; if (!a) return;
+    setAddingCard(idx);
+    try {
+      if (project.cardPlan) {
+        const slots = [...project.cardPlan.slots];
+        if (slots.length >= 8) { setError("カードは最大8枚までです"); return; }
+        const pos = a.afterIndex && a.afterIndex <= slots.length ? a.afterIndex : slots.length - 1;
+        const newSlot: CardSlot = { role: "追加", kind: "extra", title: a.title.slice(0, 12), content: `${a.content}（カード: ${a.card.name}・${a.card.orientation}）`, source: a.source || "元ネタ", reason: `文字数不足の補い。${a.after}の後` };
+        slots.splice(Math.max(0, pos), 0, newSlot);
+        onUpdate({ ...project, cardPlan: { ...project.cardPlan, slots, updatedAt: new Date().toISOString() }, cardAdditionProposals: [] });
+      } else {
+        onUpdate({ ...project, cardAdditionProposals: [] });
+      }
+      const ok = await applySkeletonFix(skeletonInsertInstruction(a));
+      if (ok) setCardAdditions([]);
+    } finally { setAddingCard(null); }
+  };
+
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
   const applySkeletonFix = async (revisionNote: string): Promise<boolean> => {
     if (!revisionNote.trim()) return false;
@@ -232,6 +281,10 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
       if (!data) { setError(`骨組みチェックに失敗しました: ${lastErr}`); return; }
       if (data.error) { setError(data.error as string); return; }
       setError("");
+      {
+        const adds = Array.isArray((data as { cardAdditions?: CardAddition[] }).cardAdditions) ? ((data as { cardAdditions: CardAddition[] }).cardAdditions) : [];
+        if (adds.length > 0) { setCardAdditions(adds); onUpdate({ ...project, cardAdditionProposals: adds }); }
+      }
       setSkeletonCheck({
         categories: (data.categories as QualityCheckCategory[]) || [],
         overallScore: (data.overallScore as number) || 0,
@@ -1111,6 +1164,41 @@ ${p.content}`;
                     </button>
                     <span className="text-sm text-gray-500">構成ルール遵守・元台本からのズレを確認</span>
                   </div>
+                  {/* 文字数不足（1,000字以上）のときの「カードを1枚追加する」候補。選ぶと設計表と骨組みの両方に反映する */}
+                  {(cardAdditions.length > 0 || suggestingCards) && (
+                    <div className="rounded-xl p-4 border-2 border-dashed border-rose-300 bg-rose-50/60">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div>
+                          <p className="text-base font-bold text-rose-900">➕ 追加カードの提案（文字数不足の補い）</p>
+                          <p className="text-sm text-rose-800">元ネタで占っていたのに、この骨組みに無い内容を、カードを1枚増やして足します。入れたい候補の「このカードを追加」を押すと、カード設計表と骨組みの両方に入ります。</p>
+                        </div>
+                        <button onClick={requestCardAdditions} disabled={suggestingCards || addingCard !== null}
+                          className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-rose-300 text-rose-800 bg-white hover:bg-rose-100 disabled:opacity-50">
+                          {suggestingCards ? "提案中..." : "候補を出し直す"}
+                        </button>
+                      </div>
+                      <ul className="space-y-2">
+                        {cardAdditions.map((a, i) => (
+                          <li key={i} className="rounded-lg bg-white border border-rose-200 p-3 flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-base font-bold text-gray-900">
+                                {a.title}
+                                <span className="ml-2 text-xs font-normal text-gray-500">{a.afterIndex ? `${a.afterIndex}枚目` : a.after}の後に入ります　／　約{a.chars}字</span>
+                              </p>
+                              <p className="text-sm text-rose-800 mt-0.5">カード: <b>{a.card.name}（{a.card.orientation}）</b>　{a.cardReason}</p>
+                              <p className="text-base text-gray-800 mt-1">{a.content}</p>
+                              <p className="text-sm text-gray-500 mt-0.5">出どころ：{a.source || "元ネタ"}</p>
+                            </div>
+                            <button onClick={() => applyCardAddition(i)} disabled={addingCard !== null || applyingFix}
+                              className="shrink-0 px-4 py-2 rounded-lg bg-rose-600 text-white text-base font-bold hover:bg-rose-700 disabled:opacity-40">
+                              {addingCard === i ? "反映中..." : "このカードを追加"}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-rose-700/70 mt-2">※ 既存のカードは減らしません。追加後は骨組みのチェックをもう一度回してください</p>
+                    </div>
+                  )}
                   {skeletonCheck && (
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
                       <div className="flex items-center justify-between mb-3">
