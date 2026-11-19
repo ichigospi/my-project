@@ -5,6 +5,7 @@ import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES, syncDrawSpecToCards } from "@/lib/tarot-draw";
 import { formatCardPlanForPrompt, formatCardPlanAsAbstract, isCardPlanFilled, type CardPlan } from "@/lib/project-store";
 import { referenceModeBlock } from "@/lib/structure-mode";
+import { reallocateSkeletonChars } from "@/lib/skeleton-chars";
 
 // 骨組み出力は最大16Kトークンと長く生成に時間がかかるため、関数の実行上限を延長する
 export const maxDuration = 300;
@@ -306,6 +307,8 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
 【文字数の目標（必達）】
 - 台本全体の目標は 約${targetChars}字（${style === "tarot" ? "下限6,000字・上限9,000字は絶対に超えない。元ネタが長くても短くても、この範囲に収める" : "4,500〜5,000字"}）。骨組みの「目標文字数」の行には必ず「約${targetChars}字」と書く。
 - これを超える分量の構成にしない（セクションを増やしすぎない・各セクションを詰め込みすぎない）。
+- 【字数配分（必達）】各セクションの見出しに「（尺｜約N字）」を付け、全セクションの「約N字」の合計を目標文字数に一致させる。尺は1分≒250字で字数から決める（元ネタの尺をそのまま写さない。元ネタは配分の比率の参考にだけ使う）。
+  目安の比率: 冒頭（選民〜CTA）10〜12%／本編のカード各10〜15%（深掘りと理想の未来は厚め）／終盤（まとめ〜無料鑑定〜締め）15〜18%
 
 以下のマークダウン形式で出力してください。
 
@@ -317,15 +320,15 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
 ◆ 中心メタファー: 「◯◯」（この台本で使うスピ的比喩はこれ1つだけ。同じ内容を別の比喩＝器・川・磁石等で言い換えるのは禁止）
 ◆ 冒頭の約束: （冒頭で張るオープンループ。終盤でこの同じ言葉で回収する）
 
-## ❶ セクション名（0:00-0:50）
+## ❶ セクション名（0:00-0:50｜約250字）
 このセクションで伝える内容の説明（2-3文）
 
 > 📺 参考元: 「参考動画タイトル」の○○を採用
 > 💡 この要素が有効な理由の解説
 > ⬆️ 上位互換ポイント: 元ネタの「○○」を、より具体的な□□に強化する（該当する5要素がある場合のみ）
 
-## ❷ セクション名（0:50-2:00）
-...（同じ形式で全セクション）
+## ❷ セクション名（0:50-2:00｜約300字）
+...（同じ形式で全セクション。見出しの（尺｜約N字）は必ず付け、全セクションの「約N字」の合計が目標文字数に一致するように配分する。尺は1分≒250字で字数から決める）
 
 ---
 
@@ -377,7 +380,13 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
       text = odata.choices?.[0]?.message?.content || "";
     }
 
-    return NextResponse.json({ skeleton: text, drawSpec: style === "tarot" ? drawBlock : undefined });
+    // 字数配分の確定: 各セクションの「約N字」を目標字数に合わせて再配分し、尺も字数から引き直す（抽象ロジックの段階と修正依頼では行わない）
+    let outSkeleton = text;
+    if (!isRevision && !(style === "tarot" && phase === "abstract") && targetChars > 0) {
+      const re = reallocateSkeletonChars(text, targetChars);
+      if (re.sections.length >= 3) outSkeleton = re.skeleton;
+    }
+    return NextResponse.json({ skeleton: outSkeleton, drawSpec: style === "tarot" ? drawBlock : undefined });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "構成提案に失敗" }, { status: 500 });
   }
