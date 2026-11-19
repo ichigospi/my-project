@@ -200,6 +200,29 @@ export function extractDrawnCards(text: string): DrawnCard[] {
   return hits.sort((a, b) => a.idx - b.idx).slice(0, 7).map((h) => h.card);
 }
 
+// 台本の本文（散文）から、実際にめくったカードを登場順に抽出する。
+// 「「星」のカード、でも逆さまです」「「節制」、正位置です」のように、カード名の直後24字以内に正位置/逆位置/逆さまがある箇所を開示とみなす。
+// 差し替え・並べ替えで抽選時と違うカードになった台本でも、本文どおりの絵柄を表示するために使う
+export function extractCardsFromProse(script: string): DrawnCard[] {
+  if (!script) return [];
+  const t = script.replace(/\s+/g, "");
+  // 「5枚目です」「5枚目をめくり」が開示の印。「1枚目のワンドのナイトと同じく」のような参照（直後が「の」）は数えない
+  const slotMarks = Array.from(t.matchAll(/([1-9１-９])枚目(?!の)/g)).map((m) => ({ idx: m.index ?? 0, slot: Number(m[1].replace(/[１-９]/g, (d) => String("１２３４５６７８９".indexOf(d) + 1))) }));
+  const hits: { idx: number; card: DrawnCard }[] = [];
+  for (const name of CARD_NAMES) {
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(?<![一-龥ァ-ヶー])${esc}(?![一-龥ァ-ヶー])[」』]?[^。]{0,24}?(正位置|逆位置|逆さま|逆さ)`);
+    const m = re.exec(t);
+    if (!m) continue;
+    const orientation: "正位置" | "逆位置" = m[1] === "正位置" ? "正位置" : "逆位置";
+    // 直前200字以内の「N枚目」を枚数ラベルにする
+    const mark = slotMarks.filter((s) => s.idx < m.index && m.index - s.idx <= 200).pop();
+    hits.push({ idx: m.index, card: { name, orientation, slot: mark?.slot } });
+  }
+  // 「最後の1枚」のように番号が無いカードは、登場順から番号を補う
+  return hits.sort((a, b) => a.idx - b.idx).slice(0, 8).map((h, i) => ({ ...h.card, slot: h.card.slot ?? i + 1 }));
+}
+
 // --- カード登場演出のバリエーション（マンネリ防止） ---
 // 毎回「このカードが出ることは分かっていました」等の同じ定型文に収束しないよう、
 // 抽選時にスロットごとへランダム割り当てしてプロンプトに渡す（口調はチャンネルルールに合わせて言い換え可）

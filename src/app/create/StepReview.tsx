@@ -16,6 +16,7 @@ import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
 import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction } from "@/lib/project-store";
 import { getScriptHistory } from "@/lib/project-store";
+import TarotCardGallery from "@/components/TarotCardGallery";
 
 export default function StepReview({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
   const [tab, setTab] = useState<"preview" | "edit">("preview");
@@ -304,6 +305,13 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
         <button onClick={() => navigator.clipboard.writeText(reviewed)}
           className="ml-auto px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">コピー</button>
       </div>
+
+      {/* タロット: 台本の本文から読み取った実際のカードの絵柄（差し替え後のカードもここで確認できる） */}
+      {project.style === "tarot" && (
+        <div className="max-w-3xl">
+          <TarotCardGallery text={`${project.abstractLogic || ""}\n${project.structureProposal?.concept || ""}`} script={tab === "edit" ? draft : reviewed} />
+        </div>
+      )}
 
       {/* 編集タブ */}
       {tab === "edit" && (
