@@ -13,11 +13,9 @@ import { extractDrawnCards, syncDrawSpecToCards, tarotCardImageUrl, CARD_NAMES }
 import { migratePlanToNewFlow } from "@/lib/plan-migrate";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
-import TarotCardGallery from "@/components/TarotCardGallery";
 import type { ScriptProject, RuleProposal, SuggestionDraft, CardPlan, CardSlot, DrawnTechnique } from "@/lib/project-store";
 import type { ScriptAnalysis, ScriptEssence } from "@/lib/script-analysis-store";
 import { essenceBlocksInOrder, mustKeepInOrder } from "@/lib/script-analysis-store";
-import { parseDrawAssignments, areaForSectionTitle, techniqueLink, type DrawAssignment } from "@/lib/draw-assignments";
 import type { Genre, Style, QualityCheckResult, QualityCheckCategory } from "@/lib/project-store";
 
 export default function StepProposal({ project, onUpdate, onNavigate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void; onNavigate?: (stepId: string) => void }) {
@@ -82,57 +80,6 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   useEffect(() => { setPatterns(getPatterns()); }, []);
   // 台本テキストの拡大表示モーダル
   const [zoomView, setZoomView] = useState<ScriptAnalysis | null>(null);
-  // 抽象ロジックのAI壁打ち
-  const [abChat, setAbChat] = useState<{ role: "user" | "ai"; text: string }[]>([]);
-  const [abMsg, setAbMsg] = useState("");
-  const [abSending, setAbSending] = useState(false);
-
-  const sendAbstractChat = async () => {
-    const current = abstractDraft ?? project.abstractLogic ?? "";
-    const msg = abMsg.trim();
-    if (!msg || !current.trim() || abSending) return;
-    const aiApiKey = getApiKey("ai_api_key");
-    if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
-    setAbSending(true);
-    setError("");
-    setAbChat((prev) => [...prev, { role: "user", text: msg }]);
-    setAbMsg("");
-    try {
-      // 元台本（メイン/サブの役割付き）も渡して、訴求の出典参照や「元台本ではどう言ってる？」の相談に答えられるようにする
-      const refs = analyses.map((a) => ({
-        videoTitle: a.videoTitle,
-        views: a.views,
-        role: analyses.length > 1 ? (a.id === effectivePrimaryId ? "main" as const : "sub" as const) : undefined,
-        transcript: a.transcript ? a.transcript.slice(0, 5000) : "",
-        analysisResult: a.analysisResult ? {
-          summary: a.analysisResult.summary,
-          overallPattern: a.analysisResult.overallPattern,
-          hooks: a.analysisResult.hooks,
-          ctas: a.analysisResult.ctas,
-          appealPoints: a.analysisResult.appealPoints,
-        } : null,
-      }));
-      const res = await fetch("/api/script/revise-abstract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ abstractLogic: current, instruction: msg, history: abChat, topic: project.title, analyses: refs, aiApiKey, aiModel: getAiModel("generate") }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setAbChat((prev) => [...prev, { role: "ai", text: `⚠ ${data.error}` }]);
-      } else {
-        setAbChat((prev) => [...prev, { role: "ai", text: data.reply || "修正しました。" }]);
-        if (data.abstractLogic && data.abstractLogic !== current) {
-          setAbstractDraft(data.abstractLogic);
-          onUpdate({ ...project, abstractLogic: data.abstractLogic });
-        }
-      }
-    } catch {
-      setAbChat((prev) => [...prev, { role: "ai", text: "⚠ 通信に失敗しました。もう一度お試しください" }]);
-    } finally {
-      setAbSending(false);
-    }
-  };
 
   // ミスった読み取り結果を個別に削除（ライブラリ＋このプロジェクトの参照から外す）
   const handleDeleteAnalysis = (a: ScriptAnalysis) => {
@@ -661,7 +608,6 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     pushSharedSettings();
   };
   const [essenceOpen, setEssenceOpen] = useState(true);
-  const [abstractEdit, setAbstractEdit] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const addPlanSlot = () => {
     const text = newCardText.trim();
@@ -1115,7 +1061,7 @@ ${p.content}`;
         const step2Done = planFilled || !!abstractText.trim();
         const step3Done = !!skeleton;
         // 新フロー（設計表が揃っている）では抽象ロジックの段階が無いので、骨組みは Step 2 として表示する
-        const stepNo = (n: number) => (isTarot ? (planFilled && n === 3 ? 2 : n) : n - 2);
+        const stepNo = (n: number) => (isTarot ? (n === 3 ? 2 : n) : n - 2);
         const Status = ({ done, label }: { done: boolean; label?: string }) => (
           <span className={`text-sm px-3 py-1 rounded-full font-bold ${done ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"}`}>
             {done ? `✓ ${label || "完了"}` : "未着手"}
@@ -1420,95 +1366,18 @@ ${p.content}`;
               </div>
               <Connector />
 
-              {/* Step 2: 抽象ロジック（旧フロー。設計表にカードと「伝えること」が揃っていれば表示しない） */}
-              {!planFilled && (<>
-              <div className={`rounded-2xl border-2 p-5 shadow-sm ${step2Done ? "border-violet-300 bg-violet-50" : step1Done ? "border-violet-400 bg-violet-50" : "border-gray-200 bg-gray-50"}`}>
-                <StepHeader n={2} title="抽象ロジックを作る" desc="カードを引き、各カードで「何を伝えるか」の骨子を決めます。ここで流れと訴求を確認・修正してから、Step 3で具体化します。"
-                  done={step2Done}
-                  right={!step2Done ? (
-                    <button onClick={handleGenerate} disabled={generating || diffChecking || !step1Done}
-                      className="text-base px-4 py-2.5 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-40">
-                      {diffChecking ? "元ネタの構成をチェック中..." : generating ? "生成中..." : "抽象ロジックを生成"}
-                    </button>
-                  ) : (
-                    <button onClick={() => { if (confirm("抽象ロジックを作り直しますか？（カードも引き直されます）")) runGenerate(project.structureMode || "template", undefined, { phase: "abstract" }); }} disabled={generating}
-                      className="text-sm px-3 py-2 rounded-xl border border-violet-300 text-violet-800 bg-white hover:bg-violet-100 disabled:opacity-50">🔁 抽象からやり直す</button>
-                  )} />
-                {!step1Done && !step2Done && (
-                  <p className="text-base text-gray-600">先に Step 1 でカード設計表を作ってください。
-                    <button onClick={handleGenerate} disabled={generating || diffChecking} className="ml-2 text-sm text-gray-500 underline hover:text-gray-700">設計表なしで進む</button>
-                  </p>
-                )}
-                {project.structureMode && (
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <span className="text-sm text-gray-500">構成:</span>
-                    {(["template", "reference"] as const).map((m) => (
-                      <button key={m} onClick={() => onUpdate({ ...project, structureMode: m })}
-                        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${project.structureMode === m ? "bg-violet-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                        {m === "template" ? "いつものテンプレ" : "元ネタ準拠"}
-                      </button>
-                    ))}
-                    <span className="text-sm text-gray-400">変更したら作り直してください</span>
-                  </div>
-                )}
-                {step2Done && (
-                  <>
-                    <div className="flex items-center justify-end gap-2 mb-2">
-                      <button onClick={() => setAbstractEdit(false)} className={`px-3 py-1.5 rounded-lg text-sm ${!abstractEdit ? "bg-violet-600 text-white" : "bg-white border border-gray-200 text-gray-600"}`}>見やすく表示</button>
-                      <button onClick={() => setAbstractEdit(true)} className={`px-3 py-1.5 rounded-lg text-sm ${abstractEdit ? "bg-violet-600 text-white" : "bg-white border border-gray-200 text-gray-600"}`}>テキストで編集</button>
-                    </div>
-                    {!abstractEdit ? (
-                      <AbstractLogicView text={abstractText} assignments={parseDrawAssignments(project.drawSpec)} />
-                    ) : (
-                      <textarea value={abstractDraft ?? ""} onChange={(e) => setAbstractDraft(e.target.value)}
-                        onBlur={() => { if (abstractDraft !== null && abstractDraft.trim() !== "" && abstractDraft !== project.abstractLogic) onUpdate({ ...project, abstractLogic: abstractDraft }); }}
-                        className="w-full h-96 p-4 rounded-xl border border-violet-200 bg-white text-base leading-7 focus:outline-none focus:border-accent font-sans" />
-                    )}
-                    {/* AI壁打ち */}
-                    <div className="mt-4 pt-4 border-t border-violet-200">
-                      <p className="text-base font-bold text-violet-900 mb-2">💬 AIに相談して直す（元台本を参照して回答。カードと正統な意味は固定のまま調整します）</p>
-                      {abChat.length > 0 && (
-                        <div className="space-y-1.5 mb-2 max-h-56 overflow-y-auto">
-                          {abChat.map((m, i) => (
-                            <div key={i} className={`text-base rounded-lg px-3 py-2 whitespace-pre-wrap ${m.role === "user" ? "bg-white border border-violet-200 ml-8" : "bg-violet-100/70 mr-8"}`}>
-                              <span className="font-semibold">{m.role === "user" ? "あなた: " : "AI: "}</span>{m.text}
-                            </div>
-                          ))}
-                          {abSending && <div className="text-sm text-violet-700 px-3 py-1.5 mr-8 flex items-center gap-2"><div className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />修正中...</div>}
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <input type="text" value={abMsg} onChange={(e) => setAbMsg(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendAbstractChat(); } }}
-                          placeholder="例: 3枚目の常識破壊をもっと刺さる言い回しにして / 5枚目の未来をもっと具体的に"
-                          disabled={abSending}
-                          className="flex-1 px-3 py-2.5 rounded-lg border border-violet-200 bg-white text-base focus:outline-none focus:border-accent disabled:opacity-50" />
-                        <button onClick={sendAbstractChat} disabled={abSending || !abMsg.trim()}
-                          className="px-4 py-2 rounded-lg bg-violet-600 text-white text-base font-medium hover:bg-violet-700 disabled:opacity-50 shrink-0">
-                          {abSending ? "送信中..." : "送信"}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <TarotCardGallery text={`${abstractText}\n${skeleton}`} />
-                    </div>
-                  </>
-                )}
-              </div>
-              <Connector />
-              </>)}
             </>
           )}
 
           {/* Step 3（タロット以外は Step 1）: 台本の骨組み */}
           <div className={`rounded-2xl border-2 p-5 shadow-sm ${step3Done ? "border-emerald-300 bg-emerald-50/60" : (isTarot ? step2Done : true) ? "border-emerald-400 bg-emerald-50/60" : "border-gray-200 bg-gray-50"}`}>
             <StepHeader n={stepNo(3)} title={isTarot ? "台本の骨組みを作る（具体ロジック）" : "台本の骨組みを作る"}
-              desc={isTarot ? (planFilled ? "カード設計表（カード・伝えること・背骨）を、セクションごとの具体的な骨組みに展開します。ここを確認して、次の「台本出力」に進みます。" : "抽象ロジックを、セクションごとの具体的な骨組みに展開します。ここを確認して、次の「台本出力」に進みます。") : "参考動画の分析を基に、セクションごとの骨組みを作ります。"}
+              desc={isTarot ? "カード設計表（カード・伝えること・背骨）を、セクションごとの具体的な骨組みに展開します。ここを確認して、次の「台本出力」に進みます。" : "参考動画の分析を基に、セクションごとの骨組みを作ります。"}
               done={step3Done}
               right={isTarot ? (
                 <button onClick={() => runGenerate(project.structureMode || "template", undefined, { phase: "concrete" })} disabled={generating || !step2Done}
                   className="text-base px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-40">
-                  {generating ? "生成中..." : step3Done ? (planFilled ? "▶ 設計表から作り直す" : "▶ 抽象ロジックから作り直す") : "▶ 具体ロジックに展開"}
+                  {generating ? "生成中..." : step3Done ? "▶ 設計表から作り直す" : "▶ 設計表から骨組みを作る"}
                 </button>
               ) : (
                 <button onClick={handleGenerate} disabled={generating || diffChecking}
@@ -1516,7 +1385,19 @@ ${p.content}`;
                   {diffChecking ? "元ネタの構成をチェック中..." : generating ? "生成中..." : step3Done ? "再生成" : "骨組みを生成"}
                 </button>
               )} />
-            {isTarot && !step2Done && <p className="text-base text-gray-600">先に Step 1 でカードを引き、「伝えることをAIで埋める」を済ませてください（設計表がそのまま具体ロジックの元になります）。</p>}
+            {isTarot && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-sm text-gray-500">構成:</span>
+                {(["template", "reference"] as const).map((m) => (
+                  <button key={m} onClick={() => onUpdate({ ...project, structureMode: m })}
+                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${(project.structureMode || "template") === m ? "bg-emerald-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                    {m === "template" ? "いつものテンプレ" : "元ネタ準拠"}
+                  </button>
+                ))}
+                <span className="text-sm text-gray-400">変更したら「設計表から作り直す」を押してください</span>
+              </div>
+            )}
+            {isTarot && !step2Done && <p className="text-base text-gray-600">先に Step 1 でカードを引き、「伝えることをAIで埋める」を済ませてください（設計表がそのまま骨組みの元になります）。</p>}
             {applyingFix && (
               <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
                 <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
@@ -2016,92 +1897,6 @@ function EssenceOrdered({ e }: { e: ScriptEssence }) {
 }
 
 // 抽象ロジック: 「メインテーマ／中心メタファー／一本線」＋カードごとの「正統な意味／絵柄の見せ場／伝えること／流れ」を、設計表と同じ見た目で
-function parseAbstractLogic(md: string): { pre: { k: string; v: string }[]; sections: { title: string; fields: { k: string; v: string }[]; notes: string[] }[] } {
-  const pre: { k: string; v: string }[] = [];
-  const sections: { title: string; fields: { k: string; v: string }[]; notes: string[] }[] = [];
-  let cur: { title: string; fields: { k: string; v: string }[]; notes: string[] } | null = null;
-  for (const raw of md.split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (line.startsWith("## ")) { cur = { title: line.slice(3).trim(), fields: [], notes: [] }; sections.push(cur); continue; }
-    if (line.startsWith("# ")) continue;
-    const kv = line.replace(/^[-・]\s*/, "").match(/^([^:：]{1,14})[:：]\s*(.+)$/);
-    if (!cur) { if (kv) pre.push({ k: kv[1], v: kv[2] }); else pre.push({ k: "", v: line }); continue; }
-    if (kv) cur.fields.push({ k: kv[1], v: kv[2] }); else cur.notes.push(line.replace(/^[-・]\s*/, ""));
-  }
-  return { pre, sections };
-}
-// 「使っている技」のタグ（押すと台本ルールの技カタログが該当項目を開いた状態で別タブに開く）
-function TechChips({ items, compact }: { items: DrawAssignment[]; compact?: boolean }) {
-  if (items.length === 0) return null;
-  return (
-    <div className={`flex flex-wrap gap-1.5 ${compact ? "" : "mt-2"}`}>
-      {items.map((a, i) => (
-        <a key={i} href={techniqueLink(a.bankId, a.value)} target="_blank" rel="noreferrer" title={`${a.label}: ${a.full}`}
-          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-violet-100 text-violet-900 border border-violet-200 hover:bg-violet-600 hover:text-white transition">
-          <span className="opacity-70">{a.label}</span><span className="font-bold">{a.value}</span>
-        </a>
-      ))}
-    </div>
-  );
-}
-function AbstractLogicView({ text, assignments = [] }: { text: string; assignments?: DrawAssignment[] }) {
-  const { pre, sections } = parseAbstractLogic(text);
-  const byArea = (area: DrawAssignment["area"]) => assignments.filter((a) => a.area === area);
-  if (sections.length === 0) {
-    return <pre className="bg-white rounded-xl border border-violet-200 p-4 text-base leading-7 whitespace-pre-wrap font-sans text-gray-800">{text}</pre>;
-  }
-  return (
-    <div className="space-y-3">
-      {assignments.length > 0 && (
-        <div className="rounded-xl p-4 bg-white border border-violet-200">
-          <p className="text-sm font-bold text-violet-900 mb-1">🎲 今回の割り当て（ツールが抽選した技。タグを押すと台本ルールの説明が開きます）</p>
-          <p className="text-xs text-gray-500 mb-2">各カードの下にも、そのカードで使う技を表示しています。</p>
-          <div className="space-y-1.5">
-            {(["冒頭", "2枚目", "3枚目", "4枚目", "5枚目", "終盤", "本編"] as DrawAssignment["area"][]).map((area) => {
-              const items = byArea(area);
-              if (items.length === 0) return null;
-              return (
-                <div key={area} className="flex items-start gap-2">
-                  <span className="shrink-0 w-14 text-xs font-bold text-gray-600 pt-1">{area}</span>
-                  <TechChips items={items} compact />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {pre.length > 0 && (
-        <div className="rounded-xl p-4 bg-violet-100 border border-violet-300 space-y-1.5">
-          {pre.map((p, i) => (
-            <p key={i} className="text-base leading-7 text-gray-900">{p.k && <span className="font-bold text-violet-900 mr-2">{p.k}:</span>}{p.v}</p>
-          ))}
-        </div>
-      )}
-      <ol className="space-y-2">
-        {sections.map((sc, i) => (
-          <li key={i} className="rounded-xl p-4 border border-violet-200 bg-white flex items-start gap-3">
-            <div className="shrink-0 w-10 h-10 rounded-full bg-violet-600 text-white flex items-center justify-center text-lg font-bold">{i + 1}</div>
-            <div className="min-w-0 flex-1">
-              <p className="text-lg font-bold text-gray-900">{sc.title.replace(/^\d+枚目[:：]\s*/, "")}</p>
-              <dl className="mt-2 space-y-1.5">
-                {sc.fields.map((f, j) => (
-                  <div key={j} className="flex items-start gap-2">
-                    <dt className="shrink-0 w-28 text-sm font-bold text-violet-800 pt-1">{f.k}</dt>
-                    <dd className="flex-1 text-base leading-7 text-gray-800">{f.v}</dd>
-                  </div>
-                ))}
-              </dl>
-              {sc.notes.length > 0 && <ul className="mt-2 space-y-1 text-base leading-7 text-gray-700">{sc.notes.map((n, j) => <li key={j}>・{n}</li>)}</ul>}
-              {(() => { const area = areaForSectionTitle(sc.title, i); return area ? <TechChips items={byArea(area)} /> : null; })()}
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
-
 // 台本の骨組み: セクションごとにカード表示。参考元・理由・上位互換ポイント（> 行）は「詳細を見る」で開く
 type SkelSection = { kind: "major" | "section"; heading: string; body: string[]; details: string[] };
 function parseSkeleton(md: string): { header: string[]; sections: SkelSection[] } {
