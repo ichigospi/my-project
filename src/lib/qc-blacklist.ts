@@ -6,7 +6,7 @@ import type { QualityCheckItem } from "@/lib/project-store";
 import { getScriptBanks, extractDrawnCards, extractCardsFromProse } from "@/lib/tarot-draw";
 
 // level: fail=常に禁止（意味不明・ルール違反）／warn=注意／track=繰り返し管理（合格した直近2本の両方で使っていたら3連続→fail。2連続まではOK）
-export interface BlacklistRule { pattern: RegExp; level: "fail" | "warn" | "track"; reason: string; fix?: string }
+export interface BlacklistRule { pattern: RegExp; level: "fail" | "warn" | "track"; reason: string; fix?: string; label?: string /* プロンプト表示用の読める形（正規表現が崩しにくいとき） */ }
 
 export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /加護を[、]?(確かに)?受け取ります/, level: "fail", reason: "軽CTAの意味づけが「守護天使様の加護を受け取る合図」のデフォルト（禁止）", fix: "その動画のコンセプト語（扉・周波数・天秤 等）から意味づけを作る。高評価＝チューニング、コメント＝宣言、のように役割を分ける" },
@@ -40,7 +40,7 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /本来のあなたに戻る/, level: "track", reason: "波長合わせ型が抽選された回のみ可", fix: "他の型なら言い換える" },
   { pattern: /頭では(もう)?答えが出ているのに/, level: "track", reason: "前回台本の文の流用", fix: "別の言い回しに" },
   { pattern: /執着を手放しなさい/, level: "track", reason: "仮想敵「占い師テンプレ型」の定型", fix: "抽選で指定された仮想敵に従う" },
-  { pattern: /カードを([一二三四五六七八九十]|[0-9０-９]+)枚|([一二三四五六七八九十]|[0-9０-９]+)枚(のカード|引き|を引)/, level: "fail", reason: "枚数の明言（「カードを5枚引きます」等）は禁止", fix: "「カードを順番に引いていきます」のように枚数を言わない" },
+  { pattern: /カードを([一二三四五六七八九十]|[0-9０-９]+)枚|([一二三四五六七八九十]|[0-9０-９]+)枚(のカード|引き|を引)/, label: "カードを5枚引きます／5枚のカード", level: "fail", reason: "枚数の明言（「カードを5枚引きます」等）は禁止", fix: "「カードを順番に引いていきます」のように枚数を言わない" },
   { pattern: /本当に早く言いたかった|早くお伝えしたくて/, level: "track", reason: "導入で中身の前に置く自己満足の一言（使い回し注意）", fix: "導入では中身を先に。強調は「いちばん言いたいところ」の直前に" },
   { pattern: /腑に落ちやすく|奇跡は先に来る/, level: "fail", reason: "効果の捏造（押すとこうなる、と作った効果）", fix: "CTAの意味づけは世界観の中で一言に（守護天使様への合図／欠かせない儀式）" },
   { pattern: /頑張りを数え|頑張りを(一緒に)?数/, level: "fail", reason: "造語「頑張りを数える」は普段の会話で言わない", fix: "「どれだけ頑張ってきたか、ちゃんと分かってくれる人」のように普段の言葉で" },
@@ -48,7 +48,7 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /受け取る側/, level: "fail", reason: "目的語のない「受け取る側」は一瞬で意味が取れない", fix: "何を受け取るのかを言う（奇跡を／臨時収入を／連絡を）" },
   { pattern: /守護天使様(は|が|から)[^。]{0,40}(やってほしい|言っています|言ってます|伝えています|おすすめ|(と|って)(伝え|言っ|教え|おっしゃ|告げ|示し)(て|っ)?(くださ|います|てます|ている|てくれ|ていま))/, level: "fail", reason: "本編のアドバイスを守護天使様に帰属させている（無料で守護天使様のメッセージを渡したことになる）", fix: "アドバイスはアリサの言葉か「カードが示している」で言う。守護天使様を主語にするのは固定句と導入の正当化だけ" },
   { pattern: /指に残って|指先が選|指が選|手に吸い付|切り直そうとしたら|手が(ふっと)?止ま(った|り)(んです|ました)?。?[^。]{0,12}(出たのは|この1枚|このカード)/, level: "fail", reason: "鑑定士の手・指の動作を根拠にした引き演出（神秘性が弱い。カード側を主語にする）", fix: "「この1枚、自分から出てきました」「一番上で待っていました」のようにカード・流れを主語に" },
-  { pattern: /(この|今日(は|の|引いた)?|引いた|全部で)[2-9２-９二三四五六七]枚(?!目)/, level: "fail", reason: "枚数の明言（「今日この5枚が」「今日引いた5枚」等）は禁止", fix: "「今日のカードが」「引いたカード全部が」のように枚数を言わない" },
+  { pattern: /(この|今日(は|の|引いた)?|引いた|全部で)[2-9２-９二三四五六七]枚(?!目)/, label: "今日この5枚が／今日引いた5枚／全部で5枚", level: "fail", reason: "枚数の明言（「今日この5枚が」「今日引いた5枚」等）は禁止", fix: "「今日のカードが」「引いたカード全部が」のように枚数を言わない" },
   { pattern: /そわそわ/, level: "track", reason: "導入の熱量表現「そわそわ」の使い回し", fix: "熱量の一文は毎回別の言い方にする" },
   { pattern: /答えの半分|残りの半分を.{0,6}カードで/, level: "fail", reason: "抽象フック（答えの半分）: 何が得られるか伝わらない冒頭は禁止", fix: "冒頭は視聴者が得るものを具体的に言う（実る時期に入った・奇跡が舞い込む等）" },
   { pattern: /ふっと/, level: "fail", reason: "「ふっと」は普段の会話で使わない（連絡・通知は擬音と物で映像にする）", fix: "連絡なら「ピコンとスマホに連絡が届く」、息なら「深く息をつく」のように、連想しやすい言い方に" },
@@ -95,19 +95,20 @@ function sentenceAt(script: string, index: number, len: number): string {
   return sent.length > 140 ? sent.slice(0, 140) + "…" : sent;
 }
 // パターンの全出現を文ごとに列挙（最大 max 件）。1つだけ直して残りが残る＝同じ不合格が繰り返される、を防ぐ
-function allSentences(script: string, pattern: RegExp, max = 5): { count: number; sentences: string[] } {
+function allSentences(script: string, pattern: RegExp, max = 5): { count: number; sentences: string[]; dropped: number } {
   const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
   const sentences: string[] = [];
-  let count = 0;
+  let count = 0, dropped = 0;
   for (const m of script.matchAll(re)) {
     count++;
     const sent = sentenceAt(script, m.index ?? 0, m[0].length);
-    if (sentences.length < max && !sentences.includes(sent)) sentences.push(sent);
+    if (sentences.includes(sent)) continue;
+    if (sentences.length < max) sentences.push(sent); else dropped++;
   }
-  return { count, sentences };
+  return { count, sentences, dropped };
 }
-function listSentences(found: { count: number; sentences: string[] }): string {
-  return `該当${found.count > 1 ? `（${found.count}箇所。全部直す）` : ""}:\n${found.sentences.map((s) => `「${s}」`).join("\n")}${found.count > found.sentences.length ? `\n（他${found.count - found.sentences.length}箇所）` : ""}`;
+function listSentences(found: { count: number; sentences: string[]; dropped: number }): string {
+  return `該当${found.count > 1 ? `（${found.count}箇所。全部直す）` : ""}:\n${found.sentences.map((s) => `「${s}」`).join("\n")}${found.dropped > 0 ? `\n（他${found.dropped}文）` : ""}`;
 }
 
 export function scanBlacklist(script: string): QualityCheckItem[] {
@@ -242,17 +243,50 @@ export function scanColorClaims(script: string, cards: { name: string; img?: str
 }
 
 // 漢数字（算用数字ルール）。慣用（一人・一方・一瞬・一度・一本 等）は対象外にし、数えの単位だけを見る
+// 漢数字→算用数字（修正案の表示用。十・百・千を含む簡易変換）
+function toArabic(s: string): string {
+  const digits: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  const units: Record<string, number> = { 十: 10, 百: 100, 千: 1000 };
+  return s.replace(/[一二三四五六七八九十百千]+/, (num) => {
+    let total = 0, cur = 0;
+    for (const ch of num) {
+      if (digits[ch]) cur = digits[ch];
+      else if (units[ch]) { total += (cur || 1) * units[ch]; cur = 0; }
+    }
+    return String(total + cur);
+  });
+}
+// 生成・修正プロンプトに入れる「機械判定で不合格になる表現」の一覧（fail判定のものだけ。正規表現を読める形に崩す）
+export function blacklistPromptBlock(): string {
+  const readable = (re: RegExp): string => re.source
+    .replace(/\(\?<?[!=:]/g, "(")
+    .replace(/\[([^\]]*)\]\?/g, "")
+    .replace(/\[\^[^\]]*\]/g, "◯")
+    .replace(/\[([^\]]*)\]/g, (_m, cls: string) => cls.replace(/\\./g, "").replace(/.-./g, "")[0] || "")
+    .replace(/\.\{\d+,\d+\}\??/g, "…")
+    .replace(/\{\d+,?\d*\}/g, "")
+    .replace(/\\./g, "")
+    .replace(/[()?*+^$]/g, "")
+    .replace(/\|/g, "／")
+    .replace(/◯+/g, "…");
+  const lines = QC_BLACKLIST.filter((r) => r.level === "fail").map((r) => `・「${r.label || readable(r.pattern)}」: ${r.reason}${r.fix ? `（→ ${r.fix}）` : ""}`);
+  return `【禁止表現（機械判定で不合格。言い回しを変えても同じ意味の定型は避ける）】
+・漢数字で数を書かない: 「一枚」「一枚目」「三つ」「三週間」→「1枚」「1枚目」「3つ」「3週間」（慣用の「一緒」「一人」「一番」「一瞬」「一度」はそのまま）
+${lines.join("\n")}`;
+}
+
 export function scanKanjiNumerals(script: string): QualityCheckItem[] {
   const re = /[一二三四五六七八九十百千]+(枚目|枚|週間|ヶ月|か月|カ月|日後|日以内|分後|時間後|パーセント|件|回目|万円|億円)|[三四五六七八九十]つ/g;
   const found = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = re.exec(script)) !== null) { found.add(m[0]); if (found.size >= 10) break; }
   if (found.size === 0) return [];
+  const all = allSentences(script, re, 8);
   return [{
-    name: "表記: 漢数字",
-    status: "warn",
-    comment: `算用数字ルールに反する漢数字: ${Array.from(found).join("、")}`,
-    suggestion: "数は算用数字で書く（例: 三週間→3週間、三つ→3つ）",
+    name: `表記: 漢数字（${Array.from(found).join("・")}）`,
+    status: "fail",
+    comment: `算用数字ルールに反する漢数字: ${Array.from(found).join("、")}。${listSentences(all)}`,
+    suggestion: `数は算用数字で書く（${Array.from(found).map((k) => `${k}→${toArabic(k)}`).join("、")}）。文は変えず数字だけ直す`,
   }];
 }
 
