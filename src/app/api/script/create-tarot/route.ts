@@ -7,6 +7,7 @@ import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysi
 import { blacklistPromptBlock } from "@/lib/qc-blacklist";
 import { TAROT_WRITING_NORMS, buildTechniqueBrief } from "@/lib/tarot-norms";
 import { runConsistencyPass } from "@/lib/consistency";
+import { loadCustomBans } from "@/lib/custom-bans";
 import type { CardPlan } from "@/lib/project-store";
 
 // タロット台本の生成（新方式）: 分割せず1回で書く。
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
     const targetChars = Math.max(5000, Math.min(Number(body.targetChars) || 7000, 8500));
     const extra = String(body.instruction || "").trim();
     const structureMode = body.structureMode === "reference" ? "reference" : "template";
+    const customBans = await loadCustomBans().catch(() => []);
 
     // カード（骨組みが正。無ければ設計表）
     const skeletonCards = extractDrawnCards(skeleton);
@@ -159,7 +161,7 @@ ${samplesText}
 
 ${TAROT_WRITING_NORMS}
 
-${blacklistPromptBlock()}
+${blacklistPromptBlock(customBans)}
 ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ? `\n【前回の出力の問題（必ず直す）】\n${feedback}\n` : ""}
 【出力】
 - 台本の本文だけを出力する。見出し・箇条書き・「第◯パート」などの注記・前置き・後書きは書かない
@@ -209,6 +211,7 @@ ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ?
         backbone: plan.backbone || null,
         cards: cards.map((x) => ({ name: x.name, orientation: x.orientation })),
         techniqueBrief,
+        customBans,
       });
       if (!c.error) {
         // 整合編集でカードが崩れていないことを確認してから採用

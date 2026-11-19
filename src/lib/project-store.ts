@@ -201,6 +201,8 @@ export interface ScriptProject {
   finalTelopOptions?: { maxLineChars: number; maxLines: number };
   finalTelopAt?: string;
   reviewComments?: ReviewComment[];
+  // 添削から学んだこと（合格時に自動分析。ルール候補・消された言い回し・型の有効性）
+  reviewLearn?: ReviewLearn;
   // 追加ルール提案（構成提案→添削部屋に送られる）
   ruleProposals?: RuleProposal[];
   // 追加ルール提案の下書き（生成後、送信しなくても残り続ける）と過去の提案（再提案時に格納）
@@ -248,6 +250,14 @@ export interface ReviewComment {
 }
 
 // 追加ルール提案（構成提案でAIが提案→ライターが編集して送信→添削部屋でオーナーが確認）
+export interface ReviewLearn {
+  at: string;
+  rewritePatterns: { category: string; title: string; content: string; reason: string; proposed?: boolean }[];
+  bannedPhrases: { phrase: string; reason: string; registered?: boolean }[];
+  techniques: { index: number; verdict: "kept" | "removed" | "changed"; note: string }[];
+  candidates?: { phrase: string; reason: string; count: number }[];
+}
+
 export interface RuleProposal {
   id: string;
   category: string;    // フック/CTA/視聴維持/売上アドバイス/理想の未来/悩み深掘り/常識破壊/構成/その他

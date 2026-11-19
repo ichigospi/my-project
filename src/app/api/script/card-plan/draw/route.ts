@@ -7,13 +7,13 @@ import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysi
 import type { CardPlan, CardSlot, CardPlanBackbone, DrawnTechnique } from "@/lib/project-store";
 
 // 型のローテーション: チャンネルごとに「どの型を何回使ったか」を保存し、使用回数の少ない型を優先して引く
-interface BankUsage { banks: Record<string, Record<string, number>>; patterns: Record<string, number> }
+interface BankUsage { banks: Record<string, Record<string, number>>; patterns: Record<string, number>; kept?: Record<string, Record<string, number>>; removed?: Record<string, Record<string, number>> }
 const usageKey = (channelId: string) => `bank_usage_${(channelId || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 60)}`;
 async function loadUsage(channelId: string): Promise<BankUsage> {
   try {
     const row = await prisma.appSetting.findUnique({ where: { key: usageKey(channelId) } });
     const parsed = row?.value ? (JSON.parse(row.value) as Partial<BankUsage>) : null;
-    return { banks: parsed?.banks && typeof parsed.banks === "object" ? parsed.banks : {}, patterns: parsed?.patterns && typeof parsed.patterns === "object" ? parsed.patterns : {} };
+    return { banks: parsed?.banks && typeof parsed.banks === "object" ? parsed.banks : {}, patterns: parsed?.patterns && typeof parsed.patterns === "object" ? parsed.patterns : {}, kept: parsed?.kept && typeof parsed.kept === "object" ? parsed.kept : {}, removed: parsed?.removed && typeof parsed.removed === "object" ? parsed.removed : {} };
   } catch { return { banks: {}, patterns: {} }; }
 }
 async function saveUsage(channelId: string, usage: BankUsage): Promise<void> {
@@ -71,7 +71,15 @@ export async function POST(request: NextRequest) {
       const negativeIndex = Math.max(1, plan.slots.findIndex((sl) => sl.role === "常識破壊") + 1);
       const channelId = String(body.channelId || "");
       const usage = await loadUsage(channelId);
-      const { picker, picks } = makeRotationPicker(usage.banks);
+      // ローテーションの重み: 使用回数 ＋ 添削で消された回数×2 − 添削で残った回数（残った型は出やすく、消された型は出にくく）
+      const score: Record<string, Record<string, number>> = {};
+      const banksAll = new Set([...Object.keys(usage.banks), ...Object.keys(usage.removed || {}), ...Object.keys(usage.kept || {})]);
+      for (const bid of banksAll) {
+        const keys = new Set([...Object.keys(usage.banks[bid] || {}), ...Object.keys(usage.removed?.[bid] || {}), ...Object.keys(usage.kept?.[bid] || {})]);
+        score[bid] = {};
+        for (const k of keys) score[bid][k] = Math.max(0, (usage.banks[bid]?.[k] || 0) + 2 * (usage.removed?.[bid]?.[k] || 0) - (usage.kept?.[bid]?.[k] || 0));
+      }
+      const { picker, picks } = makeRotationPicker(score);
       const drawSpec = buildTarotDrawBlock({ genre, topic, cardCount: plan.slots.length, negativeIndex, picker });
       const cards = extractDrawnCards(drawSpec);
       // 今回引いた型を記録（次回は使用回数の少ない型が優先される）
