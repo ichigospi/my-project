@@ -270,7 +270,18 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     const abstract = abstractDraft ?? project.abstractLogic ?? "";
     const r = migratePlanToNewFlow(project.cardPlan, abstract, project.structureProposal?.concept);
     if (!r) { if (!silent) setMigrateNotice("抽象ロジックにも骨組みにもカードが見つからず、取り込めませんでした。「カードを引く」から始めてください"); return; }
-    if (!r.changed) { if (!silent) setMigrateNotice("取り込める内容はありませんでした"); return; }
+    if (!r.changed) {
+      if (!silent) {
+        const missingCard = r.plan.slots.map((sl, i) => (!sl.card ? `${i + 1}枚目` : null)).filter(Boolean);
+        const missingMsg = r.plan.slots.map((sl, i) => (sl.card && !sl.message ? `${i + 1}枚目` : null)).filter(Boolean);
+        setMigrateNotice(missingCard.length
+          ? `取り込みは済んでいます。${missingCard.join("・")}にカードが無いので「カードが無い枠を引く」を押し、そのあと「伝えることをAIで埋める」を押してください`
+          : missingMsg.length
+            ? `取り込みは済んでいます。${missingMsg.join("・")}に「伝えること」が無いので「伝えることをAIで埋める」を押してください`
+            : "取り込める内容はありませんでした");
+      }
+      return;
+    }
     const cards = r.plan.slots.filter((sl) => sl.card).map((sl, i) => ({ name: sl.card!.name, orientation: sl.card!.orientation, slot: i + 1 }));
     const synced = cards.length === r.plan.slots.length ? syncDrawSpecToCards(project.drawSpec, cards) : project.drawSpec;
     onUpdate({ ...project, cardPlan: r.plan, ...(synced !== project.drawSpec ? { drawSpec: synced } : {}), ...(r.filled ? { abstractLogic: "" } : {}) });
@@ -303,7 +314,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
       const needAll = redrawAll || !plan.slots.some((sl) => sl.card);
       if (needAll) {
         const res = await fetch("/api/script/card-plan/draw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "draw", cardPlan: plan, genre: project.genre, topic: project.title }) });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ error: `サーバーエラー（HTTP ${res.status}）` }));
         if (data.error) { setPlanError(data.error); return; }
         const slots = (data.slots as CardSlot[]).map((sl) => ({ ...sl, highlight: "", message: "", flow: "" }));
         onUpdate({ ...project, cardPlan: { ...plan, slots, backbone: undefined, drawnAt: data.drawnAt, filledAt: undefined, updatedAt: new Date().toISOString() }, drawSpec: data.drawSpec, abstractLogic: "" });
@@ -316,8 +327,8 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         if (slots[i].card) continue;
         const used = slots.filter((s) => s.card).map((s) => s.card!.name);
         const res = await fetch("/api/script/card-plan/draw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "redraw", usedNames: used, genre: project.genre, topic: project.title }) });
-        const data = await res.json();
-        if (data.error) { setPlanError(data.error); return; }
+        const data = await res.json().catch(() => ({ error: `サーバーエラー（HTTP ${res.status}）` }));
+        if (data.error || !data.card) { setPlanError(data.error || "カードを引けませんでした"); return; }
         slots[i] = { ...slots[i], card: data.card, meaning: data.meaning || "", imagery: data.imagery || "", highlight: "", message: "", flow: "" };
       }
       savePlanCards({ ...plan, slots });
@@ -362,7 +373,12 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   // 背骨と各カードの「伝えること」をAIで埋める（onlyIndex を渡すと1枚だけ作り直す）
   const fillPlan = async (onlyIndex?: number) => {
     const plan = project.cardPlan; if (!plan) return;
-    if (!plan.slots.every((sl) => sl.card)) { setPlanError("先にカードを引いてください"); return; }
+    if (!plan.slots.every((sl) => sl.card)) {
+      // カードが無い枠があれば先に引いてから（引いた結果は保存されるので、もう一度押してもらう）
+      await drawPlanCards(false);
+      setPlanError("カードが無かった枠を引きました。もう一度「伝えることをAIで埋める」を押してください");
+      return;
+    }
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setPlanError("AI APIキーを設定してください"); return; }
     setFillingPlan(onlyIndex ?? "all"); setPlanError("");
@@ -1182,6 +1198,11 @@ ${p.content}`;
                         </>
                       )}
                       <span className="text-xs text-violet-800">シャッフルは最初の1回だけ。引いた後は1枚ずつ「引き直す」「差し替え」で調整できます</span>
+                      {(drawingCards || fillingPlan !== null) && <span className="text-xs text-violet-700 flex items-center gap-1"><span className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />{drawingCards ? "カードを引いています…" : "伝えることを作っています…"}</span>}
+                      {planError && <span className="text-sm text-red-600 font-medium">⚠ {planError}</span>}
+                      {project.cardPlan.slots.some((sl) => !sl.card) && !drawingCards && (
+                        <span className="text-xs text-red-700">カードが無い枠: {project.cardPlan.slots.map((sl, i) => (!sl.card ? `${i + 1}枚目` : null)).filter(Boolean).join("・")}</span>
+                      )}
                     </div>
                     {project.cardPlan.slots.some((sl) => sl.card) && (
                       <div className="mt-2">
