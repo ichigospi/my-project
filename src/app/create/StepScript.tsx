@@ -730,13 +730,26 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       if (!data) { setError(`品質チェックに失敗しました: ${lastErr}`); return; }
       if (data.error) { setError(data.error as string); return; }
       setError("");
+      const newHash = simpleHash(project.generatedScript);
+      const categories = (data.categories as QualityCheckCategory[]) || [];
+      // 同じ不合格が「台本を直した後も」続いているかを数える。
+      // 前回と台本が変わっていれば（＝修正を試みた後なら）前回も fail だった項目の回数を +1。台本が同じなら前回の回数をそのまま引き継ぐ
+      const prev = project.qualityCheckResult;
+      const prevFails = new Set((prev?.categories || []).flatMap((c) => c.items.filter((it) => it.status === "fail").map((it) => it.name)));
+      const failStreak: Record<string, number> = {};
+      for (const c of categories) for (const it of c.items) {
+        if (it.status !== "fail") continue;
+        const before = prev?.failStreak?.[it.name] ?? (prevFails.has(it.name) ? 1 : 0);
+        failStreak[it.name] = prev && prev.scriptHash !== newHash ? (prevFails.has(it.name) ? before + 1 : 1) : Math.max(before, 1);
+      }
       const result: QualityCheckResult = {
-        categories: (data.categories as QualityCheckCategory[]) || [],
+        categories,
         comparison: (data.comparison as QualityComparisonRow[]) || [],
         overallScore: (data.overallScore as number) || 0,
         topPriority: (data.topPriority as string) || "",
         checkedAt: new Date().toISOString(),
-        scriptHash: simpleHash(project.generatedScript),
+        scriptHash: newHash,
+        failStreak,
       };
       onUpdate({ ...project, qualityCheckResult: result });
       setShowQualityDetail(true);
@@ -1240,6 +1253,18 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                     {checkingQuality ? "チェック中..." : qcResult ? "再チェック" : "実行"}
                   </button>
                 </div>
+                {(() => {
+                  const repeated = Object.entries(qcResult?.failStreak || {}).filter(([, n]) => n >= 2);
+                  if (repeated.length === 0 || qcStale) return null;
+                  return (
+                    <div className="mt-2 rounded-lg bg-red-50 border border-red-200 p-2 text-xs text-red-800">
+                      <p className="font-medium">⚠ 修正後も同じ不合格が続いています。自動修正では直せない可能性が高いので、該当箇所を目視で確認して手で直してください</p>
+                      <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                        {repeated.map(([name, n]) => <li key={name}>{name}（{n}回連続）</li>)}
+                      </ul>
+                    </div>
+                  );
+                })()}
               </div>
               {/* ② 日本語校閲 */}
               <div className={`rounded-lg p-3 border ${proofPassed ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
@@ -1786,8 +1811,19 @@ function QualityCheckPanel({
     </div>
   );
 
+  const repeatedFails = Object.entries(r?.failStreak || {}).filter(([, n]) => n >= 2);
+
   return (
     <div className="bg-card-bg rounded-xl p-5 shadow-sm border border-purple-200">
+      {repeatedFails.length > 0 && !stale && (
+        <div className="mb-4 rounded-lg bg-red-50 border border-red-300 p-3 text-sm text-red-800">
+          <p className="font-bold">⚠ 目視チェックが必要です</p>
+          <p className="mt-1 text-xs">次の指摘は、台本を直した後の再チェックでも不合格のままです。自動修正（指摘を反映）では直せない可能性が高いので、該当箇所を本文で探して手で直してください。直らない場合は、指摘のチェックを外して提出することもできます。</p>
+          <ul className="mt-2 list-disc pl-5 text-xs space-y-0.5">
+            {repeatedFails.map(([name, n]) => <li key={name}><span className="font-medium">{name}</span>（{n}回連続）</li>)}
+          </ul>
+        </div>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-base">品質チェック</h3>

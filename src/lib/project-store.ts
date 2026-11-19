@@ -111,6 +111,8 @@ export interface QualityCheckResult {
   topPriority: string;         // 最優先で直すべきポイント
   checkedAt: string;
   scriptHash?: string;         // チェック時の台本ハッシュ（変更検知用）
+  // 同じ不合格が「台本を直した後も」続いている回数（項目名→連続回数）。2以上は自動修正で直らない可能性が高いので目視を促す
+  failStreak?: Record<string, number>;
 }
 
 // 分割出力の1パート
