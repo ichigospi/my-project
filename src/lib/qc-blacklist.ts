@@ -204,7 +204,7 @@ export function scanFreeReadingScope(script: string): QualityCheckItem[] {
   let hit: RegExpMatchArray | null = null;
   for (const m of positions) {
     const win = t.slice(Math.max(0, m - 150), m + 600);
-    hit = win.match(/守護天使様(から|の)(の)?メッセージ[^。]{0,30}(お伝え|届け|お届け|伝え)/);
+    hit = win.match(/守護天使様(から|の)(の)?メッセージ[^。]{0,30}(お伝え|届け|お届け|伝え)|守護天使様を通(して|じて)[^。]{0,60}メッセージ/);
     if (hit) break;
   }
   if (!hit) return [];
@@ -326,7 +326,9 @@ export function scanCardCount(script: string, revealed: { count: number; cards: 
       comment: `枚数は言わない方針です（実際に開示したカード: ${revealed.cards.join("・")}＝${revealed.count}枚${statedMax !== revealed.count ? "。しかも数が合っていません" : ""}）`,
       suggestion: "「今日は◯枚引きます」等の枚数の言及を削除し、「この動画で何が明らかになるか／最後まで見るとどうなるか」の予告にする" });
   }
-  if (maxOrdinal && maxOrdinal !== revealed.count) {
+  // 最後の1枚を「最後のカード」「最後の1枚」と呼ぶ書き方（番号を付けない）は不整合にしない
+  const lastUnnumbered = /最後のカード|最後の1枚|最後の一枚/.test(t) && maxOrdinal === revealed.count - 1;
+  if (maxOrdinal && maxOrdinal !== revealed.count && !lastUnnumbered) {
     items.push({ name: `番号の不整合（最大「${maxOrdinal}枚目」、開示は${revealed.count}枚）`, status: "fail",
       comment: `「◯枚目」の最大が${maxOrdinal}なのに、実際に開示したカードは${revealed.count}枚です（番号外の「もう一枚」がある可能性）`,
       suggestion: `全カードに1〜${revealed.count}枚目の連番を振る。カードを削除して数を合わせるのは禁止` });
@@ -958,8 +960,106 @@ export function scanAdjacentDuplicates(script: string): QualityCheckItem[] {
   return items;
 }
 
+// ===== 型ごとの出現上限と位置（第3段） =====
+// 同じ要素が何回出たか、本来の場所にあるかを機械で数える。生成が守れなかったときに「どこが余分か」を場所つきで返す
+function sentenceOf(t: string, index: number): string {
+  let s = index; while (s > 0 && !/[。！？!?]/.test(t[s - 1])) s--;
+  let e = index; while (e < t.length && !/[。！？!?]/.test(t[e])) e++;
+  const sent = t.slice(s, e + 1);
+  return sent.length > 90 ? sent.slice(0, 90) + "…" : sent;
+}
+export function scanOccurrenceLimits(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  if (!looksLikeFullScript(t)) return [];
+  const items: QualityCheckItem[] = [];
+  const listOf = (re: RegExp, max = 5) => {
+    const out: string[] = [];
+    for (const m of t.matchAll(re)) { const s = sentenceOf(t, m.index ?? 0); if (!out.includes(s)) out.push(s); if (out.length >= max) break; }
+    return out;
+  };
+  const count = (re: RegExp) => Array.from(t.matchAll(re)).length;
+  // 未知数（視え切らない）は終盤に1回
+  const unknowns = listOf(/視え切らない|視えきらない|視え切れない|視えきれない|分からない領域|個別に視ないと/g);
+  if (unknowns.length >= 2) items.push({ name: `未知数が${unknowns.length}回（上限1）`, status: "fail",
+    comment: `「視え切らない」型の未知数が複数回あります。本編で言うと、カードの説得力を自分で下げます。終盤の案内の前に1回だけ。該当（1つ残して消す）:\n${unknowns.map((s) => `「${s}」`).join("\n")}`,
+    suggestion: "本編の未知数は削除し、終盤（まとめ→思い→必要性）の1回に集約する" });
+  // 口コミ・体験談は2回まで（3枚目の後と終盤）
+  const proofs = listOf(/(報告が届|ご報告|報告をくださ|教えてくださ|と連絡をくださ|講座生|鑑定を受け(られた|た)方|視させて(もらった|いただいた)方)/g, 6);
+  if (proofs.length >= 3) items.push({ name: `口コミ・体験談が${proofs.length}件（目安2）`, status: proofs.length >= 4 ? "fail" : "warn",
+    comment: `体験談が多すぎます。1本で2回まで（3枚目の後と終盤に1つずつ）。該当:\n${proofs.map((s) => `「${s}」`).join("\n")}`,
+    suggestion: "もっとも具体的で意味の通る2つを残し、他は削除する" });
+  // 言い当ての問いかけは2〜3個まで
+  const asks = count(/(ありませんか|ませんでしたか|いませんか|ないですか|なかったですか|あるでしょう|あったでしょう)[。？?]/g);
+  if (asks >= 4) items.push({ name: `言い当ての問いかけが${asks}個（上限3）`, status: asks >= 5 ? "fail" : "warn",
+    comment: `「〜ありませんか」型の言い当てが多すぎます。並べるほど一つひとつが軽くなります。該当:\n${listOf(/(ありませんか|ませんでしたか|いませんか|ないですか|なかったですか|あるでしょう|あったでしょう)[。？?]/g, 6).map((s) => `「${s}」`).join("\n")}`,
+    suggestion: "1枚目に1つ、2枚目に1〜2つまで残し、他は削除する。残した言い当ての後に共通点を一文で言う" });
+  // 対比の比喩は終盤に1回
+  const contrasts = listOf(/ほどの差/g);
+  if (contrasts.length >= 2) items.push({ name: `対比の比喩が${contrasts.length}回（上限1）`, status: "fail",
+    comment: `「◯◯ほどの差」が複数回あります。対比は終盤の放置リスクで1回だけ。該当:\n${contrasts.map((s) => `「${s}」`).join("\n")}`,
+    suggestion: "本編側の対比を削除し、終盤の1回だけ残す" });
+  // 時期の3段階は1回（まとめで繰り返さない）
+  // 時期は本編で1回＋まとめで1回まで（3回以上は繰り返し）
+  const timelines = listOf(/早い人は/g);
+  if (timelines.length >= 3) items.push({ name: `時期の予言が${timelines.length}回（上限2）`, status: "fail",
+    comment: `「早い人は◯日後」の時期が3回以上出ています。本編で1回、まとめで1回まで。該当:\n${timelines.map((s) => `「${s}」`).join("\n")}`,
+    suggestion: "本編の1回とまとめの1回だけ残し、他は削除する" });
+  // 結果の確定は言わない（既成事実は「流れに入った」まで）
+  const fixed = listOf(/確定した事実|もう確定(して|です|しました)|確定しています/g);
+  if (fixed.length > 0) items.push({ name: "結果の確定（既成事実の範囲超え）", status: "fail",
+    comment: `当選・成就を「確定した事実」と言い切っています。既成事実は「流れに入った」まで。該当:\n${fixed.map((s) => `「${s}」`).join("\n")}`,
+    suggestion: "「あなたは理想の未来が掴める流れに入りました」の形に直す" });
+  return items;
+}
+
+export function scanPositions(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  if (!looksLikeFullScript(t)) return [];
+  const items: QualityCheckItem[] = [];
+  const firstIndex = (re: RegExp) => { const m = t.match(re); return m && m.index !== undefined ? m.index : -1; };
+  const pos3 = firstIndex(/[3３]枚目/);
+  const pos4 = firstIndex(/[4４]枚目/);
+  // 中盤の離脱防止フックは3枚目をめくる直前。めくった後に出ていたら場所違い
+  const MID = /(ここからが今日(一番|いちばん)大事|この先は[、]?流し見|次のカードから話が大きく変わ|目を離さないでください|流し見だと受け取りきれない|釘を刺して|一つだけ注意|ひとつだけ注意|油断しないで)/g;
+  // 3枚目の「めくった後」= 3枚目の宣言より後に正位置／逆位置が出た位置より後
+  const reveal3 = (() => { if (pos3 < 0) return -1; const m = t.slice(pos3).match(/正位置|逆位置/); return m && m.index !== undefined ? pos3 + m.index : -1; })();
+  for (const m of t.matchAll(MID)) {
+    const i = m.index ?? 0;
+    if (reveal3 >= 0 && i > reveal3 && (pos4 < 0 || i < pos4)) {
+      items.push({ name: "中盤フックの場所違い（3枚目をめくった後）", status: "fail",
+        comment: `離脱防止の一言が、3枚目をめくった後に出ています。本来は3枚目をめくる直前です。該当: 「${sentenceOf(t, i)}」`,
+        suggestion: "この文を3枚目の登場（「3枚目、いきます」等）の直前に移し、めくった後には置かない" });
+      break;
+    }
+  }
+  // 先食い: 「4枚目でお伝えするワーク」のように、まだ出ていないカードの内容を先に言う
+  for (const m of t.matchAll(/([1-9１-９])枚目で(お伝えする|お話しする|引く|出てくる|視る|お渡しする)/g)) {
+    const n = Number(String(m[1]).replace(/[１-９]/g, (d) => String("１２３４５６７８９".indexOf(d) + 1)));
+    const before = t.slice(0, m.index ?? 0);
+    const seen = Array.from(before.matchAll(/([1-9１-９])枚目/g)).map((x) => Number(String(x[1]).replace(/[１-９]/g, (d) => String("１２３４５６７８９".indexOf(d) + 1))));
+    const maxSeen = seen.length ? Math.max(...seen) : 0;
+    if (n > maxSeen) {
+      items.push({ name: `先食い: ${n}枚目の内容を先に言っている`, status: "fail",
+        comment: `まだめくっていない${n}枚目の内容を先に予告しています。該当: 「${sentenceOf(t, m.index ?? 0)}」`,
+        suggestion: "先のカードの内容を言わず、その場の文脈で言い切る（予告は冒頭の「最後のカード」だけ）" });
+      break;
+    }
+  }
+  // 対比の比喩は終盤。最後のカードより前に出ていたら場所違い
+  const lastCard = (() => { let last = -1; for (const m of t.matchAll(/([1-9１-９])枚目|最後の1枚|最後のカード/g)) last = m.index ?? last; return last; })();
+  const contrastAt = firstIndex(/ほどの差/);
+  if (contrastAt >= 0 && lastCard >= 0 && contrastAt < lastCard) {
+    items.push({ name: "対比の比喩の場所違い（本編に出ている）", status: "fail",
+      comment: `「◯◯ほどの差」が最後のカードより前に出ています。対比は終盤の放置リスクで使う型です。該当: 「${sentenceOf(t, contrastAt)}」`,
+      suggestion: "本編の対比は削除し、終盤（案内の後の放置リスク）に1回だけ置く" });
+  }
+  return items;
+}
+
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
+    ...scanOccurrenceLimits(script),
+    ...scanPositions(script),
     ...scanAdjacentDuplicates(script),
     ...scanVerbatimExamples(script, opts?.rules, approvedScripts),
     ...scanStockSentences(script, approvedScripts || []),
