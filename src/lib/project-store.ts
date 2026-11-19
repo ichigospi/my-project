@@ -142,6 +142,11 @@ export interface ScriptProject {
   // 添削部屋（ステップ⑦）: ライターが「台本提出」した時点の台本と、オーナーが添削中の台本
   submittedScript?: string;
   reviewedScript?: string;
+  // 完成台本（テロップ用に整形した台本）。添削済みの台本を、文字を変えずに1テロップ＝最大2行×約25文字に区切ったもの
+  finalTelop?: string;
+  finalTelopIssues?: string[];
+  finalTelopOptions?: { maxLineChars: number; maxLines: number };
+  finalTelopAt?: string;
   reviewComments?: ReviewComment[];
   // 追加ルール提案（構成提案→添削部屋に送られる）
   ruleProposals?: RuleProposal[];
