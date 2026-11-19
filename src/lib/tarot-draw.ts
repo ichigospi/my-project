@@ -722,6 +722,10 @@ function cardLine(no: number, name: string, orientation: "正位置" | "逆位�
 // 品質チェック（機械判定）用: 本文で実際に開示されたカード枚数を数える
 export const CARD_NAMES: string[] = Object.keys(CARD_INFO);
 export function getCardImagery(name: string): string | undefined { return CARD_INFO[name]?.img; }
+export function getCardMeaning(name: string, orientation: "正位置" | "逆位置"): string | undefined {
+  const info = CARD_INFO[name];
+  return info ? (orientation === "逆位置" ? info.rev : info.up) : undefined;
+}
 export function countCardReveals(script: string): { count: number; cards: string[] } {
   const t = script.replace(/\s+/g, "");
   const found: string[] = [];
