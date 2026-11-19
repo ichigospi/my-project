@@ -198,41 +198,79 @@ ${buildReferenceText(referenceAnalyses || [])}
 ${skeleton}`;
 
     const isAnthropic = aiApiKey.startsWith("sk-ant-");
-    let raw = "";
-
-    if (isAnthropic) {
-      let res: Response | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: anthropicHeaders(aiApiKey, aiModel),
-          body: JSON.stringify({ model: aiModel, max_tokens: 8000, messages: [{ role: "user", content: userPrompt }], ...anthropicExtraBody(aiModel) }),
-        });
-        if (res.status === 429 || res.status === 529) {
-          if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
-          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
-          continue;
+    // モデル呼び出し（採点と、増筆プランの2回で使う）
+    const callModel = async (prompt: string, maxTokens: number): Promise<{ raw: string } | { error: NextResponse }> => {
+      if (isAnthropic) {
+        let res: Response | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: anthropicHeaders(aiApiKey, aiModel),
+            body: JSON.stringify({ model: aiModel, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
+          });
+          if (res.status === 429 || res.status === 529) {
+            if (attempt === 2) return { error: NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status }) };
+            await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
+            continue;
+          }
+          break;
         }
-        break;
+        if (!res!.ok) { const e = await res!.json().catch(() => ({})); return { error: NextResponse.json({ error: e?.error?.message || "API error" }, { status: res!.status }) }; }
+        const data = await res!.json();
+        recordUsage({ model: data.model || aiModel, usage: data.usage });
+        return { raw: ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("") };
       }
-      if (!res!.ok) { const e = await res!.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res!.status }); }
-      const data = await res!.json();
-      recordUsage({ model: data.model || aiModel, usage: data.usage });
-      raw = ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("");
-    } else {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: userPrompt }], max_tokens: 8000, response_format: { type: "json_object" } }),
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: maxTokens, response_format: { type: "json_object" } }),
       });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res.status }); }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); return { error: NextResponse.json({ error: e?.error?.message || "API error" }, { status: res.status }) }; }
       const odata = await res.json();
       recordUsage({ model: "gpt-4o", usage: odata.usage });
-      raw = odata.choices?.[0]?.message?.content || "";
-    }
+      return { raw: odata.choices?.[0]?.message?.content || "" };
+    };
 
-    const parsed = parseJSON(raw);
+    const main = await callModel(userPrompt, 8000);
+    if ("error" in main) return main.error;
+    const parsed = parseJSON(main.raw);
     if (!parsed) return NextResponse.json({ error: "AI応答の解析に失敗しました" }, { status: 500 });
+
+    // 文字数不足のときは、追加するリーディング内容（またはアドバイス）の具体案を別途作らせる。
+    // 「どのセクションの後に／何を視る内容を／約何字／元ネタのどこから」を箇条書きで返し、機械判定の提案文にそのまま載せる
+    let expansionPlan = "";
+    if (estimated > 0 && estimated < targetChars * 0.95) {
+      const planPrompt = `あなたは占いスピリチュアル系YouTube台本の構成プロデューサーです。
+次の台本の骨組みは、尺からの見積もりが約${estimated.toLocaleString()}字で、目標約${targetChars.toLocaleString()}字に対して約${deficit.toLocaleString()}字足りません。
+足りない分を埋めるために「追加する内容」を具体的に提案してください。
+
+【方針（必達）】
+${deficit >= 1000
+  ? `- 不足が1,000字以上なので「新しいリーディング内容の追加」を最優先にする。元ネタ台本の書き起こしを読み、この骨組みにまだ無い「カードで視ている内容」（相手の今の様子・なぜ今動くのか・どんな形で返るか／来るか・前触れのサイン・時期の段階・返った後の毎日 など）を2〜4個抜き出す
+- それぞれ、意味の近い既存のセクション（カード）の中に足す。カードの追加・削除・順番変更はしない。そのカードの正統な意味の範囲で語れる内容にする`
+  : `- 不足が1,000字未満なので「新しいアドバイスの追加」を最優先にする。元ネタ台本や同チャンネルの合格台本にある軽い行動・構え・やらないこと・受け取り方のうち、この骨組みに無いものを1〜2個選ぶ
+- 解決（行動を渡す）セクションの中か直後に足す。ハードルが低く今日できるものに限る。本編のアドバイスは占い師の言葉として言う`}
+- 合計で約${deficit.toLocaleString()}字増える配分にする（1件あたり300〜700字）
+- 元ネタ・合格台本の文をそのまま写す提案はしない。「何を視るか／何を言うか」の中身を、この骨組みの語り口で書く
+- セクション・カードを減らす提案はしない
+
+必ず次のJSONのみで回答（説明文・コードブロック記法は禁止）:
+{ "additions": [ { "after": "どのセクションの後か（骨組みのセクション名を書く）", "title": "追加する内容の見出し（15字以内）", "content": "何を視る／何を言うかを2〜3文で（台本でそのまま使える具体さ。元ネタの語り口のまま写さない）", "source": "元ネタのどの部分から取ったか（例: 元ネタ1の3枚目・前触れのサイン）", "chars": 500 } ] }
+
+【骨組み】
+${skeleton}
+${transcripts.length ? `\n【元ネタ台本の書き起こし】\n${transcripts.map((t, i) => `■ 元ネタ${i + 1}\n${t.slice(0, 8000)}`).join("\n\n")}\n` : ""}${deficit < 1000 && approved.length ? `\n【同チャンネルの合格台本】\n${approved.map((t, i) => `■ 合格台本${i + 1}\n${t.slice(0, 6000)}`).join("\n\n")}\n` : ""}`;
+      const plan = await callModel(planPrompt, 4000);
+      if (!("error" in plan)) {
+        const pj = parseJSON(plan.raw);
+        const adds = Array.isArray(pj?.additions) ? (pj!.additions as { after?: string; title?: string; content?: string; source?: string; chars?: number }[]) : [];
+        if (adds.length > 0) {
+          expansionPlan = adds.map((a, i) =>
+            `${i + 1}. 「${String(a.after || "").slice(0, 40)}」の後に【${String(a.title || "").slice(0, 20)}】を約${Number(a.chars) || 400}字\n　　${String(a.content || "").replace(/\s+/g, " ").slice(0, 220)}\n　　（出どころ: ${String(a.source || "").slice(0, 60)}）`,
+          ).join("\n");
+        }
+      }
+    }
 
     // 機械判定: 尺からの見積もりが目標に明らかに届かなければ fail を足す（見積もりは上で計算済み）
     if (targetChars > 0 && estimated > 0) {
@@ -247,13 +285,17 @@ ${skeleton}`;
         items.push({
           name: `目標文字数に届かない見込み（推定${estimated.toLocaleString()}字／目標${targetChars.toLocaleString()}字）`, status: "fail",
           comment: `骨組みの尺は約${Math.round(maxEndMin)}分で、1分≒${CHARS_PER_MINUTE}字で見積もると約${estimated.toLocaleString()}字です。目標の${Math.round(ratio * 100)}%しかなく、この骨組みのまま書くと文字数不足になります`,
-          suggestion: `${policy}。具体的にどのセクションに何を足すかは、上の「D. 尺・文字数配分」の提案を参照。セクションやカードを減らして合わせない`,
+          suggestion: expansionPlan
+            ? `${policy}。\n【追加する内容（この順に骨組みへ足す）】\n${expansionPlan}\nセクションやカードを減らして合わせない`
+            : `${policy}。具体案は「D. 尺・文字数配分」の提案を参照。セクションやカードを減らして合わせない`,
         });
       } else if (ratio < 0.95) {
         items.push({
           name: `目標文字数にやや足りない見込み（推定${estimated.toLocaleString()}字／目標${targetChars.toLocaleString()}字）`, status: "warn",
           comment: `骨組みの尺（約${Math.round(maxEndMin)}分）からの見積もりが目標の${Math.round(ratio * 100)}%です`,
-          suggestion: `${policy}。具体案は「D. 尺・文字数配分」の提案を参照`,
+          suggestion: expansionPlan
+            ? `${policy}。\n【追加する内容】\n${expansionPlan}`
+            : `${policy}。具体案は「D. 尺・文字数配分」の提案を参照`,
         });
       } else if (estimated > hardMax) {
         items.push({
