@@ -1183,10 +1183,13 @@ ${p.content}`;
                 <StepHeader n={1} title="カード設計表を作る" desc="何枚引くか・順番・各カードの役割を決めます。コア5枚は固定。元ネタにあって、いつものテンプレに無いものを追加カードの候補として提案します。"
                   done={step1Done} doneLabel={step1Done ? `${project.cardPlan!.slots.length}枚で確定` : undefined}
                   right={
-                    <button onClick={() => generateCardPlan()} disabled={planBusy}
-                      className="text-base px-4 py-2.5 rounded-xl bg-sky-600 text-white font-bold hover:bg-sky-700 disabled:opacity-50">
-                      {planBusy ? "作成中..." : project.cardPlan ? "AIで作り直す" : "AIで設計表を作る"}
-                    </button>
+                    <div className="flex flex-col items-end gap-1">
+                      <button onClick={() => { if (project.cardPlan?.slots.some((sl) => sl.card) && !confirm("役割構成（枚数・順番・各カードの役割）をAIで作り直しますか？\n引いてあるカードと「伝えること」も消えます。")) return; generateCardPlan(); }} disabled={planBusy}
+                        className="text-base px-4 py-2.5 rounded-xl bg-sky-600 text-white font-bold hover:bg-sky-700 disabled:opacity-50">
+                        {planBusy ? "作成中..." : project.cardPlan ? "🧩 役割構成をAIで作り直す" : "🧩 AIで設計表を作る"}
+                      </button>
+                      {project.cardPlan && <span className="text-[11px] text-sky-800">枚数・順番・役割を作り直す（カードと伝えることも消える）</span>}
+                    </div>
                   } />
                 {planError && <p className="text-sm text-red-600 mb-2">{planError}</p>}
                 {migrateNotice && (
@@ -1222,15 +1225,21 @@ ${p.content}`;
                               {drawingCards ? "引いています..." : "🃏 カードが無い枠を引く"}
                             </button>
                           )}
-                          <button onClick={() => fillPlan()} disabled={fillingPlan !== null || drawingCards || !project.cardPlan.slots.every((sl) => sl.card)}
-                            className="text-base px-4 py-2 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-50">
-                            {fillingPlan === "all" ? "作成中..." : isCardPlanFilled(project.cardPlan) ? "✨ 伝えることをAIで作り直す" : "✨ 伝えることをAIで埋める"}
-                          </button>
-                          <button onClick={() => { if (confirm("全部のカードを引き直しますか？（伝えることも消えます）")) drawPlanCards(true); }} disabled={drawingCards || fillingPlan !== null}
-                            className="text-sm px-3 py-2 rounded-xl border border-violet-300 text-violet-800 bg-white hover:bg-violet-100 disabled:opacity-50">🔁 全部引き直す</button>
+                          <div className="flex flex-col items-start gap-0.5">
+                            <button onClick={() => { if (confirm("カードを全部引き直しますか？\n役割はそのまま。「伝えること」と背骨は消えます。")) drawPlanCards(true); }} disabled={drawingCards || fillingPlan !== null}
+                              className="text-sm px-3 py-2 rounded-xl border border-violet-300 text-violet-800 bg-white hover:bg-violet-100 disabled:opacity-50">🃏 カードを全部引き直す</button>
+                            <span className="text-[11px] text-violet-700">役割はそのまま。伝えることは消える</span>
+                          </div>
+                          <div className="flex flex-col items-start gap-0.5">
+                            <button onClick={() => fillPlan()} disabled={fillingPlan !== null || drawingCards || !project.cardPlan.slots.every((sl) => sl.card)}
+                              className="text-base px-4 py-2 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-50">
+                              {fillingPlan === "all" ? "作成中..." : isCardPlanFilled(project.cardPlan) ? "✨ 伝えることをAIで作り直す" : "✨ 伝えることをAIで埋める"}
+                            </button>
+                            <span className="text-[11px] text-violet-700">役割もカードも変わらない。背骨と各カードの伝えることだけ</span>
+                          </div>
                         </>
                       )}
-                      <span className="text-xs text-violet-800">シャッフルは最初の1回だけ。引いた後は1枚ずつ「引き直す」「差し替え」で調整できます</span>
+                      <span className="text-xs text-violet-800">順番: 役割構成（右上）→ カード → 伝えること。シャッフルは最初の1回だけ。引いた後は1枚ずつ「引き直す」「差し替え」で調整できます</span>
                       {(drawingCards || fillingPlan !== null) && <span className="text-xs text-violet-700 flex items-center gap-1"><span className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />{drawingCards ? "カードを引いています…" : "伝えることを作っています…"}</span>}
                       {planError && <span className="text-sm text-red-600 font-medium">⚠ {planError}</span>}
                       {project.cardPlan.slots.some((sl) => !sl.card) && !drawingCards && (
