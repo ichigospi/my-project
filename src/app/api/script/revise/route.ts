@@ -46,6 +46,19 @@ ${blocks.join("\n\n")}
 `;
 }
 
+// 置換後に「同じ文が続けて2回」が新しく生まれていないか（元の文を残したまま直した文を足す誤りの検出）
+function adjacentDuplicateSentences(text: string): Set<string> {
+  const sents = text.replace(/\s+/g, "").split(/(?<=[。！？!?])/).map((s) => s.trim()).filter(Boolean);
+  const out = new Set<string>();
+  for (let i = 1; i < sents.length; i++) if (sents[i].length >= 12 && sents[i] === sents[i - 1]) out.add(sents[i]);
+  return out;
+}
+function introducesDuplicate(before: string, after: string): string | null {
+  const prev = adjacentDuplicateSentences(before);
+  for (const s of adjacentDuplicateSentences(after)) if (!prev.has(s)) return s;
+  return null;
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -124,6 +137,9 @@ export async function POST(request: NextRequest) {
 - find は前後を一意に特定できる十分な長さ（最低でも1文）にする。短すぎて複数箇所に一致しうる文字列は避ける
 - replace は find と同じ範囲を置き換えた後の文字列。直すべき部分だけを変え、それ以外の語句は find からそのまま残す
 - 文章を「追加」したい場合は、挿入位置の直前か直後にある既存の一文を find にし、replace に「その一文＋追加する文」を入れる
+- 指摘の「該当:」に挙がっている文は、台本の同じ文をそのまま find にする（「…」は省略記号なので find には入れない）
+- 「（N箇所）」「全部直す」とある指摘は、挙がっている全部の文を直す（1つ直して残りを放置すると同じ不合格が繰り返される）。文ごとに別の edit にする
+- 直した文を replace に入れるとき、find の元の文を残したまま新しい文を足さない（同じ文が2回並ぶ）。差し替えは「元の文→直した文」だけ
 - 修正が不要、または該当箇所が見つからない指摘は edits に含めない（無理に何かを変えない）
 - edits は必要最小限の件数に絞る。1つのeditの範囲も必要な分だけに留め、広げすぎない
 - 元ネタ基準値が与えられている場合、replace の該当要素は元ネタ以上にターゲットへ刺さる具体性にする（ただし対象の範囲内だけ）
@@ -188,6 +204,11 @@ ${script}`;
       if (!find) continue;
       const next = applyOneEdit(result, find, replace);
       if (next !== null) {
+        const dup = introducesDuplicate(result, next);
+        if (dup) {
+          unmatched.push(`・[不適用] ${reason || "修正"}（元の文を残したまま直した文を足す内容で、同じ文が2回並ぶため適用しませんでした: 「${dup.slice(0, 40)}…」）`);
+          continue;
+        }
         if (!allowCardAdd) {
           const added = countCardReveals(next).cards.filter((c) => !baseCards.has(c));
           if (added.length > 0) {
