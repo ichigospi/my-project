@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { countCardReveals } from "@/lib/tarot-draw";
+import { blacklistPromptBlock } from "@/lib/qc-blacklist";
 
 // 全文を書き直させると指示外の箇所まで改変されるため、
 // 「該当箇所だけの find→replace パッチ」をモデルに出させ、サーバ側で元台本に適用する。
@@ -145,6 +146,9 @@ export async function POST(request: NextRequest) {
 - 元ネタ基準値が与えられている場合、replace の該当要素は元ネタ以上にターゲットへ刺さる具体性にする（ただし対象の範囲内だけ）
 ${referenceText}
 【現在日時】今日は${jstToday()}（日本時間）。時期の訴求を書く場合は今日を基点にし、過ぎた月を未来の予言として書かないこと。
+
+${blacklistPromptBlock()}
+※ replace の文にも上記の禁止表現・漢数字を入れない（直した結果がまた不合格になる）
 
 【修正指示】
 ${revisionNote}

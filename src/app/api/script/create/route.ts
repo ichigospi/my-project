@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { blacklistPromptBlock } from "@/lib/qc-blacklist";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
   引き継ぐのは **訴求の中身・構造・役割・具体性のレベル**。言い回し・固有名詞・数値設定だけを自チャンネル独自に作り直すこと。
   ・良い例: 元ネタ「翌月にジャンボで1等5億円」→ 自前「3週間後にミニロトで780万円」（同じ訴求＝短期間での高額当選体験。数値と語句だけ変更）
   ・良い例: 元ネタ「いつ買えばいいか／どこで買えばいいか／いくら当たるか」→ 自前「買うべきタイミング／選ぶべき売り場／舞い込む金額」（**同じ3つの疑問**を別の言い回しにする。疑問の中身を別の話題に差し替えない）
-  ・良い例: 元ネタ「天と地ほどの差」→ 自前「朝日と夕暮れほどの差」「月とすっぽんほどの差」（同じ対比効果を別の言葉で）
+  ・良い例: 元ネタ「天と地ほどの差」→ 自前「同じ雨に打たれたのに、傘を開いた人と濡れたままの人の差」（同じ対比効果を別の言葉で。比喩は抽選ブロックの【対比型の比喩】の指定に従い、「朝日と夕暮れ」「天と地」は使わない）
   ・悪い例: 元ネタの数値・宝くじ種類・売り場特徴・疑問形・比喩を一字一句そのまま使う → 一致率25%以上で失格
   ・悪い例: 元ネタの訴求を無視して、別の話題・別の切り口に置き換える → 伸び要素の継承漏れで失格
 
@@ -250,6 +251,8 @@ ${formatSectionTargets(skeletonText) ? `\n【セクションごとの目安字�
 
 ${structureMode === "reference" ? referenceModeBlock(style) : ""}
 ${rulesText || ""}
+
+${blacklistPromptBlock()}
 ${additionalNotes ? `【追加指示】\n${additionalNotes}` : ""}
 
 【書式ルール（チャンネル共通ルールに書式指定がある場合は必ずそちらを最優先）】
