@@ -80,6 +80,35 @@ function excerpt(script: string, m: RegExpMatchArray): string {
   const i = m.index ?? 0;
   return script.slice(Math.max(0, i - 25), Math.min(script.length, i + (m[0]?.length || 0) + 25)).replace(/\s+/g, " ");
 }
+// 該当箇所を「文ごと」返す（修正の find にそのまま使えるように、前後を省略しない）。長すぎる場合だけ末尾を切る
+function sentenceAt(script: string, index: number, len: number): string {
+  let s = index; while (s > 0 && !/[。！？!?\n]/.test(script[s - 1])) s--;
+  let e = index + len;
+  // 一致部分が句点で終わっていればそこが文末。そうでなければ次の句点まで延ばす
+  if (!/[。！？!?]/.test(script[e - 1] || "")) {
+    while (e < script.length && !/[。！？!?\n]/.test(script[e])) e++;
+    if (e < script.length && /[。！？!?]/.test(script[e])) e++;
+  }
+  // 短すぎる文は find として曖昧になるので、直前の文も含める
+  if (e - s < 15 && s > 0) { let s2 = s - 1; while (s2 > 0 && !/[。！？!?\n]/.test(script[s2 - 1])) s2--; s = s2; }
+  const sent = script.slice(s, e).replace(/\s+/g, " ").trim();
+  return sent.length > 140 ? sent.slice(0, 140) + "…" : sent;
+}
+// パターンの全出現を文ごとに列挙（最大 max 件）。1つだけ直して残りが残る＝同じ不合格が繰り返される、を防ぐ
+function allSentences(script: string, pattern: RegExp, max = 5): { count: number; sentences: string[] } {
+  const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+  const sentences: string[] = [];
+  let count = 0;
+  for (const m of script.matchAll(re)) {
+    count++;
+    const sent = sentenceAt(script, m.index ?? 0, m[0].length);
+    if (sentences.length < max && !sentences.includes(sent)) sentences.push(sent);
+  }
+  return { count, sentences };
+}
+function listSentences(found: { count: number; sentences: string[] }): string {
+  return `該当${found.count > 1 ? `（${found.count}箇所。全部直す）` : ""}:\n${found.sentences.map((s) => `「${s}」`).join("\n")}${found.count > found.sentences.length ? `\n（他${found.count - found.sentences.length}箇所）` : ""}`;
+}
 
 export function scanBlacklist(script: string): QualityCheckItem[] {
   const items: QualityCheckItem[] = [];
@@ -87,10 +116,11 @@ export function scanBlacklist(script: string): QualityCheckItem[] {
     if (rule.level === "track") continue; // 繰り返し管理は scanConsecutive で判定
     const m = script.match(rule.pattern);
     if (!m) continue;
+    const found = allSentences(script, rule.pattern);
     items.push({
-      name: `定型文: 「${m[0]}」`,
+      name: `定型文: 「${m[0]}」${found.count > 1 ? `（${found.count}箇所）` : ""}`,
       status: rule.level,
-      comment: `${rule.reason}。該当: …${excerpt(script, m)}…`,
+      comment: `${rule.reason}。${listSentences(found)}`,
       suggestion: rule.fix || "",
     });
   }
@@ -107,10 +137,11 @@ export function scanConsecutive(script: string, approvedScripts: string[]): Qual
     const m = script.match(rule.pattern);
     if (!m) continue;
     if (prev.every((t) => rule.pattern.test(t))) {
+      const found = allSentences(script, rule.pattern);
       items.push({
-        name: `3本連続の表現: 「${m[0]}」`,
+        name: `3本連続の表現: 「${m[0]}」${found.count > 1 ? `（${found.count}箇所）` : ""}`,
         status: "fail",
-        comment: `直近2本の合格台本で続けて使った表現を、今回も使っています（${rule.reason}）。該当: …${excerpt(script, m)}…`,
+        comment: `直近2本の合格台本で続けて使った表現を、今回も使っています（${rule.reason}）。${listSentences(found)}`,
         suggestion: rule.fix || "別の言い回し・別の型に変える",
       });
     }
@@ -862,8 +893,40 @@ export function scanReshuffle(script: string): QualityCheckItem[] {
   }];
 }
 
+// 同じ文が続けて2回出ている（修正パッチで「元の文＋直した文」を重ねて置いたときに起きる）。放置すると同一文の繰り返しとして毎回不合格になる
+export function scanAdjacentDuplicates(script: string): QualityCheckItem[] {
+  const sents = script.replace(/\s+/g, "").split(/(?<=[。！？!?])/).map((s) => s.trim()).filter(Boolean);
+  const exact: string[] = [];
+  const near: string[] = [];
+  const prefixLen = (x: string, y: string) => { let n = 0; while (n < x.length && n < y.length && x[n] === y[n]) n++; return n; };
+  for (let i = 1; i < sents.length; i++) {
+    const a = sents[i - 1], b = sents[i];
+    if (b.length >= 12 && a === b) { if (!exact.includes(b)) exact.push(b); continue; }
+    // 前半が20字以上同じで、短い方が長い方の7割以上＝「元の文を残したまま直した文を足した」形
+    const shorter = Math.min(a.length, b.length);
+    if (shorter >= 15 && prefixLen(a, b) >= Math.max(20, Math.floor(shorter * 0.7))) { const pair = `${a}｜${b}`; if (!near.includes(pair)) near.push(pair); }
+    if (exact.length + near.length >= 5) break;
+  }
+  const items: QualityCheckItem[] = [];
+  const cut = (h: string) => (h.length > 160 ? h.slice(0, 160) + "…" : h);
+  if (exact.length > 0) items.push({
+    name: `同じ文が続けて2回（${exact.length}件）`,
+    status: "fail",
+    comment: `同じ文が連続しています（修正で重ねて置かれた可能性）。該当（片方を消す）:\n${exact.map((h) => `「${cut(h)}」`).join("\n")}`,
+    suggestion: "連続している2文のうち片方を削除する（文は変えない）",
+  });
+  if (near.length > 0) items.push({
+    name: `ほぼ同じ文が続いている（${near.length}件）`,
+    status: "warn",
+    comment: `前半が同じ文が2つ並んでいます（修正で元の文を残したまま直した文を足した形の可能性）。該当:\n${near.map((h) => `「${cut(h)}」`).join("\n")}`,
+    suggestion: "2文のうち古い方（直す前の文）を削除し、1文にする",
+  });
+  return items;
+}
+
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
+    ...scanAdjacentDuplicates(script),
     ...scanVerbatimExamples(script, opts?.rules, approvedScripts),
     ...scanStockSentences(script, approvedScripts || []),
     ...scanRetentionDuplicate(script),
