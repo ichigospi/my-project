@@ -7,9 +7,9 @@ import { getAiModel } from "@/lib/ai-model";
 import { getAnalyses, deleteAnalysis, getProfileByChannel, saveAnalysis } from "@/lib/script-analysis-store";
 import { formatNumber } from "@/lib/mock-data";
 import { buildInjectedRules, formatRulesForPrompt } from "@/lib/rules-injector";
-import { getPresetFor, getProjects } from "@/lib/project-store";
+import { getPresetFor, getProjects, isCardPlanFilled } from "@/lib/project-store";
 import { skeletonInsertInstruction, skeletonContentInstruction, skeletonContentBatchInstruction, type CardAddition, type ContentAddition } from "@/lib/card-additions";
-import { extractDrawnCards, syncDrawSpecToCards } from "@/lib/tarot-draw";
+import { extractDrawnCards, syncDrawSpecToCards, tarotCardImageUrl, CARD_NAMES } from "@/lib/tarot-draw";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
 import TarotCardGallery from "@/components/TarotCardGallery";
@@ -178,7 +178,7 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         const slots = [...project.cardPlan.slots];
         if (slots.length >= 8) { setError("カードは最大8枚までです"); return; }
         const pos = a.afterIndex && a.afterIndex <= slots.length ? a.afterIndex : slots.length - 1;
-        const newSlot: CardSlot = { role: "追加", kind: "extra", title: a.title.slice(0, 12), content: `${a.content}（カード: ${a.card.name}・${a.card.orientation}）`, source: a.source || "元ネタ", reason: `文字数不足の補い。${a.after}の後` };
+        const newSlot: CardSlot = { role: "追加", kind: "extra", title: a.title.slice(0, 12), content: a.content, source: a.source || "元ネタ", reason: `文字数不足の補い。${a.after}の後`, card: { name: a.card.name, orientation: a.card.orientation }, message: a.content, highlight: "", flow: "" };
         slots.splice(Math.max(0, pos), 0, newSlot);
         onUpdate({ ...project, cardPlan: { ...project.cardPlan, slots, updatedAt: new Date().toISOString() }, cardAdditionProposals: [] });
       } else {
@@ -249,6 +249,120 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
         onUpdate({ ...project, contentAdditionProposals: rest });
       }
     } finally { setAddingBatch(false); }
+  };
+
+  // ===== 設計表にカードを引き、「伝えること」を埋める（旧・抽象ロジックの役割を設計表に統合） =====
+  const [drawingCards, setDrawingCards] = useState(false);
+  const [fillingPlan, setFillingPlan] = useState<number | "all" | null>(null);
+  const [fillInstruction, setFillInstruction] = useState("");
+  const [replaceIdx, setReplaceIdx] = useState<number | null>(null);
+  const [replaceName, setReplaceName] = useState("");
+  const [replaceOrient, setReplaceOrient] = useState<"正位置" | "逆位置">("正位置");
+  const [openImagery, setOpenImagery] = useState<Record<number, boolean>>({});
+
+  // 設計表のカードに抽選ブロックを合わせて保存（設計表が唯一の正）
+  const planCardsOf = (slots: CardSlot[]) => slots.filter((sl) => sl.card).map((sl, i) => ({ name: sl.card!.name, orientation: sl.card!.orientation, slot: i + 1 }));
+  const savePlanCards = (next: CardPlan, extra?: Partial<ScriptProject>) => {
+    const cards = planCardsOf(next.slots);
+    const synced = cards.length >= 3 && cards.length === next.slots.length ? syncDrawSpecToCards(project.drawSpec, cards) : project.drawSpec;
+    onUpdate({ ...project, cardPlan: { ...next, updatedAt: new Date().toISOString() }, ...(synced !== project.drawSpec ? { drawSpec: synced } : {}), ...(extra || {}) });
+    pushSharedSettings();
+  };
+
+  // カードを引く（全スロット）。すでに引いてあるスロットは残し、無いスロットだけ補う
+  const drawPlanCards = async (redrawAll = false) => {
+    const plan = project.cardPlan; if (!plan) return;
+    setDrawingCards(true); setPlanError("");
+    try {
+      const needAll = redrawAll || !plan.slots.some((sl) => sl.card);
+      if (needAll) {
+        const res = await fetch("/api/script/card-plan/draw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "draw", cardPlan: plan, genre: project.genre, topic: project.title }) });
+        const data = await res.json();
+        if (data.error) { setPlanError(data.error); return; }
+        const slots = (data.slots as CardSlot[]).map((sl) => ({ ...sl, highlight: "", message: "", flow: "" }));
+        onUpdate({ ...project, cardPlan: { ...plan, slots, backbone: undefined, drawnAt: data.drawnAt, filledAt: undefined, updatedAt: new Date().toISOString() }, drawSpec: data.drawSpec, abstractLogic: "" });
+        pushSharedSettings();
+        return;
+      }
+      // 一部だけ無い: 使用中のカードを除いて1枚ずつ引く
+      const slots = [...plan.slots];
+      for (let i = 0; i < slots.length; i++) {
+        if (slots[i].card) continue;
+        const used = slots.filter((s) => s.card).map((s) => s.card!.name);
+        const res = await fetch("/api/script/card-plan/draw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "redraw", usedNames: used, genre: project.genre, topic: project.title }) });
+        const data = await res.json();
+        if (data.error) { setPlanError(data.error); return; }
+        slots[i] = { ...slots[i], card: data.card, meaning: data.meaning || "", imagery: data.imagery || "", highlight: "", message: "", flow: "" };
+      }
+      savePlanCards({ ...plan, slots });
+    } catch { setPlanError("カードを引けませんでした"); }
+    finally { setDrawingCards(false); }
+  };
+
+  // 1枚だけ引き直す／指定のカードに差し替える（そのスロットの「伝えること」は作り直し対象になる）
+  const setSlotCard = (idx: number, card: { name: string; orientation: "正位置" | "逆位置" }, meaning: string, imagery: string) => {
+    const plan = project.cardPlan; if (!plan) return;
+    const slots = plan.slots.map((sl, i) => (i === idx ? { ...sl, card, meaning, imagery, highlight: "", message: "", flow: "" } : sl));
+    savePlanCards({ ...plan, slots });
+  };
+  const redrawSlot = async (idx: number) => {
+    const plan = project.cardPlan; if (!plan) return;
+    setDrawingCards(true); setPlanError("");
+    try {
+      const used = plan.slots.filter((s, i) => s.card && i !== idx).map((s) => s.card!.name);
+      const res = await fetch("/api/script/card-plan/draw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "redraw", usedNames: used, genre: project.genre, topic: project.title }) });
+      const data = await res.json();
+      if (data.error) { setPlanError(data.error); return; }
+      setSlotCard(idx, data.card, data.meaning || "", data.imagery || "");
+    } catch { setPlanError("引き直しに失敗しました"); }
+    finally { setDrawingCards(false); }
+  };
+  const replaceSlotCard = async () => {
+    if (replaceIdx === null || !replaceName) return;
+    const plan = project.cardPlan; if (!plan) return;
+    if (plan.slots.some((s, i) => i !== replaceIdx && s.card?.name === replaceName)) { setPlanError("そのカードは他のスロットで使っています"); return; }
+    setDrawingCards(true); setPlanError("");
+    try {
+      // 意味・絵柄はサーバーの登録から取る
+      const res = await fetch("/api/script/card-plan/draw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "info", name: replaceName, orientation: replaceOrient }) });
+      const data = await res.json();
+      if (data.error) { setPlanError(data.error); return; }
+      setSlotCard(replaceIdx, { name: replaceName, orientation: replaceOrient }, data.meaning || "", data.imagery || "");
+      setReplaceIdx(null); setReplaceName("");
+    } catch { setPlanError("差し替えに失敗しました"); }
+    finally { setDrawingCards(false); }
+  };
+
+  // 背骨と各カードの「伝えること」をAIで埋める（onlyIndex を渡すと1枚だけ作り直す）
+  const fillPlan = async (onlyIndex?: number) => {
+    const plan = project.cardPlan; if (!plan) return;
+    if (!plan.slots.every((sl) => sl.card)) { setPlanError("先にカードを引いてください"); return; }
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setPlanError("AI APIキーを設定してください"); return; }
+    setFillingPlan(onlyIndex ?? "all"); setPlanError("");
+    try {
+      const referenceAnalyses = analyses.map((a) => ({ videoTitle: a.videoTitle, essence: a.essence || null, analysisResult: a.analysisResult || null }));
+      const profile = getProfileByChannel(project.channelId || "");
+      const res = await fetch("/api/script/card-plan/draw", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "fill", cardPlan: plan, genre: project.genre, topic: project.title, referenceAnalyses, profileText: profile ? JSON.stringify(profile).slice(0, 1500) : "", instruction: fillInstruction, onlyIndex, aiApiKey, aiModel: getAiModel("generate") }),
+      });
+      const data = await res.json();
+      if (data.error) { setPlanError(data.error); return; }
+      savePlanCards({ ...plan, slots: data.slots as CardSlot[], backbone: data.backbone, filledAt: data.filledAt }, { abstractLogic: "" });
+      setFillInstruction("");
+    } catch { setPlanError("「伝えること」の作成に失敗しました"); }
+    finally { setFillingPlan(null); }
+  };
+  const updateSlotField = (idx: number, field: "highlight" | "message" | "flow", value: string) => {
+    const plan = project.cardPlan; if (!plan) return;
+    const slots = plan.slots.map((sl, i) => (i === idx ? { ...sl, [field]: value } : sl));
+    onUpdate({ ...project, cardPlan: { ...plan, slots, updatedAt: new Date().toISOString() } });
+  };
+  const updateBackbone = (field: "theme" | "metaphor" | "promise", value: string) => {
+    const plan = project.cardPlan; if (!plan) return;
+    const backbone = { theme: "", metaphor: "", promise: "", ...(plan.backbone || {}), [field]: value };
+    onUpdate({ ...project, cardPlan: { ...plan, backbone, updatedAt: new Date().toISOString() } });
   };
 
   // 骨組みを差分パッチ（加筆／違反箇所の削除）で修正する。全文出力し直しはしない。
@@ -499,7 +613,9 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
     const aiApiKey = getApiKey("ai_api_key");
     if (!aiApiKey) { setError("AI APIキーを設定してください"); return; }
 
-    const phase = opts?.phase ?? (project.style === "tarot" ? ((abstractDraft ?? project.abstractLogic) ? "concrete" : "abstract") : undefined);
+    // 設計表にカードと「伝えること」が揃っていれば（新フロー）抽象ロジックは作らず、設計表から直接「具体」へ
+    const planFilledNow = isCardPlanFilled(project.cardPlan);
+    const phase = opts?.phase ?? (project.style === "tarot" ? ((planFilledNow || (abstractDraft ?? project.abstractLogic)) ? "concrete" : "abstract") : undefined);
 
     setDiffModal(null);
     setGenerating(true);
@@ -519,7 +635,8 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
           primaryAnalysisId: effectivePrimaryId || undefined,
           structureMode: mode,
           phase,
-          abstractLogic: phase === "concrete" ? (abstractDraft ?? project.abstractLogic) : undefined,
+          // 新フロー（設計表が揃っている）ではサーバー側で設計表から抽象ロジックを組み立てる。旧フローの文章がある場合だけ渡す
+          abstractLogic: phase === "concrete" && !planFilledNow ? (abstractDraft ?? project.abstractLogic) : undefined,
           channelProfile: getProfileByChannel(project.channelId || ""), aiApiKey, aiModel: getAiModel("generate"),
           userPrompt: [promptText, opts?.extraPrompt].filter(Boolean).join("\n") || undefined,
           currentSkeleton: skeleton || undefined,
@@ -919,7 +1036,9 @@ ${p.content}`;
         const isTarot = project.style === "tarot";
         const abstractText = abstractDraft ?? project.abstractLogic ?? "";
         const step1Done = !!project.cardPlan?.slots?.length;
-        const step2Done = !!abstractText.trim();
+        // 新フロー: 設計表にカードと「伝えること」が揃っていれば、抽象ロジック（Step 2）は不要
+        const planFilled = isTarot && isCardPlanFilled(project.cardPlan);
+        const step2Done = planFilled || !!abstractText.trim();
         const step3Done = !!skeleton;
         const stepNo = (n: number) => (isTarot ? n : n - 2);
         const Status = ({ done, label }: { done: boolean; label?: string }) => (
@@ -998,6 +1117,54 @@ ${p.content}`;
                 {!project.cardPlan && !planBusy && (
                   <p className="text-base text-sky-900">まだ設計表がありません。右上の「AIで設計表を作る」を押してください{!mainAnalysis?.essence ? "（元ネタの本質を抽出してからの方が精度が上がります）" : ""}。</p>
                 )}
+                {/* カードを引く／伝えることを埋める（旧 Step 2 の役割） */}
+                {project.cardPlan && (
+                  <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!project.cardPlan.slots.some((sl) => sl.card) ? (
+                        <button onClick={() => drawPlanCards(false)} disabled={drawingCards || planBusy}
+                          className="text-base px-4 py-2 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-50">
+                          {drawingCards ? "引いています..." : "🃏 カードを引く"}
+                        </button>
+                      ) : (
+                        <>
+                          {project.cardPlan.slots.some((sl) => !sl.card) && (
+                            <button onClick={() => drawPlanCards(false)} disabled={drawingCards || planBusy}
+                              className="text-sm px-3 py-2 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-50">
+                              {drawingCards ? "引いています..." : "🃏 カードが無い枠を引く"}
+                            </button>
+                          )}
+                          <button onClick={() => fillPlan()} disabled={fillingPlan !== null || drawingCards || !project.cardPlan.slots.every((sl) => sl.card)}
+                            className="text-base px-4 py-2 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-50">
+                            {fillingPlan === "all" ? "作成中..." : isCardPlanFilled(project.cardPlan) ? "✨ 伝えることをAIで作り直す" : "✨ 伝えることをAIで埋める"}
+                          </button>
+                          <button onClick={() => { if (confirm("全部のカードを引き直しますか？（伝えることも消えます）")) drawPlanCards(true); }} disabled={drawingCards || fillingPlan !== null}
+                            className="text-sm px-3 py-2 rounded-xl border border-violet-300 text-violet-800 bg-white hover:bg-violet-100 disabled:opacity-50">🔁 全部引き直す</button>
+                        </>
+                      )}
+                      <span className="text-xs text-violet-800">シャッフルは最初の1回だけ。引いた後は1枚ずつ「引き直す」「差し替え」で調整できます</span>
+                    </div>
+                    {project.cardPlan.slots.some((sl) => sl.card) && (
+                      <div className="mt-2">
+                        <input value={fillInstruction} onChange={(e) => setFillInstruction(e.target.value)} placeholder="AIへの指示（任意。例: 3枚目の常識破壊は『我慢』を仮想敵に／中心メタファーは1枚目の絵柄から）"
+                          className="w-full px-3 py-1.5 rounded-lg border border-violet-200 bg-white text-sm" />
+                      </div>
+                    )}
+                    {project.cardPlan.backbone && (
+                      <div className="mt-3 grid gap-1.5">
+                        <label className="text-xs text-gray-600">メインテーマと主張
+                          <input value={project.cardPlan.backbone.theme} onChange={(e) => updateBackbone("theme", e.target.value)} onBlur={pushSharedSettings} className="mt-0.5 w-full px-2 py-1 rounded border border-violet-200 bg-white text-base font-medium text-gray-900" />
+                        </label>
+                        <label className="text-xs text-gray-600">中心メタファー（この台本で使う比喩は1つだけ）
+                          <input value={project.cardPlan.backbone.metaphor} onChange={(e) => updateBackbone("metaphor", e.target.value)} onBlur={pushSharedSettings} className="mt-0.5 w-full px-2 py-1 rounded border border-violet-200 bg-white text-base font-medium text-gray-900" />
+                        </label>
+                        <label className="text-xs text-gray-600">冒頭の約束（終盤で同じ言葉で回収する）
+                          <input value={project.cardPlan.backbone.promise} onChange={(e) => updateBackbone("promise", e.target.value)} onBlur={pushSharedSettings} className="mt-0.5 w-full px-2 py-1 rounded border border-violet-200 bg-white text-base font-medium text-gray-900" />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {project.cardPlan && (
                   <ol className="space-y-2">
                     {project.cardPlan.slots.map((sl, i) => (
@@ -1010,6 +1177,61 @@ ${p.content}`;
                           </div>
                           <p className="text-base leading-7 text-gray-800 mt-1">{sl.content}</p>
                           <p className="text-sm text-gray-500 mt-1">出どころ：{sl.source || "—"}　／　理由：{sl.reason || "—"}</p>
+                          {/* 引いたカードと「伝えること」（旧・抽象ロジックの中身） */}
+                          {sl.card && (
+                            <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/50 p-3">
+                              <div className="flex items-start gap-3">
+                                {tarotCardImageUrl(sl.card.name) ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={tarotCardImageUrl(sl.card.name)!} alt={sl.card.name} loading="lazy"
+                                    className={`w-14 h-[95px] rounded border border-gray-200 bg-white object-contain shrink-0 ${sl.card.orientation === "逆位置" ? "rotate-180" : ""}`} />
+                                ) : <div className="w-14 h-[95px] rounded border border-gray-200 bg-white shrink-0" />}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-base font-bold text-violet-900">{sl.card.name}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${sl.card.orientation === "逆位置" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"}`}>{sl.card.orientation}</span>
+                                    <button onClick={() => redrawSlot(i)} disabled={drawingCards || fillingPlan !== null} className="text-xs px-2 py-1 rounded border border-violet-300 text-violet-800 bg-white hover:bg-violet-100 disabled:opacity-50">🔁 引き直す</button>
+                                    <button onClick={() => { setReplaceIdx(replaceIdx === i ? null : i); setReplaceName(""); setReplaceOrient("正位置"); }} disabled={drawingCards || fillingPlan !== null} className="text-xs px-2 py-1 rounded border border-violet-300 text-violet-800 bg-white hover:bg-violet-100 disabled:opacity-50">🃏 差し替え</button>
+                                    {sl.message && <button onClick={() => fillPlan(i)} disabled={drawingCards || fillingPlan !== null} className="text-xs px-2 py-1 rounded border border-violet-300 text-violet-800 bg-white hover:bg-violet-100 disabled:opacity-50">{fillingPlan === i ? "作成中..." : "✨ この1枚の伝えることを作り直す"}</button>}
+                                  </div>
+                                  <p className="text-sm text-gray-800 mt-1"><span className="text-gray-500">正統な意味：</span>{sl.meaning || "—"}</p>
+                                  <button onClick={() => setOpenImagery({ ...openImagery, [i]: !openImagery[i] })} className="text-xs text-violet-700 hover:underline mt-0.5">{openImagery[i] ? "絵柄を閉じる" : "絵柄を見る"}</button>
+                                  {openImagery[i] && <p className="text-xs text-gray-600 mt-0.5">{sl.imagery || "—"}</p>}
+                                  {replaceIdx === i && (
+                                    <div className="mt-2 flex flex-wrap items-center gap-2 bg-white rounded-lg border border-violet-200 p-2">
+                                      <select value={replaceName} onChange={(e) => setReplaceName(e.target.value)} className="px-2 py-1 rounded border border-gray-200 text-sm">
+                                        <option value="">カードを選ぶ</option>
+                                        {CARD_NAMES.map((n) => <option key={n} value={n} disabled={project.cardPlan!.slots.some((s, si) => si !== i && s.card?.name === n)}>{n}</option>)}
+                                      </select>
+                                      <select value={replaceOrient} onChange={(e) => setReplaceOrient(e.target.value as "正位置" | "逆位置")} className="px-2 py-1 rounded border border-gray-200 text-sm">
+                                        <option value="正位置">正位置</option><option value="逆位置">逆位置</option>
+                                      </select>
+                                      <button onClick={replaceSlotCard} disabled={!replaceName || drawingCards} className="text-sm px-3 py-1 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">このカードにする</button>
+                                      <button onClick={() => setReplaceIdx(null)} className="text-sm text-gray-500 hover:underline">やめる</button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              {(sl.message || sl.highlight || sl.flow) ? (
+                                <div className="mt-2 space-y-1.5">
+                                  <label className="block text-xs text-gray-500">絵柄の見せ場
+                                    <input value={sl.highlight || ""} onChange={(e) => updateSlotField(i, "highlight", e.target.value)} onBlur={pushSharedSettings}
+                                      className="mt-0.5 w-full px-2 py-1 rounded border border-violet-200 bg-white text-sm text-gray-800" />
+                                  </label>
+                                  <label className="block text-xs text-gray-500">伝えること（この台本固有の主張。末尾に出典）
+                                    <textarea value={sl.message || ""} onChange={(e) => updateSlotField(i, "message", e.target.value)} onBlur={pushSharedSettings} rows={2}
+                                      className="mt-0.5 w-full px-2 py-1 rounded border border-violet-300 bg-white text-base font-medium text-gray-900 leading-6" />
+                                  </label>
+                                  <label className="block text-xs text-gray-500">流れ（何をどの順で言うか）
+                                    <textarea value={sl.flow || ""} onChange={(e) => updateSlotField(i, "flow", e.target.value)} onBlur={pushSharedSettings} rows={2}
+                                      className="mt-0.5 w-full px-2 py-1 rounded border border-violet-200 bg-white text-sm text-gray-800 leading-6" />
+                                  </label>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-violet-700 mt-2">このカードの「伝えること」はまだありません。下の「伝えることをAIで埋める」で作ります</p>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="shrink-0 flex flex-col gap-1">
                           <button onClick={() => movePlanSlot(i, -1)} disabled={i === 0} className="w-9 h-9 rounded-lg border border-gray-200 text-base hover:bg-gray-50 disabled:opacity-30" title="上へ">↑</button>
@@ -1085,7 +1307,8 @@ ${p.content}`;
               </div>
               <Connector />
 
-              {/* Step 2: 抽象ロジック */}
+              {/* Step 2: 抽象ロジック（旧フロー。設計表にカードと「伝えること」が揃っていれば表示しない） */}
+              {!planFilled && (<>
               <div className={`rounded-2xl border-2 p-5 shadow-sm ${step2Done ? "border-violet-300 bg-violet-50" : step1Done ? "border-violet-400 bg-violet-50" : "border-gray-200 bg-gray-50"}`}>
                 <StepHeader n={2} title="抽象ロジックを作る" desc="カードを引き、各カードで「何を伝えるか」の骨子を決めます。ここで流れと訴求を確認・修正してから、Step 3で具体化します。"
                   done={step2Done}
@@ -1160,6 +1383,7 @@ ${p.content}`;
                 )}
               </div>
               <Connector />
+              </>)}
             </>
           )}
 
@@ -1179,7 +1403,7 @@ ${p.content}`;
                   {diffChecking ? "元ネタの構成をチェック中..." : generating ? "生成中..." : step3Done ? "再生成" : "骨組みを生成"}
                 </button>
               )} />
-            {isTarot && !step2Done && <p className="text-base text-gray-600">先に Step 2 で抽象ロジックを作ってください。</p>}
+            {isTarot && !step2Done && <p className="text-base text-gray-600">先に Step 1 でカードを引き、「伝えることをAIで埋める」を済ませてください（設計表がそのまま具体ロジックの元になります）。</p>}
             {applyingFix && (
               <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
                 <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />

@@ -56,7 +56,16 @@ export interface CardSlot {
   content: string;         // 何を言うか（1〜2文）
   source: string;          // 出典（元ネタのどこ／ルール）
   reason: string;          // 位置の理由（1行）
+  // ここから「引いたカード」と、そのカードで何を伝えるか（旧・抽象ロジックの中身を設計表に統合）
+  card?: { name: string; orientation: "正位置" | "逆位置" };  // 実際に引いたカード
+  meaning?: string;        // 正統な意味（向きに応じた登録の意味。書き換えない）
+  imagery?: string;        // 絵柄（登録の描写）
+  highlight?: string;      // 絵柄の見せ場（このテーマで見せると効く要素を1つ）
+  message?: string;        // 伝えること（この台本固有の主張1行。末尾に出典）
+  flow?: string;           // 流れ（何をどの順で言うか。1〜2行）
 }
+// 設計表の背骨（旧・抽象ロジック冒頭の3行）
+export interface CardPlanBackbone { theme: string; metaphor: string; promise: string }
 // ===== 目標文字数の設計 =====
 // タロット: 元ネタの長さに関わらず 6,000字以上・9,000字は超えない。目標は 6,000〜8,000 に収めて出力の揺れ込みでも 9,000 を超えないようにする
 export const TAROT_MIN_CHARS = 6000;
@@ -73,15 +82,44 @@ export interface CardPlan {
   outside?: { title: string; where: string; note?: string }[];
   // 元ネタで占っていた内容のうち、テンプレの5役割に無いもの（追加カードの候補）。ライターは選ぶだけ
   suggestions?: { title: string; content: string; afterRole: string; reason: string; source: string }[];
+  // 引いたカードを元に確定した背骨（メインテーマと主張／中心メタファー／冒頭の約束）
+  backbone?: CardPlanBackbone;
+  drawnAt?: string;    // カードを引いた日時
+  filledAt?: string;   // 「伝えること」をAIで埋めた日時
   updatedAt: string;
+}
+// 設計表にカードと「伝えること」が揃っているか（＝旧・抽象ロジックの代わりになる状態か）
+export function isCardPlanFilled(plan: CardPlan | null | undefined): boolean {
+  return !!plan?.slots?.length && plan.slots.every((sl) => sl.card && sl.message && sl.message.trim());
+}
+// 設計表（カード＋伝えること）を、旧・抽象ロジックと同じ書式に変換する（骨組み生成はこれを「確定済みの抽象ロジック」として受け取る）
+export function formatCardPlanAsAbstract(plan: CardPlan | null | undefined): string {
+  if (!isCardPlanFilled(plan) || !plan) return "";
+  const b = plan.backbone;
+  const head = [
+    "# カードリーディング設計【抽象ロジック】",
+    `メインテーマと主張: ${b?.theme || "（未設定）"}`,
+    `中心メタファー: 「${b?.metaphor || "未設定"}」`,
+    `一本線: 「${b?.promise || "（未設定）"}」`,
+  ];
+  const body = plan.slots.map((sl, i) => [
+    `## ${i + 1}枚目: ${sl.card!.name}（${sl.card!.orientation}）｜${sl.role === "追加" ? sl.title : sl.role}`,
+    `- 正統な意味: ${sl.meaning || "（登録の意味に従う）"}`,
+    `- 絵柄の見せ場: 「${sl.highlight || "—"}」`,
+    `- 伝えること: 「${sl.message}」`,
+    `- 流れ: ${sl.flow || sl.content}`,
+  ].join("\n"));
+  return [...head, "", ...body].join("\n");
 }
 export function formatCardPlanForPrompt(plan: CardPlan | null | undefined): string {
   if (!plan?.slots?.length) return "";
   const n = plan.slots.length;
   const neg = plan.slots.findIndex((sl) => sl.role === "常識破壊") + 1;
+  const b = plan.backbone;
   return [
     `【カード設計表（確定。必ずこの${n}枚を、この順番・この役割で構成する）】`,
-    ...plan.slots.map((sl, i) => `${i + 1}枚目 [${sl.kind === "core" ? "コア" : "追加"}／${sl.role}] ${sl.title}: ${sl.content}`),
+    ...(b && (b.theme || b.metaphor || b.promise) ? [`- 背骨: 主張「${b.theme || "—"}」／中心メタファー「${b.metaphor || "—"}」／冒頭の約束「${b.promise || "—"}」`] : []),
+    ...plan.slots.map((sl, i) => `${i + 1}枚目 [${sl.kind === "core" ? "コア" : "追加"}／${sl.role}]${sl.card ? ` カード: ${sl.card.name}（${sl.card.orientation}）` : ""} ${sl.title}: ${sl.content}${sl.message ? `　伝えること: ${sl.message}` : ""}`),
     `- 枚数は${n}枚。カードの追加・削除・順番変更は禁止（${neg > 0 ? `${neg}枚目が常識破壊` : ""}）`,
     "- 「追加」カードは元ネタ固有の必須要素。省略せず、記載の中身を必ず入れる",
     "- 各カードで語るのは「そのカードで視る内容」だけ。今日占うことの宣言・高評価や登録のお願い・コメント誘導・LINE誘導はカードの読みに混ぜない（オープニング／合間／クロージングで扱う）",

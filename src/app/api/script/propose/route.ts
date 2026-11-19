@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { formatEssenceForPrompt } from "@/lib/script-analysis-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
-import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES } from "@/lib/tarot-draw";
-import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
+import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES, syncDrawSpecToCards } from "@/lib/tarot-draw";
+import { formatCardPlanForPrompt, formatCardPlanAsAbstract, isCardPlanFilled, type CardPlan } from "@/lib/project-store";
 import { referenceModeBlock } from "@/lib/structure-mode";
 
 // 骨組み出力は最大16Kトークンと長く生成に時間がかかるため、関数の実行上限を延長する
@@ -89,15 +89,23 @@ CTA: ${a.analysisResult?.ctas?.join(" / ")}
   // タロットの2段階生成: phase=abstract はカードリーディング部分の抽象ロジックのみを出す。
   // phase=concrete（abstractLogic付き）は確定済み抽象ロジックに忠実に肉付けする
   const phase: string | undefined = body.phase;
-  const tarotAbstract: string | undefined =
-    typeof body.abstractLogic === "string" && body.abstractLogic.trim() ? body.abstractLogic.trim() : undefined;
-
   // 抽選は1リクエスト1回。抽象→具体、骨組み→台本で同じ抽選結果（drawSpec）を使い回す（毎回引き直すと指定が食い違う）
   const cardPlan: CardPlan | null = body.cardPlan && Array.isArray(body.cardPlan.slots) && body.cardPlan.slots.length >= 5 ? (body.cardPlan as CardPlan) : null;
   const cardCount = cardPlan ? cardPlan.slots.length : undefined;
   const negativeIndex = cardPlan ? Math.max(1, cardPlan.slots.findIndex((sl) => sl.role === "常識破壊") + 1) : undefined;
   const cardPlanText = cardPlan ? formatCardPlanForPrompt(cardPlan) : "";
-  const drawBlock: string = typeof body.drawSpec === "string" && body.drawSpec.trim() ? body.drawSpec : buildTarotDrawBlock({ genre, topic, cardCount, negativeIndex });
+  // 設計表にカードと「伝えること」が揃っていれば（新フロー）、それを「確定済みの抽象ロジック」として使う。
+  // 旧フロー（抽象ロジックの文章）も引き続き受け付ける
+  const tarotAbstract: string | undefined =
+    typeof body.abstractLogic === "string" && body.abstractLogic.trim()
+      ? body.abstractLogic.trim()
+      : (isCardPlanFilled(cardPlan) ? formatCardPlanAsAbstract(cardPlan) : undefined);
+  const rawDrawBlock: string = typeof body.drawSpec === "string" && body.drawSpec.trim() ? body.drawSpec : buildTarotDrawBlock({ genre, topic, cardCount, negativeIndex });
+  // 設計表に引いたカードがあれば、抽選ブロックのカード一覧をそれに合わせる（設計表が唯一の正）
+  const planCards = cardPlan && cardPlan.slots.every((sl) => sl.card)
+    ? cardPlan.slots.map((sl, i) => ({ name: sl.card!.name, orientation: sl.card!.orientation, slot: i + 1 }))
+    : [];
+  const drawBlock: string = planCards.length >= 3 ? (syncDrawSpecToCards(rawDrawBlock, planCards) || rawDrawBlock) : rawDrawBlock;
 
   let prompt: string;
   if (!isRevision && style === "tarot" && phase === "abstract") {
