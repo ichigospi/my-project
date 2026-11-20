@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { worldviewPromptBlock, scanWorldview, HOME_WORLDVIEW } from "@/lib/worldview";
+import { worldviewPromptBlock, scanWorldview, HOME_WORLDVIEW, skeletonForGeneration } from "@/lib/worldview";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { extractCardsFromProse, extractDrawnCards, getCardImagery, getCardMeaning } from "@/lib/tarot-draw";
@@ -154,7 +154,7 @@ ${backboneText || "（骨組みの冒頭に従う）"}
 ${cardsText}
 
 【骨組み（セクションごとの内容と字数。この順番・この分量で肉付けする）】
-${skeleton}
+${skeletonForGeneration(skeleton)}
 
 ${targetsText ? `${targetsText}\n` : ""}${techniqueBrief ? `${techniqueBrief}\n` : ""}
 ${essenceText ? `【継承する訴求の要点（元ネタの濃さの基準。内容と構図を引き継ぎ、言い回し・数字・固有名詞は自分で作る）】\n${essenceText.slice(0, 4000)}\n` : ""}

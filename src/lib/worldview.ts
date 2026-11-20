@@ -32,6 +32,16 @@ export function scanWorldview(text: string): { label: string; hits: string[]; re
   return out;
 }
 
+// 骨組みの注記行（「> 📺 参考元: …」「> ⬆️ 上位互換ポイント: 元ネタの「…」を…」）は元ネタの文言を引用するので、
+// 世界観の判定からは外す。判定するのは実際に台本へ書く本文行だけ
+export function skeletonContentOnly(skeleton: string): string {
+  return skeleton.split("\n").filter((l) => !/^\s*>/.test(l)).join("\n");
+}
+// 台本生成に渡す骨組みからは、元ネタの文言を引用する「参考元」の注記を外す（丸写しと世界観の持ち込みを防ぐ。上位互換ポイント等は残す）
+export function skeletonForGeneration(skeleton: string): string {
+  return skeleton.split("\n").filter((l) => !/^\s*>\s*(📺|🖥)?\s*参考元/.test(l)).join("\n");
+}
+
 export function scanWorldviewItems(text: string): QualityCheckItem[] {
   return scanWorldview(text).map((h) => ({
     name: `世界観違反: 「${h.label}」`,
