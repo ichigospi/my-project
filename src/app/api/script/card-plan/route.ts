@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { worldviewPromptBlock, replaceWorldview } from "@/lib/worldview";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
@@ -47,6 +48,8 @@ const SYSTEM_PROMPT = `あなたは占い系YouTube台本の構成プロデュ�
 - content: 何を言うかを1〜2文、60字以内。マーケ用語を使わず、台本で言う中身を書く
 - source: 元ネタのどこから来たか（例:「元ネタ序盤（2枚目相当）」「ルールのコア」「元ネタに無い→ルール」）
 - reason: 位置の理由を1行、30字以内（例:「期待を上げる情報は深掘りの前」）
+
+${worldviewPromptBlock()}
 
 必ず次のJSONのみで回答（説明文・コードブロック記法は禁止）:
 { "slots": [ { "role": "問題提起|深掘り|常識破壊|解決|未来|追加", "kind": "core|extra", "title": "…", "content": "…", "source": "…", "reason": "…" } ],
@@ -139,10 +142,10 @@ ${instruction ? `\n【オーナーからの指示（最優先で反映）】\n${
       .map((sl) => ({
         role: String(sl.role || "追加"),
         kind: sl.kind === "core" || CORE_ROLES.includes(String(sl.role)) ? "core" : "extra",
-        title: String(sl.title || "").slice(0, 20),
-        content: String(sl.content || "").slice(0, 120),
+        title: replaceWorldview(String(sl.title || "")).slice(0, 20),
+        content: replaceWorldview(String(sl.content || "")).slice(0, 120),
         source: String(sl.source || ""),
-        reason: String(sl.reason || "").slice(0, 60),
+        reason: replaceWorldview(String(sl.reason || "")).slice(0, 60),
       }))
       .slice(0, 7) as CardSlot[];
     // 追加カードのうち「カードで視る内容」でないもの（LINE誘導・今日占うこと等）は設計表から外し、outside に回す

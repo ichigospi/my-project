@@ -2264,11 +2264,11 @@ function QualityCheckPanel({
           ))}
 
           <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-100">
-            <button onClick={onApplyFix}
-              className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 text-base font-medium hover:bg-blue-200">
+            <button onClick={onApplyFix} disabled={!!stale}
+              className="px-4 py-2 rounded-lg bg-blue-100 text-blue-700 text-base font-medium hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed">
               ✔ チェックした指摘を修正指示に転記
             </button>
-            <span className="text-sm text-gray-400">※ チェックを外した指摘は転記されません（デフォルトは全てON）</span>
+            <span className="text-sm text-gray-400">{stale ? "⚠ 台本が変わっているので、この結果は古いです。もう一度品質チェックを実行してから転記してください（古い指摘を転記すると、直した箇所を戻す修正が走ります）" : "※ チェックを外した指摘は転記されません（デフォルトは全てON）"}</span>
           </div>
         </>
       )}

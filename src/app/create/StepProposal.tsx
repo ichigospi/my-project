@@ -241,7 +241,11 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   };
   useEffect(() => {
     // 企画を開いたとき、旧フローのままなら自動で取り込む（AIは使わない）
-    if (project.style === "tarot" && !isCardPlanFilled(project.cardPlan) && (project.abstractLogic || project.structureProposal?.concept)) migrateToNewFlow(true);
+    // 条件: 設計表にカードが1枚も無く、カードを引いた記録（drawnAt）も無い＝旧フローのまま。
+    // カードを外した直後や引き直した直後（伝えることが空）に走ると、骨組みの古いカードを再び取り込んで「外したカードが戻る」ので、そこでは走らせない
+    const plan = project.cardPlan;
+    const untouched = !plan || (!plan.drawnAt && !plan.slots.some((sl) => sl.card));
+    if (project.style === "tarot" && untouched && (project.abstractLogic || project.structureProposal?.concept)) migrateToNewFlow(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 

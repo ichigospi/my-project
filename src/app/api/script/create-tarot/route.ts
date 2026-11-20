@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { worldviewPromptBlock, scanWorldview, HOME_WORLDVIEW } from "@/lib/worldview";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { extractCardsFromProse, extractDrawnCards, getCardImagery, getCardMeaning } from "@/lib/tarot-draw";
@@ -159,6 +160,8 @@ ${patternsText ? `${patternsText}\n` : ""}
 ${narratorText}
 ${samplesText}
 
+${worldviewPromptBlock()}
+
 ${TAROT_WRITING_NORMS}
 
 ${blacklistPromptBlock(customBans)}
@@ -194,6 +197,8 @@ ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ?
       const mismatch = diffOf(script);
       attempts.push({ script, chars, mismatch });
       const issues: string[] = [];
+      const wv = scanWorldview(script);
+      if (wv.length > 0) issues.push(`別の世界観の語が入っている: ${wv.map((h) => `「${h.label}」`).join("")}。語り手の世界観は${HOME_WORLDVIEW}。該当: ${wv.flatMap((h) => h.hits).slice(0, 3).join("／")}`);
       if (mismatch.length > 0) issues.push(`カードが指定と違う: ${mismatch.join("／")}。指定の${cards.length}枚を、この順番・この向きで出す`);
       if (chars < targetChars * 0.9) issues.push(`短すぎる: 実測${chars.toLocaleString()}字（目標約${targetChars.toLocaleString()}字）。各セクションの字数に合わせて、場面の具体・内心のセリフ・理由づけで厚くする（水増し・繰り返しはしない）`);
       if (chars > 9000) issues.push(`長すぎる: 実測${chars.toLocaleString()}字（上限9,000字）。同じ主張の繰り返し・説明の重複を削る`);
@@ -201,7 +206,7 @@ ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ?
       feedback = issues.map((x) => `- ${x}`).join("\n");
     }
     // 最良を選ぶ: カード一致を最優先、次に目標との近さ
-    const best = attempts.slice().sort((a, c) => (a.mismatch.length - c.mismatch.length) || (Math.abs(a.chars - targetChars) - Math.abs(c.chars - targetChars)))[0];
+    const best = attempts.slice().sort((a, c) => (a.mismatch.length - c.mismatch.length) || (scanWorldview(a.script).length - scanWorldview(c.script).length) || (Math.abs(a.chars - targetChars) - Math.abs(c.chars - targetChars)))[0];
     if (!best) return NextResponse.json({ error: "台本が生成できませんでした" }, { status: 500 });
     // 整合編集: 重複・矛盾・場所違い・AIっぽさだけを段落単位で直す（失敗しても生成結果は返す）
     let finalScript = best.script;

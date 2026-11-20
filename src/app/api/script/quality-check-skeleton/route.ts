@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { scanWorldviewItems } from "@/lib/worldview";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildCardAdditionPrompt, parseCardAdditions, buildContentAdditionPrompt, parseContentAdditions, type CardAddition, type ContentAddition } from "@/lib/card-additions";
@@ -333,7 +334,8 @@ ${transcripts.length ? `\n【元ネタ台本の書き起こし】\n${transcripts
         items.push({ name: `文字数の見込み（推定${estimated.toLocaleString()}字／目標${targetChars.toLocaleString()}字）`, status: "pass", comment: "尺からの見積もりは目標の範囲内です" });
       }
       const cats = Array.isArray(parsed.categories) ? (parsed.categories as Record<string, unknown>[]) : [];
-      cats.push({ name: "L. 機械判定（尺から見た文字数）", passed: !items.some((it) => it.status === "fail"), items });
+      items.push(...scanWorldviewItems(String(skeleton || "")));
+      cats.push({ name: "L. 機械判定（尺から見た文字数・世界観）", passed: !items.some((it) => it.status === "fail"), items });
       parsed.categories = cats;
       if (items.some((it) => it.status === "fail")) {
         const score = Number(parsed.overallScore) || 0;
