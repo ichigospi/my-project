@@ -66,18 +66,19 @@ function cleanScript(text: string): string {
   return s;
 }
 
-export async function POST(request: NextRequest) {
+// 本体。長い処理（型の要約→生成（最大3回）→整合編集）なので、POST はストリームで進捗を流しながらこれを待つ
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function run(body: any, progress: (m: string) => void): Promise<Record<string, unknown>> {
   try {
-    const body = await request.json();
     const aiApiKey = String(body.aiApiKey || "");
-    if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
+    if (!aiApiKey) return { ...{ error: "AI APIキーを設定してください" }, status: 400 };
     const aiModel = resolveAiModel(body.aiModel);
     const topic = String(body.topic || "");
     const genre = String(body.genre || "");
     const skeleton = String(body.skeleton || "");
     const plan = body.cardPlan as CardPlan | null | undefined;
-    if (!skeleton.trim()) return NextResponse.json({ error: "骨組みがありません" }, { status: 400 });
-    if (!plan?.slots?.length) return NextResponse.json({ error: "カード設計表がありません" }, { status: 400 });
+    if (!skeleton.trim()) return { ...{ error: "骨組みがありません" }, status: 400 };
+    if (!plan?.slots?.length) return { ...{ error: "カード設計表がありません" }, status: 400 };
     const profile = (body.channelProfile || null) as ProfileIn | null;
     const essence = (body.essence || null) as ScriptEssence | null;
     const patterns = Array.isArray(body.patterns) ? (body.patterns as PatternIn[]) : [];
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
     // カード（骨組みが正。無ければ設計表）
     const skeletonCards = extractDrawnCards(skeleton);
     const cards = skeletonCards.length >= 3 ? skeletonCards : plan.slots.filter((sl) => sl.card).map((sl, i) => ({ name: sl.card!.name, orientation: sl.card!.orientation, slot: i + 1 }));
-    if (cards.length < 3) return NextResponse.json({ error: "カードが揃っていません。設計表でカードを引いてください" }, { status: 400 });
+    if (cards.length < 3) return { ...{ error: "カードが揃っていません。設計表でカードを引いてください" }, status: 400 };
     const neg = plan.slots.findIndex((sl) => sl.role === "常識破壊") + 1;
     const cardsText = cards.map((c, i) => {
       const sl = plan.slots[i];
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
     const need = techniques.map((tq, i) => ({ tq, i })).filter(({ tq }) => !tq.intent || !tq.intent.trim());
     let techniqueIntents: { index: number; intent: string }[] = [];
     if (need.length > 0) {
+      progress(`型の狙いを要約しています（${need.length}件）`);
       const listText = need.map(({ tq, i }) => `[${i}] （${tq.label}）${tq.item.replace(/\s+/g, " ").slice(0, 500)}`).join("\n");
       const r = await callModel(aiApiKey, aiModel, `次の「型」の説明を、台本作家に渡す「狙い」1行（40〜90字）に要約してください。
 条件: 何を・どの場面で・どういう効果のために言うか。例文の語句・言い回しは一切含めない（文面を写させないため）。【】の型名は残してよい。
@@ -189,10 +191,11 @@ ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ?
     const attempts: { script: string; chars: number; mismatch: string[] }[] = [];
     let feedback = "";
     for (let attempt = 0; attempt < 3; attempt++) {
+      progress(attempt === 0 ? "台本を書いています（約8,000字。2〜4分かかります）" : `書き直しています（${attempt + 1}回目）: ${feedback.slice(0, 60)}`);
       const r = await callModel(aiApiKey, aiModel, buildPrompt(feedback));
       if (r.error) {
         if (attempts.length > 0) break;
-        return NextResponse.json({ error: r.error, ...(r.retryable ? { retryable: true } : {}) }, { status: r.status || 500 });
+        return { ...{ error: r.error, ...(r.retryable ? { retryable: true } : {}) }, status: r.status || 500 };
       }
       const script = cleanScript(r.text);
       const chars = bodyChars(script);
@@ -209,11 +212,12 @@ ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ?
     }
     // 最良を選ぶ: カード一致を最優先、次に目標との近さ
     const best = attempts.slice().sort((a, c) => (a.mismatch.length - c.mismatch.length) || (scanWorldview(a.script).length - scanWorldview(c.script).length) || (Math.abs(a.chars - targetChars) - Math.abs(c.chars - targetChars)))[0];
-    if (!best) return NextResponse.json({ error: "台本が生成できませんでした" }, { status: 500 });
+    if (!best) return { ...{ error: "台本が生成できませんでした" }, status: 500 };
     // 整合編集: 重複・矛盾・場所違い・AIっぽさだけを段落単位で直す（失敗しても生成結果は返す）
     let finalScript = best.script;
     let consistencySummary = "";
     if (body.consistencyPass !== false) {
+      progress("整合編集（重複・矛盾・場所違い・AIっぽさ）をかけています");
       const c = await runConsistencyPass(aiApiKey, aiModel, best.script, {
         backbone: plan.backbone || null,
         cards: cards.map((x) => ({ name: x.name, orientation: x.orientation })),
@@ -226,7 +230,7 @@ ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ?
         else consistencySummary = "（整合編集の結果はカードが崩れたため採用しませんでした）";
       } else consistencySummary = `（整合編集は実行できませんでした: ${c.error}）`;
     }
-    return NextResponse.json({
+    return {
       script: finalScript,
       rawScript: best.script,
       consistencySummary,
@@ -237,9 +241,31 @@ ${extra ? `\n【追加の指示（最優先）】\n${extra}\n` : ""}${feedback ?
       ...(best.mismatch.length ? { cardMismatch: best.mismatch } : {}),
       techniqueBrief,
       ...(techniqueIntents.length ? { techniqueIntents } : {}),
-    });
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "台本生成に失敗しました";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return { error: msg, status: 500 };
   }
+}
+
+// POST: 進捗を流しながら待つストリーム応答。
+// 1回で8,000字を書くと数分かかり、途中で何も流れないとプロキシに切られて 502 になるため、数秒ごとに進捗行を送り、
+// 最後に「@@RESULT@@{json}」を1行で送る。クライアントは最後の行だけを結果として読む
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "リクエストが読めません" }, { status: 400 });
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false;
+      const send = (line: string) => { if (!closed) { try { controller.enqueue(encoder.encode(line + "\n")); } catch { /* closed */ } } };
+      const keep = setInterval(() => send("progress: 処理中…"), 4000);
+      send("progress: 開始");
+      run(body, (m) => send(`progress: ${m}`))
+        .then((result) => { send("@@RESULT@@" + JSON.stringify(result)); })
+        .catch((e) => { send("@@RESULT@@" + JSON.stringify({ error: e instanceof Error ? e.message : "台本生成に失敗しました", status: 500 })); })
+        .finally(() => { clearInterval(keep); closed = true; try { controller.close(); } catch { /* ignore */ } });
+    },
+  });
+  return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" } });
 }
