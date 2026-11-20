@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { worldviewPromptBlock } from "@/lib/worldview";
 import { formatEssenceForPrompt } from "@/lib/script-analysis-store";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
@@ -111,6 +112,7 @@ CTA: ${a.analysisResult?.ctas?.join(" / ")}
   let prompt: string;
   if (!isRevision && style === "tarot" && phase === "abstract") {
     prompt = `あなたはプロのスピーチマーケター兼YouTube台本構成プロデューサーです。
+${worldviewPromptBlock()}
 
 タロット台本の「カードリーディング部分（カード設計表がある場合はその枚数、無ければ5枚）」の設計を、まず【抽象ロジック】として簡潔に出してください。
 これはライターが詳細な骨組みを作る前に「この動画で何を伝えるか」を確認・修正するためのものです。
@@ -179,6 +181,7 @@ ${userPrompt}
 修正後の骨組み全体をマークダウン形式で出力してください。修正点以外はできるだけ維持してください。`;
   } else {
     prompt = `あなたはプロのスピーチマーケター兼YouTube台本構成プロデューサーです。
+${worldviewPromptBlock()}
 
 以下の参考動画の分析を基に、元ネタを超える「上位互換」の台本骨組みを設計してください。
 これは元ネタの設計図をそのまま使い、中身の訴求だけを一段強くするための骨組みです。

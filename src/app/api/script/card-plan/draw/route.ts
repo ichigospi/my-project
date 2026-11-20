@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { worldviewPromptBlock, replaceWorldview } from "@/lib/worldview";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { buildTarotDrawBlock, extractDrawnCards, getCardImagery, getCardMeaning, CARD_NAMES, makeRotationPicker, bankKey, bankLabel, techniqueShort } from "@/lib/tarot-draw";
@@ -146,6 +147,8 @@ export async function POST(request: NextRequest) {
 タロット台本の「カード設計表」に、引いたカードを元にした「伝えること」を入れてください。これは骨組み（具体ロジック）を作る前に「この動画で何を伝えるか」を確認・修正するためのものです。
 詳細な肉付け・セリフ例・尺配分は書かないこと。オープニングと終盤CTAの設計も書かない（ルールで固定）。
 
+${worldviewPromptBlock()}
+
 【鉄則】
 - 背骨（メインテーマと主張／中心メタファー／冒頭の約束）を先に決める。中心メタファーはこの台本で使うスピ的比喩を1つだけ。可能なら1枚目（または物語の軸になるカード）の絵柄に実際に描かれている要素から選ぶ。冒頭の約束は、終盤で同じ言葉で回収するオープンループを視聴者への語りかけ1行で
 - 各カードの「絵柄の見せ場」は、記載の絵柄の中から、このテーマで視聴者に見せると効く要素を1つ選んで短く書く（記載に無い要素は書かない）
@@ -214,9 +217,9 @@ ${analysisTexts ? `【元ネタの分析】\n${analysisTexts.slice(0, 9000)}\n` 
         ...sl,
         meaning: sl.meaning || getCardMeaning(sl.card!.name, sl.card!.orientation) || "",
         imagery: sl.imagery || getCardImagery(sl.card!.name) || "",
-        highlight: String(it.highlight || sl.highlight || "").trim().slice(0, 80),
-        message: String(it.message || sl.message || "").trim().slice(0, 300),
-        flow: String(it.flow || sl.flow || "").trim().slice(0, 300),
+        highlight: replaceWorldview(String(it.highlight || sl.highlight || "").trim()).slice(0, 80),
+        message: replaceWorldview(String(it.message || sl.message || "")).trim().slice(0, 300),
+        flow: replaceWorldview(String(it.flow || sl.flow || "")).trim().slice(0, 300),
       };
     });
     return NextResponse.json({ backbone, slots, filledAt: new Date().toISOString() });

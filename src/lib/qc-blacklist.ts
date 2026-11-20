@@ -3,6 +3,7 @@
 // - 漢数字（算用数字ルール）
 // - 直近の台本との同一文（前回の文の流用）
 import type { QualityCheckItem } from "@/lib/project-store";
+import { scanWorldviewItems } from "@/lib/worldview";
 import { getScriptBanks, extractDrawnCards, extractCardsFromProse } from "@/lib/tarot-draw";
 
 // level: fail=常に禁止（意味不明・ルール違反）／warn=注意／track=繰り返し管理（合格した直近2本の両方で使っていたら3連続→fail。2連続まではOK）
@@ -1059,6 +1060,7 @@ export function scanPositions(script: string): QualityCheckItem[] {
 
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
+    ...scanWorldviewItems(script),
     ...scanOccurrenceLimits(script),
     ...scanPositions(script),
     ...scanAdjacentDuplicates(script),

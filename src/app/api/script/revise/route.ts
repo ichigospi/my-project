@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { worldviewPromptBlock } from "@/lib/worldview";
 import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
 import { recordUsage } from "@/lib/usage-tracker";
 import { countCardReveals } from "@/lib/tarot-draw";
@@ -125,9 +126,10 @@ export async function POST(request: NextRequest) {
 - 書き直す段落は、指摘の箇所だけでなく段落全体を自然な一続きの語りとして書き直す（文の継ぎ足し・差し込みはしない。元の文を残したまま直した文を足さない）
 - 段落の字数は元の±20%。情報・テーマ語・カード名・向き・固定句・決め台詞は変えない
 - 「（N箇所）」「全部直す」の指摘は、該当する段落を全部書き直す
-- 「該当:」に引用された文が入っている段落を探して直す
+- 「該当:」に引用された文が入っている段落を探して直す。該当の文がもう台本に無い指摘は、すでに直っているので無視する（別の段落を無理に直さない）
 - カードの削除・統合・追加は禁止。番号の不整合は番号を振り直す
 - 直した段落に、下の禁止表現・漢数字を入れない
+${worldviewPromptBlock()}
 ${referenceText}
 ${blacklistPromptBlock(customBans)}
 
@@ -159,6 +161,7 @@ ${numberedParagraphs(paras)}
 
   const prompt = `あなたはプロのスピーチマーケター兼YouTube台本ライターです。
 以下の【現在の台本】に対し、【修正指示】で挙げられた箇所「だけ」をピンポイントで直す**差分パッチ**を作成してください。
+${worldviewPromptBlock()}
 
 【最重要原則】
 - 修正指示で明示された問題箇所だけを対象にする
