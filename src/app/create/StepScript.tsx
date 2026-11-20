@@ -114,6 +114,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   const [generating, setGenerating] = useState(false);
   // 品質チェックの「該当箇所を見る」: 本文を閲覧表示に切り替えてマーカーで示す
   const [locate, setLocate] = useState<TextRange | null>(null);
+  const [genProgress, setGenProgress] = useState("");
   const locateInScript = (comment: string): boolean => {
     const r = locateFirst(project.generatedScript || "", comment);
     if (!r) { setError("該当の文が今の台本に見つかりません（修正済みか、言い回しが変わっています）"); return false; }
@@ -420,8 +421,27 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
           aiApiKey, aiModel: getAiModel("generate"),
         }),
       });
-      const data = await res.json().catch(() => ({ error: `サーバーエラー（HTTP ${res.status}）` }));
-      if (data.error) { setError(data.error); return; }
+      // ストリーム応答: 「progress: …」の行で進捗を出し、最後の「@@RESULT@@{json}」を結果として読む
+      let data: Record<string, unknown> = {};
+      if (!res.ok || !res.body) {
+        data = { error: `サーバーエラー（HTTP ${res.status}）` };
+      } else {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          for (const ln of lines) if (ln.startsWith("progress: ")) setGenProgress(ln.slice(10));
+        }
+        const at = buf.lastIndexOf("@@RESULT@@");
+        if (at < 0) data = { error: "生成の途中で接続が切れました。もう一度「台本を生成する」を押してください" };
+        else { try { data = JSON.parse(buf.slice(at + 10).trim()); } catch { data = { error: "生成結果の読み取りに失敗しました" }; } }
+      }
+      setGenProgress("");
+      if (data.error) { setError(String(data.error)); return; }
       if (!data.script) { setError("台本が空でした"); return; }
       const mismatch: string[] = Array.isArray(data.cardMismatch) ? data.cardMismatch : [];
       // 型の「狙い」（AI要約）を設計表に保存。次回からは要約をスキップできる
@@ -431,7 +451,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         const techniques = cardPlan.techniques.map((tq, i) => { const hit = intents.find((x) => x.index === i); return hit ? { ...tq, intent: hit.intent } : tq; });
         cardPlan = { ...cardPlan, techniques };
       }
-      onUpdate({ ...project, cardPlan, generatedScript: data.script, status: "completed", scriptSegments: undefined, splitCount: 1, qualityCheckResult: undefined, proofreadResult: undefined });
+      onUpdate({ ...project, cardPlan, generatedScript: String(data.script), status: "completed", scriptSegments: undefined, splitCount: 1, qualityCheckResult: undefined, proofreadResult: undefined });
       pushSharedSettings();
       if (data.consistencySummary) setRevisionSummary(`【整合編集（生成直後の自動）】\n${data.consistencySummary}`);
       if (mismatch.length) setError(`⚠ カードが指定と食い違っています（${mismatch.join("／")}）。「再生成」するか、該当箇所を修正指示で直してください`);
@@ -1183,7 +1203,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
             {generating ? (
               <span className="flex items-center gap-2">
                 <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {splitCount > 1 && project.style !== "tarot" ? "パート1を生成中..." : "台本を生成中..."}
+                {splitCount > 1 && project.style !== "tarot" ? "パート1を生成中..." : (genProgress || "台本を生成中...")}
               </span>
             ) : (splitCount > 1 && project.style !== "tarot" ? `パート1を生成する（全${splitCount}分割）` : "台本を生成する")}
           </button>
