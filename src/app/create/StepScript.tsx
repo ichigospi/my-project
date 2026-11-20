@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { locateFirst, extractQuotedTargets, type TextRange } from "@/lib/locate";
+import { locateFirst, canLocate, type TextRange } from "@/lib/locate";
 import HighlightText from "@/components/HighlightText";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
@@ -2262,7 +2262,7 @@ function QualityCheckPanel({
                         {item.suggestion && item.status !== "pass" && (
                           <p className="text-sm text-blue-700 mt-0.5">→ {item.suggestion}</p>
                         )}
-                        {onLocate && item.status !== "pass" && extractQuotedTargets(item.comment).length > 0 && (
+                        {onLocate && item.status !== "pass" && canLocate(item.comment) && (
                           <button onClick={() => onLocate(item.comment)}
                             className="mt-1 text-xs px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100">📍 該当箇所を見る</button>
                         )}
