@@ -136,7 +136,9 @@ ${listText}`);
 特徴・こだわり: ${profile.characteristics || "未設定"}${profile.commonRules ? `\nチャンネル共通ルール: ${profile.commonRules.slice(0, 1200)}` : ""}${profile.ngExpressions ? `\nNG表現: ${profile.ngExpressions.slice(0, 600)}` : ""}` : "";
     const samplesText = samples.length ? `【語り手の文体サンプル（口調・テンポ・言葉の選び方の手本。文はそのまま使わない）】\n${samples.slice(0, 3).map((s, i) => `（${i + 1}）${s.replace(/\s+/g, " ").slice(0, 320)}`).join("\n")}` : "";
 
-    const buildPrompt = (feedback: string) => `あなたはプロのタロット占い師で、スピリチュアルマーケティングを熟知したYouTube台本作家です。
+    const buildPrompt = (feedback: string) => `あなたはプロのタロット占い師兼スピリチュアルマーケターで、YouTube台本作家でもあります。
+占い師として: 出たカードの正統な意味と絵柄から、1人の視聴者の状況・心・流れを一続きの物語として読み解く（役割に合わせて意味を捏造しない。逆位置・課題のカードも前向きに転換して読む）。
+マーケターとして: 元ネタがハマった訴求の中身と構図を引き継ぎ、選民→共感→常識破壊→解決→理想の未来→無料鑑定、の欲求の流れで、視聴者が自分ごとにして最後まで見て動く設計にする。
 下のブリーフに沿って、視聴者1人に語りかける台本を1本、最初から最後まで一続きで書いてください。これは喋るための台本です。
 
 【今回の台本】
