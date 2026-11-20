@@ -4,12 +4,11 @@ import type { QualityCheckItem } from "@/lib/project-store";
 
 export const HOME_WORLDVIEW = "守護天使様";
 
-// 別世界観の語（語と、何に置き換えるか）。固有の存在名だけを対象にし、「神社」「お守り」のような行動語は対象外
+// 別世界観の語（語と、何に置き換えるか）。固有の存在名だけを対象にし、「神社」「お守り」のような行動語は対象外。
+// 「高次元」「宇宙」「ハイヤーセルフ」は守護天使様の世界観から逸れないので許可（オーナー判断）
 export const FOREIGN_WORLDVIEW: { re: RegExp; label: string; replace: string }[] = [
   { re: /龍神様?|竜神様?|龍王様?|龍の|竜の|龍が|龍様|ドラゴン/g, label: "龍神", replace: HOME_WORLDVIEW },
   { re: /白蛇様?|白ヘビ|蛇神様?|蛇の神様?|巳様|巳さん/g, label: "白蛇", replace: HOME_WORLDVIEW },
-  { re: /宇宙(の意思|の采配|からの|が味方|のサポート|の法則|からのサイン)/g, label: "宇宙", replace: `${HOME_WORLDVIEW}の導き` },
-  { re: /ハイヤーセルフ|アカシック|ソウルメイト|ツインレイ|ツインソウル/g, label: "スピ用語（別系統）", replace: `${HOME_WORLDVIEW}／運命の人` },
   { re: /観音様|弁財天様?|弁天様|大黒天様?|稲荷様?|お稲荷様?|天照様?|アマテラス|菩薩様?|仏様|ご先祖様|先祖の|精霊|妖精|女神様|女神のよう/g, label: "別の神仏・存在", replace: HOME_WORLDVIEW },
   { re: /(?<![龍竜蛇])神様(が|は|から|の)(?!守護)/g, label: "神様", replace: `${HOME_WORLDVIEW}$1` },
 ];
@@ -46,7 +45,8 @@ export function scanWorldviewItems(text: string): QualityCheckItem[] {
 export function worldviewPromptBlock(): string {
   return `【世界観の固定（必達）】
 - このチャンネルの語り手が見ているのは「${HOME_WORLDVIEW}」。守護・導き・メッセージの主体はすべて${HOME_WORLDVIEW}
-- 元ネタに龍神・白蛇・神様・宇宙・ハイヤーセルフ・観音様・ご先祖様などの別の世界観の語があっても、そのまま使わない。内容（訴求・構図）だけを引き継ぎ、主体は${HOME_WORLDVIEW}に置き換える
+- 元ネタに龍神・白蛇・神様・観音様・ご先祖様などの別の存在が出てきても、そのまま使わない。内容（訴求・構図）だけを引き継ぎ、主体は${HOME_WORLDVIEW}に置き換える
+- 「高次元」「宇宙」「ハイヤーセルフ」は${HOME_WORLDVIEW}の世界観の中の言葉として使ってよい
 - 別の世界観の語は、設計表・骨組み・台本のどこにも出さない（機械判定で不合格になる）`;
 }
 
