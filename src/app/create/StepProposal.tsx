@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { locateFirst, extractQuotedTargets, type TextRange } from "@/lib/locate";
+import { locateFirst, canLocate, type TextRange } from "@/lib/locate";
 import HighlightText from "@/components/HighlightText";
 import Link from "next/link";
 import { getApiKey } from "@/lib/channel-store";
@@ -1584,9 +1584,9 @@ ${p.content}`;
                                     <span className="text-gray-700">{it.name}</span>
                                     {it.comment && <p className="text-sm text-gray-500 mt-0.5 whitespace-pre-line">{it.comment}</p>}
                                     {it.status !== "pass" && it.suggestion && <p className="text-sm text-purple-700 mt-0.5 whitespace-pre-line">→ {it.suggestion}</p>}
-                                    {it.status !== "pass" && extractQuotedTargets(it.comment).length > 0 && (
+                                    {it.status !== "pass" && canLocate(it.comment, { sections: true }) && (
                                       <button onClick={() => {
-                                          const r = locateFirst(skeleton, it.comment);
+                                          const r = locateFirst(skeleton, it.comment, { sections: true });
                                           if (!r) { setError("該当の文が今の骨組みに見つかりません（修正済みか、言い回しが変わっています）"); return; }
                                           setError(""); setEditing(false); setSkelLocate(r);
                                           setTimeout(() => document.querySelector("mark")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
