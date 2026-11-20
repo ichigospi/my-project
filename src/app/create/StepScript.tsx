@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { locateFirst, extractQuotedTargets, type TextRange } from "@/lib/locate";
+import HighlightText from "@/components/HighlightText";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
@@ -110,6 +112,14 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
   }, []);
 
   const [generating, setGenerating] = useState(false);
+  // 品質チェックの「該当箇所を見る」: 本文を閲覧表示に切り替えてマーカーで示す
+  const [locate, setLocate] = useState<TextRange | null>(null);
+  const locateInScript = (comment: string): boolean => {
+    const r = locateFirst(project.generatedScript || "", comment);
+    if (!r) { setError("該当の文が今の台本に見つかりません（修正済みか、言い回しが変わっています）"); return false; }
+    setError(""); setLocate(r);
+    return true;
+  };
   // 元ネタ台本の表示（畳める）
   const [showRefScript, setShowRefScript] = useState(false);
   const [refScriptTab, setRefScriptTab] = useState(0);
@@ -1586,10 +1596,20 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               </div>
             </div>
             <div className="p-6">
+              {locate ? (
+                <div>
+                  <div className="flex items-center gap-2 mb-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <span>📍 該当箇所をマーカーで表示しています（閲覧モード）</span>
+                    <button onClick={() => setLocate(null)} className="ml-auto px-2 py-1 rounded bg-white border border-amber-300 hover:bg-amber-100">✏️ 編集に戻る</button>
+                  </div>
+                  <HighlightText text={project.generatedScript} range={locate} className="text-sm leading-7 max-h-[70vh] overflow-y-auto" />
+                </div>
+              ) : (
               <textarea value={project.generatedScript}
                 onChange={(e) => onUpdate({ ...project, generatedScript: e.target.value, scriptSegments: resyncSegments(project.scriptSegments, e.target.value) })}
                 onBlur={() => pushSharedSettings()}
                 rows={20} className="w-full text-sm leading-7 outline-none resize-y" />
+              )}
             </div>
           </div>
 
@@ -1725,6 +1745,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               onCheck={handleQualityCheck}
               onApplyFix={handleApplyQualityFix}
               currentScriptHash={simpleHash(project.generatedScript || "")}
+              onLocate={locateInScript}
               excludedFixes={mainExcludedFixes}
               onToggleExclude={(key) => setMainExcludedFixes((p) => ({ ...p, [key]: !p[key] }))}
             />
@@ -1923,7 +1944,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
 }
 
 function QualityCheckPanel({
-  project, onUpdate, checking, showDetail, onToggleDetail, onCheck, onApplyFix, currentScriptHash, excludedFixes, onToggleExclude,
+  project, onUpdate, checking, showDetail, onToggleDetail, onCheck, onApplyFix, currentScriptHash, excludedFixes, onToggleExclude, onLocate,
 }: {
   project: ScriptProject;
   onUpdate: (p: ScriptProject) => void;
@@ -1935,6 +1956,7 @@ function QualityCheckPanel({
   currentScriptHash: string;
   excludedFixes: Record<string, boolean>;
   onToggleExclude: (key: string) => void;
+  onLocate?: (comment: string) => boolean;
 }) {
   const r = project.qualityCheckResult;
   const stale = r?.scriptHash && r.scriptHash !== currentScriptHash;
@@ -2236,9 +2258,13 @@ function QualityCheckPanel({
                       {statusBadge(item.status)}
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-700">{item.name}</p>
-                        <p className="text-sm text-gray-500 mt-0.5">{item.comment}</p>
+                        <p className="text-sm text-gray-500 mt-0.5 whitespace-pre-line">{item.comment}</p>
                         {item.suggestion && item.status !== "pass" && (
                           <p className="text-sm text-blue-700 mt-0.5">→ {item.suggestion}</p>
+                        )}
+                        {onLocate && item.status !== "pass" && extractQuotedTargets(item.comment).length > 0 && (
+                          <button onClick={() => onLocate(item.comment)}
+                            className="mt-1 text-xs px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100">📍 該当箇所を見る</button>
                         )}
                       </div>
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">

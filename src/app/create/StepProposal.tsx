@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { locateFirst, extractQuotedTargets, type TextRange } from "@/lib/locate";
+import HighlightText from "@/components/HighlightText";
 import Link from "next/link";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
@@ -28,6 +30,8 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
   const [promptText, setPromptText] = useState("");
   const [checkingSkeleton, setCheckingSkeleton] = useState(false);
   const [skeletonCheck, setSkeletonCheck] = useState<QualityCheckResult | null>(null);
+  // 骨組みチェックの「該当箇所を見る」: 骨組みの該当行をマーカーで示す
+  const [skelLocate, setSkelLocate] = useState<TextRange | null>(null);
   // 文字数不足（1,000字以上）のときの「カードを1枚追加する」候補（骨組みチェックが返す／手動でも提案できる）
   const [cardAdditions, setCardAdditions] = useState<CardAddition[]>(project.cardAdditionProposals || []);
   const [suggestingCards, setSuggestingCards] = useState(false);
@@ -1425,7 +1429,15 @@ ${p.content}`;
                     <button onClick={() => navigator.clipboard.writeText(skeleton)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 bg-white">コピー</button>
                   </div>
                 </div>
-                {!editing ? (
+                {skelLocate && !editing ? (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      <span>📍 該当箇所をマーカーで表示しています</span>
+                      <button onClick={() => setSkelLocate(null)} className="ml-auto px-2 py-1 rounded bg-white border border-amber-300 hover:bg-amber-100">見やすい表示に戻る</button>
+                    </div>
+                    <HighlightText text={skeleton} range={skelLocate} className="bg-white rounded-xl border border-emerald-200 p-4 text-base leading-7 text-gray-800" />
+                  </div>
+                ) : !editing ? (
                   <SkeletonView md={skeleton} canPick={patterns.length > 0} onPick={(heading) => setPicker({ mode: "section", heading })} />
                 ) : (
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200">
@@ -1570,8 +1582,17 @@ ${p.content}`;
                                   <span>{it.status === "pass" ? "🟢" : it.status === "warn" ? "🟡" : "🔴"}</span>
                                   <div className="flex-1">
                                     <span className="text-gray-700">{it.name}</span>
-                                    {it.comment && <p className="text-sm text-gray-500 mt-0.5">{it.comment}</p>}
+                                    {it.comment && <p className="text-sm text-gray-500 mt-0.5 whitespace-pre-line">{it.comment}</p>}
                                     {it.status !== "pass" && it.suggestion && <p className="text-sm text-purple-700 mt-0.5 whitespace-pre-line">→ {it.suggestion}</p>}
+                                    {it.status !== "pass" && extractQuotedTargets(it.comment).length > 0 && (
+                                      <button onClick={() => {
+                                          const r = locateFirst(skeleton, it.comment);
+                                          if (!r) { setError("該当の文が今の骨組みに見つかりません（修正済みか、言い回しが変わっています）"); return; }
+                                          setError(""); setEditing(false); setSkelLocate(r);
+                                          setTimeout(() => document.querySelector("mark")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+                                        }}
+                                        className="mt-1 text-xs px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100">📍 該当箇所を見る</button>
+                                    )}
                                   </div>
                                 </div>
                               ))}
