@@ -19,6 +19,8 @@ export const TAROT_WRITING_NORMS = `【台本の規範（これだけは全編�
 - 正位置・逆位置の正統な意味の範囲で読む。記載に無い意味を作らない。凶のカードを根拠なく吉と言い切らない。課題のカードは役割に沿って前向きに転換する
 - 絵柄は、記載された要素だけを一言で言う。人物の視線・表情・顔の向きは記載が無い限り語らない。絵柄の比喩は2文まで。そのあと必ず「つまり」で現実の言葉に戻す
 - シャッフルは1枚目の前の1回だけ。2枚目以降は山から1枚ずつ引く。登場の演出は毎回変える。枚数は口にしない
+- 冒頭の「最後のカード」の予告では、カード名を言わない（結末を伏せるからこそ最後まで見る理由になる）。めくる前のカードは必ず向きまで言う（正位置／逆位置）
+- 3枚目の常識破壊は、仮想敵（他の占い師・世間の常識・善意の助言）が言ってきたことを外に置いて、それをひっくり返す。視聴者自身の考えを「捨ててください」と責める形にしない
 - 3枚目の直前に離脱防止を1回。固定句「守護天使様が今、このカードをあなたのために運んでくださいました」は最後のカードだけ
 
 ■ 語り方（人間味）
@@ -88,12 +90,28 @@ const PLACEMENT: Record<string, { where: string; note?: string }> = {
 
 // 型の全文から「狙い」だけを取り出す（「」『』の例文を落とし、注記は残す）
 // AIで要約した intent が無いときの代替。長い例文は「（例）」に置き換えて、文面を渡さない
-export function techniqueIntent(item: string): string {
+// 例文だけで構成されたバンクの「狙い」（文面は渡さない）
+const BANK_INTENT: Record<string, string> = {
+  regular: "視聴者を個別に認知している演出で常連化を促す（コメントを読んでいる・あなたを覚えている、を自分の言葉で1〜2文。決まり文句は使わない）",
+  proofs: "めくる前から出ると分かっていた、という後追いの的中演出を1回だけ（言い回しは毎回変える）",
+  mid_hooks: "3枚目をめくる直前に、ここからが大事だと伝えて離脱を止める一言（前のカードと矛盾しない内容で）",
+  reveals: "カードの登場の仕方を毎回変える（山から1枚ずつ。シャッフルは1枚目の前だけ）",
+  bodySense: "多くの人が実感として分かる身体感覚で言い当てる（絵柄に体の要素があるカードと結ぶ）",
+  wantedWords: "本当は言ってほしかった言葉を代弁して、視聴者の内心を言い当てる",
+  strengthLabels: "弱さに見える性格を強さの裏返しとして肯定する（免責の後に1つ）",
+  endingMeaning: "終わり系のカードを「失う」ではなく「役目を終えるもの」として意味づける",
+  futureScale: "理想の未来の規模を一段大きく、戻らなくていい安心まで描く",
+  alreadyStarted: "変化はもう始まっている、と既成事実化して締める（「流れに入った」まで）",
+  contrast: "終盤の放置リスクで、受け取った人と閉じた人の差を1つの対比で見せる（朝日と夕暮れ・天と地は使わない）",
+  scenes: "その悩みを持つ人の日常の一場面で言い当てる（内心のセリフを含めて具体に）",
+  reunionScenes: "復縁層の日常の一場面で言い当てる",
+};
+export function techniqueIntent(item: string, bankId?: string): string {
   let s = item.replace(/\s+/g, " ").trim();
   s = s.replace(/[「『]([^」』]{10,})[」』]/g, "（例）");
   if (s.replace(/（例）/g, "").replace(/^【[^】]*】/, "").trim().length < 12) {
-    // 例文だけの項目: 何を言う場面かだけを残す
-    s = `この場面の要点を、自分の言葉で。元の文: 「${item.replace(/\s+/g, " ").slice(0, 40)}…」の意味だけ取る（文は写さない）`;
+    // 例文だけの項目: 文面は渡さず、バンクの狙いだけを渡す
+    s = (bankId && BANK_INTENT[bankId]) || "この型の狙いを、この台本のテーマ語と場面で自分の言葉にする（文は写さない）";
   }
   return s.length > 220 ? s.slice(0, 220) + "…" : s;
 }
@@ -113,7 +131,7 @@ export function buildTechniqueBrief(techniques: DrawnTechnique[] | undefined, op
     let where = pl?.where || "本編の該当する場面（1回）";
     if (tq.bankId === "scenes") where = seen.scenes === 1 ? "1枚目の言い当て" : "2枚目の言い当て";
     if (tq.bankId === "social_proof") where = seen.social_proof === 1 ? "3枚目の後の口コミ" : "終盤の実績提示";
-    const intent = (tq.intent && tq.intent.trim()) || techniqueIntent(tq.item);
+    const intent = (tq.intent && tq.intent.trim()) || techniqueIntent(tq.item, tq.bankId);
     lines.push(`- ${tq.label}「${tq.short}」 → 場所: ${where}${pl?.note ? `（${pl.note}）` : ""}\n  狙い: ${intent}`);
   }
   return `【この台本で使う型（場所つき。ここに無い型・要素は入れない。各型は指定の場所で1回だけ）】\n${lines.join("\n")}`;

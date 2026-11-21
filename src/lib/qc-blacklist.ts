@@ -30,6 +30,9 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /置かれている状況も、まるで違|条件も、あなた自身も/, level: "track", reason: "前回台本の文の流用", fix: "別の言い回しに" },
   { pattern: /そっと棚に戻し/, level: "fail", reason: "金運の定番シーン「値札を見て棚に戻す」の使い回し（テーマ不整合の温床）", fix: "テーマに合う言い当てシーンに差し替える" },
   { pattern: /朝日と夕暮れ/, level: "fail", reason: "対比比喩のデフォルト（禁止）", fix: "抽選で指定された対比の比喩に従う" },
+  { pattern: /天と地ほどの差/, level: "fail", reason: "対比比喩のデフォルト（禁止）", fix: "抽選で指定された対比の比喩に従う" },
+  { pattern: /言い当てさせて(ください|くださいね|もらいます|いただきます)/, level: "fail", reason: "言い当ての前置き（「言い当ててもいいですか」と同じ。言い当ては前置きなしで言う）", fix: "前置きを削除して、場面の描写から入る" },
+  { pattern: /(ここで|ここから)回収しますね|回収しますね。/, level: "warn", reason: "台本の設計を口に出すメタ発言（「回収」は構成用語）", fix: "「さっきの〜、覚えていますか」のように視聴者の言葉で言い直す" },
   { pattern: /諦めていた臨時収入|止まっていた入金/, level: "fail", reason: "曖昧で意味の取れない実績表現（禁止）", fix: "何が・どう変わったかの具体（例: 問い合わせが月1件→5件）に" },
   { pattern: /シャッフルの手が|シャッフルの途中|シャッフル(を)?していたら/, level: "fail", reason: "録画解説調の演出（禁止）", fix: "「お、この1枚出ましたね」等、その場で引いている言い方に" },
   { pattern: /箱から飛び出/, level: "fail", reason: "シャッフルと矛盾する演出（禁止）", fix: "束から現れる言い方に" },
@@ -1018,6 +1021,15 @@ export function scanPositions(script: string): QualityCheckItem[] {
   const t = script.replace(/\s+/g, "");
   if (!looksLikeFullScript(t)) return [];
   const items: QualityCheckItem[] = [];
+  // 結末のカード名の先出し: 「最後に◯◯をめくります」のように、1枚目をめくる前に最後のカードの名前を言うとオープンループが消える
+  {
+    const first = t.search(/[1１]枚目/);
+    const head = first > 0 ? t.slice(0, first) : "";
+    const m = head.match(/(最後|結末)[^。]{0,40}?(運命の輪|世界|太陽|星|月|審判|愚者|魔術師|女教皇|女帝|皇帝|法王|恋人|戦車|力|隠者|正義|吊るされた男|死神|節制|悪魔|塔|[ワカソペ][ンッーン][ドプドタ][のクのル][^。]{0,6}?(?:エース|[2-9]|10|ペイジ|ナイト|クイーン|キング))/);
+    if (m) items.push({ name: "結末のカード名の先出し（冒頭）", status: "fail",
+      comment: `冒頭の予告で最後のカードの名前を言っています。結末のカードは「最後に一緒に引く」と伏せるからこそ最後まで見る理由になります。該当: 「${sentenceOf(t, m.index ?? 0)}」`,
+      suggestion: "カード名を消し、「あなたの未来の結末を示す、一番大切な1枚」のように伏せた言い方にする" });
+  }
   const firstIndex = (re: RegExp) => { const m = t.match(re); return m && m.index !== undefined ? m.index : -1; };
   const pos3 = firstIndex(/[3３]枚目/);
   const pos4 = firstIndex(/[4４]枚目/);
