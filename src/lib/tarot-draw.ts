@@ -740,10 +740,14 @@ function findReveal(t: string, name: string): { idx: number; orientation: "正�
   const quoted = new RegExp(`[「『]${esc}[」』][^。]{0,24}?。?[^。]{0,16}?(正位置|逆位置|逆さま|逆さ)`);
   // 括弧なし: 「ペンタクルの7、正位置です」「女帝です。正位置」「星のカード、逆位置」の形。「力を信じて」「太陽のように」は対象外
   // 「カップのエース。正位置です」「死神。正位置です」のように句点で区切る開示も拾う（句点の直後に向きが続く場合だけ）
-  const bare = new RegExp(`(?<![一-龥ァ-ヶー「『])${esc}(?:のカード|カード|、|です、|です。|が出ました。|が出ました、|。(?=[^。]{0,4}(?:正位置|逆位置)))[^。]{0,14}?(正位置|逆位置)`);
+  const bare = new RegExp(`(?<![一-龥ァ-ヶー「『])${esc}(?:のカード|カード|、|です、|です。|が出ました。|が出ました、|の(?=(?:正位置|逆位置))|。(?=[^。]{0,4}(?:正位置|逆位置)))[^。]{0,14}?(正位置|逆位置)`);
+  // 向きを言わずに開示している形（「出てきたのは、吊るされた男です」）。開示の言い回しが前に付くときだけ拾い、向きは正位置とみなす
+  const noOrient = new RegExp(`(?:出てきたのは|出たのは|現れたのは|引いたのは|めくると|出ました、)、?${esc}(?:です|でした|。|、)`);
   const m = quoted.exec(t) || bare.exec(t);
-  if (!m) return null;
-  return { idx: m.index, orientation: m[1] === "正位置" ? "正位置" : "逆位置" };
+  if (m) return { idx: m.index, orientation: m[1] === "正位置" ? "正位置" : "逆位置" };
+  const m2 = noOrient.exec(t);
+  if (m2) return { idx: m2.index, orientation: "正位置" };
+  return null;
 }
 
 export function countCardReveals(script: string): { count: number; cards: string[] } {
