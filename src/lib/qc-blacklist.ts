@@ -935,6 +935,32 @@ export function scanReshuffle(script: string): QualityCheckItem[] {
 }
 
 // 同じ文が続けて2回出ている（修正パッチで「元の文＋直した文」を重ねて置いたときに起きる）。放置すると同一文の繰り返しとして毎回不合格になる
+// 堅い言い回し（AIっぽさの正体の1つ）: 「ではありません」「ではなく」「していません」「ということです」が多いと書き言葉に聞こえる
+export function scanStiffness(script: string): QualityCheckItem[] {
+  const t = script.replace(/\s+/g, "");
+  const re = /ではありません|ではなく|ていません|ということです|ではないんです|でしょうか。/g;
+  const hits: string[] = [];
+  let count = 0;
+  for (const m of t.matchAll(re)) {
+    count++;
+    const i = m.index ?? 0;
+    let s = i; while (s > 0 && !/[。！？!?]/.test(t[s - 1])) s--;
+    let e = i; while (e < t.length && !/[。！？!?]/.test(t[e])) e++;
+    const sent = t.slice(s, e + 1);
+    if (hits.length < 6 && !hits.includes(sent)) hits.push(sent.length > 80 ? sent.slice(0, 80) + "…" : sent);
+  }
+  // 文の数に対する割合で見る（オーナーの合格台本は100文あたり約4。それを超えたら注意、7を超えたら不合格）
+  const sentences = t.split(/(?<=[。！？!?])/).filter((s) => s.trim()).length || 1;
+  const per100 = (count / sentences) * 100;
+  if (per100 < 4.5) return [];
+  return [{
+    name: `堅い言い回しが${count}箇所（100文あたり${per100.toFixed(1)}。目安4以下）`,
+    status: per100 >= 7 ? "fail" : "warn",
+    comment: `「ではありません」「ではなく」「していません」「ということです」が多く、書き言葉に聞こえます（AIっぽさの正体の1つ）。該当:\n${hits.map((h) => `「${h}」`).join("\n")}`,
+    suggestion: "「〜じゃないんです」「〜じゃなくて」「〜してないんです」「〜ってことです」のように、少し砕けた話し言葉に直す（砕けすぎない）",
+  }];
+}
+
 export function scanAdjacentDuplicates(script: string): QualityCheckItem[] {
   const sents = script.replace(/\s+/g, "").split(/(?<=[。！？!?])/).map((s) => s.trim()).filter(Boolean);
   const exact: string[] = [];
@@ -1073,6 +1099,7 @@ export function scanPositions(script: string): QualityCheckItem[] {
 export function runMechanicalChecks(script: string, approvedScripts?: string[], opts?: { revealed?: { count: number; cards: string[] }; drawSpec?: string; imagery?: { name: string; img?: string }[]; rules?: string }): QualityCheckItem[] {
   return [
     ...scanWorldviewItems(script),
+    ...scanStiffness(script),
     ...scanOccurrenceLimits(script),
     ...scanPositions(script),
     ...scanAdjacentDuplicates(script),
