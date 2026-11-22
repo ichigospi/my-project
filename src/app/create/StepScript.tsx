@@ -1095,7 +1095,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
       {/* タロット: 今回引いたカードの実際の絵柄を確認できるギャラリー */}
       {project.style === "tarot" && (
         <div className="max-w-3xl">
-          <TarotCardGallery text={`${project.abstractLogic || ""}\n${project.structureProposal?.concept || ""}`} script={project.generatedScript || ""} />
+          <TarotCardGallery text={`${project.abstractLogic || ""}\n${project.structureProposal?.concept || ""}`} script={project.generatedScript || ""} hidden={project.galleryHiddenCards} onHide={(next) => { onUpdate({ ...project, galleryHiddenCards: next }); pushSharedSettings(); }} />
           {(() => {
             // 骨組みのカードと台本本文のカードが食い違っていたら警告（枚数・カード名・向き）
             const planned = extractDrawnCards(project.structureProposal?.concept || "");

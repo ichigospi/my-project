@@ -360,7 +360,7 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
       {/* タロット: 台本の本文から読み取った実際のカードの絵柄（差し替え後のカードもここで確認できる） */}
       {project.style === "tarot" && (
         <div className="max-w-3xl">
-          <TarotCardGallery text={`${project.abstractLogic || ""}\n${project.structureProposal?.concept || ""}`} script={tab === "edit" ? draft : reviewed} />
+          <TarotCardGallery text={`${project.abstractLogic || ""}\n${project.structureProposal?.concept || ""}`} script={tab === "edit" ? draft : reviewed} hidden={project.galleryHiddenCards} onHide={(next) => { onUpdate({ ...project, galleryHiddenCards: next }); pushSharedSettings(); }} />
         </div>
       )}
 
