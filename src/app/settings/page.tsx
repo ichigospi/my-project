@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense, useCallback } from "react";
+import ChatworkRulesPanel from "@/components/ChatworkRulesPanel";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
@@ -56,14 +57,9 @@ function SettingsContent() {
   const [litmediaApiKey, setLitmediaApiKeyState] = useState("");
   const [chatworkToken, setChatworkTokenState] = useState("");
   const [chatworkRoomId, setChatworkRoomIdState] = useState("");
-  const [chatworkOwnerId, setChatworkOwnerIdState] = useState("");
-  const [chatworkWriterIds, setChatworkWriterIdsState] = useState("");
-  const [chatworkExtraIds, setChatworkExtraIdsState] = useState("");
   const [showChatworkToken, setShowChatworkToken] = useState(false);
   const [testingChatwork, setTestingChatwork] = useState(false);
   const [chatworkTestResult, setChatworkTestResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [cwMembers, setCwMembers] = useState<{ accountId: string; name: string; role: string }[] | null>(null);
-  const [loadingMembers, setLoadingMembers] = useState(false);
   const [showLitmediaKey, setShowLitmediaKey] = useState(false);
   const [litmediaConnecting, setLitmediaConnecting] = useState(false);
   const [litmediaAuthMsg, setLitmediaAuthMsg] = useState("");
@@ -96,9 +92,6 @@ function SettingsContent() {
       setLitmediaApiKeyState(getApiKey("litmedia_api_key"));
       setChatworkTokenState(getApiKey("chatwork_api_token"));
       setChatworkRoomIdState(getApiKey("chatwork_room_id"));
-      setChatworkOwnerIdState(getApiKey("chatwork_owner_id"));
-      setChatworkWriterIdsState(getApiKey("chatwork_writer_ids"));
-      setChatworkExtraIdsState(getApiKey("chatwork_extra_ids"));
       setChannelCount(getChannels().length);
       // モデル選択はpullでサーバーの共有値がlocalStorageに反映された後に読む
       setAiModelGenerate(getAiModel("generate"));
@@ -254,28 +247,6 @@ function SettingsContent() {
     setCookieResult({ ok: true, message: "Cookieを削除しました" });
   };
 
-  // ルームのメンバー一覧を取得（アカウントIDをクリックで設定できるように）
-  const fetchCwMembers = async () => {
-    if (!chatworkToken || !chatworkRoomId) {
-      setChatworkTestResult({ ok: false, message: "先にAPIトークンとルームIDを入力してください" });
-      return;
-    }
-    setLoadingMembers(true);
-    setChatworkTestResult(null);
-    try {
-      const res = await fetch("/api/notify/chatwork-members", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: chatworkToken, roomId: chatworkRoomId }),
-      });
-      const data = await res.json();
-      if (data.error) setChatworkTestResult({ ok: false, message: data.error });
-      else setCwMembers(data.members || []);
-    } catch {
-      setChatworkTestResult({ ok: false, message: "メンバー取得に失敗しました" });
-    } finally {
-      setLoadingMembers(false);
-    }
-  };
 
   // Chatworkテスト送信（保存済みの共有設定を使うため、先に保存してから叩く）
   const testChatwork = async () => {
@@ -310,9 +281,6 @@ function SettingsContent() {
     setApiKey("litmedia_api_key", litmediaApiKey);
     setApiKey("chatwork_api_token", chatworkToken);
     setApiKey("chatwork_room_id", chatworkRoomId);
-    setApiKey("chatwork_owner_id", chatworkOwnerId);
-    setApiKey("chatwork_writer_ids", chatworkWriterIds);
-    setApiKey("chatwork_extra_ids", chatworkExtraIds);
     setAiModel("generate", aiModelGenerate);
     setAiModel("check", aiModelCheck);
     // サーバーにも共有設定を保存
@@ -553,7 +521,7 @@ function SettingsContent() {
         <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
           <h2 className="font-semibold mb-1">Chatwork連携（任意）</h2>
           <p className="text-sm text-gray-500 mb-4">
-            設定すると「台本提出」「合格」「再提出依頼」の際に指定ルームへ自動でメッセージが送信されます。
+            台本提出・合格・再提出などのタイミングで、Chatworkの指定ルームへ自動でメッセージ（とタスク）を送ります。
             APIトークンはChatworkの「サービス連携 → API Token」で発行、ルームIDは対象ルームのURL末尾の数字（#!ridの後）です。
           </p>
           <div className="space-y-3">
@@ -577,70 +545,6 @@ function SettingsContent() {
               placeholder="ルームID（数字のみ）"
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
             />
-            <div>
-              <input
-                type="text"
-                value={chatworkOwnerId}
-                onChange={(e) => setChatworkOwnerIdState(e.target.value)}
-                placeholder="オーナーのアカウントID（数字。台本提出時にToが付く）"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
-              />
-            </div>
-            <div>
-              <input
-                type="text"
-                value={chatworkWriterIds}
-                onChange={(e) => setChatworkWriterIdsState(e.target.value)}
-                placeholder="ライターのアカウントID（複数はカンマ区切り。合格/再提出時にToが付く）"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
-              />
-              <p className="text-xs text-gray-400 mt-1">アカウントIDはChatworkのプロフィール画面に表示される数字です（未入力ならメンションなしで送信）</p>
-            </div>
-            <div>
-              <input
-                type="text"
-                value={chatworkExtraIds}
-                onChange={(e) => setChatworkExtraIdsState(e.target.value)}
-                placeholder="追加メンションのアカウントID（複数はカンマ区切り。すべての通知にToが付く）"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono"
-              />
-              <p className="text-xs text-gray-400 mt-1">ディレクター等、提出・合格・再提出のすべての通知でメンションしたいメンバー（タスクは割り当てられません）</p>
-            </div>
-            <div>
-              <button onClick={fetchCwMembers} disabled={loadingMembers}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
-                {loadingMembers ? "取得中..." : "👥 ルームのメンバー一覧から選ぶ"}
-              </button>
-              {cwMembers && (
-                <div className="mt-2 border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-56 overflow-y-auto">
-                  {cwMembers.map((m) => {
-                    const writerList = chatworkWriterIds.split(/[,、\s]+/).filter(Boolean);
-                    const extraList = chatworkExtraIds.split(/[,、\s]+/).filter(Boolean);
-                    const isOwner = chatworkOwnerId.trim() === m.accountId;
-                    const isWriter = writerList.includes(m.accountId);
-                    const isExtra = extraList.includes(m.accountId);
-                    return (
-                      <div key={m.accountId} className="flex items-center gap-2 px-3 py-2 text-sm">
-                        <span className="flex-1 min-w-0 truncate">{m.name} <span className="text-xs text-gray-400">(ID: {m.accountId})</span></span>
-                        <button onClick={() => setChatworkOwnerIdState(isOwner ? "" : m.accountId)}
-                          className={`px-2 py-1 rounded text-xs ${isOwner ? "bg-accent text-white" : "border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-                          {isOwner ? "✓ オーナー" : "オーナーに設定"}
-                        </button>
-                        <button onClick={() => setChatworkWriterIdsState(isWriter ? writerList.filter((x) => x !== m.accountId).join(",") : [...writerList, m.accountId].join(","))}
-                          className={`px-2 py-1 rounded text-xs ${isWriter ? "bg-purple-600 text-white" : "border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-                          {isWriter ? "✓ ライター" : "ライターに追加"}
-                        </button>
-                        <button onClick={() => setChatworkExtraIdsState(isExtra ? extraList.filter((x) => x !== m.accountId).join(",") : [...extraList, m.accountId].join(","))}
-                          className={`px-2 py-1 rounded text-xs ${isExtra ? "bg-teal-600 text-white" : "border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-                          {isExtra ? "✓ メンション" : "メンション追加"}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {cwMembers && <p className="text-xs text-gray-400 mt-1">選んだら下の「保存」を押してください</p>}
-            </div>
             <button onClick={testChatwork} disabled={testingChatwork}
               className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
               {testingChatwork ? "送信中..." : "テスト送信"}
@@ -648,6 +552,12 @@ function SettingsContent() {
             {chatworkTestResult && (
               <p className={`text-xs ${chatworkTestResult.ok ? "text-green-600" : "text-red-500"}`}>{chatworkTestResult.message}</p>
             )}
+            <p className="text-xs text-gray-400">ルームIDは「ルールにルームが未設定のとき」と接続テストに使う既定のルームです。どのイベントをどのルームの誰に送るかは、下の通知ルールで決めます。</p>
+          </div>
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <h3 className="font-semibold mb-1">通知ルール（いつ → どのルーム → 誰に → 何を）</h3>
+            <p className="text-sm text-gray-500 mb-4">イベントごとに、送るルーム・Toを付ける人・タスクの有無・本文を決めます。ルールは何件でも作れます（同じイベントで別ルームに別の人へ、も可）。トークンを保存してから「ルーム一覧を取得」してください。</p>
+            <ChatworkRulesPanel token={chatworkToken} />
           </div>
         </div>
 

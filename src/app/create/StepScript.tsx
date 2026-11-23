@@ -15,7 +15,7 @@ import { buildInjectedRules, formatRulesForPrompt, withChannelVocabRules } from 
 import { buildSelectedPatternsBlock, getPatterns } from "@/lib/pattern-store";
 import { resyncSegments } from "@/lib/segments";
 import { formatTranscript } from "@/lib/text-diff";
-import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
+import { reviewRoomUrl, refVideoUrls, notifyEvent } from "@/lib/notify";
 import TarotCardGallery from "@/components/TarotCardGallery";
 import { scriptInsertInstruction, type CardAddition } from "@/lib/card-additions";
 import { countCardReveals, extractDrawnCards, extractCardsFromProse, syncDrawSpecToCards } from "@/lib/tarot-draw";
@@ -1043,13 +1043,11 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
         alert(`提出はこの端末に保存されましたが、サーバーへの送信に失敗しました。\n画面の「同期」ボタンを押して再送してください。\n\n理由: ${e instanceof Error ? e.message : String(e)}`);
       }
     }, 0);
-    notifyChatwork(
-      reviewMessage("submitted", getProfileByChannel(project.channelId || "").channelName || "", project.title, {
-        reviewUrl: reviewRoomUrl(project.id),
-        refUrls: refVideoUrls(project.referenceVideos),
-      }),
-      { body: `【台本添削】「${project.title || "（タイトル未定）"}」の添削をお願いします\n添削部屋: ${reviewRoomUrl(project.id)}`, assign: "owner" }
-    );
+    notifyEvent("submitted", {
+      title: project.title, channelName: getProfileByChannel(project.channelId || "").channelName || "", channelId: project.channelId,
+      reviewUrl: reviewRoomUrl(project.id), refUrls: refVideoUrls(project.referenceVideos),
+      assigneeAccountId: project.assigneeAccountId, assigneeName: project.assigneeName,
+    });
   };
 
   const handleSync = async () => {
@@ -1498,6 +1496,7 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
                 </div>
               </div>
             </div>
+            <AssigneePicker project={project} onUpdate={onUpdate} />
             <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
               <p className="text-xs text-gray-500">
                 {submitBlockers().length === 0 ? "✅ 両方クリア。提出できます。" : `未クリア: ${submitBlockers().join(" ／ ")}（未クリアでも提出は可能。添削部屋に表示されます）`}
@@ -2493,6 +2492,25 @@ function ScriptProfileWarning({ channelId }: { channelId?: string }) {
           → 自チャンネル設計を開く
         </a>
       </div>
+    </div>
+  );
+}
+
+// この企画の担当ライター（Chatwork通知の「担当ライター」宛先）。設定のライター名簿から選ぶ
+function AssigneePicker({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
+  const [writers, setWriters] = useState<{ name: string; accountId: string }[] | null>(null);
+  useEffect(() => {
+    fetch("/api/notify/rules").then((r) => r.json()).then((d) => setWriters(Array.isArray(d?.config?.writers) ? d.config.writers : [])).catch(() => setWriters([]));
+  }, []);
+  if (writers === null || writers.length === 0) return null;
+  return (
+    <div className="mt-3 flex items-center gap-2 text-xs text-gray-600">
+      <span>担当ライター（通知の宛先）:</span>
+      <select value={project.assigneeAccountId || ""} onChange={(e) => { const w = writers.find((x) => x.accountId === e.target.value); onUpdate({ ...project, assigneeAccountId: w?.accountId || undefined, assigneeName: w?.name || undefined }); pushSharedSettings(); }}
+        className="px-2 py-1 rounded border border-gray-200 bg-white text-xs">
+        <option value="">（未設定: 名簿の全員へ）</option>
+        {writers.map((w) => <option key={w.accountId} value={w.accountId}>{w.name || w.accountId}</option>)}
+      </select>
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { resyncSegments } from "@/lib/segments";
 import { diffTexts, segKey, formatTranscript, type DiffSeg } from "@/lib/text-diff";
 import { addPattern, removePattern, normalizeCategory } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
-import { notifyChatwork, reviewMessage, reviewRoomUrl, refVideoUrls } from "@/lib/notify";
+import { reviewRoomUrl, refVideoUrls, notifyEvent } from "@/lib/notify";
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
@@ -211,17 +211,12 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
     } else {
       onUpdate({ ...project, thumbTelop: telop, thumbDesignUrl: designUrl, scriptReviewStatus: "rejected" });
     }
-    notifyChatwork(
-      reviewMessage(result, getProfileByChannel(project.channelId || "").channelName || "", project.title, {
-        reviewUrl: reviewRoomUrl(project.id),
-        refUrls: refVideoUrls(project.referenceVideos),
-        // 合格時はサムネ指示（テロップ文言＋参考デザイン元URL）も通知に載せてディレクターへ届ける
-        ...(result === "approved" ? { thumbTelop: telop || undefined, thumbDesignUrl: designUrl || undefined } : {}),
-      }),
-      result === "rejected"
-        ? { body: `【台本修正・再提出】「${project.title || "（タイトル未定）"}」のオーナーコメントを確認し、修正して再提出してください\n添削部屋: ${reviewRoomUrl(project.id)}`, assign: "writers" }
-        : undefined
-    );
+    notifyEvent(result, {
+      title: project.title, channelName: getProfileByChannel(project.channelId || "").channelName || "", channelId: project.channelId,
+      reviewUrl: reviewRoomUrl(project.id), refUrls: refVideoUrls(project.referenceVideos),
+      assigneeAccountId: project.assigneeAccountId, assigneeName: project.assigneeName,
+      ...(result === "approved" ? { thumbTelop: telop || undefined, thumbDesignUrl: designUrl || undefined } : {}),
+    });
   };
 
   const updateProposal = (id: string, patch: Partial<RuleProposal>) => {

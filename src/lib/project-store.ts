@@ -194,6 +194,9 @@ export interface ScriptProject {
   // 文字数不足（1,000字以上）のときの「カードを1枚追加する」候補（骨組みチェック・台本出力で提案。選んで反映したら消す）
   // カード絵柄ギャラリーで一覧から外したカード（「名（向き）」）。本文に差し替え前の記述が残っているときの表示用。本文には影響しない
   galleryHiddenCards?: string[];
+  // この企画の担当ライター（Chatwork通知の「担当ライター」宛先の解決先。設定の名簿から選ぶ）
+  assigneeAccountId?: string;
+  assigneeName?: string;
   cardAdditionProposals?: import("./card-additions").CardAddition[];
   // 文字数不足のときの「カードは増やさずに足せる要素」候補（元ネタにあってこの骨組みに無い構成内容。既存セクションに加筆）
   contentAdditionProposals?: import("./card-additions").ContentAddition[];
