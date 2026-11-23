@@ -14,6 +14,13 @@
 
 詳細なルールは `@video_system/CLAUDE.md` を参照。
 
+# 画像生成ツール（Stable Diffusion / ComfyUI）
+
+`sd_system/` に画像生成システム（ComfyUI + Illustrious系モデル。Mac ダブルクリック導入・プロンプト設計・NSFW対応）があります。
+ユーザーから「画像を生成したい」「プロンプトを作って」「○○なイラストを作って」「SDの環境を」「ComfyUIが動かない」「モデル/LoRAを追加」等の指示があった場合は、このシステムを使ってください。
+
+詳細なルール（成人のみ・実在人物不可などの絶対ルール含む）は `@sd_system/CLAUDE.md` を参照。
+
 # ローンチツール（チャット版）
 
 `custom_launch_system/` にローンチコンテンツ一括生成システムがあります。

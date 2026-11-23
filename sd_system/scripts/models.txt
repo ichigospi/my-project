@@ -1,0 +1,11 @@
+# sd_system モデル一覧（download_models.py が読む）
+# 形式: id | 保存ファイル名 | 取得元 | サイズGB | キー(no/optional/yes) | 種別 | 説明
+#   キー: optional = Civitaiのキー無しでも取得できるが、失敗時はキーで再試行
+#   取得元: hf:<repo>/<file>  または  civitai:<modelVersionId>
+#   種別: checkpoint / lora / vae / upscale  → ComfyUI/models/<種別の置き場> に保存
+#   先頭 * の行は「--default」時の候補（上から順に、取得できる最初の1つをDL）
+*wai17     | WAI-Nsfw-Illustrious-17.safetensors | civitai:2883731 | 6.8 | optional | checkpoint | ★一番おすすめ。WAI-illustrious-SDXL v17（Illustrious派生・NSFW特化・Civitai最人気 160万DL）
+*ilxl20    | Illustrious-XL-v2.0.safetensors     | hf:OnomaAIResearch/Illustrious-XL-v2.0/Illustrious-XL-v2.0.safetensors | 6.9 | no | checkpoint | 公式 Illustrious XL v2.0-STABLE（キー不要。素直で万能、NSFWは派生モデルより弱め）
+noob11     | NoobAI-XL-v1.1.safetensors          | hf:Laxhar/noobai-XL-1.1/NoobAI-XL-v1.1.safetensors | 6.9 | no | checkpoint | NoobAI-XL v1.1（Illustrious派生。キャラ/絵師タグの知識が豊富。商用不可ライセンス）
+ilxl01     | Illustrious-XL-v0.1.safetensors     | hf:OnomaAIResearch/Illustrious-xl-early-release-v0/Illustrious-XL-v0.1.safetensors | 6.9 | no | checkpoint | 公式 Illustrious XL v0.1（多くの派生モデルの土台。比較用）
+waimature3 | WAI-Mature-illustrious-3.safetensors | civitai:3289320 | 6.8 | optional | checkpoint | WAI-Mature-illustrious v3（同作者。大人の女性・熟女寄りの体型が得意）
