@@ -1,6 +1,16 @@
 // Chatwork通知の送信ヘルパー（fire-and-forget）。
 // 未設定・失敗しても本処理（台本提出・合格等）は止めない。
 import { getApiKey } from "./channel-store";
+import type { NotifyContext, NotifyEvent } from "./chatwork-rules";
+
+// 新方式: イベント名と文脈を渡し、設定画面の「通知ルール」に従ってサーバーが配信する（どのルームの誰に送るかはルールで決まる）
+export function notifyEvent(event: NotifyEvent, context: NotifyContext) {
+  try {
+    fetch("/api/notify/dispatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, context }) })
+      .then(async (res) => { const d = await res.json().catch(() => null); if (d && d.results) for (const r of d.results) if (!r.ok) console.warn("[chatwork]", r.error); })
+      .catch(() => { /* 通知失敗は無視 */ });
+  } catch { /* ignore */ }
+}
 
 export interface ChatworkTask {
   body: string;               // タスク内容
