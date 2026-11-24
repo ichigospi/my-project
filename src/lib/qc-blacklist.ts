@@ -44,7 +44,7 @@ export const QC_BLACKLIST: BlacklistRule[] = [
   { pattern: /本来のあなたに戻る/, level: "track", reason: "波長合わせ型が抽選された回のみ可", fix: "他の型なら言い換える" },
   { pattern: /頭では(もう)?答えが出ているのに/, level: "track", reason: "前回台本の文の流用", fix: "別の言い回しに" },
   { pattern: /執着を手放しなさい/, level: "track", reason: "仮想敵「占い師テンプレ型」の定型", fix: "抽選で指定された仮想敵に従う" },
-  { pattern: /カードを([一二三四五六七八九十]|[0-9０-９]+)枚|([一二三四五六七八九十]|[0-9０-９]+)枚(のカード|引き|を引)/, label: "カードを5枚引きます／5枚のカード", level: "fail", reason: "枚数の明言（「カードを5枚引きます」等）は禁止", fix: "「カードを順番に引いていきます」のように枚数を言わない" },
+  { pattern: /カードを([二三四五六七八九十]|[2-9２-９][0-9０-９]*)枚|(?<![0-9０-９])([二三四五六七八九十]|[2-9２-９][0-9０-９]*)枚(のカード|引き|を引)/, label: "カードを5枚引きます／5枚のカード", level: "fail", reason: "枚数の明言（「カードを5枚引きます」等）は禁止", fix: "「カードを順番に引いていきます」のように枚数を言わない" },
   { pattern: /本当に早く言いたかった|早くお伝えしたくて/, level: "track", reason: "導入で中身の前に置く自己満足の一言（使い回し注意）", fix: "導入では中身を先に。強調は「いちばん言いたいところ」の直前に" },
   { pattern: /腑に落ちやすく|奇跡は先に来る/, level: "fail", reason: "効果の捏造（押すとこうなる、と作った効果）", fix: "CTAの意味づけは世界観の中で一言に（守護天使様への合図／欠かせない儀式）" },
   { pattern: /頑張りを数え|頑張りを(一緒に)?数/, level: "fail", reason: "造語「頑張りを数える」は普段の会話で言わない", fix: "「どれだけ頑張ってきたか、ちゃんと分かってくれる人」のように普段の言葉で" },
@@ -321,7 +321,7 @@ export function scanCardCount(script: string, revealed: { count: number; cards: 
   if (revealed.count === 0) return [];
   const t = script.replace(/\s+/g, "");
   const stated: number[] = [];
-  for (const m of t.matchAll(/([0-9０-９]+)枚(?:のカード|を引|引き|を順番|で構成)/g)) stated.push(parseInt(m[1].replace(/[０-９]/g, (d) => String("０１２３４５６７８９".indexOf(d))), 10));
+  for (const m of t.matchAll(/(?<![0-9０-９])([2-9２-９][0-9０-９]*)枚(?:のカード|を引|引き|を順番|で構成)/g)) stated.push(parseInt(m[1].replace(/[０-９]/g, (d) => String("０１２３４５６７８９".indexOf(d))), 10));
   let maxOrdinal = 0;
   for (const m of t.matchAll(/([0-9０-９]+)枚目/g)) { const n = parseInt(m[1].replace(/[０-９]/g, (d) => String("０１２３４５６７８９".indexOf(d))), 10); if (n > maxOrdinal) maxOrdinal = n; }
   const items: QualityCheckItem[] = [];
@@ -420,7 +420,11 @@ export function scanFixedPhrases(script: string): QualityCheckItem[] {
     if (sumAt > 0) rest = rest.slice(0, sumAt);
     // 固定句の直後に「最後の1枚は、山の真ん中から…」と最後のカード自身の説明が続くのは正常なので、番号つきのカードだけを見る
     const later = rest.match(/([2-9２-９]枚目)(を|に|です|。|、|は)/);
-    if (later) {
+    let maxOrdinal = 0;
+    for (const m of t.matchAll(/([1-9１-９])枚目/g)) { const n = Number(String(m[1]).replace(/[１-９]/g, (d) => String("１２３４５６７８９".indexOf(d) + 1))); if (n > maxOrdinal) maxOrdinal = n; }
+    const laterN = later ? Number(String(later[1]).replace(/[１-９]/g, (d) => String("１２３４５６７８９".indexOf(d) + 1)).replace("枚目", "")) : 0;
+    // 固定句の直後に最後のカード（最大番号）をめくるのは正しい使い方
+    if (later && laterN < maxOrdinal) {
       items.push({ name: "固定句: 最後のカード以外で使用", status: "warn",
         comment: `「守護天使様が運んでくださった」の固定句の後に、まだ「${later[1]}」をめくっています。この句は最後のカードだけに使う決まりです（途中で使うと最後の重みが消える）`,
         suggestion: "途中のカードの格上げは別の言い方にし、固定句は最後のカードの直前に移す" });
@@ -732,7 +736,7 @@ const norm = (s: string) => s.replace(/\s+/g, "");
 // 抽選バンク・ルール本文の「例文」をそのまま使っていないか。例文は型の説明であって、台本に貼る文ではない
 // - バンクの各項目を文に分け、18字以上の文を例文として採用。ルール本文からは「」内の18字以上を採用
 // 近似丸写しの対象外: チャンネルで固定している案内文・予告・登場演出
-const NEAR_EXEMPT = /無料の霊視鑑定|概要欄のLINE|一番大切なカード|守護天使様が(今)?、?このカード|最幸の未来|このカード(だけ|が)|この1枚(だけ|が)|お会いしましょう|◯/;
+const NEAR_EXEMPT = /無料の霊視鑑定|概要欄のLINE|一番大切なカード|守護天使様が(今)?、?このカード|最幸の未来|このカード(だけ|が)|この1枚(だけ|が)|お会いしましょう|最初にお伝えした通り|メッセージが降りてきた|◯/;
 export function scanVerbatimExamples(script: string, rules?: string, approvedScripts?: string[]): QualityCheckItem[] {
   const t = norm(script);
   const latest = norm((approvedScripts || [])[0] || "");
