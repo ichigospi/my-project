@@ -487,7 +487,8 @@ export function scanCommentWordConsistency(script: string): QualityCheckItem[] {
   const t = script.replace(/\s+/g, "");
   const words = new Set<string>();
   for (const m of t.matchAll(/コメント欄?に「([^」]{1,20})」/g)) words.add(m[1]);
-  for (const m of t.matchAll(/「([^」]{1,20})」と(先に|一言|だけ|そっと)?(コメント|書い)/g)) words.add(m[1]);
+  for (const m of t.matchAll(/「([^」]{1,20})」と(先に|一言|ひと言|だけ|そっと)?(コメント|書い|残し)/g)) words.add(m[1]);
+  for (const m of t.matchAll(/「([^」]{1,20})」(を|の)?(ひと言|一言)?(を)?(残して|書いて|書き込んで)/g)) words.add(m[1]);
   const list = Array.from(words);
   if (list.length <= 1) return [];
   return [{
@@ -730,6 +731,8 @@ const norm = (s: string) => s.replace(/\s+/g, "");
 
 // 抽選バンク・ルール本文の「例文」をそのまま使っていないか。例文は型の説明であって、台本に貼る文ではない
 // - バンクの各項目を文に分け、18字以上の文を例文として採用。ルール本文からは「」内の18字以上を採用
+// 近似丸写しの対象外: チャンネルで固定している案内文・予告・登場演出
+const NEAR_EXEMPT = /無料の霊視鑑定|概要欄のLINE|一番大切なカード|守護天使様が(今)?、?このカード|最幸の未来|このカード(だけ|が)|この1枚(だけ|が)|お会いしましょう|◯/;
 export function scanVerbatimExamples(script: string, rules?: string, approvedScripts?: string[]): QualityCheckItem[] {
   const t = norm(script);
   const latest = norm((approvedScripts || [])[0] || "");
@@ -751,20 +754,35 @@ export function scanVerbatimExamples(script: string, rules?: string, approvedScr
   } catch { /* バンクが読めない環境では省略 */ }
   if (rules) addQuotes(rules);
   const hits: string[] = [];
+  const near: string[] = [];
   for (const ex of examples) {
     if (t.includes(ex) && !hits.some((h) => h.includes(ex) || ex.includes(h))) hits.push(ex);
+    else if (ex.length >= 22 && !near.some((h) => h === ex) && !FIXED_LINES.test(ex) && !NEAR_EXEMPT.test(ex)) {
+      // 助詞や語尾だけ変えた「ほぼ丸写し」: 4文字の断片の72%以上が本文にあれば近似とみなす（固定句・案内文・登場演出は対象外）
+      const grams: string[] = []; for (let i = 0; i + 4 <= ex.length; i++) grams.push(ex.slice(i, i + 4));
+      const hit = grams.filter((g) => t.includes(g)).length;
+      if (grams.length >= 10 && hit / grams.length >= 0.72) near.push(ex);
+    }
     if (hits.length >= 6) break;
   }
-  if (hits.length === 0) return [];
+  const items: QualityCheckItem[] = [];
+  if (near.length > 0) items.push({
+    name: `例文にほぼ同じ文（${near.length}件）`,
+    status: "warn",
+    comment: `抽選ブロック・ルールの例文を、助詞や語尾だけ変えて使っています。他の台本でも同じ文が出るので類似率が上がります。該当（例文）:\n${near.map((h) => `「${h.slice(0, 60)}${h.length > 60 ? "…" : ""}」`).join("\n")}`,
+    suggestion: "例文の狙いだけ残し、場面・語順・言い回しをこの台本のテーマ語で作り直す",
+  });
+  if (hits.length === 0) return items;
   // 1〜2件は注意、3件以上は不合格。直前の合格台本でも同じ例文を使っていた（＝定着し始めている）場合は件数に関係なく不合格
   const repeated = hits.filter((h) => latest.includes(h));
   const status: "fail" | "warn" = hits.length >= 3 || repeated.length > 0 ? "fail" : "warn";
-  return [{
+  items.push({
     name: `例文の丸写し（${hits.length}件${repeated.length > 0 ? `・うち${repeated.length}件は前回も使用` : ""}）`,
     status,
     comment: `抽選ブロック・ルールの例文をそのまま使っています。例文は「型」の説明で、台本に貼る文ではありません。毎回同じ文が出る原因です。\n${hits.map((h) => `「${h.slice(0, 50)}${h.length > 50 ? "…" : ""}」${repeated.includes(h) ? "（前回も）" : ""}`).join("\n")}`,
     suggestion: "例文の意味（何を言う場面か）だけを取り、その台本のテーマ語・場面・比喩で文を作り直す。語順・言い回し・例の中身を変える",
-  }];
+  });
+  return items;
 }
 
 // 直近2本の合格台本の両方にある文（8字以上）を今回も使っている＝3本連続。定型句の自動検出（手で登録した型に限らない）
