@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { worldviewPromptBlock } from "@/lib/worldview";
-import { normalizeAiModel } from "@/lib/ai-model";
+import { normalizeAiModel, parseAiSpec, geminiPreamble } from "@/lib/ai-model";
 import { countCardReveals } from "@/lib/tarot-draw";
 import { blacklistPromptBlock } from "@/lib/qc-blacklist";
 import { callAi } from "@/lib/ai-call";
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
   // 段落書き直しモード（タロット）: 指摘に該当する段落を丸ごと書き直して差し替える。find→replace の継ぎ足しをしない
   if (body.mode === "paragraph") {
     const paras = splitParagraphs(String(script));
-    const prompt = `あなたはプロのタロット占い師で、YouTube台本の校閲者です。次の台本に対する【修正指示】を、該当する段落を丸ごと書き直す形で反映してください。
+    const prompt = `${parseAiSpec(aiModel).provider === "gemini" ? geminiPreamble("revise") + "\n\n" : ""}あなたはプロのタロット占い師で、YouTube台本の校閲者です。次の台本に対する【修正指示】を、該当する段落を丸ごと書き直す形で反映してください。
 
 【守ること】
 - 指示に該当する段落だけを書き直す。該当しない段落は返さない（返さなければ1文字も変わらない）

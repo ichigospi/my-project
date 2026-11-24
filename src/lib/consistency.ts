@@ -1,6 +1,7 @@
 // 整合編集: 生成直後の台本を全文読ませ、重複・矛盾・場所違い・AIっぽさ「だけ」を段落単位で直す1パス。
 // 返すのは差し替える段落の番号と新しい文だけ。指定の無い段落は変わらない。字数は維持させ、減りすぎる差し替えは適用しない。
 import { callAi } from "@/lib/ai-call";
+import { parseAiSpec, geminiPreamble } from "@/lib/ai-model";
 import { worldviewPromptBlock } from "@/lib/worldview";
 import { splitParagraphs, numberedParagraphs, parseParagraphEdits, applyParagraphEdits, summarizeApply, type ApplyResult } from "@/lib/paragraph-edit";
 import { blacklistPromptBlock } from "@/lib/qc-blacklist";
@@ -15,10 +16,10 @@ export interface ConsistencyContext {
 const ALLOWED_REASONS = ["重複", "矛盾", "場所違い", "AIっぽさ", "文脈", "世界観"];
 const norm = (s: string) => s.replace(/\s+/g, "").replace(/[「」『』、。！？!?…・]/g, "");
 
-export function buildConsistencyPrompt(script: string, ctx?: ConsistencyContext): string {
+export function buildConsistencyPrompt(script: string, ctx?: ConsistencyContext, provider?: string): string {
   const paras = splitParagraphs(script);
   const b = ctx?.backbone;
-  return `あなたはプロのタロット占い師で、YouTube台本の編集者です。次の台本を全文読み、下の4種類の問題「だけ」を段落単位で直してください。それ以外は一切触りません。
+  return `${provider === "gemini" ? geminiPreamble("edit") + "\n\n" : ""}あなたはプロのタロット占い師で、YouTube台本の編集者です。次の台本を全文読み、下の4種類の問題「だけ」を段落単位で直してください。それ以外は一切触りません。
 
 【直してよい5種類】
 1. 重複: 同じ内容・同じ主張・同じ要素（未知数、口コミ、時期、言い当て、CTA、比喩）が2回以上出ている → 後の方を削るか、別の役割の文に書き換える。文が丸ごと2回並んでいる場合は片方を消す
@@ -45,7 +46,7 @@ ${numberedParagraphs(paras)}
 }
 
 export async function runConsistencyPass(aiApiKey: string, aiModel: string | undefined, script: string, ctx?: ConsistencyContext): Promise<{ result: ApplyResult; summary: string; error?: string }> {
-  const r = await callAi(aiApiKey, aiModel, buildConsistencyPrompt(script, ctx), { maxTokens: 12000 });
+  const r = await callAi(aiApiKey, aiModel, buildConsistencyPrompt(script, ctx, parseAiSpec(aiModel).provider), { maxTokens: 12000, jsonMode: true });
   if (r.error) return { result: { script, applied: [], rejected: [] }, summary: "", error: r.error };
   const edits = parseParagraphEdits(r.text);
   const paras = splitParagraphs(script);
