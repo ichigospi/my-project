@@ -18,7 +18,7 @@ import { getAiModel } from "@/lib/ai-model";
 import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction, ReviewLearn, ReviewSummary } from "@/lib/project-store";
 import { getScriptHistory } from "@/lib/project-store";
 import TarotCardGallery from "@/components/TarotCardGallery";
-import { paraDiff, diffStats } from "@/lib/para-diff";
+import { paraDiff, diffStats, inlineDiff } from "@/lib/para-diff";
 
 function textHash(s: string): string {
   let h = 0;
@@ -541,20 +541,23 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
               <div className="px-3 py-2 border-r border-gray-200">📝 提出台本（原文）<span className="ml-2 font-normal text-gray-400">{submitted.replace(/\s/g, "").length}字</span></div>
               <div className="px-3 py-2">✅ 完成台本<span className="ml-2 font-normal text-gray-400">{reviewed.replace(/\s/g, "").length}字</span></div>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto text-sm leading-6">
+            <div className="max-h-[75vh] overflow-y-auto text-[15px] leading-7">
               {cmpRows.map((r, i) => {
                 if (cmpChangedOnly && r.kind === "same") return null;
                 const lc = r.kind === "same" ? "" : r.kind === "changed" ? "bg-amber-50" : r.kind === "removed" ? "bg-red-50" : "bg-gray-50/60";
                 const rc = r.kind === "same" ? "" : r.kind === "changed" ? "bg-amber-50" : r.kind === "added" ? "bg-green-50" : "bg-gray-50/60";
                 const tag = r.kind === "changed" ? "書き換え" : r.kind === "removed" ? "削除" : r.kind === "added" ? "追加" : "";
+                const inl = r.kind === "changed" ? inlineDiff(r.left, r.right) : null;
                 return (
                   <div key={i} className="grid grid-cols-2 border-b border-gray-100 last:border-b-0">
-                    <div className={`px-3 py-2 border-r border-gray-100 whitespace-pre-wrap break-words ${lc} ${r.kind === "removed" ? "text-red-800 line-through decoration-red-300" : "text-gray-700"}`}>
-                      {r.left || <span className="text-gray-300">—</span>}
+                    <div className={`px-3 py-2 pr-4 border-r border-gray-100 whitespace-pre-wrap break-words ${lc} ${r.kind === "removed" ? "text-red-800 line-through decoration-red-300" : "text-gray-700"}`}>
+                      {inl ? inl.left.map((s, k) => s.mark ? <span key={k} className="bg-red-100 text-red-800 line-through decoration-red-300 rounded-sm">{s.text}</span> : <span key={k}>{s.text}</span>)
+                        : (r.left || <span className="text-gray-300">—</span>)}
                     </div>
-                    <div className={`px-3 py-2 whitespace-pre-wrap break-words relative ${rc} ${r.kind === "added" ? "text-green-900" : "text-gray-800"}`}>
-                      {tag && <span className={`absolute right-2 top-1 text-[10px] px-1.5 rounded-full ${r.kind === "changed" ? "bg-amber-200 text-amber-900" : r.kind === "removed" ? "bg-red-200 text-red-900" : "bg-green-200 text-green-900"}`}>{tag}</span>}
-                      {r.right || <span className="text-gray-300">—</span>}
+                    <div className={`px-3 py-2 pr-16 whitespace-pre-wrap break-words relative ${rc} ${r.kind === "added" ? "text-green-900" : "text-gray-800"}`}>
+                      {tag && <span className={`absolute right-2 top-2 text-[11px] px-1.5 rounded-full ${r.kind === "changed" ? "bg-amber-200 text-amber-900" : r.kind === "removed" ? "bg-red-200 text-red-900" : "bg-green-200 text-green-900"}`}>{tag}</span>}
+                      {inl ? inl.right.map((s, k) => s.mark ? <span key={k} className="bg-amber-200/80 text-amber-950 rounded-sm font-medium">{s.text}</span> : <span key={k}>{s.text}</span>)
+                        : (r.right || <span className="text-gray-300">—</span>)}
                     </div>
                   </div>
                 );
@@ -580,20 +583,20 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
               {sumError && <span className="text-xs text-red-600">{sumError}</span>}
             </div>
             {sumOpen && summary && !sumLoading && (
-              <div className="mt-3 rounded-xl border border-purple-200 bg-purple-50/40 p-4 text-sm">
+              <div className="mt-3 rounded-xl border border-purple-200 bg-purple-50/40 p-4 text-[15px] leading-7">
                 {summaryStale && <p className="text-xs text-amber-700 mb-2">⚠ 台本が変わっています。この内容は前の台本に対するものです</p>}
                 {summary.overall && <p className="font-semibold text-purple-900 mb-3">{summary.overall}</p>}
                 {summary.changes.length > 0 && (
                   <div className="mb-4">
-                    <h4 className="text-xs font-semibold text-purple-700 mb-2">どこを直したか（{summary.changes.length}件）</h4>
+                    <h4 className="text-sm font-semibold text-purple-700 mb-2">どこを直したか（{summary.changes.length}件）</h4>
                     <div className="space-y-2">
                       {summary.changes.map((c, i) => (
                         <div key={i} className="bg-white rounded-lg border border-purple-100 p-3">
                           <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-medium">{c.where || "—"}</span>
-                            <span className="text-xs text-gray-700">{c.point}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-medium shrink-0">{c.where || "—"}</span>
+                            <span className="text-[15px] text-gray-800">{c.point}</span>
                           </div>
-                          <div className="grid sm:grid-cols-2 gap-2 text-xs">
+                          <div className="grid sm:grid-cols-2 gap-2 text-sm leading-6">
                             <div className="rounded bg-red-50 border border-red-100 p-2 text-red-900"><span className="font-semibold text-red-600 mr-1">前</span>{c.before || "—"}</div>
                             <div className="rounded bg-green-50 border border-green-100 p-2 text-green-900"><span className="font-semibold text-green-700 mr-1">後</span>{c.after || "—"}</div>
                           </div>
@@ -604,7 +607,7 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
                 )}
                 {summary.nextTime.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-semibold text-purple-700 mb-2">次回の改善ポイント</h4>
+                    <h4 className="text-sm font-semibold text-purple-700 mb-2">次回の改善ポイント</h4>
                     <ol className="space-y-1.5">
                       {summary.nextTime.map((t, i) => (
                         <li key={i} className="flex gap-2 bg-white rounded-lg border border-purple-100 px-3 py-2">
