@@ -15,12 +15,24 @@ import { reviewRoomUrl, refVideoUrls, notifyEvent } from "@/lib/notify";
 import { getProfileByChannel, getAnalyses } from "@/lib/script-analysis-store";
 import { getApiKey } from "@/lib/channel-store";
 import { getAiModel } from "@/lib/ai-model";
-import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction, ReviewLearn } from "@/lib/project-store";
+import type { ScriptProject, ReviewComment, RuleProposal, FbVideo, FbInstruction, ReviewLearn, ReviewSummary } from "@/lib/project-store";
 import { getScriptHistory } from "@/lib/project-store";
 import TarotCardGallery from "@/components/TarotCardGallery";
+import { paraDiff, diffStats } from "@/lib/para-diff";
+
+function textHash(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return `${s.length}:${h}`;
+}
 
 export default function StepReview({ project, onUpdate }: { project: ScriptProject; onUpdate: (p: ScriptProject) => void }) {
-  const [tab, setTab] = useState<"preview" | "edit">("preview");
+  const [tab, setTab] = useState<"preview" | "edit" | "compare">("preview");
+  // 比較タブ: 修正ポイント（AI要約）の状態
+  const [sumLoading, setSumLoading] = useState(false);
+  const [sumError, setSumError] = useState("");
+  const [sumOpen, setSumOpen] = useState(false);
+  const [cmpChangedOnly, setCmpChangedOnly] = useState(false);
   const [draft, setDraft] = useState(project.reviewedScript ?? project.submittedScript ?? "");
   const [openSeg, setOpenSeg] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
@@ -63,6 +75,31 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
 
   const segs: DiffSeg[] = useMemo(() => diffTexts(submitted, reviewed), [submitted, reviewed]);
   const changedCount = segs.filter((s) => s.type !== "same").length;
+
+  // 比較タブ: 段落単位の差分と、修正ポイントの鮮度（原文か完成台本が変わったら作り直す）
+  const cmpRows = useMemo(() => paraDiff(submitted, reviewed), [submitted, reviewed]);
+  const cmpStats = useMemo(() => diffStats(cmpRows), [cmpRows]);
+  const cmpHash = textHash(submitted + "\u0000" + reviewed);
+  const summary = project.reviewSummary;
+  const summaryStale = !!summary && summary.hash !== cmpHash;
+  const runReviewSummary = async () => {
+    const aiApiKey = getApiKey("ai_api_key");
+    if (!aiApiKey) { setSumError("AI APIキーを設定してください"); return; }
+    setSumLoading(true); setSumError(""); setSumOpen(true);
+    try {
+      const res = await fetch("/api/script/review-summary", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submitted, reviewed, comments: project.reviewComments || [], aiApiKey, aiModel: getAiModel("check") }),
+      });
+      const d = await res.json();
+      if (d.error) { setSumError(d.error); return; }
+      const s = d.summary as { changes: ReviewSummary["changes"]; nextTime: string[]; overall?: string };
+      onUpdate({ ...project, reviewSummary: { at: new Date().toISOString(), hash: cmpHash, changes: s.changes || [], nextTime: s.nextTime || [], overall: s.overall } });
+      pushSharedSettings();
+    } catch (e) {
+      setSumError(e instanceof Error ? e.message : "修正ポイントの作成に失敗しました");
+    } finally { setSumLoading(false); }
+  };
 
   // 元ネタ台本（台本の右隣に表示。文末で改行して読みやすく整形）
   const [refTab, setRefTab] = useState(0);
@@ -335,7 +372,7 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
         紫色＝オーナーが変更した箇所（クリックで変更前とコメントを表示）。変更箇所: {changedCount}件 / コメント: {comments.length}件
       </p>
 
-      <div className={`grid gap-4 mb-6 items-start ${refScripts.length > 0 ? "lg:grid-cols-2" : ""}`}>
+      <div className={`grid gap-4 mb-6 items-start ${refScripts.length > 0 && tab !== "compare" ? "lg:grid-cols-2" : ""}`}>
         {/* 左: 添削対象の台本 */}
         <div className="min-w-0">
       {/* タブ */}
@@ -347,6 +384,11 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
         <button onClick={() => { setDraft(reviewed); setTab("edit"); }}
           className={`px-3 py-1.5 rounded-lg text-sm ${tab === "edit" ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}>
           添削する（編集）
+        </button>
+        <button onClick={() => { saveDraft(); setTab("compare"); }}
+          className={`px-3 py-1.5 rounded-lg text-sm ${tab === "compare" ? "bg-accent text-white" : "bg-gray-100 text-gray-600"}`}
+          title="提出台本の原文と完成台本を横並びで比較">
+          比較（原文 ⇄ 完成）
         </button>
         <button onClick={() => navigator.clipboard.writeText(reviewed)}
           className="ml-auto px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">コピー</button>
@@ -480,10 +522,115 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
           })}
         </div>
       )}
+
+      {/* 比較タブ: 提出台本原文と完成台本を横並び（段落ごとに揃える）。下に修正ポイント */}
+      {tab === "compare" && (
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-2 text-xs text-gray-500 flex-wrap">
+            <span>全{cmpRows.length}段落</span>
+            <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-amber-100 border border-amber-300" />書き換え {cmpStats.changed}</span>
+            <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-100 border border-red-300" />削除 {cmpStats.removed}</span>
+            <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-100 border border-green-300" />追加 {cmpStats.added}</span>
+            <label className="ml-auto inline-flex items-center gap-1 cursor-pointer select-none">
+              <input type="checkbox" checked={cmpChangedOnly} onChange={(e) => setCmpChangedOnly(e.target.checked)} />
+              変わった段落だけ
+            </label>
+          </div>
+          <div className="rounded-xl border border-gray-200 overflow-hidden">
+            <div className="grid grid-cols-2 text-xs font-semibold bg-gray-50 border-b border-gray-200">
+              <div className="px-3 py-2 border-r border-gray-200">📝 提出台本（原文）<span className="ml-2 font-normal text-gray-400">{submitted.replace(/\s/g, "").length}字</span></div>
+              <div className="px-3 py-2">✅ 完成台本<span className="ml-2 font-normal text-gray-400">{reviewed.replace(/\s/g, "").length}字</span></div>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto text-sm leading-6">
+              {cmpRows.map((r, i) => {
+                if (cmpChangedOnly && r.kind === "same") return null;
+                const lc = r.kind === "same" ? "" : r.kind === "changed" ? "bg-amber-50" : r.kind === "removed" ? "bg-red-50" : "bg-gray-50/60";
+                const rc = r.kind === "same" ? "" : r.kind === "changed" ? "bg-amber-50" : r.kind === "added" ? "bg-green-50" : "bg-gray-50/60";
+                const tag = r.kind === "changed" ? "書き換え" : r.kind === "removed" ? "削除" : r.kind === "added" ? "追加" : "";
+                return (
+                  <div key={i} className="grid grid-cols-2 border-b border-gray-100 last:border-b-0">
+                    <div className={`px-3 py-2 border-r border-gray-100 whitespace-pre-wrap break-words ${lc} ${r.kind === "removed" ? "text-red-800 line-through decoration-red-300" : "text-gray-700"}`}>
+                      {r.left || <span className="text-gray-300">—</span>}
+                    </div>
+                    <div className={`px-3 py-2 whitespace-pre-wrap break-words relative ${rc} ${r.kind === "added" ? "text-green-900" : "text-gray-800"}`}>
+                      {tag && <span className={`absolute right-2 top-1 text-[10px] px-1.5 rounded-full ${r.kind === "changed" ? "bg-amber-200 text-amber-900" : r.kind === "removed" ? "bg-red-200 text-red-900" : "bg-green-200 text-green-900"}`}>{tag}</span>}
+                      {r.right || <span className="text-gray-300">—</span>}
+                    </div>
+                  </div>
+                );
+              })}
+              {cmpChangedOnly && cmpStats.changed + cmpStats.removed + cmpStats.added === 0 && (
+                <p className="p-4 text-center text-gray-400 text-sm">提出原文と完成台本に差分はありません</p>
+              )}
+            </div>
+          </div>
+
+          {/* 修正ポイント */}
+          <div className="mt-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => { if (summary && !summaryStale) setSumOpen((v) => !v); else void runReviewSummary(); }}
+                disabled={sumLoading || cmpStats.changed + cmpStats.removed + cmpStats.added === 0}
+                className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+                {sumLoading ? "AIがまとめ中…" : summary && !summaryStale ? (sumOpen ? "🔍 修正ポイントを閉じる" : "🔍 修正ポイントを見る") : summary ? "🔍 修正ポイントを作り直す（台本が変わっています）" : "🔍 修正ポイントを見る"}
+              </button>
+              {summary && !summaryStale && !sumLoading && (
+                <button onClick={() => void runReviewSummary()} className="text-xs text-gray-500 hover:underline">作り直す</button>
+              )}
+              {summary && <span className="text-xs text-gray-400">{new Date(summary.at).toLocaleString("ja-JP")} 作成</span>}
+              {sumError && <span className="text-xs text-red-600">{sumError}</span>}
+            </div>
+            {sumOpen && summary && !sumLoading && (
+              <div className="mt-3 rounded-xl border border-purple-200 bg-purple-50/40 p-4 text-sm">
+                {summaryStale && <p className="text-xs text-amber-700 mb-2">⚠ 台本が変わっています。この内容は前の台本に対するものです</p>}
+                {summary.overall && <p className="font-semibold text-purple-900 mb-3">{summary.overall}</p>}
+                {summary.changes.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="text-xs font-semibold text-purple-700 mb-2">どこを直したか（{summary.changes.length}件）</h4>
+                    <div className="space-y-2">
+                      {summary.changes.map((c, i) => (
+                        <div key={i} className="bg-white rounded-lg border border-purple-100 p-3">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-medium">{c.where || "—"}</span>
+                            <span className="text-xs text-gray-700">{c.point}</span>
+                          </div>
+                          <div className="grid sm:grid-cols-2 gap-2 text-xs">
+                            <div className="rounded bg-red-50 border border-red-100 p-2 text-red-900"><span className="font-semibold text-red-600 mr-1">前</span>{c.before || "—"}</div>
+                            <div className="rounded bg-green-50 border border-green-100 p-2 text-green-900"><span className="font-semibold text-green-700 mr-1">後</span>{c.after || "—"}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {summary.nextTime.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-purple-700 mb-2">次回の改善ポイント</h4>
+                    <ol className="space-y-1.5">
+                      {summary.nextTime.map((t, i) => (
+                        <li key={i} className="flex gap-2 bg-white rounded-lg border border-purple-100 px-3 py-2">
+                          <span className="shrink-0 w-5 h-5 rounded-full bg-purple-600 text-white text-[11px] flex items-center justify-center font-semibold">{i + 1}</span>
+                          <span className="text-gray-800">{t}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+                {summary.changes.length === 0 && summary.nextTime.length === 0 && <p className="text-gray-500">{summary.overall || "差分はありません"}</p>}
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => {
+                    const text = [summary.overall ? `■ ${summary.overall}` : "", "", "【どこを直したか】", ...summary.changes.map((c) => `・${c.where}: ${c.point}\n  前: ${c.before}\n  後: ${c.after}`), "", "【次回の改善ポイント】", ...summary.nextTime.map((t, i) => `${i + 1}. ${t}`)].join("\n");
+                    navigator.clipboard.writeText(text); setCopied("summary"); setTimeout(() => setCopied(null), 1500);
+                  }} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs hover:bg-gray-50">{copied === "summary" ? "コピーしました" : "テキストでコピー"}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
         </div>
 
         {/* 右: 元ネタ台本（読みやすく整形して表示） */}
-        {refScripts.length > 0 && (() => {
+        {refScripts.length > 0 && tab !== "compare" && (() => {
           const a = refScripts[Math.min(refTab, refScripts.length - 1)];
           return (
             <div className="min-w-0 bg-card-bg rounded-xl border border-gray-100 p-4 h-fit lg:sticky lg:top-4">

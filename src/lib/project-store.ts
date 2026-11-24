@@ -208,6 +208,8 @@ export interface ScriptProject {
   reviewComments?: ReviewComment[];
   // 添削から学んだこと（合格時に自動分析。ルール候補・消された言い回し・型の有効性）
   reviewLearn?: ReviewLearn;
+  // 修正ポイント（提出原文と完成台本の比較から、どこを直したか・次回の改善点を要約。台本が変わると作り直す）
+  reviewSummary?: ReviewSummary;
   // 追加ルール提案（構成提案→添削部屋に送られる）
   ruleProposals?: RuleProposal[];
   // 追加ルール提案の下書き（生成後、送信しなくても残り続ける）と過去の提案（再提案時に格納）
@@ -261,6 +263,14 @@ export interface ReviewLearn {
   bannedPhrases: { phrase: string; reason: string; registered?: boolean }[];
   techniques: { index: number; verdict: "kept" | "removed" | "changed"; note: string }[];
   candidates?: { phrase: string; reason: string; count: number }[];
+}
+
+export interface ReviewSummary {
+  at: string;
+  hash: string;        // 提出原文＋完成台本のハッシュ（どちらかが変わったら作り直す）
+  changes: { where: string; before: string; after: string; point: string }[];  // 場所／変更前の要点／変更後の要点／狙い
+  nextTime: string[];  // 次回の改善ポイント（ライターが次に台本を書くときに気をつけること）
+  overall?: string;    // 全体の一言
 }
 
 export interface RuleProposal {
