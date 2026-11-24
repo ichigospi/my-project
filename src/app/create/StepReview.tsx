@@ -33,6 +33,7 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
   const [sumError, setSumError] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [cmpChangedOnly, setCmpChangedOnly] = useState(false);
+  const [cmpMarker, setCmpMarker] = useState(true); // 書き換え行の中で変わった言葉にマーカーを付けるか
   const [draft, setDraft] = useState(project.reviewedScript ?? project.submittedScript ?? "");
   const [openSeg, setOpenSeg] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
@@ -540,6 +541,10 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
             <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-100 border border-red-300" />削除 {cmpStats.removed}</span>
             <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-100 border border-green-300" />追加 {cmpStats.added}</span>
             <label className="ml-auto inline-flex items-center gap-1 cursor-pointer select-none">
+              <input type="checkbox" checked={cmpMarker} onChange={(e) => setCmpMarker(e.target.checked)} />
+              変わった言葉にマーカー
+            </label>
+            <label className="inline-flex items-center gap-1 cursor-pointer select-none">
               <input type="checkbox" checked={cmpChangedOnly} onChange={(e) => setCmpChangedOnly(e.target.checked)} />
               変わった行だけ
             </label>
@@ -581,12 +586,12 @@ export default function StepReview({ project, onUpdate }: { project: ScriptProje
                 const lc = r.kind === "same" ? "" : r.kind === "changed" ? "bg-amber-50" : r.kind === "removed" ? "bg-red-50" : "bg-gray-50/60";
                 const rc = r.kind === "same" ? "" : r.kind === "changed" ? "bg-amber-50" : r.kind === "added" ? "bg-green-50" : "bg-gray-50/60";
                 const tag = r.kind === "changed" ? "書き換え" : r.kind === "removed" ? "削除" : r.kind === "added" ? "追加" : "";
-                const inl = r.kind === "changed" ? inlineDiff(r.left, r.right) : null;
+                const inl = cmpMarker && r.kind === "changed" ? inlineDiff(r.left, r.right) : null;
                 // この行に付いたオーナーコメント（プレビューで付けたもの。変更前か変更後の文がこの行に含まれるもの）
                 const ownerNotes = r.kind === "same" ? [] : comments.filter((c) => c.comment && ((c.original && r.left.includes(c.original.trim().slice(0, 40))) || (c.changed && r.right.includes(c.changed.trim().slice(0, 40)))));
                 return (
                   <div key={i} className={`grid grid-cols-2 border-b border-gray-100 last:border-b-0 ${rowItems.length ? "border-l-4 border-l-purple-400" : ""}`}>
-                    <div className={`px-3 py-2 pr-4 border-r border-gray-100 whitespace-pre-wrap break-words ${lc} ${r.kind === "removed" ? "text-red-800 line-through decoration-red-300" : "text-gray-700"}`}>
+                    <div className={`px-3 py-2 pr-4 border-r border-gray-100 whitespace-pre-wrap break-words ${lc} ${r.kind === "removed" && cmpMarker ? "text-red-800 line-through decoration-red-300" : "text-gray-700"}`}>
                       {inl ? inl.left.map((s, k) => s.mark ? <span key={k} className="bg-red-100 text-red-800 line-through decoration-red-300 rounded-sm">{s.text}</span> : <span key={k}>{s.text}</span>)
                         : (r.left || <span className="text-gray-300">—</span>)}
                     </div>
