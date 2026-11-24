@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callAi } from "@/lib/ai-call";
 import { worldviewPromptBlock } from "@/lib/worldview";
 import { formatEssenceForPrompt } from "@/lib/script-analysis-store";
-import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
-import { recordUsage } from "@/lib/usage-tracker";
+import { normalizeAiModel } from "@/lib/ai-model";
 import { buildTarotDrawBlock, TAROT_IMAGERY_TECHNIQUES, syncDrawSpecToCards } from "@/lib/tarot-draw";
 import { formatCardPlanForPrompt, formatCardPlanAsAbstract, isCardPlanFilled, type CardPlan } from "@/lib/project-store";
 import { referenceModeBlock } from "@/lib/structure-mode";
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   const { analyses, style, topic, channelProfile, aiApiKey, userPrompt, currentSkeleton, rulesText, primaryAnalysisId, genre } = body;
   // 構成モード: reference=テンプレ構成を適用せず元ネタの構成を完全トレース（不変ルールは据え置き）
   const structureMode: string = body.structureMode === "reference" ? "reference" : "template";
-  const aiModel = resolveAiModel(body.aiModel);
+  const aiModel = normalizeAiModel(body.aiModel);
   // 主軸（メイン）元ネタの決定: ユーザー指定があればそれ、無ければ最多再生
   const primaryId: string | undefined = (() => {
     const list = (analyses || []) as { id?: string; views?: number }[];
@@ -46,7 +46,6 @@ export async function POST(request: NextRequest) {
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが設定されていません" }, { status: 400 });
 
-  const isAnthropic = aiApiKey.startsWith("sk-ant-");
 
   const analysisTexts = analyses.map((a: {
     id?: string;
@@ -356,38 +355,9 @@ ${userPrompt ? `\n【追加指示】\n${userPrompt}` : ""}
   }
 
   try {
-    let text = "";
-
-    if (isAnthropic) {
-      let res: Response | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: anthropicHeaders(aiApiKey, aiModel),
-          body: JSON.stringify({ model: aiModel, max_tokens: 16000, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
-        });
-        if (res.status === 429 || res.status === 529) {
-          if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
-          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
-          continue;
-        }
-        break;
-      }
-      if (!res!.ok) { const e = await res!.json(); return NextResponse.json({ error: e.error?.message }, { status: res!.status }); }
-      const data = await res!.json();
-      recordUsage({ model: data.model || aiModel, usage: data.usage });
-      text = (data.content || []).filter((b: { type?: string }) => b.type === "text").map((b: { text?: string }) => b.text || "").join("");
-    } else {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 16000 }),
-      });
-      if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message }, { status: res.status }); }
-      const odata = await res.json();
-      recordUsage({ model: "gpt-4o", usage: odata.usage });
-      text = odata.choices?.[0]?.message?.content || "";
-    }
+    const r = await callAi(aiApiKey, aiModel, prompt, { maxTokens: 16000 });
+    if (r.error) return NextResponse.json({ error: r.error, ...(r.retryable ? { retryable: true } : {}) }, { status: r.status || 500 });
+    const text = r.text;
 
     // 字数配分の確定: 各セクションの「約N字」を目標字数に合わせて再配分し、尺も字数から引き直す（抽象ロジックの段階と修正依頼では行わない）
     let outSkeleton = text;
