@@ -265,11 +265,28 @@ export interface ReviewLearn {
   candidates?: { phrase: string; reason: string; count: number }[];
 }
 
+// 修正ポイントの理由タグ（固定語彙。根本的な直しだけを扱う。漢数字・誤字などの細かい直しは対象外）
+export const REVIEW_TAGS = ["構成", "先食い", "位置違い", "意味が通らない", "矛盾", "重複", "訴求が弱い", "橋渡し", "絵柄が長い", "世界観", "規範違反", "語り口"] as const;
+export type ReviewTag = (typeof REVIEW_TAGS)[number];
+export interface ReviewSummaryItem {
+  row: number;      // 比較表の行番号（paraDiff の行。1始まり）
+  tag: string;      // REVIEW_TAGS のどれか
+  quote: string;    // その行の実際の言葉（短い引用）
+  note: string;     // なぜ直したか・どう直したか（1〜2文）
+}
+export interface ReviewNextTime {
+  tag: string;
+  rule: string;     // 守ること（「〜する」「〜しない」の形）
+  before: string;   // この台本での実例（前）
+  after: string;    // この台本での実例（後）
+  basis: string;    // 根拠になるルール・構成ロジック
+}
 export interface ReviewSummary {
   at: string;
   hash: string;        // 提出原文＋完成台本のハッシュ（どちらかが変わったら作り直す）
-  changes: { where: string; before: string; after: string; point: string }[];  // 場所／変更前の要点／変更後の要点／狙い
-  nextTime: string[];  // 次回の改善ポイント（ライターが次に台本を書くときに気をつけること）
+  items: ReviewSummaryItem[];
+  nextTime: ReviewNextTime[];
+  tagCounts: Record<string, number>;
   overall?: string;    // 全体の一言
 }
 

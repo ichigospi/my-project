@@ -1444,6 +1444,46 @@ export default function StepScript({ project, onUpdate }: { project: ScriptProje
               <h3 className="font-semibold text-base">🚦 提出前チェック</h3>
               <span className="text-xs text-gray-500">順番: ①品質チェック（構成・訴求）→ ②日本語校閲（一文ずつ）→ 提出</span>
             </div>
+            {/* 前回の添削での改善ポイント（添削部屋の比較タブで作った「修正ポイント」。全員に見せる。根本的なものだけ） */}
+            {(() => {
+              const withSummary = getProjects()
+                .filter((p) => p.id !== project.id && p.reviewSummary && Array.isArray(p.reviewSummary.items) && (p.reviewSummary.nextTime.length > 0 || p.reviewSummary.items.length > 0))
+                .sort((a, b) => (b.reviewSummary!.at > a.reviewSummary!.at ? 1 : -1));
+              const sameCh = withSummary.filter((p) => p.channelId === project.channelId);
+              const list = sameCh.length > 0 ? sameCh : withSummary;
+              const last = list[0];
+              if (!last) return null;
+              const prevTags = new Set(Object.keys(list[1]?.reviewSummary?.tagCounts || {}));
+              const rs = last.reviewSummary!;
+              const tags = Object.entries(rs.tagCounts || {}).sort((a, b) => b[1] - a[1]);
+              return (
+                <details className="mb-3 rounded-lg border border-purple-200 bg-purple-50/40 open:pb-3">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-purple-900">
+                    📚 前回の添削での改善ポイント
+                    <span className="ml-2 font-normal text-xs text-gray-500">「{last.title || "無題"}」 {new Date(rs.at).toLocaleDateString("ja-JP")}{rs.overall ? ` ／ ${rs.overall}` : ""}</span>
+                  </summary>
+                  <div className="px-3 text-[15px] leading-7">
+                    {tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2 text-sm">
+                        {tags.map(([t, n]) => (
+                          <span key={t} className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                            {t} {n}{prevTags.has(t) ? <span className="ml-1 text-[11px] text-red-600 font-semibold">前回も</span> : null}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <ol className="space-y-1.5">
+                      {rs.nextTime.map((t, i) => (
+                        <li key={i} className="bg-white rounded-lg border border-purple-100 px-3 py-2">
+                          <p className="text-gray-900"><span className="inline-block text-[11px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 font-medium mr-2 align-middle">{t.tag}</span>{t.rule}</p>
+                          {(t.before || t.after) && <p className="text-sm text-gray-600 mt-0.5">例: <span className="text-red-700">{t.before}</span> → <span className="text-green-700">{t.after}</span></p>}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </details>
+              );
+            })()}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* ① 品質チェック */}
               <div className={`rounded-lg p-3 border ${qcPassed ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
