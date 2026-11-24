@@ -35,6 +35,18 @@ function SettingsContent() {
   const [aiModelCheck, setAiModelCheck] = useState<string>("claude-sonnet-4-6");
   const [geminiApiKey, setGeminiApiKeyState] = useState("");
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [geminiModels, setGeminiModels] = useState<{ id: string; label: string; outputLimit?: number }[] | null>(null);
+  const [geminiModelsError, setGeminiModelsError] = useState("");
+  const [loadingGeminiModels, setLoadingGeminiModels] = useState(false);
+  const loadGeminiModels = async () => {
+    setLoadingGeminiModels(true); setGeminiModelsError("");
+    try {
+      const res = await fetch("/api/ai/gemini-models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: geminiApiKey }) });
+      const d = await res.json();
+      if (d.error) setGeminiModelsError(d.error); else setGeminiModels(d.models || []);
+    } catch { setGeminiModelsError("モデル一覧の取得に失敗しました"); }
+    finally { setLoadingGeminiModels(false); }
+  };
   const [saved, setSaved] = useState(false);
   const [channelCount, setChannelCount] = useState(0);
   const [testingYt, setTestingYt] = useState(false);
@@ -417,13 +429,23 @@ function SettingsContent() {
                         className="flex-1 min-w-[16rem] px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-white">
                         {AI_MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                       </select>
+                    ) : geminiModels && geminiModels.length > 0 ? (
+                      <select value={geminiModels.some((m) => m.id === spec.model) ? spec.model : "__custom__"} onChange={(e) => { if (e.target.value !== "__custom__") setter(`${GEMINI_PREFIX}${e.target.value}`); }}
+                        className="flex-1 min-w-[16rem] px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-white">
+                        {!geminiModels.some((m) => m.id === spec.model) && <option value="__custom__">{spec.model}（手入力）</option>}
+                        {geminiModels.map((m) => <option key={m.id} value={m.id}>{m.label}（{m.id}{m.outputLimit ? `・出力${Math.round(m.outputLimit / 1000)}k` : ""}）</option>)}
+                      </select>
                     ) : (
                       <input list={`gemini-models-${key}`} value={spec.model} onChange={(e) => setter(`${GEMINI_PREFIX}${e.target.value.trim()}`)} placeholder="GeminiのモデルID（例: gemini-2.5-pro）"
                         className="flex-1 min-w-[16rem] px-3 py-2.5 rounded-lg border border-gray-200 text-sm font-mono outline-none focus:border-accent" />
                     )}
+                    {spec.provider === "gemini" && (
+                      <button type="button" onClick={loadGeminiModels} disabled={loadingGeminiModels} className="px-3 py-2 rounded-lg border border-gray-300 text-xs hover:bg-gray-50 disabled:opacity-50">{loadingGeminiModels ? "取得中…" : geminiModels ? "一覧を更新" : "📋 使えるモデルを取得"}</button>
+                    )}
                     <datalist id={`gemini-models-${key}`}>{GEMINI_MODEL_SUGGESTIONS.map((m) => <option key={m} value={m} />)}</datalist>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">{spec.provider === "anthropic" ? AI_MODEL_OPTIONS.find((o) => o.id === spec.model)?.desc : "Google AI Studio で使えるモデルIDを入力。新しいモデルが出たらここに書くだけで切り替わります"}</p>
+                  <p className="text-xs text-gray-400 mt-1">{spec.provider === "anthropic" ? AI_MODEL_OPTIONS.find((o) => o.id === spec.model)?.desc : geminiModels ? "一覧は今このキーで使えるモデルをGoogleから取得したものです。新しいモデルが出たら「一覧を更新」で出てきます" : "Gemini APIキーを入れて「使えるモデルを取得」を押すと、最新のモデル（4.0系を含む）が一覧で選べます。手入力も可"}</p>
+                  {spec.provider === "gemini" && geminiModelsError && <p className="text-xs text-red-500 mt-1">{geminiModelsError}</p>}
                 </div>
               );
             })}
