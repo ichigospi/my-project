@@ -20,7 +20,7 @@ export type AiModelPurpose = "generate" | "check";
 export type AiProvider = "anthropic" | "gemini";
 export const GEMINI_PREFIX = "gemini:";
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-pro";
-export const GEMINI_MODEL_SUGGESTIONS = ["gemini-2.5-pro", "gemini-2.5-flash"];
+export const GEMINI_MODEL_SUGGESTIONS = ["gemini-4.0-neon", "gemini-3-pro", "gemini-2.5-pro", "gemini-2.5-flash"];
 export function parseAiSpec(raw?: string): { provider: AiProvider; model: string } {
   const s = (raw || "").trim();
   if (s.startsWith(GEMINI_PREFIX)) return { provider: "gemini", model: s.slice(GEMINI_PREFIX.length).trim() || DEFAULT_GEMINI_MODEL };
