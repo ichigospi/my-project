@@ -5,7 +5,7 @@ import ChatworkRulesPanel from "@/components/ChatworkRulesPanel";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getApiKey, setApiKey, getChannels } from "@/lib/channel-store";
-import { getAiModel, setAiModel, AI_MODEL_OPTIONS, type AiModelId } from "@/lib/ai-model";
+import { getAiModel, setAiModel, AI_MODEL_OPTIONS, parseAiSpec, GEMINI_PREFIX, DEFAULT_GEMINI_MODEL, GEMINI_MODEL_SUGGESTIONS } from "@/lib/ai-model";
 import { pullSharedSettings, pushSharedSettings } from "@/lib/shared-sync";
 import { useChannel } from "@/lib/channel-context";
 
@@ -31,8 +31,10 @@ function SettingsContent() {
   const [youtubeApiKey, setYoutubeApiKey] = useState("");
   const [aiApiKey, setAiApiKeyState] = useState("");
   const [openaiApiKey, setOpenaiApiKeyState] = useState("");
-  const [aiModelGenerate, setAiModelGenerate] = useState<AiModelId>("claude-sonnet-4-6");
-  const [aiModelCheck, setAiModelCheck] = useState<AiModelId>("claude-sonnet-4-6");
+  const [aiModelGenerate, setAiModelGenerate] = useState<string>("claude-sonnet-4-6");
+  const [aiModelCheck, setAiModelCheck] = useState<string>("claude-sonnet-4-6");
+  const [geminiApiKey, setGeminiApiKeyState] = useState("");
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const [channelCount, setChannelCount] = useState(0);
   const [testingYt, setTestingYt] = useState(false);
@@ -90,6 +92,7 @@ function SettingsContent() {
       setAiApiKeyState(getApiKey("ai_api_key"));
       setOpenaiApiKeyState(getApiKey("openai_api_key"));
       setLitmediaApiKeyState(getApiKey("litmedia_api_key"));
+      setGeminiApiKeyState(getApiKey("gemini_api_key"));
       setChatworkTokenState(getApiKey("chatwork_api_token"));
       setChatworkRoomIdState(getApiKey("chatwork_room_id"));
       setChannelCount(getChannels().length);
@@ -281,6 +284,7 @@ function SettingsContent() {
     setApiKey("litmedia_api_key", litmediaApiKey);
     setApiKey("chatwork_api_token", chatworkToken);
     setApiKey("chatwork_room_id", chatworkRoomId);
+    setApiKey("gemini_api_key", geminiApiKey);
     setAiModel("generate", aiModelGenerate);
     setAiModel("check", aiModelCheck);
     // サーバーにも共有設定を保存
@@ -392,26 +396,44 @@ function SettingsContent() {
 
         {/* AIモデル選択 */}
         <div className="bg-card-bg rounded-xl p-6 shadow-sm border border-gray-100">
-          <h2 className="font-semibold mb-1">AIモデル（Claude使用時）</h2>
+          <h2 className="font-semibold mb-1">AIモデル（生成用／チェック用）</h2>
           <p className="text-sm text-gray-500 mb-4">
-            台本の「生成」と「品質チェック」で使うモデルを別々に選べます。OpenAIキー使用時はGPT-4o固定でこの設定は影響しません。
+            台本の「生成」と「品質チェック」で使うAIを別々に選べます。Claude（既定）か Gemini。Geminiを使うときは下の Gemini APIキーを保存してください。OpenAIキー使用時はGPT-4o固定です。
           </p>
           <div className="space-y-4">
+            {([["generate", "生成用（設計表・骨組み・台本・修正・整合編集）", aiModelGenerate, setAiModelGenerate], ["check", "チェック用（品質チェック・骨組みチェック・校閲）", aiModelCheck, setAiModelCheck]] as const).map(([key, label, value, setter]) => {
+              const spec = parseAiSpec(value);
+              return (
+                <div key={key}>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">{label}</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select value={spec.provider} onChange={(e) => setter(e.target.value === "gemini" ? `${GEMINI_PREFIX}${DEFAULT_GEMINI_MODEL}` : "claude-sonnet-4-6")}
+                      className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-white">
+                      <option value="anthropic">Claude</option>
+                      <option value="gemini">Gemini</option>
+                    </select>
+                    {spec.provider === "anthropic" ? (
+                      <select value={spec.model} onChange={(e) => setter(e.target.value)}
+                        className="flex-1 min-w-[16rem] px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-white">
+                        {AI_MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <input list={`gemini-models-${key}`} value={spec.model} onChange={(e) => setter(`${GEMINI_PREFIX}${e.target.value.trim()}`)} placeholder="GeminiのモデルID（例: gemini-2.5-pro）"
+                        className="flex-1 min-w-[16rem] px-3 py-2.5 rounded-lg border border-gray-200 text-sm font-mono outline-none focus:border-accent" />
+                    )}
+                    <datalist id={`gemini-models-${key}`}>{GEMINI_MODEL_SUGGESTIONS.map((m) => <option key={m} value={m} />)}</datalist>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">{spec.provider === "anthropic" ? AI_MODEL_OPTIONS.find((o) => o.id === spec.model)?.desc : "Google AI Studio で使えるモデルIDを入力。新しいモデルが出たらここに書くだけで切り替わります"}</p>
+                </div>
+              );
+            })}
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">生成用モデル（骨組み・台本・修正）</label>
-              <select value={aiModelGenerate} onChange={(e) => setAiModelGenerate(e.target.value as AiModelId)}
-                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-white">
-                {AI_MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
-              <p className="text-xs text-gray-400 mt-1">{AI_MODEL_OPTIONS.find((o) => o.id === aiModelGenerate)?.desc}</p>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">チェック用モデル（品質チェック・骨組みチェック）</label>
-              <select value={aiModelCheck} onChange={(e) => setAiModelCheck(e.target.value as AiModelId)}
-                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-accent bg-white">
-                {AI_MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
-              <p className="text-xs text-gray-400 mt-1">{AI_MODEL_OPTIONS.find((o) => o.id === aiModelCheck)?.desc}</p>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Gemini APIキー（Google AI Studio で発行。Geminiを選んだときに使用）</label>
+              <div className="relative">
+                <input type={showGeminiKey ? "text" : "password"} value={geminiApiKey} onChange={(e) => setGeminiApiKeyState(e.target.value)} placeholder="AIza..."
+                  className="w-full px-4 py-2.5 pr-16 rounded-lg border border-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none text-sm font-mono" />
+                <button type="button" onClick={() => setShowGeminiKey(!showGeminiKey)} className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700">{showGeminiKey ? "隠す" : "表示"}</button>
+              </div>
             </div>
           </div>
           <div className="mt-3 p-3 bg-blue-50 rounded-lg">

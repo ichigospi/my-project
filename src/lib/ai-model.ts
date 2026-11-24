@@ -1,5 +1,6 @@
-// AIモデル選択（Anthropic）。クライアント/サーバー共用。
+// AIモデル選択。クライアント/サーバー共用。
 // 「生成用」(台本・骨組み・修正) と「チェック用」(品質チェック) を別々に選べる。
+// 保存値は Claude のモデルID、または "gemini:<モデルID>"（Geminiを使う。キーは設定の Gemini APIキー）。
 // OpenAIキー使用時は従来通り gpt-4o 固定で、この設定は影響しない。
 
 export const ALLOWED_AI_MODELS = ["claude-sonnet-4-6", "claude-opus-4-8", "claude-fable-5"] as const;
@@ -15,6 +16,22 @@ export const AI_MODEL_OPTIONS: { id: AiModelId; label: string; desc: string }[] 
 
 export type AiModelPurpose = "generate" | "check";
 
+// ===== プロバイダ指定 =====
+export type AiProvider = "anthropic" | "gemini";
+export const GEMINI_PREFIX = "gemini:";
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-pro";
+export const GEMINI_MODEL_SUGGESTIONS = ["gemini-2.5-pro", "gemini-2.5-flash"];
+export function parseAiSpec(raw?: string): { provider: AiProvider; model: string } {
+  const s = (raw || "").trim();
+  if (s.startsWith(GEMINI_PREFIX)) return { provider: "gemini", model: s.slice(GEMINI_PREFIX.length).trim() || DEFAULT_GEMINI_MODEL };
+  return { provider: "anthropic", model: resolveAiModel(s) };
+}
+// サーバー側: リクエストのモデル指定を「そのまま渡せる文字列」に正規化（Claudeは検証済みID、Geminiは "gemini:..." のまま）
+export function normalizeAiModel(raw?: string): string {
+  const spec = parseAiSpec(raw);
+  return spec.provider === "gemini" ? `${GEMINI_PREFIX}${spec.model}` : spec.model;
+}
+
 const STORAGE_KEYS: Record<AiModelPurpose, string> = {
   generate: "ai_model_generate",
   check: "ai_model_check",
@@ -26,14 +43,14 @@ export function resolveAiModel(m?: string): AiModelId {
 }
 
 // クライアント側：保存されたモデル選択を取得/保存
-export function getAiModel(purpose: AiModelPurpose): AiModelId {
+export function getAiModel(purpose: AiModelPurpose): string {
   if (typeof window === "undefined") return DEFAULT_AI_MODEL;
-  return resolveAiModel(localStorage.getItem(STORAGE_KEYS[purpose]) || "");
+  return normalizeAiModel(localStorage.getItem(STORAGE_KEYS[purpose]) || "");
 }
 
-export function setAiModel(purpose: AiModelPurpose, model: AiModelId) {
+export function setAiModel(purpose: AiModelPurpose, model: string) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS[purpose], model);
+  localStorage.setItem(STORAGE_KEYS[purpose], normalizeAiModel(model));
 }
 
 // 共有同期用: 保存されている生の値（未設定なら空文字）。
@@ -46,7 +63,7 @@ export function getStoredAiModel(purpose: AiModelPurpose): string {
 // 共有同期用: サーバーから受け取った値をローカルに反映（不正値は無視）
 export function applyAiModelFromServer(purpose: AiModelPurpose, model: string) {
   if (typeof window === "undefined") return;
-  if (!(ALLOWED_AI_MODELS as readonly string[]).includes(model)) return;
+  if (!(ALLOWED_AI_MODELS as readonly string[]).includes(model) && !model.startsWith(GEMINI_PREFIX)) return;
   localStorage.setItem(STORAGE_KEYS[purpose], model);
 }
 

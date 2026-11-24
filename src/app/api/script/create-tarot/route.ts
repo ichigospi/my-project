@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callAi } from "@/lib/ai-call";
 import { worldviewPromptBlock, scanWorldview, HOME_WORLDVIEW, skeletonForGeneration } from "@/lib/worldview";
-import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
-import { recordUsage } from "@/lib/usage-tracker";
+import { normalizeAiModel } from "@/lib/ai-model";
 import { extractCardsFromProse, extractDrawnCards, getCardImagery, getCardMeaning } from "@/lib/tarot-draw";
 import { formatSectionTargets, parseSkeletonSections } from "@/lib/skeleton-chars";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
@@ -26,36 +26,8 @@ function jstToday(): string {
 }
 const bodyChars = (s: string) => s.replace(/\s/g, "").length;
 
-async function callModel(aiApiKey: string, aiModel: ReturnType<typeof resolveAiModel>, prompt: string): Promise<{ text: string; retryable?: boolean; error?: string; status?: number }> {
-  const isAnthropic = aiApiKey.startsWith("sk-ant-");
-  if (isAnthropic) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: anthropicHeaders(aiApiKey, aiModel),
-        body: JSON.stringify({ model: aiModel, max_tokens: 16000, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
-      });
-      if (res.status === 429 || res.status === 529) {
-        if (attempt === 2) return { text: "", retryable: true, error: "AIが混雑しています。少し時間をおいて再実行してください", status: res.status };
-        await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
-        continue;
-      }
-      if (!res.ok) { const e = await res.json().catch(() => ({})); return { text: "", error: e?.error?.message || `API error (${res.status})`, status: res.status }; }
-      const data = await res.json();
-      recordUsage({ model: data.model || aiModel, usage: data.usage });
-      return { text: ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("") };
-    }
-    return { text: "", error: "リトライ上限" };
-  }
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-    body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 16000 }),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); return { text: "", error: e?.error?.message || `API error (${res.status})`, status: res.status }; }
-  const data = await res.json();
-  recordUsage({ model: "gpt-4o", usage: data.usage });
-  return { text: data.choices?.[0]?.message?.content || "" };
+async function callModel(aiApiKey: string, aiModel: string, prompt: string): Promise<{ text: string; retryable?: boolean; error?: string; status?: number }> {
+  return callAi(aiApiKey, aiModel, prompt, { maxTokens: 16000 });
 }
 
 // 生成結果の整形: コードフェンス・見出し・メタ注記を落とす
@@ -72,7 +44,7 @@ async function run(body: any, progress: (m: string) => void): Promise<Record<str
   try {
     const aiApiKey = String(body.aiApiKey || "");
     if (!aiApiKey) return { ...{ error: "AI APIキーを設定してください" }, status: 400 };
-    const aiModel = resolveAiModel(body.aiModel);
+    const aiModel = normalizeAiModel(body.aiModel);
     const topic = String(body.topic || "");
     const genre = String(body.genre || "");
     const skeleton = String(body.skeleton || "");

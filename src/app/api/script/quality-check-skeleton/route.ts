@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callAi } from "@/lib/ai-call";
 import { scanWorldviewItems, skeletonContentOnly } from "@/lib/worldview";
-import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
-import { recordUsage } from "@/lib/usage-tracker";
+import { normalizeAiModel } from "@/lib/ai-model";
 import { buildCardAdditionPrompt, parseCardAdditions, buildContentAdditionPrompt, parseContentAdditions, type CardAddition, type ContentAddition } from "@/lib/card-additions";
 import { extractDrawnCards } from "@/lib/tarot-draw";
 import { sumSkeletonChars } from "@/lib/skeleton-chars";
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       style?: string;
       aiApiKey: string;
     };
-    const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
+    const aiModel = normalizeAiModel((body as { aiModel?: string }).aiModel);
 
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
     if (!skeleton?.trim()) return NextResponse.json({ error: "骨組みがありません" }, { status: 400 });
@@ -204,38 +204,11 @@ ${buildReferenceText(referenceAnalyses || [])}
 【評価対象：台本の骨組み（構成案）】
 ${skeleton}`;
 
-    const isAnthropic = aiApiKey.startsWith("sk-ant-");
     // モデル呼び出し（採点と、増筆プランの2回で使う）
     const callModel = async (prompt: string, maxTokens: number): Promise<{ raw: string } | { error: NextResponse }> => {
-      if (isAnthropic) {
-        let res: Response | null = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          res = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: anthropicHeaders(aiApiKey, aiModel),
-            body: JSON.stringify({ model: aiModel, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
-          });
-          if (res.status === 429 || res.status === 529) {
-            if (attempt === 2) return { error: NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status }) };
-            await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
-            continue;
-          }
-          break;
-        }
-        if (!res!.ok) { const e = await res!.json().catch(() => ({})); return { error: NextResponse.json({ error: e?.error?.message || "API error" }, { status: res!.status }) }; }
-        const data = await res!.json();
-        recordUsage({ model: data.model || aiModel, usage: data.usage });
-        return { raw: ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("") };
-      }
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: maxTokens, response_format: { type: "json_object" } }),
-      });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); return { error: NextResponse.json({ error: e?.error?.message || "API error" }, { status: res.status }) }; }
-      const odata = await res.json();
-      recordUsage({ model: "gpt-4o", usage: odata.usage });
-      return { raw: odata.choices?.[0]?.message?.content || "" };
+      const r = await callAi(aiApiKey, aiModel, prompt, { maxTokens, jsonMode: true });
+      if (r.error) return { error: NextResponse.json({ error: r.error, ...(r.retryable ? { retryable: true } : {}) }, { status: r.status || 500 }) };
+      return { raw: r.text };
     };
 
     const main = await callModel(userPrompt, 8000);

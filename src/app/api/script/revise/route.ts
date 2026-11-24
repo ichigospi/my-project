@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { worldviewPromptBlock } from "@/lib/worldview";
-import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
-import { recordUsage } from "@/lib/usage-tracker";
+import { normalizeAiModel } from "@/lib/ai-model";
 import { countCardReveals } from "@/lib/tarot-draw";
 import { blacklistPromptBlock } from "@/lib/qc-blacklist";
 import { callAi } from "@/lib/ai-call";
@@ -107,12 +106,11 @@ function jstToday(): string {
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { script, revisionNote, aiApiKey, referenceAnalyses } = body;
-  const aiModel = resolveAiModel(body.aiModel);
+  const aiModel = normalizeAiModel(body.aiModel);
 
   if (!aiApiKey) return NextResponse.json({ error: "AI APIキーが必要です" }, { status: 400 });
   if (!script || !revisionNote) return NextResponse.json({ error: "台本と修正指示が必要です" }, { status: 400 });
 
-  const isAnthropic = aiApiKey.startsWith("sk-ant-");
   const referenceText = buildReferenceText(referenceAnalyses);
   const customBans = await loadCustomBans().catch(() => []);
 
@@ -206,37 +204,9 @@ ${revisionNote}
 ${script}`;
 
   try {
-    let text = "";
-    if (isAnthropic) {
-      let res: Response | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: anthropicHeaders(aiApiKey, aiModel),
-          body: JSON.stringify({ model: aiModel, max_tokens: 16000, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
-        });
-        if (res.status === 429 || res.status === 529) {
-          if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
-          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
-          continue;
-        }
-        break;
-      }
-      if (!res!.ok) { const e = await res!.json(); return NextResponse.json({ error: e.error?.message || "API error" }, { status: res!.status }); }
-      const data = await res!.json();
-      recordUsage({ model: data.model || aiModel, usage: data.usage });
-      text = ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("");
-    } else {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 16000, response_format: { type: "json_object" } }),
-      });
-      if (!res.ok) { const e = await res.json(); return NextResponse.json({ error: e.error?.message || "API error" }, { status: res.status }); }
-      const odata = await res.json();
-      recordUsage({ model: "gpt-4o", usage: odata.usage });
-      text = odata.choices?.[0]?.message?.content || "";
-    }
+    const r0 = await callAi(aiApiKey, aiModel, prompt, { maxTokens: 16000, jsonMode: true });
+    if (r0.error) return NextResponse.json({ error: r0.error, ...(r0.retryable ? { retryable: true } : {}) }, { status: r0.status || 500 });
+    const text = r0.text;
 
     const parsed = extractJson(text);
     if (!parsed || !Array.isArray(parsed.edits)) {

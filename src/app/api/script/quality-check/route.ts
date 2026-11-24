@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callAi } from "@/lib/ai-call";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
 import { runMechanicalChecks } from "@/lib/qc-blacklist";
 import { loadCustomBans, scanCustomBans } from "@/lib/custom-bans";
 import { buildTechniqueCheckPrompt, parseTechniqueVerdicts, buildTechniqueItems, REQUIRED_BANKS, type TechniqueSpec } from "@/lib/technique-check";
 import { countCardReveals, getCardImagery } from "@/lib/tarot-draw";
 import { formatCardPlanForPrompt, type CardPlan } from "@/lib/project-store";
-import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
-import { recordUsage } from "@/lib/usage-tracker";
+import { normalizeAiModel } from "@/lib/ai-model";
 import { referenceModeQcNote } from "@/lib/structure-mode";
 
 // 8観点+比較マトリクスの生成は出力が大きく時間がかかるため、関数のタイムアウトを延長
@@ -502,56 +502,10 @@ function parseJSON(text: string): Record<string, unknown> | null {
   return null;
 }
 
-async function callAnthropic(aiApiKey: string, userPrompt: string, aiModel: ReturnType<typeof resolveAiModel>, systemPrompt: string): Promise<string> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: anthropicHeaders(aiApiKey, aiModel),
-      body: JSON.stringify({
-        model: aiModel,
-        max_tokens: 8000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt + "\n\nJSONのみ出力してください。{ から始めてください。" }],
-        ...anthropicExtraBody(aiModel),
-      }),
-    });
-    if (res.status === 429 || res.status === 529) {
-      if (attempt === 2) throw new Error("AIが混雑しています。少し時間をおいて再実行してください");
-      await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
-      continue;
-    }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `API error (${res.status})`);
-    }
-    const data = await res.json();
-    recordUsage({ model: data.model || aiModel, usage: data.usage });
-    return ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("");
-  }
-  throw new Error("リトライ上限");
-}
-
-async function callOpenAI(aiApiKey: string, userPrompt: string, systemPrompt: string): Promise<string> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: 8000,
-      response_format: { type: "json_object" },
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `API error (${res.status})`);
-  }
-  const data = await res.json();
-  recordUsage({ model: "gpt-4o", usage: data.usage });
-  return data.choices?.[0]?.message?.content || "";
+async function callModelJson(aiApiKey: string, userPrompt: string, aiModel: string, systemPrompt: string): Promise<string> {
+  const r = await callAi(aiApiKey, aiModel, userPrompt + "\n\nJSONのみ出力してください。{ から始めてください。", { maxTokens: 8000, system: systemPrompt, jsonMode: true });
+  if (r.error) throw new Error(r.error);
+  return r.text;
 }
 
 export async function POST(request: NextRequest) {
@@ -599,8 +553,7 @@ export async function POST(request: NextRequest) {
       userPrompt += referenceModeQcNote();
     }
 
-    const isAnthropic = aiApiKey.startsWith("sk-ant-");
-    const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
+    const aiModel = normalizeAiModel((body as { aiModel?: string }).aiModel);
     // タロットは目標6,000〜8,000字（下限6,000・上限9,000）のため、文字数カテゴリの基準を差し替える（合否は機械判定側）
     const isTarot = (body as { style?: string }).style === "tarot";
     const systemPrompt = isTarot
@@ -616,10 +569,10 @@ export async function POST(request: NextRequest) {
     ];
     const techniqueSystem = "あなたは厳格な台本校閲者です。指定ごとに台本への反映を判定し、JSONのみで回答します。";
     const techniquePromise: Promise<string> = specs.length > 0
-      ? (isAnthropic ? callAnthropic(aiApiKey, buildTechniqueCheckPrompt(script, specs), aiModel, techniqueSystem) : callOpenAI(aiApiKey, buildTechniqueCheckPrompt(script, specs), techniqueSystem)).catch(() => "")
+      ? callModelJson(aiApiKey, buildTechniqueCheckPrompt(script, specs), aiModel, techniqueSystem).catch(() => "")
       : Promise.resolve("");
     const [raw, techniqueRaw] = await Promise.all([
-      isAnthropic ? callAnthropic(aiApiKey, userPrompt, aiModel, systemPrompt) : callOpenAI(aiApiKey, userPrompt, systemPrompt),
+      callModelJson(aiApiKey, userPrompt, aiModel, systemPrompt),
       techniquePromise,
     ]);
     const parsed = parseJSON(raw);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callAi } from "@/lib/ai-call";
 import { worldviewPromptBlock, replaceWorldview } from "@/lib/worldview";
-import { resolveAiModel, anthropicHeaders, anthropicExtraBody } from "@/lib/ai-model";
-import { recordUsage } from "@/lib/usage-tracker";
+import { normalizeAiModel } from "@/lib/ai-model";
 import { buildTarotDrawBlock, extractDrawnCards, getCardImagery, getCardMeaning, CARD_NAMES, makeRotationPicker, bankKey, bankLabel, techniqueShort } from "@/lib/tarot-draw";
 import { prisma } from "@/lib/prisma";
 import { formatEssenceForPrompt, type ScriptEssence } from "@/lib/script-analysis-store";
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     // fill
     const aiApiKey = String(body.aiApiKey || "");
-    const aiModel = resolveAiModel((body as { aiModel?: string }).aiModel);
+    const aiModel = normalizeAiModel((body as { aiModel?: string }).aiModel);
     if (!aiApiKey) return NextResponse.json({ error: "AI APIキーを設定してください" }, { status: 400 });
     if (!plan?.slots?.length || !plan.slots.every((sl) => sl.card)) return NextResponse.json({ error: "先にカードを引いてください" }, { status: 400 });
     const onlyIndex: number | undefined = body.onlyIndex !== null && body.onlyIndex !== undefined && Number.isFinite(Number(body.onlyIndex)) ? Number(body.onlyIndex) : undefined;
@@ -170,38 +170,9 @@ ${analysisTexts ? `【元ネタの分析】\n${analysisTexts.slice(0, 9000)}\n` 
 { "backbone": { "theme": "メインテーマと主張（1行）", "metaphor": "中心メタファー（◯◯の形。カギ括弧なし）", "promise": "冒頭の約束（視聴者への語りかけ1行）" },
   "slots": [ { "index": 1, "highlight": "絵柄の見せ場（短く）", "message": "伝えること（1行＋出典）", "flow": "流れ（1〜2行）" } ] }`;
 
-    const isAnthropic = aiApiKey.startsWith("sk-ant-");
-    let raw = "";
-    if (isAnthropic) {
-      let res: Response | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: anthropicHeaders(aiApiKey, aiModel),
-          body: JSON.stringify({ model: aiModel, max_tokens: 4000, messages: [{ role: "user", content: prompt }], ...anthropicExtraBody(aiModel) }),
-        });
-        if (res.status === 429 || res.status === 529) {
-          if (attempt === 2) return NextResponse.json({ error: "Overloaded", retryable: true }, { status: res.status });
-          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
-          continue;
-        }
-        break;
-      }
-      if (!res!.ok) { const e = await res!.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res!.status }); }
-      const data = await res!.json();
-      recordUsage({ model: data.model || aiModel, usage: data.usage });
-      raw = ((data.content || []) as { type?: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join("");
-    } else {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${aiApiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], max_tokens: 4000, response_format: { type: "json_object" } }),
-      });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ error: e?.error?.message || "API error" }, { status: res.status }); }
-      const odata = await res.json();
-      recordUsage({ model: "gpt-4o", usage: odata.usage });
-      raw = odata.choices?.[0]?.message?.content || "";
-    }
+    const r = await callAi(aiApiKey, aiModel, prompt, { maxTokens: 4000, jsonMode: true });
+    if (r.error) return NextResponse.json({ error: r.error, ...(r.retryable ? { retryable: true } : {}) }, { status: r.status || 500 });
+    const raw = r.text;
     const parsed = parseJSON(raw);
     if (!parsed) return NextResponse.json({ error: "AI応答の解析に失敗しました" }, { status: 500 });
     const bb = (parsed.backbone || {}) as Partial<CardPlanBackbone>;

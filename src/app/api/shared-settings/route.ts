@@ -7,7 +7,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 // ここで束ねるとリクエスト/レスポンスが肥大化し "Failed to fetch" の原因になるため、
 // 重い可能性のあるキーは含めない。
 const SHARED_KEYS = [
-  "shared_yt_api_key", "shared_ai_api_key", "shared_openai_api_key", "shared_litmedia_api_key",
+  "shared_yt_api_key", "shared_ai_api_key", "shared_openai_api_key", "shared_gemini_api_key", "shared_litmedia_api_key",
   "shared_chatwork_api_token", "shared_chatwork_room_id",
   "shared_chatwork_owner_id", "shared_chatwork_writer_ids", "shared_chatwork_extra_ids",
   "shared_ai_model_generate", "shared_ai_model_check", "shared_channels", "shared_hooks",
@@ -56,6 +56,7 @@ export async function GET() {
       yt_api_key: map["shared_yt_api_key"] || "",
       ai_api_key: map["shared_ai_api_key"] || "",
       openai_api_key: map["shared_openai_api_key"] || "",
+      gemini_api_key: map["shared_gemini_api_key"] || "",
       litmedia_api_key: map["shared_litmedia_api_key"] || "",
       chatwork_api_token: map["shared_chatwork_api_token"] || "",
       chatwork_room_id: map["shared_chatwork_room_id"] || "",
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest) {
     if (body.yt_api_key) updates.push({ key: "shared_yt_api_key", value: body.yt_api_key });
     if (body.ai_api_key) updates.push({ key: "shared_ai_api_key", value: body.ai_api_key });
     if (body.openai_api_key) updates.push({ key: "shared_openai_api_key", value: body.openai_api_key });
+    if (body.gemini_api_key) updates.push({ key: "shared_gemini_api_key", value: body.gemini_api_key });
     if (body.litmedia_api_key) updates.push({ key: "shared_litmedia_api_key", value: body.litmedia_api_key });
     if (body.chatwork_api_token) updates.push({ key: "shared_chatwork_api_token", value: body.chatwork_api_token });
     if (body.chatwork_room_id) updates.push({ key: "shared_chatwork_room_id", value: body.chatwork_room_id });
