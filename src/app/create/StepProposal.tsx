@@ -15,6 +15,7 @@ import { extractDrawnCards, syncDrawSpecToCards, tarotCardImageUrl, CARD_NAMES }
 import { migratePlanToNewFlow } from "@/lib/plan-migrate";
 import { getPatterns, buildSelectedPatternsBlock, updatePattern, removePattern, PATTERN_CATEGORIES, type PatternItem } from "@/lib/pattern-store";
 import { pushSharedSettings } from "@/lib/shared-sync";
+import { cardPlanText, wallBounceMessage } from "@/lib/wallbounce";
 import type { ScriptProject, RuleProposal, SuggestionDraft, CardPlan, CardSlot, DrawnTechnique } from "@/lib/project-store";
 import type { ScriptAnalysis, ScriptEssence } from "@/lib/script-analysis-store";
 import { essenceBlocksInOrder, mustKeepInOrder } from "@/lib/script-analysis-store";
@@ -554,6 +555,9 @@ export default function StepProposal({ project, onUpdate, onNavigate }: { projec
 
   // --- カード設計表（コア5枚＋元ネタ固有の追加カード。枚数・順番・役割の基準） ---
   const [planBusy, setPlanBusy] = useState(false);
+  // 壁打ち用コピーの「コピーしました」表示
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyText = (key: string, text: string) => { navigator.clipboard.writeText(text); setCopiedKey(key); setTimeout(() => setCopiedKey(null), 1500); };
   const [planError, setPlanError] = useState("");
   const [planInstruction, setPlanInstruction] = useState("");
   const [planInstructOpen, setPlanInstructOpen] = useState(false);
@@ -1152,6 +1156,16 @@ ${p.content}`;
                     <button onClick={() => setMigrateNotice("")} className="text-violet-500 hover:text-violet-800">✕</button>
                   </div>
                 )}
+                {!!project.cardPlan?.slots?.length && (
+                  <div className="mb-2 flex items-center gap-2 flex-wrap text-sm">
+                    <button onClick={() => copyText("plan", cardPlanText(project))} className="px-3 py-1.5 rounded-lg border border-sky-300 bg-white text-sky-900 hover:bg-sky-100" title="背骨・各カードの伝えること・今回の型を、そのまま貼れる文章でコピー">
+                      {copiedKey === "plan" ? "✅ コピーしました" : "📋 設計表をコピー"}
+                    </button>
+                    <button onClick={() => copyText("plan-wb", wallBounceMessage(project, "plan"))} className="px-3 py-1.5 rounded-lg border border-violet-300 bg-white text-violet-900 hover:bg-violet-100" title="Gemini等に貼ると、構成ロジックに照らした評価と書き直し案が返ってくる依頼文つき">
+                      {copiedKey === "plan-wb" ? "✅ コピーしました" : "💬 壁打ち用にコピー（依頼文つき）"}
+                    </button>
+                  </div>
+                )}
                 {isTarot && !isCardPlanFilled(project.cardPlan) && (abstractText.trim() || skeleton.trim()) && (
                   <div className="mb-2">
                     <button onClick={() => migrateToNewFlow(false)} className="text-sm px-3 py-1.5 rounded-lg border border-violet-300 text-violet-800 bg-white hover:bg-violet-100">
@@ -1426,7 +1440,10 @@ ${p.content}`;
                     {patterns.some((p) => p.category === "全体構成") && (
                       <button onClick={() => setPicker({ mode: "structure" })} disabled={generating} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 bg-white disabled:opacity-50" title="全体構成カテゴリのパターンを選んで骨組み全体を再生成します">🏗 構成全体をパターン参照</button>
                     )}
-                    <button onClick={() => navigator.clipboard.writeText(skeleton)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 bg-white">コピー</button>
+                    <button onClick={() => copyText("skel", skeleton)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 bg-white">{copiedKey === "skel" ? "✅ コピーしました" : "コピー"}</button>
+                    <button onClick={() => copyText("skel-wb", wallBounceMessage(project, "skeleton"))} className="px-3 py-1.5 rounded-lg border border-violet-300 text-violet-900 text-sm hover:bg-violet-100 bg-white" title="設計表＋骨組みを、構成ロジックに照らして指摘・書き直し案を返す依頼文つきでコピー">
+                      {copiedKey === "skel-wb" ? "✅ コピーしました" : "💬 壁打ち用にコピー（設計表＋骨組み）"}
+                    </button>
                   </div>
                 </div>
                 {skelLocate && !editing ? (
