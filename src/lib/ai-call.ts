@@ -23,12 +23,19 @@ async function loadGeminiKey(): Promise<string> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function callGemini(apiKey: string, model: string, prompt: string, opts: AiCallOptions): Promise<AiCallResult> {
+// Gemini は「考える」ぶんのトークン（thinking）も maxOutputTokens に含めて数える。
+// Claude 向けの小さめの上限（2,500〜16,000）をそのまま渡すと、考えている途中で上限に当たり、本文が空のまま MAX_TOKENS で止まる。
+// そのため上限は本文ぶん＋考えるぶんで広く取る（モデルの上限 65,536 まで）。実際に使った分しか課金されない
+const GEMINI_MAX_OUTPUT = 65536;
+const geminiBudget = (maxTokens?: number) => Math.min(GEMINI_MAX_OUTPUT, Math.max((maxTokens ?? 16000) + 24000, 32768));
+
+async function callGemini(apiKey: string, model: string, prompt: string, opts: AiCallOptions, budget?: number): Promise<AiCallResult> {
   const contents = (opts.messages && opts.messages.length > 0 ? opts.messages : [{ role: "user" as const, content: prompt }])
     .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
+  const maxOutputTokens = budget ?? geminiBudget(opts.maxTokens);
   const body: Record<string, unknown> = {
     contents,
-    generationConfig: { maxOutputTokens: opts.maxTokens ?? 16000, ...(opts.jsonMode ? { responseMimeType: "application/json" } : {}) },
+    generationConfig: { maxOutputTokens, ...(opts.jsonMode ? { responseMimeType: "application/json" } : {}) },
     ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
   };
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -50,7 +57,13 @@ async function callGemini(apiKey: string, model: string, prompt: string, opts: A
     const cand = (data.candidates || [])[0];
     const text = ((cand?.content?.parts || []) as { text?: string }[]).map((p) => p.text || "").join("");
     const u = data.usageMetadata || {};
-    recordUsage({ model: `gemini/${model}`, usage: { input_tokens: u.promptTokenCount || 0, output_tokens: u.candidatesTokenCount || 0 } });
+    recordUsage({ model: `gemini/${model}`, usage: { input_tokens: u.promptTokenCount || 0, output_tokens: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) } });
+    if (cand?.finishReason === "MAX_TOKENS") {
+      // 上限に当たった。まだ広げられるなら一度だけ上限いっぱいで引き直す（本文が途中で切れたものを返さない）
+      if (maxOutputTokens < GEMINI_MAX_OUTPUT) return callGemini(apiKey, model, prompt, opts, GEMINI_MAX_OUTPUT);
+      if (!text) return { text: "", error: `Geminiが考えるぶんで出力の上限（${GEMINI_MAX_OUTPUT.toLocaleString()}トークン）を使い切り、本文を返せませんでした。もう一度実行するか、設定でGeminiのモデルを変えてください（思考が長いモデルで起きやすい）` };
+      return { text, error: "Geminiの出力が上限で途中で切れました。もう一度実行してください" };
+    }
     if (!text && cand?.finishReason && cand.finishReason !== "STOP") return { text: "", error: `Geminiが応答を止めました（${cand.finishReason}）` };
     return { text };
   }
